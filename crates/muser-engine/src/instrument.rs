@@ -755,7 +755,12 @@ mod tests {
         assert!(resolve("POLY.MOOG_BASS").is_ok());
         assert_eq!(describe("marimba").unwrap().name, "mallet.marimba");
         assert!(check_name("no.such").is_err());
+        // 非 host 只检查语法；host 下会加载插件，不存在的路径报错。
+        #[cfg(not(feature = "host"))]
         assert!(check_name("plugin:/x.vst3").is_ok());
+        #[cfg(feature = "host")]
+        assert!(check_name("plugin:/x.vst3").unwrap_err().to_string().contains("找不到插件"));
+        assert!(check_name("plugin:").is_err());
     }
 
     #[test]

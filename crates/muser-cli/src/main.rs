@@ -104,6 +104,9 @@ enum Command {
         /// 把每一版写成 wav 的目录。
         #[arg(long)]
         out: Option<String>,
+        /// 把试听结果记进该插件的用户画像（只对外置插件有效）。
+        #[arg(long)]
+        record: bool,
         /// 以 JSON 输出。
         #[arg(long)]
         json: bool,
@@ -155,6 +158,22 @@ enum PluginCommand {
         #[arg(long)]
         json: bool,
     },
+    /// 插件画像：常用参数别名、预设、经验的数据文件（按插件 id 匹配，可分享）。
+    Profile {
+        #[command(subcommand)]
+        command: ProfileCommand,
+    },
+    /// 保存插件当前状态（音色）到文件：先应用 --params（含画像 setup / @preset），工程里用 "@state": "<文件>" 加载。
+    SaveState {
+        /// 插件路径，可带 #插件id。
+        plugin: String,
+        /// 要应用的参数（JSON 对象）。
+        #[arg(long)]
+        params: Option<String>,
+        /// 输出文件（建议扩展名 .muserstate）。
+        #[arg(short, long)]
+        output: String,
+    },
     /// 列出某个参数可写的文字值（选项类参数即全部选项，如滤波类型、波形）。
     Values {
         /// 插件路径，可带 #插件id。
@@ -170,6 +189,45 @@ enum PluginCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum ProfileCommand {
+    /// 列出所有可用画像（用户目录、MUSER_PROFILE_PATH、内置）。
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// 显示某插件的画像（插件路径，或画像文件 .json）。
+    Show {
+        target: String,
+        /// 以 Markdown（skill 文档）输出。
+        #[arg(long)]
+        markdown: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// 由插件自动生成画像草稿。
+    Draft {
+        plugin: String,
+        /// 对数值类常用参数做试听，把观察结果写进草稿（较慢）。
+        #[arg(long)]
+        audition: bool,
+        /// 保存到用户画像目录（已有同名文件会被覆盖）。
+        #[arg(long)]
+        save: bool,
+        /// 写到指定文件；都不写则打印。
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// 校验画像文件；给出插件时同时检查参数名与预设能否在插件上应用。
+    Check {
+        file: String,
+        #[arg(long)]
+        plugin: Option<String>,
+    },
+    /// 显示画像查找路径。
+    Path,
 }
 
 fn main() -> Result<()> {
@@ -190,8 +248,8 @@ fn main() -> Result<()> {
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::Plugin { command } => cmd_plugin(command),
-        Command::Audition { instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, json } => {
-            cmd_audition(instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, json)
+        Command::Audition { instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json } => {
+            cmd_audition(instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json)
         }
     }
 }
@@ -353,6 +411,119 @@ fn cmd_effects(name: Option<&str>, json: bool) -> Result<()> {
     Ok(())
 }
 
+fn cmd_profile(command: ProfileCommand) -> Result<()> {
+    use muser_engine::{plugin, profile};
+    let fail = |e: String| anyhow::anyhow!(e);
+    let load_target = |target: &str| -> Result<profile::Loaded> {
+        if target.ends_with(".json") && std::path::Path::new(target).is_file() {
+            return Ok(profile::Loaded {
+                origin: profile::Origin::File,
+                path: Some(target.into()),
+                profile: profile::load_file(std::path::Path::new(target)).map_err(fail)?,
+            });
+        }
+        let (id, name, _) = plugin::plugin_identity(target).map_err(fail)?;
+        profile::find(&id)
+            .map(|l| (*l).clone())
+            .ok_or_else(|| anyhow::anyhow!("{name}（{id}）还没有画像；用 `muser plugin profile draft '{target}' --save` 生成一份"))
+    };
+    match command {
+        ProfileCommand::Path => {
+            if let Ok(v) = std::env::var("MUSER_PROFILE_PATH") {
+                println!("MUSER_PROFILE_PATH: {v}");
+            }
+            println!("用户画像目录: {}", profile::user_dir().display());
+            println!("另有 muser 内置画像（优先级最低）。");
+        }
+        ProfileCommand::List { json } => {
+            let all = profile::all();
+            if json {
+                let list: Vec<_> = all.iter().map(|l| serde_json::json!({
+                    "name": l.profile.plugin.name, "ids": l.profile.plugin.ids, "origin": l.origin, "path": l.path,
+                    "tested_version": l.profile.source.tested_version, "params": l.profile.params.len(), "presets": l.profile.presets.len()
+                })).collect();
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            for l in &all {
+                println!("{:<24} {:>3} 参数 {:>2} 预设  {:?}  {}", l.profile.plugin.name, l.profile.params.len(), l.profile.presets.len(), l.origin, l.path.as_deref().unwrap_or(""));
+            }
+        }
+        ProfileCommand::Show { target, markdown, json } => {
+            let l = load_target(&target)?;
+            if json {
+                println!("{}", l.profile.to_json());
+            } else if markdown {
+                print!("{}", profile::render_markdown(&l));
+            } else {
+                let p = &l.profile;
+                println!("{} — {}（{:?}，{}）", p.plugin.name, p.plugin.vendor, l.origin, l.path.as_deref().unwrap_or(""));
+                if !p.setup.is_empty() {
+                    println!("  setup: {}", serde_json::Value::Object(p.setup.clone()));
+                }
+                for q in &p.params {
+                    println!("  {:<14} {}", q.alias.as_deref().unwrap_or("-"), q.name);
+                }
+                if !p.presets.is_empty() {
+                    println!("  预设: {}", p.presets.iter().map(|x| x.name.as_str()).collect::<Vec<_>>().join(", "));
+                }
+                println!("\n`--markdown` 输出 skill 文档。");
+            }
+        }
+        ProfileCommand::Draft { plugin: spec, audition, save, output } => {
+            let p = plugin::draft_profile(&spec, audition).map_err(fail)?;
+            if save {
+                let path = profile::save_user(&p).map_err(fail)?;
+                println!("已保存草稿 → {}（{} 个参数）", path.display(), p.params.len());
+            } else if let Some(out) = output {
+                std::fs::write(&out, p.to_json()).with_context(|| format!("写入 {out} 失败"))?;
+                println!("已写出草稿 → {out}（{} 个参数）", p.params.len());
+            } else {
+                print!("{}", p.to_json());
+            }
+        }
+        ProfileCommand::Check { file, plugin: spec } => {
+            let p = profile::load_file(std::path::Path::new(&file)).map_err(fail)?;
+            println!("结构 OK：{}，{} 参数，{} 预设", p.plugin.name, p.params.len(), p.presets.len());
+            if let Some(spec) = spec {
+                let (id, _, version) = plugin::plugin_identity(&spec).map_err(fail)?;
+                if !p.matches(&id) {
+                    anyhow::bail!("画像的 plugin.ids 不包含该插件的 id '{id}'");
+                }
+                let mut problems = Vec::new();
+                let have: std::collections::HashSet<String> =
+                    plugin::params(&spec, None, true, &Default::default()).map_err(fail)?.into_iter().map(|x| x.name).collect();
+                for q in &p.params {
+                    if !have.contains(&q.name) {
+                        problems.push(format!("参数 '{}' 在插件里不存在", q.name));
+                    }
+                }
+                let base = |m: serde_json::Map<String, serde_json::Value>| plugin::check_params_in(&spec, &p, &m);
+                if let Err(e) = base(p.setup.clone()) {
+                    problems.push(format!("setup: {e}"));
+                }
+                for pr in &p.presets {
+                    if let Err(e) = base(pr.params.clone()) {
+                        problems.push(format!("预设 '{}': {e}", pr.name));
+                    }
+                }
+                if !p.source.tested_version.is_empty() && p.source.tested_version != version {
+                    println!("提示：画像验证于 {}，已安装 {version}", p.source.tested_version);
+                }
+                if problems.is_empty() {
+                    println!("插件检查 OK：参数名、setup 与 {} 个预设都能应用", p.presets.len());
+                } else {
+                    for e in &problems {
+                        println!("  ✗ {e}");
+                    }
+                    anyhow::bail!("{} 个问题", problems.len());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn parse_map(s: Option<&str>) -> Result<serde_json::Map<String, serde_json::Value>> {
     match s {
         Some(s) => serde_json::from_str(s).context("--params 应为 JSON 对象"),
@@ -404,6 +575,17 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
             groups.sort_by(|a, b| b.1.cmp(&a.1));
             let shown: Vec<String> = groups.iter().take(20).map(|(g, n)| format!("{g}({n})")).collect();
             println!("  参数分组: {}", shown.join(" "));
+            match &info.profile {
+                Some(pr) => {
+                    println!("  画像:     {:?} {}，{} 个别名，预设: {}", pr.origin, pr.path.as_deref().unwrap_or(""), pr.aliases,
+                        if pr.presets.is_empty() { "无".into() } else { pr.presets.join(", ") });
+                    if !pr.setup.is_empty() {
+                        println!("            自动应用 setup: {}（写 \"@setup\": false 关闭）", serde_json::Value::Object(pr.setup.clone()));
+                    }
+                    println!("            `muser plugin profile show '{spec}' --markdown` 查看使用说明");
+                }
+                None => println!("  画像:     无（`muser plugin profile draft '{spec}' --save` 生成草稿）"),
+            }
             if !info.siblings.is_empty() {
                 println!("  同文件其它插件:");
                 for (id, name) in &info.siblings {
@@ -412,6 +594,13 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
             }
             println!("\n`muser plugin params '{spec}' --filter <关键词>` 查看参数。");
         }
+        PluginCommand::SaveState { plugin: spec, params, output } => {
+            let base = parse_map(params.as_deref())?;
+            let h = plugin::save_state(&spec, &base, std::path::Path::new(&output)).map_err(fail)?;
+            println!("已保存 {} {} 的状态 → {output}", h.plugin_name, h.version);
+            println!("工程里写 \"instrument_params\": {{ \"@state\": \"{output}\" }}（效果器写在 params 里）。");
+        }
+        PluginCommand::Profile { command } => cmd_profile(command)?,
         PluginCommand::Values { plugin: spec, param, samples, params, json } => {
             let base = parse_map(params.as_deref())?;
             let (p, values) = plugin::values(&spec, &param, samples, &base).map_err(fail)?;
@@ -446,7 +635,8 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
                 let unit = if p.unit.is_empty() { String::new() } else { format!(" {}", p.unit) };
                 let steps = p.steps.map_or(String::new(), |s| format!(" {s} 档"));
                 let flags = format!("{}{}", if p.automatable { "" } else { " 不可自动化" }, if p.read_only { " 只读" } else { "" });
-                println!("  {:<40} {} – {}{unit}{steps}  当前 {} \"{}\"  id {}{flags}",
+                let alias = p.alias.as_ref().map_or(String::new(), |a| format!("  别名 {a}"));
+                println!("  {:<40} {} – {}{unit}{steps}  当前 {} \"{}\"  id {}{flags}{alias}",
                     p.name, p.min, p.max, p.current, p.current_text, p.id);
             }
             if total > shown.len() {
@@ -472,6 +662,7 @@ fn cmd_audition(
     hold: f64,
     tail: f64,
     out: Option<String>,
+    record: bool,
     json: bool,
 ) -> Result<()> {
     use muser_engine::audition::{audition, parse_value, AuditionSettings, Subject};
@@ -489,6 +680,22 @@ fn cmd_audition(
     let values: Vec<serde_json::Value> = values.iter().filter(|v| !v.trim().is_empty()).map(|v| parse_value(v)).collect();
     let settings = AuditionSettings { pitch, velocity, hold_seconds: hold, tail_seconds: tail, out_dir: out.map(Into::into) };
     let takes = audition(&subject, param.as_deref(), &values, &settings)?;
+    if record {
+        let spec = match &subject {
+            Subject::Instrument { name, .. } => name.trim().strip_prefix("plugin:").map(String::from),
+            Subject::Effect { effect: muser_core::Effect::Plugin { path, id, .. }, .. } => {
+                Some(id.as_ref().map_or(path.clone(), |i| format!("{path}#{i}")))
+            }
+            _ => None,
+        };
+        match (spec, &param) {
+            (Some(spec), Some(param)) => {
+                let path = muser_engine::plugin::record_observations(&spec, param, &takes).map_err(|e| anyhow::anyhow!(e))?;
+                eprintln!("已记入画像: {}", path.display());
+            }
+            _ => anyhow::bail!("--record 需要外置插件（plugin:… 乐器或 plugin 效果器）并给出 --param"),
+        }
+    }
     if json {
         println!("{}", serde_json::to_string_pretty(&takes)?);
         return Ok(());

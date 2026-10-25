@@ -15,6 +15,9 @@ use serde_json::Value;
 pub struct PluginParam {
     pub id: u32,
     pub name: String,
+    /// 画像里的别名（若有）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub unit: String,
     pub min: f64,
@@ -57,6 +60,19 @@ pub struct PluginInfo {
     /// 同一文件里的其它插件（id, 名称）。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub siblings: Vec<(String, String)>,
+    /// 匹配到的画像摘要（若有）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProfileSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProfileSummary {
+    pub origin: crate::profile::Origin,
+    pub path: Option<String>,
+    pub tested_version: String,
+    pub aliases: usize,
+    pub presets: Vec<String>,
+    pub setup: serde_json::Map<String, Value>,
 }
 
 /// 扫描结果中的一项。
@@ -71,6 +87,39 @@ pub struct ScannedPlugin {
     pub format: String,
     pub kind: String,
     pub categories: Vec<String>,
+}
+
+/// 插件状态文件（`@state`）：插件自己的二进制音色数据，前面带一行 JSON 头记录插件 id 与版本，
+/// 加载时据此拒绝装进别的插件。
+pub const STATE_MAGIC: &[u8] = b"MUSER-STATE 1\n";
+
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct StateHeader {
+    pub plugin_id: String,
+    pub plugin_name: String,
+    pub version: String,
+    pub format: String,
+}
+
+pub fn write_state_file(path: &std::path::Path, header: &StateHeader, data: &[u8]) -> Result<(), String> {
+    let mut out = STATE_MAGIC.to_vec();
+    out.extend(serde_json::to_vec(header).map_err(|e| e.to_string())?);
+    out.push(b'\n');
+    out.extend_from_slice(data);
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir).map_err(|e| format!("创建 {} 失败: {e}", dir.display()))?;
+    }
+    std::fs::write(path, out).map_err(|e| format!("写入 {} 失败: {e}", path.display()))
+}
+
+pub fn read_state_file(path: &std::path::Path) -> Result<(StateHeader, Vec<u8>), String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("读取状态文件 '{}' 失败: {e}", path.display()))?;
+    let rest = bytes
+        .strip_prefix(STATE_MAGIC)
+        .ok_or_else(|| format!("'{}' 不是 muser 状态文件（用 `muser plugin save-state` 生成）", path.display()))?;
+    let nl = rest.iter().position(|b| *b == b'\n').ok_or("状态文件头损坏")?;
+    let header: StateHeader = serde_json::from_slice(&rest[..nl]).map_err(|e| format!("状态文件头损坏: {e}"))?;
+    Ok((header, rest[nl + 1..].to_vec()))
 }
 
 /// 把 `path#id` 拆开。
@@ -108,6 +157,21 @@ mod stub {
     pub fn values(_spec: &str, _key: &str, _samples: usize, _base: &serde_json::Map<String, Value>) -> Result<(PluginParam, Vec<(f64, String)>), String> {
         Err(HOST_DISABLED.into())
     }
+    pub fn save_state(_spec: &str, _params: &serde_json::Map<String, Value>, _out: &std::path::Path) -> Result<StateHeader, String> {
+        Err(HOST_DISABLED.into())
+    }
+    pub fn plugin_identity(_spec: &str) -> Result<(String, String, String), String> {
+        Err(HOST_DISABLED.into())
+    }
+    pub fn draft_profile(_spec: &str, _audition: bool) -> Result<crate::profile::Profile, String> {
+        Err(HOST_DISABLED.into())
+    }
+    pub fn record_observations(_spec: &str, _param: &str, _takes: &[crate::audition::Take]) -> Result<std::path::PathBuf, String> {
+        Err(HOST_DISABLED.into())
+    }
+    pub fn check_params_in(_spec: &str, _profile: &crate::profile::Profile, _params: &serde_json::Map<String, Value>) -> Result<(), String> {
+        Err(HOST_DISABLED.into())
+    }
 }
 
 #[cfg(feature = "host")]
@@ -126,6 +190,10 @@ mod imp {
         pub path: String,
         /// 已应用的参数（id, 值），激活后会经音频队列重发一次。
         applied: Vec<(ParamId, f64)>,
+        /// 匹配到的插件画像。
+        pub profile: Option<std::sync::Arc<crate::profile::Loaded>>,
+        /// 已加载的状态（激活后检查是否保留）。
+        state_loaded: bool,
     }
 
     fn kind_name(k: Kind) -> &'static str {
@@ -162,7 +230,18 @@ mod imp {
                 .create(&plugin_id)
                 .map_err(|e| format!("创建插件 '{plugin_id}' 失败: {e:?}"))?;
             let params = plugin.params();
-            Ok(Opened { library, plugin, params, path: path.to_string(), applied: Vec::new() })
+            let profile = crate::profile::find(&plugin_id);
+            if let Some(pr) = &profile {
+                let tested = &pr.profile.source.tested_version;
+                let installed = &plugin.entry().version;
+                if !tested.is_empty() && tested != installed {
+                    eprintln!(
+                        "[muser] 提示: 画像 '{}' 验证于版本 {tested}，已安装 {installed}，参数可能有变化",
+                        pr.profile.plugin.name
+                    );
+                }
+            }
+            Ok(Opened { library, plugin, params, path: path.to_string(), applied: Vec::new(), profile, state_loaded: false })
         }
 
         pub fn open_spec(spec: &str) -> Result<Opened, String> {
@@ -173,6 +252,7 @@ mod imp {
         /// 按名称（大小写不敏感）或数字 id 找参数；找不到时给出相近的名字。
         pub fn resolve(&self, key: &str) -> Result<&Param, String> {
             let k = key.trim();
+            let k = self.profile.as_ref().and_then(|p| p.profile.alias(k)).unwrap_or(k);
             let lower = k.to_lowercase();
             let exact: Vec<&Param> = self.params.iter().filter(|p| p.name.to_lowercase() == lower).collect();
             match exact.len() {
@@ -275,8 +355,79 @@ mod imp {
             Ok(x.clamp(p.min, p.max))
         }
 
-        /// 应用一组参数（激活前调用）。
+        /// 应用一组参数（激活前调用）。顺序：`@state` 状态文件 → 画像 `setup`（`"@setup": false` 关闭）
+        /// → `@preset` 画像预设 → 其余参数（键可以是参数名、数字 id 或画像别名）。
         pub fn apply(&mut self, params: &serde_json::Map<String, Value>) -> Result<(), String> {
+            for k in params.keys().filter(|k| k.starts_with('@')) {
+                if !["@state", "@setup", "@preset"].contains(&k.as_str()) {
+                    return Err(format!("未知的保留键 '{k}'，可用: @state / @setup / @preset"));
+                }
+            }
+            if let Some(v) = params.get("@state") {
+                let path = v.as_str().ok_or("@state 应为状态文件路径")?;
+                self.load_state_file(std::path::Path::new(path))?;
+            }
+            let use_setup = match params.get("@setup") {
+                None => true,
+                Some(Value::Bool(b)) => *b,
+                Some(v) => return Err(format!("@setup 应为 true/false，实际 {v}")),
+            };
+            let profile = self.profile.clone();
+            if use_setup {
+                if let Some(pr) = &profile {
+                    let setup = pr.profile.setup.clone();
+                    self.apply_plain(&setup).map_err(|e| format!("画像 setup: {e}"))?;
+                }
+            }
+            if let Some(v) = params.get("@preset") {
+                let name = v.as_str().ok_or("@preset 应为预设名")?;
+                let pr = profile.as_ref().ok_or("这个插件没有画像，不能用 @preset（`muser plugin profile draft` 生成一份）")?;
+                let preset = pr.profile.preset(name).ok_or_else(|| {
+                    format!(
+                        "画像里没有预设 '{name}'，可用: {}",
+                        pr.profile.presets.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                })?;
+                let values = preset.params.clone();
+                self.apply_plain(&values).map_err(|e| format!("预设 '{name}': {e}"))?;
+            }
+            let rest: serde_json::Map<String, Value> =
+                params.iter().filter(|(k, _)| !k.starts_with('@')).map(|(k, v)| (k.clone(), v.clone())).collect();
+            self.apply_plain(&rest)
+        }
+
+        /// 读取状态文件并装进插件（检查插件 id）。
+        pub fn load_state_file(&mut self, path: &std::path::Path) -> Result<(), String> {
+            let (h, data) = read_state_file(path)?;
+            let e = self.plugin.entry();
+            if h.plugin_id != e.id {
+                return Err(format!(
+                    "状态文件 '{}' 属于插件 {}（{}），不能装进 {}（{}）",
+                    path.display(), h.plugin_name, h.plugin_id, e.name, e.id
+                ));
+            }
+            if h.version != e.version {
+                eprintln!("[muser] 提示: 状态文件保存于 {} {}，已安装 {}", h.plugin_name, h.version, e.version);
+            }
+            self.plugin.load_state(&data).map_err(|e| format!("插件拒绝了状态文件: {e:?}"))?;
+            self.state_loaded = true;
+            Ok(())
+        }
+
+        /// 保存插件当前状态（含已应用的参数）。插件处于激活状态时也可调用。
+        pub fn save_state_file(&mut self, path: &std::path::Path) -> Result<(), String> {
+            let data = self.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
+            let e = self.plugin.entry();
+            let header = StateHeader {
+                plugin_id: e.id.clone(),
+                plugin_name: e.name.clone(),
+                version: e.version.clone(),
+                format: format!("{:?}", e.format).to_lowercase(),
+            };
+            write_state_file(path, &header, &data)
+        }
+
+        fn apply_plain(&mut self, params: &serde_json::Map<String, Value>) -> Result<(), String> {
             let mut writes = Vec::new();
             for (key, v) in params {
                 let p = self.resolve(key)?;
@@ -399,6 +550,9 @@ mod imp {
             PluginParam {
                 id: p.id.0,
                 name: p.name.clone(),
+                alias: self.profile.as_ref().and_then(|l| {
+                    l.profile.params.iter().find(|q| q.name == p.name).and_then(|q| q.alias.clone())
+                }),
                 unit: p.unit.clone(),
                 min: p.min,
                 max: p.max,
@@ -446,6 +600,14 @@ mod imp {
                     .filter(|p| p.id != e.id)
                     .map(|p| (p.id.clone(), p.name.clone()))
                     .collect(),
+                profile: self.profile.as_ref().map(|l| ProfileSummary {
+                    origin: l.origin,
+                    path: l.path.clone(),
+                    tested_version: l.profile.source.tested_version.clone(),
+                    aliases: l.profile.params.iter().filter(|q| q.alias.is_some()).count(),
+                    presets: l.profile.presets.iter().map(|x| x.name.clone()).collect(),
+                    setup: l.profile.setup.clone(),
+                }),
             }
         }
     }
@@ -493,11 +655,251 @@ mod imp {
         Ok((o.describe_param(p), out))
     }
 
+    /// 打开插件、应用参数（含画像 setup / 预设）、激活并预热使其真正采纳，然后保存状态文件。
+    pub fn save_state(spec: &str, params: &serde_json::Map<String, Value>, out: &std::path::Path) -> Result<StateHeader, String> {
+        let mut o = Opened::open_spec(spec)?;
+        o.apply(params)?;
+        let spec_ = manguebyte::prelude::ProcessSpec { sample_rate: 48_000.0, max_block_size: 256, num_channels: 2 };
+        let mut proc = o.activate(spec_.sample_rate, spec_.max_block_size)?;
+        proc.prepare(&spec_);
+        if let Err(w) = o.settle(proc.as_mut(), &spec_) {
+            eprintln!("[muser] 警告: {w}");
+        }
+        o.save_state_file(out)?;
+        drop(proc);
+        Ok(read_state_file(out)?.0)
+    }
+
+    /// 作用类别与关键词（按优先顺序）。名称里含关键词（大小写不敏感）的参数归入该类。
+    const ROLES: &[(&str, &[&str])] = &[
+        ("type", &["filter 1 type", "filter type", "fx type", "effect type", "algorithm", "mode"]),
+        ("cutoff", &["cutoff", "filter freq", "lpf"]),
+        ("resonance", &["filter resonance", "resonance", "reso", "filter q"]),
+        ("filter_env", &["feg mod", "filter env", "env amount", "env mod"]),
+        ("attack", &["amp eg attack", "attack"]),
+        ("decay", &["amp eg decay", "decay"]),
+        ("sustain", &["amp eg sustain", "sustain"]),
+        ("release", &["amp eg release", "release"]),
+        ("osc_type", &["osc 1 type", "waveform", "wave", "shape"]),
+        ("detune", &["detune", "spread"]),
+        ("unison", &["unison voices", "unison", "voices"]),
+        ("glide", &["portamento", "glide"]),
+        ("drive", &["drive", "distortion", "saturation"]),
+        ("mix", &["mix", "dry/wet", "wet"]),
+        ("time", &["delay time", "time"]),
+        ("feedback", &["feedback"]),
+        ("rate", &["lfo 1 rate", "rate", "speed"]),
+        ("depth", &["depth", "amount"]),
+        ("width", &["width", "stereo"]),
+        ("volume", &["master volume", "global volume", "volume", "level", "gain", "output"]),
+    ];
+
+    /// 由插件自动生成画像草稿：按作用关键词挑出常用参数（每类优先名字短、出现早的一个），
+    /// 列出插件自己显示的取值。`audition` 为真时对数值类参数做三点试听并写入观察结果（较慢）。
+    pub fn draft_profile(spec: &str, audition: bool) -> Result<crate::profile::Profile, String> {
+        use crate::profile::*;
+        let mut o = Opened::open_spec(spec)?;
+        o.profile = None; // 草稿不受已有画像影响
+        let e = o.plugin.entry().clone();
+        let visible: Vec<Param> = o.params.iter().filter(|p| !p.hidden && !p.read_only && !p.bypass).cloned().collect();
+        // 按词匹配：关键词的每个词须依次是参数名中相邻词的开头（"reso" 匹配 "Resonance"，"q" 只匹配单独的 "Q"）。
+        fn words_of(s: &str) -> Vec<String> {
+            s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(String::from).collect()
+        }
+        fn hit(name: &[String], kw: &[String]) -> bool {
+            name.windows(kw.len()).any(|win| {
+                win.iter().zip(kw).enumerate().all(|(i, (n, k))| {
+                    // 单字母关键词必须整词相等；最后一个词允许前缀，其余整词相等
+                    if k.len() == 1 || i + 1 < kw.len() { n == k } else { n.starts_with(k.as_str()) }
+                })
+            })
+        }
+        const FILTER_ROLES: &[&str] = &["cutoff", "resonance", "filter_env"];
+        let mut picked: Vec<(String, Param)> = Vec::new();
+        for (role, words) in ROLES {
+            let mut best: Option<&Param> = None;
+            let score = |q: &Param| {
+                let w = words_of(&q.name);
+                let ctx = FILTER_ROLES.contains(role) && w.iter().any(|x| x == "filter");
+                (std::cmp::Reverse(ctx), q.name.len())
+            };
+            for kw in words.iter() {
+                let kw = words_of(kw);
+                for q in &visible {
+                    if hit(&words_of(&q.name), &kw) && !picked.iter().any(|(_, x)| x.id == q.id) {
+                        if best.map_or(true, |b| score(q) < score(b)) {
+                            best = Some(q);
+                        }
+                    }
+                }
+                if best.is_some() {
+                    break;
+                }
+            }
+            if let Some(q) = best {
+                picked.push((role.to_string(), q.clone()));
+            }
+        }
+        let texts = |q: &Param| -> Vec<String> {
+            let n = q.steps.map_or(200, |k| (k as usize + 1) * 4).clamp(16, 800);
+            let mut all: Vec<String> = Vec::new();
+            for i in 0..n {
+                let x = q.min + (q.max - q.min) * i as f64 / (n - 1) as f64;
+                if let Some(t) = o.plugin.param_to_text(q.id, x) {
+                    if all.last() != Some(&t) {
+                        all.push(t);
+                    }
+                }
+            }
+            if all.len() <= 40 {
+                all.dedup();
+                all
+            } else {
+                // 连续参数：取 5 个刻度
+                [0.0, 0.25, 0.5, 0.75, 1.0]
+                    .iter()
+                    .filter_map(|f| o.plugin.param_to_text(q.id, q.min + (q.max - q.min) * f))
+                    .collect()
+            }
+        };
+        let kind = o.info().kind;
+        let mut params: Vec<ProfileParam> = Vec::new();
+        for (role, q) in &picked {
+            let values = texts(q);
+            let current = o.plugin.param_to_text(q.id, o.plugin.param_value(q.id).unwrap_or(q.default)).unwrap_or_default();
+            params.push(ProfileParam {
+                name: q.name.clone(),
+                alias: Some(role.clone()),
+                role: role.clone(),
+                description: format!("自动草稿：名称含 '{role}' 相关关键词；初始值 \"{current}\"。请试听确认作用"),
+                values,
+                observed: Vec::new(),
+            });
+        }
+        drop(o);
+        if audition {
+            use crate::audition::{audition as run, AuditionSettings, Subject};
+            for pp in params.iter_mut().filter(|p| ["cutoff", "resonance", "attack", "release", "drive", "mix", "filter_env", "decay"].contains(&p.role.as_str())) {
+                let values: Vec<Value> = vec![Value::from(0.1), Value::from(0.5), Value::from(0.9)];
+                let subject = if kind == "instrument" {
+                    Subject::Instrument { name: format!("plugin:{spec}"), params: serde_json::Map::new() }
+                } else {
+                    let (path, id) = split_spec(spec);
+                    let fx = serde_json::json!({ "type": "plugin", "path": path, "id": id });
+                    Subject::Effect { effect: serde_json::from_value(fx).map_err(|e| e.to_string())?, source: "synth.poly".into() }
+                };
+                match run(&subject, Some(&pp.name), &values, &AuditionSettings::default()) {
+                    Ok(takes) => pp.observed = observations(spec, &pp.name, &takes),
+                    Err(err) => eprintln!("[muser] 试听 {} 失败: {err}", pp.name),
+                }
+            }
+        }
+        let user = std::env::var("USER").unwrap_or_default();
+        Ok(Profile {
+            schema_version: SCHEMA_VERSION,
+            plugin: ProfilePlugin { name: e.name.clone(), vendor: e.vendor.clone(), ids: vec![e.id.clone()] },
+            source: ProfileSource {
+                author: user,
+                tested_version: e.version.clone(),
+                updated: String::new(),
+                notes: format!("由 `muser plugin profile draft` 自动生成的草稿（{} 个参数中挑出 {} 个）。请试听后修改说明、补充预设。", visible.len(), params.len()),
+            },
+            setup: serde_json::Map::new(),
+            params,
+            presets: Vec::new(),
+            tips: Vec::new(),
+        }
+        .sanitized()?)
+    }
+
+    /// 把试听结果转成画像里的观察记录（文字取值由插件给出）。
+    pub fn observations(spec: &str, param: &str, takes: &[crate::audition::Take]) -> Vec<crate::profile::Observation> {
+        let o = Opened::open_spec(spec).ok();
+        takes
+            .iter()
+            .map(|t| {
+                let text = o.as_ref().and_then(|o| {
+                    let q = o.resolve(param).ok()?;
+                    match &t.value {
+                        Value::String(s) => Some(s.clone()),
+                        v => v.as_f64().and_then(|x| o.plugin.param_to_text(q.id, x)),
+                    }
+                });
+                crate::profile::Observation {
+                    value: t.value.clone(),
+                    text,
+                    lufs: t.analysis.lufs,
+                    centroid_hz: t.analysis.centroid_hz,
+                    attack_ms: t.analysis.attack_ms,
+                    release_s: t.analysis.release_s,
+                }
+            })
+            .collect()
+    }
+
+    /// 把一次试听的结论记进用户画像：没有画像则先生成草稿。返回画像路径。
+    pub fn record_observations(spec: &str, param: &str, takes: &[crate::audition::Take]) -> Result<std::path::PathBuf, String> {
+        use crate::profile::*;
+        let o = Opened::open_spec(spec)?;
+        let real = o.resolve(param)?.name.clone();
+        let id = o.plugin.entry().id.clone();
+        let existing = o.profile.clone();
+        drop(o);
+        let mut profile = match existing {
+            Some(l) if l.origin != Origin::Bundled => l.profile.clone(),
+            Some(l) => {
+                // 内置画像不改：复制一份到用户目录再记。
+                let mut p = l.profile.clone();
+                p.source.notes = format!("{}（基于 muser 内置画像）", p.source.notes);
+                p
+            }
+            None => draft_profile(spec, false)?,
+        };
+        let obs = observations(spec, &real, takes);
+        match profile.params.iter_mut().find(|p| p.name == real) {
+            Some(p) => {
+                for ob in obs {
+                    p.observed.retain(|x| x.value != ob.value);
+                    p.observed.push(ob);
+                }
+            }
+            None => profile.params.push(ProfileParam {
+                name: real.clone(),
+                alias: None,
+                role: String::new(),
+                description: String::new(),
+                values: Vec::new(),
+                observed: obs,
+            }),
+        }
+        if !profile.plugin.ids.contains(&id) {
+            profile.plugin.ids.push(id);
+        }
+        save_user(&profile.sanitized()?)
+    }
+
+    /// 用指定画像（而不是已安装/内置的那份）在插件上应用一组参数，检查能否生效。
+    pub fn check_params_in(spec: &str, profile: &crate::profile::Profile, params: &serde_json::Map<String, Value>) -> Result<(), String> {
+        let mut o = Opened::open_spec(spec)?;
+        o.profile = Some(std::sync::Arc::new(crate::profile::Loaded {
+            origin: crate::profile::Origin::File,
+            path: None,
+            profile: profile.clone(),
+        }));
+        let mut m = params.clone();
+        m.insert("@setup".into(), Value::Bool(false));
+        o.apply(&m)
+    }
+
+    /// （插件 id, 名称, 版本）。
+    pub fn plugin_identity(spec: &str) -> Result<(String, String, String), String> {
+        let o = Opened::open_spec(spec)?;
+        let e = o.plugin.entry();
+        Ok((e.id.clone(), e.name.clone(), e.version.clone()))
+    }
+
     /// 校验一组插件参数（会加载插件）。
     pub fn check_params(path: &str, id: Option<&str>, params: &serde_json::Map<String, Value>) -> Result<(), String> {
-        if params.is_empty() {
-            return Ok(());
-        }
         Opened::open(path, id)?.apply(params)
     }
 

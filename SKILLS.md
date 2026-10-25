@@ -27,6 +27,7 @@
 | 本机有哪些外置插件 | `muser plugin scan` | `scan_plugins` |
 | 插件的参数、选项文字 | `muser plugin params <插件> --filter <词>`、`muser plugin values <插件> <参数>` | `list_plugin_params`、`plugin_param_values` |
 | 某个参数到底起什么作用 | `muser audition ... --param <名> --values ...` | `audition` |
+| 插件有没有现成的使用经验（别名、预设） | `muser plugin profile show <插件> --markdown` | `get_profile` / `list_profiles` |
 
 加 `--json` 得到机器可读输出。`validate` 会指出越界参数和未知乐器的具体位置，例如
 `tracks[0].effects[0]: reverb.mix = 1.8 超出范围 [0, 1]`。
@@ -94,7 +95,10 @@
 - 各类参数表与调音示例见对应的乐器子 skill。
 - 外置插件（`plugin:` 乐器、`plugin` 效果器）同样用 `instrument_params` / `params`，键是插件参数名，
   值写插件显示的文字（如 `"2000 Hz"`、`"LP 24 dB"`）。遇到陌生插件按 [skills/plugins.md](skills/plugins.md) 的流程：
-  scan → info → 搜参数 → 看选项 → 试听 → 写进工程。
+  scan → info → 搜参数 → 看选项 → 试听 → 写进工程 → 存成画像。
+- 有画像的插件（`muser plugin profile list`）可以用短别名（`"cutoff"`）和预设（`"@preset": "pad"`），
+  画像的 `setup` 会自动应用（`"@setup": false` 关闭）。内置画像：[Surge XT](skills/plugins/surge-xt.md)、
+  [Surge XT Effects](skills/plugins/surge-xt-effects.md)。完整音色可以存成状态文件，用 `"@state": "<文件>"` 加载。
 
 ## 让声音动起来：automation
 

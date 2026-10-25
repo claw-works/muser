@@ -87,8 +87,10 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `vsti-instrument` | Surge XT（CLAP）当音源，`instrument_params` 设滤波类型、cutoff、谐振、释放 |
 | `vst-effect` | poly 和弦经过 Surge XT Effects，`params` 选 `"FX Type": "Reverb 2"` |
 | `surge-sweep` | Surge XT 贝斯线：插件 cutoff 自动化 120 Hz → 5000 Hz（文字取值）、声像 LFO，后接 Surge 延迟 |
+| `surge-presets` | 三轨都用 Surge XT 内置画像的预设：`"@preset": "bass"`（并用别名 `cutoff` 覆盖）、`pad`（接 Surge XT Effects 的 `reverb` 预设）、`pluck`（别名自动化） |
+| `surge-state` | `"@state"` 加载状态文件 `surge-lead.muserstate`；该文件由 `surge-lead.state.json` 描述，渲染脚本现场生成（不入库） |
 
-Surge XT 的振荡器默认自由相位，每次渲染略有不同；示范里开了 `A Osc N Retrigger` 使结果可复现。
+Surge XT 的振荡器默认自由相位；内置画像的 `setup` 会自动打开 `A Osc N Retrigger`，使结果可复现。
 未启用 `host` 特性时报 `HostDisabled`；路径不存在报 `PluginLoad`。
 
 ---

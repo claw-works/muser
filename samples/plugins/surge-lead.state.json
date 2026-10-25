@@ -1,0 +1,9 @@
+{
+  "plugin": "/usr/lib/clap/Surge XT.clap",
+  "params": {
+    "@preset": "lead",
+    "cutoff": "2000 Hz",
+    "resonance": "35 %"
+  },
+  "output": "samples/plugins/surge-lead.muserstate"
+}

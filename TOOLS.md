@@ -48,6 +48,9 @@ muser render beat.muser.json -o beat.wav
 - `params <插件> [--filter 关键词] [--params JSON] [--limit N] [--all]`：参数名、范围、当前值与文字、id；
   `--params` 先应用基础参数（参数含义随它变化时用）。
 - `values <插件> <参数> [--params JSON]`：该参数可写的文字值（选项类即全部选项）。
+- `profile list|show|draft|check|path`：插件画像（常用参数别名、预设、setup、经验的数据文件）。
+  `show <插件|画像.json> [--markdown]`；`draft <插件> [--audition] [--save | -o 文件]`；`check <画像.json> [--plugin <插件>]`。
+- `save-state <插件> [--params JSON] -o <文件>`：保存插件完整状态，工程里用 `"@state": "<文件>"` 加载。
 - `<插件>` 是路径，可带 `#插件id`。都支持 `--json`。
 
 ### `muser audition`
@@ -55,6 +58,7 @@ muser render beat.muser.json -o beat.wav
 `--params '<基础参数 JSON>'`，`--param <参数名> --values=a,b,c`（数字或插件可解析的文字），
 `--pitch` `--hold` `--tail` `--out <目录>`（写出每版 wav）`--json`。
 报告峰值、RMS、LUFS、频谱重心、低/中/高频占比、起音时间、余音长度。内置与外置都可用。
+`--record` 把结果记进该插件的用户画像。
 
 ### `muser new [-o <path>]`
 生成一个示例工程 JSON（AI 可用来参考标准格式）。缺省打印到 stdout。
@@ -77,7 +81,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（25 个）
+### 已实现的 Tools（30 个）
 
 | tool | 作用 |
 |---|---|
@@ -101,7 +105,12 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `plugin_info` | 外置插件信息与参数分组 |
 | `list_plugin_params` | 搜索外置插件参数（filter 关键词，可先应用基础参数） |
 | `plugin_param_values` | 外置插件某参数可写的文字值 |
-| `audition` | 试听：按参数取值逐个渲染测试音，返回响度/亮度/频段/起音/余音 |
+| `audition` | 试听：按参数取值逐个渲染测试音，返回响度/亮度/频段/起音/余音；`record` 记进画像 |
+| `list_profiles` | 列出插件画像 |
+| `get_profile` | 取某插件的画像（JSON 或 Markdown 使用说明） |
+| `draft_profile` | 由插件自动生成画像草稿 |
+| `save_profile` | 校验并保存画像到用户目录（可在插件上检查） |
+| `save_plugin_state` | 保存插件完整状态（音色）文件 |
 | `list_instruments` | 列出乐器（可按 `family` 过滤），返回名称/类别/音高约定/音域/复音数/说明 |
 | `describe_instrument` | 查看某个乐器的详情与可调参数（含该预设当前值） |
 | `list_effects` | 列出所有效果器及说明 |

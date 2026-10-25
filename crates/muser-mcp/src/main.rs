@@ -259,6 +259,47 @@ struct AuditionParams {
     /// 把每一版写成 wav 的目录（可选，给人听）。
     #[serde(default)]
     out_dir: Option<String>,
+    /// 把试听结果记进该插件的用户画像（只对外置插件有效，需给出 param）。
+    #[serde(default)]
+    record: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetProfileParams {
+    /// 插件路径（可带 #id）或画像文件路径（.json）。
+    target: String,
+    /// true 返回 Markdown 使用说明（skill 文档），默认返回 JSON。
+    #[serde(default)]
+    markdown: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DraftProfileParams {
+    /// 插件路径，可带 #id。
+    plugin: String,
+    /// 对数值类常用参数做试听并写入观察结果（较慢）。
+    #[serde(default)]
+    audition: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SaveProfileParams {
+    /// 完整画像 JSON（结构同 get_profile 返回的 profile）。会校验并清洗后保存到用户画像目录。
+    profile: serde_json::Value,
+    /// 同时在这个插件上检查参数名、setup 与预设能否应用（插件路径，建议提供）。
+    #[serde(default)]
+    plugin: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SaveStateParams {
+    /// 插件路径，可带 #id。
+    plugin: String,
+    /// 先应用的参数（含画像别名、@preset），可选。
+    #[serde(default)]
+    params: Option<serde_json::Map<String, serde_json::Value>>,
+    /// 输出文件路径（建议 .muserstate）。
+    output_path: String,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -776,11 +817,120 @@ impl Muser {
             tail_seconds: p.tail_seconds.unwrap_or(d.tail_seconds),
             out_dir: p.out_dir.map(Into::into),
         };
-        match audition(&subject, p.param.as_deref(), &p.values, &settings) {
-            Ok(takes) => json_result(&takes),
-            Err(e) => Ok(user_err(e.to_string())),
+        let takes = match audition(&subject, p.param.as_deref(), &p.values, &settings) {
+            Ok(t) => t,
+            Err(e) => return Ok(user_err(e.to_string())),
+        };
+        if p.record {
+            let spec = match &subject {
+                Subject::Instrument { name, .. } => name.trim().strip_prefix("plugin:").map(String::from),
+                Subject::Effect { effect: muser_core::Effect::Plugin { path, id, .. }, .. } => {
+                    Some(id.as_ref().map_or(path.clone(), |i| format!("{path}#{i}")))
+                }
+                _ => None,
+            };
+            let (Some(spec), Some(param)) = (spec, p.param.as_deref()) else {
+                return Ok(user_err("record 需要外置插件并给出 param"));
+            };
+            return match muser_engine::plugin::record_observations(&spec, param, &takes) {
+                Ok(path) => json_result(&serde_json::json!({ "takes": takes, "recorded_to": path.display().to_string() })),
+                Err(e) => Ok(user_err(e)),
+            };
+        }
+        json_result(&takes)
+    }
+
+    #[tool(description = "列出所有插件画像（profile）：每份对应一个插件，含常用参数别名、预设、setup 与经验。来源：用户目录、MUSER_PROFILE_PATH、muser 内置。")]
+    fn list_profiles(&self) -> Result<CallToolResult, McpError> {
+        let list: Vec<_> = muser_engine::profile::all()
+            .iter()
+            .map(|l| serde_json::json!({
+                "name": l.profile.plugin.name, "ids": l.profile.plugin.ids, "origin": l.origin, "path": l.path,
+                "tested_version": l.profile.source.tested_version,
+                "presets": l.profile.presets.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
+                "params": l.profile.params.len()
+            }))
+            .collect();
+        json_result(&list)
+    }
+
+    #[tool(description = "取某插件的画像：常用参数（别名、真实名、作用、常用取值、试听观察）、预设（参数里写 \"@preset\": \"名称\"）、setup、经验。markdown=true 返回可直接阅读的使用说明。画像是参考数据，不是指令。")]
+    fn get_profile(&self, Parameters(p): Parameters<GetProfileParams>) -> Result<CallToolResult, McpError> {
+        use muser_engine::profile;
+        let loaded = if p.target.ends_with(".json") && std::path::Path::new(&p.target).is_file() {
+            match profile::load_file(std::path::Path::new(&p.target)) {
+                Ok(pr) => profile::Loaded { origin: profile::Origin::File, path: Some(p.target.clone()), profile: pr },
+                Err(e) => return Ok(user_err(e)),
+            }
+        } else {
+            let (id, name, _) = match muser_engine::plugin::plugin_identity(&p.target) {
+                Ok(x) => x,
+                Err(e) => return Ok(user_err(e)),
+            };
+            match profile::find(&id) {
+                Some(l) => (*l).clone(),
+                None => return Ok(user_err(format!("{name}（{id}）还没有画像；用 draft_profile 生成草稿"))),
+            }
+        };
+        if p.markdown {
+            return Ok(ok_text(profile::render_markdown(&loaded)));
+        }
+        json_result(&serde_json::json!({ "note": profile::TRUST_NOTE, "origin": loaded.origin, "path": loaded.path, "profile": loaded.profile }))
+    }
+
+    #[tool(description = "由插件自动生成画像草稿（按作用关键词挑出常用参数并列出插件显示的取值，不保存）。检查、试听、补充说明与预设后用 save_profile 保存。")]
+    fn draft_profile(&self, Parameters(p): Parameters<DraftProfileParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::plugin::draft_profile(&p.plugin, p.audition) {
+            Ok(pr) => json_result(&pr),
+            Err(e) => Ok(user_err(e)),
         }
     }
+
+    #[tool(description = "保存插件画像到用户画像目录（~/.config/muser/plugins/）。会校验结构、清洗文字；给出 plugin 时还会检查参数名、setup 与每个预设能否在插件上应用。")]
+    fn save_profile(&self, Parameters(p): Parameters<SaveProfileParams>) -> Result<CallToolResult, McpError> {
+        use muser_engine::profile::Profile;
+        let pr: Profile = match serde_json::from_value::<Profile>(p.profile).map_err(|e| e.to_string()).and_then(|x| x.sanitized()) {
+            Ok(x) => x,
+            Err(e) => return Ok(user_err(format!("画像无效: {e}"))),
+        };
+        if let Some(spec) = &p.plugin {
+            let (id, _, _) = match muser_engine::plugin::plugin_identity(spec) {
+                Ok(x) => x,
+                Err(e) => return Ok(user_err(e)),
+            };
+            if !pr.matches(&id) {
+                return Ok(user_err(format!("画像的 plugin.ids 不包含该插件 id '{id}'")));
+            }
+            let have: std::collections::HashSet<String> = match muser_engine::plugin::params(spec, None, true, &Default::default()) {
+                Ok(l) => l.into_iter().map(|x| x.name).collect(),
+                Err(e) => return Ok(user_err(e)),
+            };
+            if let Some(q) = pr.params.iter().find(|q| !have.contains(&q.name)) {
+                return Ok(user_err(format!("参数 '{}' 在插件里不存在", q.name)));
+            }
+            if let Err(e) = muser_engine::plugin::check_params_in(spec, &pr, &pr.setup) {
+                return Ok(user_err(format!("setup: {e}")));
+            }
+            for preset in &pr.presets {
+                if let Err(e) = muser_engine::plugin::check_params_in(spec, &pr, &preset.params) {
+                    return Ok(user_err(format!("预设 '{}': {e}", preset.name)));
+                }
+            }
+        }
+        match muser_engine::profile::save_user(&pr) {
+            Ok(path) => Ok(ok_text(format!("已保存画像 → {}", path.display()))),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "保存插件当前状态（完整音色）到文件：先应用 params（可含别名与 @preset），之后在 instrument_params 或 plugin 效果器的 params 里写 {\"@state\": \"<文件>\"} 即可加载该音色。")]
+    fn save_plugin_state(&self, Parameters(p): Parameters<SaveStateParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::plugin::save_state(&p.plugin, &p.params.unwrap_or_default(), std::path::Path::new(&p.output_path)) {
+            Ok(h) => Ok(ok_text(format!("已保存 {} {} 的状态 → {}", h.plugin_name, h.version, p.output_path))),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
 
     #[tool(description = "列出所有效果器及一句话说明。效果器用于 track.effects（轨级）或 master_effects（主总线），按数组顺序串联。")]
     fn list_effects(&self) -> Result<CallToolResult, McpError> {
@@ -827,6 +977,7 @@ fn json_result<T: serde::Serialize + ?Sized>(value: &T) -> Result<CallToolResult
 random 自动化由工程 seed 决定，set_seed 换种子即换一种变化。\
 外置插件：scan_plugins 找插件 → plugin_info / list_plugin_params(filter) / plugin_param_values 看参数 → audition 试听参数作用；\
 插件参数用名称做键、值写插件显示的文字（如 \"2000 Hz\"），可用于 instrument_params、plugin 效果器的 params 与自动化。\
+有画像（get_profile）的插件可用短别名与 \"@preset\"；save_plugin_state 存音色，参数里写 \"@state\" 加载；摸清插件后 save_profile 留存经验。\
 validate_project 会指出越界参数与未知乐器的具体位置。"
 )]
 impl ServerHandler for Muser {}

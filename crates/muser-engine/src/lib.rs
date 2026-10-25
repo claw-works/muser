@@ -9,6 +9,7 @@ pub mod effects;
 pub mod instrument;
 pub mod params;
 pub mod plugin;
+pub mod profile;
 pub mod render;
 
 pub use instrument::{
@@ -314,10 +315,9 @@ mod tests {
             params: Default::default(),
         });
         let err = render(&p, RenderSettings::default()).unwrap_err();
-        match err {
-            EngineError::Effect(crate::effects::EffectError::PluginLoad { .. }) => {}
-            other => panic!("应报 PluginLoad，实际: {other:?}"),
-        }
+        // host 下 validate 会加载插件检查参数，路径不存在在校验阶段就报出，并指明位置。
+        let msg = err.to_string();
+        assert!(msg.contains("master_effects[0]") && msg.contains("找不到插件"), "{msg}");
     }
 
     fn render_one(instrument: &str, params: serde_json::Value, notes: &[(u8, f64, f64)]) -> Result<AudioBuffer<f32>, EngineError> {
@@ -732,5 +732,91 @@ mod tests {
         p.tracks[0].automation[0].param = "A Filter 1 Cutof".into();
         let e = crate::validate(&p).unwrap_err().to_string();
         assert!(e.contains("automation[0]") && e.contains("A Filter 1 Cutoff"), "{e}");
+    }
+
+    #[test]
+    fn state_file_header_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("muser-state-{}", std::process::id()));
+        let path = dir.join("a.muserstate");
+        let h = crate::plugin::StateHeader { plugin_id: "x.y".into(), plugin_name: "X".into(), version: "1".into(), format: "clap".into() };
+        crate::plugin::write_state_file(&path, &h, b"\x00\x01binary\nwith newline").unwrap();
+        let (h2, data) = crate::plugin::read_state_file(&path).unwrap();
+        assert_eq!(h, h2);
+        assert_eq!(data, b"\x00\x01binary\nwith newline");
+        std::fs::write(&path, b"not a state").unwrap();
+        assert!(crate::plugin::read_state_file(&path).unwrap_err().contains("不是 muser 状态文件"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "host")]
+    fn bundled_surge() -> crate::profile::Profile {
+        crate::profile::Profile::from_json(include_str!("../../../profiles/surge-xt.json")).unwrap()
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn profile_aliases_presets_and_reserved_keys() {
+        if !have(SURGE) {
+            return;
+        }
+        let pr = bundled_surge();
+        let m = |v: serde_json::Value| v.as_object().unwrap().clone();
+        crate::plugin::check_params_in(SURGE, &pr, &m(serde_json::json!({ "cutoff": "800 Hz", "filter_type": "LP 24 dB" }))).unwrap();
+        for preset in &pr.presets {
+            crate::plugin::check_params_in(SURGE, &pr, &preset.params).unwrap_or_else(|e| panic!("{}: {e}", preset.name));
+        }
+        let mut o = crate::plugin::Opened::open(SURGE, None).unwrap();
+        o.profile = Some(std::sync::Arc::new(crate::profile::Loaded { origin: crate::profile::Origin::File, path: None, profile: pr }));
+        assert_eq!(o.resolve("cutoff").unwrap().name, "A Filter 1 Cutoff");
+        assert!(o.apply(&m(serde_json::json!({ "@preset": "nope" }))).unwrap_err().contains("bass"));
+        assert!(o.apply(&m(serde_json::json!({ "@bogus": 1 }))).unwrap_err().contains("保留键"));
+        assert!(o.apply(&m(serde_json::json!({ "@setup": "yes" }))).is_err());
+        o.apply(&m(serde_json::json!({ "@preset": "pad" }))).unwrap();
+        let attack = o.resolve("attack").unwrap().clone();
+        let v = o.plugin.param_value(attack.id).unwrap();
+        assert_eq!(o.plugin.param_to_text(attack.id, v).unwrap().split_whitespace().next().unwrap().parse::<f64>().unwrap().round(), 800.0);
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn plugin_state_roundtrip_matches_direct_params() {
+        if !have(SURGE) || !have(SURGE_FX) {
+            return;
+        }
+        use crate::audition::{audition, AuditionSettings, Subject};
+        let dir = std::env::temp_dir().join(format!("muser-state-rt-{}", std::process::id()));
+        let file = dir.join("lead.muserstate");
+        let direct = serde_json::json!({ "A Filter 1 Type": "LP 24 dB", "A Filter 1 Cutoff": "700 Hz", "A Amp EG Attack": "200 ms",
+            "A Osc 1 Retrigger": "On", "A Osc 2 Retrigger": "On", "A Osc 3 Retrigger": "On" }).as_object().unwrap().clone();
+        crate::plugin::save_state(SURGE, &direct, &file).unwrap();
+        let s = AuditionSettings { hold_seconds: 0.5, tail_seconds: 0.5, ..Default::default() };
+        let run = |params: serde_json::Map<String, serde_json::Value>| {
+            audition(&Subject::Instrument { name: format!("plugin:{SURGE}"), params }, None, &[], &s).unwrap()[0].analysis.clone()
+        };
+        let mut from_state = serde_json::Map::new();
+        from_state.insert("@state".into(), serde_json::json!(file.display().to_string()));
+        let (a, b) = (run(direct), run(from_state.clone()));
+        // 起音时间可能差几毫秒（插件内部包络的起点），其余特征应一致。
+        assert!((a.attack_ms - b.attack_ms).abs() <= 10.0, "{a:?} vs {b:?}");
+        assert!((a.lufs - b.lufs).abs() <= 0.2 && (a.centroid_hz - b.centroid_hz).abs() <= 20.0, "{a:?} vs {b:?}");
+        // 别的插件的状态被拒
+        let fx: muser_core::Effect = serde_json::from_value(serde_json::json!({ "type": "plugin", "path": SURGE_FX, "params": from_state })).unwrap();
+        let e = audition(&Subject::Effect { effect: fx, source: "synth.poly".into() }, None, &[], &s).unwrap_err().to_string();
+        assert!(e.contains("不能装进"), "{e}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn draft_profile_picks_common_params() {
+        if !have(SURGE) {
+            return;
+        }
+        let d = crate::plugin::draft_profile(SURGE, false).unwrap();
+        let by = |alias: &str| d.params.iter().find(|p| p.alias.as_deref() == Some(alias)).map(|p| p.name.as_str());
+        assert_eq!(by("cutoff"), Some("A Filter 1 Cutoff"));
+        assert_eq!(by("resonance"), Some("A Filter 1 Resonance"));
+        assert_eq!(by("attack"), Some("A Amp EG Attack"));
+        assert!(d.plugin.ids.contains(&"org.surge-synth-team.surge-xt".to_string()));
     }
 }

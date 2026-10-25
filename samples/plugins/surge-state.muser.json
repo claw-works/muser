@@ -1,0 +1,63 @@
+{
+  "tempo": 96,
+  "tracks": [
+    {
+      "name": "lead",
+      "instrument": "plugin:/usr/lib/clap/Surge XT.clap",
+      "instrument_params": {
+        "@state": "samples/plugins/surge-lead.muserstate"
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 8,
+          "notes": [
+            {
+              "pitch": 69,
+              "start": 0,
+              "length": 1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 74,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 76,
+              "start": 2,
+              "length": 2,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 74,
+              "start": 4,
+              "length": 1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 5,
+              "length": 1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 69,
+              "start": 6,
+              "length": 2,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "plugins/surge-state"
+}

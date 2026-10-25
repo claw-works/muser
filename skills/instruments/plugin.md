@@ -20,6 +20,8 @@
 - `instrument_params` 用插件参数**名称**做键（大小写不敏感，也可写数字 id）；值写插件显示的文字（`"800 Hz"`、`"LP 24 dB"`）、
   数字（插件自动化刻度：CLAP/LV2 为声明范围，VST3 为 0–1）或 true/false。写错名称时会提示相近的参数名。
 - 参数可以自动化，写法与内置乐器相同，`param` 写插件参数名。
+- 有画像的插件可写短别名（如 `"cutoff"`）与 `"@preset": "<预设>"`；画像 `setup` 自动应用（`"@setup": false` 关闭）；
+  `"@state": "<文件>"` 加载 `muser plugin save-state` 保存的完整音色。见 [plugins.md](../plugins.md)。
 - 音符 `pitch` 是 MIDI 音高；插件自己决定音色与音域。`accent` 对插件无效。
 - 需要用 `cargo build -p muser-cli --features host` 构建的 muser，否则报 HostDisabled。
 - `muser validate` 会加载插件检查参数名与取值；渲染时插件以工程的采样率激活。

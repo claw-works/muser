@@ -1,0 +1,442 @@
+{
+  "tempo": 96,
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "bass",
+      "instrument": "plugin:/usr/lib/clap/Surge XT.clap",
+      "instrument_params": {
+        "@preset": "bass",
+        "cutoff": "450 Hz"
+      },
+      "gain_db": 4,
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 45,
+              "start": 0,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 45,
+              "start": 1.5,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 45,
+              "start": 2,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 45,
+              "start": 3,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 41,
+              "start": 4,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 41,
+              "start": 5.5,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 41,
+              "start": 6,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 41,
+              "start": 7,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 8,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 9.5,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 10,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 11,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 43,
+              "start": 12,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 43,
+              "start": 13.5,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 43,
+              "start": 14,
+              "length": 0.8,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 43,
+              "start": 15,
+              "length": 0.8,
+              "velocity": 0.85
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pad",
+      "instrument": "plugin:/usr/lib/clap/Surge XT.clap",
+      "instrument_params": {
+        "@preset": "pad"
+      },
+      "gain_db": -4,
+      "effects": [
+        {
+          "type": "plugin",
+          "path": "/usr/lib/clap/Surge XT Effects.clap",
+          "params": {
+            "@preset": "reverb"
+          }
+        }
+      ],
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 57,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 53,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 57,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 60,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 48,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 52,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 55,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 55,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 59,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 62,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pluck",
+      "instrument": "plugin:/usr/lib/clap/Surge XT.clap",
+      "instrument_params": {
+        "@preset": "pluck"
+      },
+      "gain_db": -2,
+      "pan": 0.3,
+      "automation": [
+        {
+          "target": "instrument",
+          "param": "cutoff",
+          "shape": "lfo",
+          "wave": "triangle",
+          "period_beats": 8,
+          "min": 0.35,
+          "max": 0.6
+        }
+      ],
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 69,
+              "start": 0.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 0.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 76,
+              "start": 1.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 1.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 2.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 76,
+              "start": 2.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 3.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 3.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 65,
+              "start": 4.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 4.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 5.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 65,
+              "start": 5.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 6.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 6.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 65,
+              "start": 7.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 7.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 8.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 8.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 9.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 9.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 10.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 10.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 11.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 11.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 12.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 71,
+              "start": 12.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 74,
+              "start": 13.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 13.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 71,
+              "start": 14.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 74,
+              "start": 14.5,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 15.0,
+              "length": 0.3,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 71,
+              "start": 15.5,
+              "length": 0.3,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "plugins/surge-presets"
+}

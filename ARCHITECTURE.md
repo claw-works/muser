@@ -219,6 +219,10 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 外置插件通用层（`host` 特性）：扫描（独立进程、缓存）、信息、参数搜索、选项文字；插件参数按**名称**设置，
   值可写插件显示的文字（往返校验 + 查表回退），用于 `plugin:` 乐器的 `instrument_params`、`plugin` 效果器的 `params`
   与自动化；激活后静音预热，插件未采纳参数时重发
+- 插件画像（profile）：纯数据 JSON，按插件 id 匹配（多格式 id），含别名、常用取值、试听观察、预设、setup、经验、
+  来源与验证版本；用户目录 > `MUSER_PROFILE_PATH` > 内置；结构校验与文字清洗（为社区分享做准备）；
+  自动草稿与试听回写；渲染为 skill 文档。工程参数里的保留键：`@state` / `@setup` / `@preset`
+- 插件状态（state）：保存/加载插件完整音色，文件头记录插件 id 与版本，装错插件会被拒绝
 - 试听（audition）：按参数取值逐个渲染测试音，报告响度、频谱重心、频段占比、起音、余音——给 AI 的"耳朵"
 - 自动化：points / lfo / random（带种子）三种形状，目标覆盖内置乐器参数、效果器参数、
   轨增益与声像、主增益与主总线效果器；乐器/效果器每 64 帧更新，增益与声像逐帧更新
@@ -230,12 +234,11 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 第三方插件作为**乐器**（`host` 特性）：音轨 `instrument` 用 `plugin:路径[#id]`，
   音符经 `process_with`+`ProcessContext` 喂给插件。已用真实 VSTi 验证：
   `Surge XT.vst3` 有音符时 RMS 895、无音符时 RMS 0（完全静音），证明响应音符发声。
-- MCP server（`muser-mcp`）：25 个 tools（工程生命周期 + 增量编辑 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听），stdio 运行
+- MCP server（`muser-mcp`）：30 个 tools（工程生命周期 + 增量编辑 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
 
 尚未实现（路线图）：
 - CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、
   可选 `--features host` 构建、`cargo fmt --check` / `clippy`）
-- 插件画像（profile）：自动草稿 + 试听结论回写，按插件 id+版本匹配，可分享（为社区做准备）
 - 更多内置效果器类型（waveshaper / 多段 EQ 等，manguebyte 均自带）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 - 音频图编排（manguebyte-graph：运行时热重连的信号图，供更复杂的路由）
