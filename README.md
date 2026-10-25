@@ -88,7 +88,7 @@ muser view song.muser.json --open      # http://127.0.0.1:8737/
 ### 4. 以 MCP server 运行（给 agent 用）
 
 ```bash
-muser-mcp          # stdio MCP server，暴露 33 个 tools
+muser-mcp          # stdio MCP server，暴露 34 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，

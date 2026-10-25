@@ -1135,4 +1135,52 @@ mod tests {
         let dirty = run(serde_json::json!({ "type": "plugin", "path": PLASMA, "params": { "@preset": "scream" } }));
         assert!(seg_brightness(&dirty, 0, SEC / 2) > seg_brightness(&clean, 0, SEC / 2) * 2.0);
     }
+
+    #[test]
+    fn sustain_pedal_holds_released_notes() {
+        // 短音（0.25 拍）；踏板踩到第 3 拍。踩着时松键后仍发声，抬起后很快消失。
+        let run = |pedal: serde_json::Value| {
+            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "synth.poly", "instrument_params": { "release": 0.05 },
+                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }] }] }] })), quiet()).unwrap()
+        };
+        let dry = run(serde_json::json!([]));
+        let held = run(serde_json::json!([[0, 3]]));
+        let mid = (SEC * 3 / 4, SEC);                 // 第 1.5–2 拍
+        assert!(energy(&held, mid.0, mid.1) > energy(&dry, mid.0, mid.1) * 100.0, "踏板延音");
+        let after = (SEC * 3 / 2 + SEC / 5, SEC * 2); // 抬起（1.5 s）之后
+        assert!(energy(&held, after.0, after.1) < energy(&held, mid.0, mid.1) * 0.01, "抬起后释音");
+        // 同一时刻换踏板：新音在新踏板下继续。
+        let two = render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "synth.poly", "instrument_params": { "release": 0.05 },
+            "clips": [{ "start": 0, "length": 4, "pedal": [[0, 1.0], [1.0, 3]],
+                "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }, { "pitch": 67, "start": 1.0, "length": 0.25 }] }] }] })), quiet()).unwrap();
+        assert!(energy(&two, SEC, SEC * 3 / 2) > energy(&dry, SEC / 2, SEC) * 100.0, "换踏板后新音被保持");
+    }
+
+    #[test]
+    fn sfz_sustain_pedal() {
+        let sfz = "/data/Music/SFZ-samples/freepats/FM-Piano1/FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz";
+        if !std::path::Path::new(sfz).exists() {
+            return;
+        }
+        let run = |pedal: serde_json::Value| {
+            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("sfz:{sfz}"),
+                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.2 }] }] }] })), quiet()).unwrap()
+        };
+        let (dry, held) = (run(serde_json::json!([])), run(serde_json::json!([[0, 4]])));
+        assert!(energy(&held, SEC, SEC * 3 / 2) > energy(&dry, SEC, SEC * 3 / 2) * 10.0);
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn plugin_sustain_pedal() {
+        if !have(SURGE) {
+            return;
+        }
+        let run = |pedal: serde_json::Value| {
+            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("plugin:{SURGE}"),
+                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }] }] }] })), quiet()).unwrap()
+        };
+        let (dry, held) = (run(serde_json::json!([])), run(serde_json::json!([[0, 3]])));
+        assert!(energy(&held, SEC * 3 / 4, SEC) > energy(&dry, SEC * 3 / 4, SEC) * 100.0, "插件收到 CC64");
+    }
 }

@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use muser_core::routing::{self, Node, Plan};
-use muser_core::{Effect, Project};
+use muser_core::{Beats, Effect, Project};
 
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, WavFormat, decibels, wav};
 
@@ -61,6 +61,7 @@ pub enum EngineError {
 enum Act {
     On { key: u8, velocity: f32, accent: bool },
     Off { key: u8 },
+    Pedal { down: bool },
 }
 
 struct Ctx {
@@ -101,8 +102,25 @@ fn render_instrument(track: &muser_core::Track, cx: &Ctx, lanes: &mut TrackLanes
             acts.push((on, Act::On { key: note.pitch, velocity: note.velocity, accent: note.accent }));
             acts.push((off, Act::Off { key: note.pitch }));
         }
+        for &(a, b) in &clip.pedal {
+            let down = (clip_start + Beats(a).to_seconds(tempo) * sr) as usize;
+            let up = ((clip_start + Beats(b).to_seconds(tempo) * sr) as usize).min(clip_end_frame);
+            if up > down {
+                acts.push((down, Act::Pedal { down: true }));
+                acts.push((up, Act::Pedal { down: false }));
+            }
+        }
     }
-    acts.sort_by_key(|&(frame, act)| (frame, matches!(act, Act::On { .. })));
+    // 同一帧：先松键，再抬踏板，再踩踏板，最后按新音（换踏板时新音不被旧踏板吞掉，松开的旧音在抬踏板时停）。
+    acts.sort_by_key(|&(frame, act)| {
+        let order = match act {
+            Act::Off { .. } => 0,
+            Act::Pedal { down: false } => 1,
+            Act::Pedal { down: true } => 2,
+            Act::On { .. } => 3,
+        };
+        (frame, order)
+    });
 
     let mut out = AudioBuffer::<f32>::new(2, total_frames);
     let mut block = AudioBuffer::<f32>::new(2, settings.block_size);
@@ -115,6 +133,7 @@ fn render_instrument(track: &muser_core::Track, cx: &Ctx, lanes: &mut TrackLanes
             match act {
                 Act::On { key, velocity, accent } => inst.note_on(NoteRef::new(channel, key), velocity, accent),
                 Act::Off { key } => inst.note_off(NoteRef::new(channel, key), 0.0),
+                Act::Pedal { down } => inst.pedal(down),
             }
             next += 1;
         }

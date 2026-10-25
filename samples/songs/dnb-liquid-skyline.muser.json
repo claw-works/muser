@@ -8348,7 +8348,7 @@
           "type": "compressor"
         }
       ],
-      "gain_db": 4,
+      "gain_db": -4.0,
       "instrument": "poly.reese",
       "instrument_params": {
         "cutoff": 900,
@@ -8387,19 +8387,19 @@
           "points": [
             [
               28.0,
-              -33.5
+              -25.0
             ],
             [
               36.0,
-              -28.5
+              -20.0
             ],
             [
               60.0,
-              -28.5
+              -20.0
             ],
             [
               64.0,
-              -33.5
+              -25.0
             ]
           ],
           "shape": "points",
@@ -9386,7 +9386,7 @@
           "type": "eq"
         }
       ],
-      "gain_db": -33.5,
+      "gain_db": -25.0,
       "instrument": "poly.glass_pad",
       "name": "pad",
       "output": "music",

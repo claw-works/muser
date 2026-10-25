@@ -91,6 +91,19 @@ struct AddClipParams {
     start: f64,
     /// 片段长度（beats），> 0。
     length: f64,
+    /// 延音踏板踩下的区间（可选）：[[起, 止], ...]，拍，相对 clip 起点，按时间递增、互不重叠。
+    #[serde(default)]
+    pedal: Vec<(f64, f64)>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SetPedalParams {
+    project_id: String,
+    track_index: usize,
+    clip_index: usize,
+    /// 延音踏板踩下的区间：[[起, 止], ...]（拍，相对 clip 起点），整体替换；空数组表示不用踏板。
+    /// 换踏板：前一区间结束与下一区间开始之间留一点空隙（如 [[0, 3.9], [4, 7.9]]）。
+    pedal: Vec<(f64, f64)>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -522,8 +535,35 @@ impl Muser {
                 .tracks
                 .get_mut(p.track_index)
                 .ok_or_else(|| user_err(format!("track_index {} 越界", p.track_index)))?;
-            track.clips.push(Clip::new(Beats(p.start), Beats(p.length)));
-            Ok(ok_text(format!("clip_index = {}", track.clips.len() - 1)))
+            let mut clip = Clip::new(Beats(p.start), Beats(p.length));
+            clip.pedal = p.pedal.clone();
+            track.clips.push(clip);
+            let n = track.clips.len() - 1;
+            if let Err(e) = proj.validate() {
+                proj.tracks[p.track_index].clips.pop();
+                return Err(user_err(e.to_string()));
+            }
+            Ok(ok_text(format!("clip_index = {n}")))
+        })
+    }
+
+    #[tool(description = "设置某片段的延音踏板（CC64）：踩下期间松开的键继续发声，抬起时一起释音。pedal 为踩下区间列表 [[起, 止], ...]（拍，相对 clip 起点），整体替换。钢琴、电钢、pad 常用；鼓组忽略。")]
+    fn set_pedal(&self, Parameters(p): Parameters<SetPedalParams>) -> Result<CallToolResult, McpError> {
+        let id = p.project_id.clone();
+        self.with_project(&id, |proj| {
+            let clip = proj
+                .tracks
+                .get_mut(p.track_index)
+                .ok_or_else(|| user_err(format!("track_index {} 越界", p.track_index)))?
+                .clips
+                .get_mut(p.clip_index)
+                .ok_or_else(|| user_err(format!("clip_index {} 越界", p.clip_index)))?;
+            let old = std::mem::replace(&mut clip.pedal, p.pedal.clone());
+            if let Err(e) = proj.validate() {
+                proj.tracks[p.track_index].clips[p.clip_index].pedal = old;
+                return Err(user_err(e.to_string()));
+            }
+            Ok(ok_text(format!("tracks[{}].clips[{}] 踏板区间 {} 个", p.track_index, p.clip_index, p.pedal.len())))
         })
     }
 

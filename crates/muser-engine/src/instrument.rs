@@ -33,11 +33,21 @@ trait Playable {
     fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool);
     fn note_off(&mut self, note: NoteRef, velocity: f32);
     fn process(&mut self, buffer: &mut AudioBuffer<f32>);
+    /// 延音踏板（CC64）踩下/抬起。默认忽略（鼓组）。
+    fn pedal(&mut self, _channel: u8, _down: bool) {}
     /// 自动化：运行中改一个参数（名称与 `instrument_params` 相同，鼓组为 `鼓件.参数`）。
     fn set_param(&mut self, _name: &str, _value: f64) {}
 }
 
+/// 给 Synth 发一条 CC64。
+fn sustain_event(channel: u8, down: bool) -> manguebyte::prelude::Event {
+    manguebyte::prelude::Event::from_midi(0, manguebyte::midi::MidiMessage::ControlChange { channel, controller: 64, value: if down { 127 } else { 0 } })
+}
+
 impl<V: Voice<f32>> Playable for Synth<V, f32> {
+    fn pedal(&mut self, channel: u8, down: bool) {
+        self.handle_event(&sustain_event(channel, down));
+    }
     fn prepare(&mut self, spec: &ProcessSpec) {
         Processor::prepare(self, spec);
     }
@@ -76,6 +86,10 @@ impl TrackInstrument {
     pub fn note_off(&mut self, note: NoteRef, velocity: f32) {
         self.inner.note_off(note, velocity);
     }
+    /// 延音踏板踩下/抬起。
+    pub fn pedal(&mut self, down: bool) {
+        self.inner.pedal(self.channel, down);
+    }
     pub fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         self.inner.process(buffer);
     }
@@ -93,6 +107,9 @@ struct Tunable<V: Voice<f32>, P: Copy + 'static> {
 }
 
 impl<V: Voice<f32>, P: Copy + 'static> Playable for Tunable<V, P> {
+    fn pedal(&mut self, channel: u8, down: bool) {
+        self.synth.handle_event(&sustain_event(channel, down));
+    }
     fn prepare(&mut self, spec: &ProcessSpec) {
         Processor::prepare(&mut self.synth, spec);
     }
@@ -684,6 +701,9 @@ impl Playable for PluginInstrument {
     fn note_off(&mut self, note: NoteRef, velocity: f32) {
         use manguebyte::prelude::{Event, EventKind};
         let _ = self.pending.push(Event { offset: 0, kind: EventKind::NoteOff { note, velocity } });
+    }
+    fn pedal(&mut self, channel: u8, down: bool) {
+        let _ = self.pending.push(sustain_event(channel, down));
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         use manguebyte::prelude::ProcessContext;

@@ -150,6 +150,20 @@ impl Project {
                         clip.length.0
                     )));
                 }
+                let mut prev_end = f64::NEG_INFINITY;
+                for (pi, &(a, b)) in clip.pedal.iter().enumerate() {
+                    let at = format!("tracks[{ti}].clips[{ci}].pedal[{pi}]");
+                    if !(a.is_finite() && b.is_finite()) || a < 0.0 || b <= a {
+                        return Err(CoreError::Invalid(format!("{at} = [{a}, {b}] 无效：应为 [起, 止]，0 ≤ 起 < 止（拍，相对 clip 起点）")));
+                    }
+                    if a < prev_end {
+                        return Err(CoreError::Invalid(format!("{at} 与前一个区间重叠或顺序颠倒：区间应按时间递增、互不重叠")));
+                    }
+                    if a >= clip.length.0 {
+                        return Err(CoreError::Invalid(format!("{at} 起点 {a} 超出 clip 长度 {}", clip.length.0)));
+                    }
+                    prev_end = b;
+                }
                 for (ni, note) in clip.notes.iter().enumerate() {
                     if note.pitch > 127 || note.start.0 < 0.0 || note.length.0 <= 0.0 {
                         return Err(CoreError::Invalid(format!(
@@ -293,6 +307,10 @@ pub struct Clip {
     /// 片段内的音符。音符时间相对 clip 起点。
     #[serde(default)]
     pub notes: Vec<Note>,
+    /// 延音踏板（CC64）踩下的区间 `[起, 止]`（拍，相对 clip 起点），按时间递增、互不重叠。
+    /// 踩下期间松开的键继续发声，抬起时一起进入释音。换踏板：前一区间结束与下一区间开始之间留一点空隙。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pedal: Vec<(f64, f64)>,
 }
 
 impl Clip {
@@ -300,6 +318,7 @@ impl Clip {
         Self {
             start: start.into(),
             length: length.into(),
+            pedal: Vec::new(),
             notes: Vec::new(),
         }
     }
@@ -409,5 +428,19 @@ mod tests {
         assert_eq!(p.time_signature, TimeSignature::default());
         assert_eq!(p.tracks[0].clips[0].notes[0].velocity, 0.8);
         p.validate().unwrap();
+    }
+
+    #[test]
+    fn pedal_validation() {
+        let p = |pedal: &str| {
+            Project::from_json(&format!(r#"{{ "tempo": 120, "tracks": [{{ "instrument": "synth.poly", "clips": [{{ "start": 0, "length": 8, "pedal": {pedal}, "notes": [] }}] }}] }}"#))
+                .unwrap()
+                .validate()
+        };
+        assert!(p("[[0, 3.9], [4, 7.9]]").is_ok());
+        assert!(p("[[0, 9]]").is_ok(), "超出 clip 末尾时截到 clip 结束");
+        assert!(p("[[2, 1]]").unwrap_err().to_string().contains("pedal[0]"));
+        assert!(p("[[0, 4], [3, 6]]").unwrap_err().to_string().contains("重叠"));
+        assert!(p("[[9, 10]]").unwrap_err().to_string().contains("超出"));
     }
 }

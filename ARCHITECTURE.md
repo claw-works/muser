@@ -174,6 +174,7 @@ samples = seconds × sample_rate
         {
           "start": 0.0,         // 必填，片段起点（beats，从工程开头算）
           "length": 4.0,        // 必填，片段长度（beats），> 0
+          "pedal": [[0.1, 4.03]], // 延音踏板（CC64）踩下区间（可省略）：[起, 止] 拍，相对 clip 起点，递增不重叠
           "notes": [            // 音符数组
             {
               "pitch": 36,      // 必填，MIDI 音高 0-127（60 = 中央C）
@@ -265,7 +266,7 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 渲染并行：内置乐器多线程渲染；节点按依赖分层并行处理效果链与推子（含插件效果器的节点在当前线程），分发保持原顺序，
   结果与串行逐样本一致；渲染期间关闭非规格化浮点（`NoDenormals`），近乎静音的尾巴不再拖慢滤波与混响
 - 插件实例延迟约一分钟释放（同一线程内），避免插件后台线程（如 JUCE 联网检查更新）访问已释放对象
-- MCP server（`muser-mcp`）：33 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
+- MCP server（`muser-mcp`）：34 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
 
 尚未实现（路线图）：
 - CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、

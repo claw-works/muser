@@ -102,7 +102,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（33 个）
+### 已实现的 Tools（34 个）
 
 | tool | 作用 |
 |---|---|
@@ -119,7 +119,8 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `set_bus` | 新增或替换（同名）一条总线：effects / gain_db / pan / muted / output / sends / automation；立即校验名称、引用与环路 |
 | `remove_bus` | 删除总线；仍被引用时报错并指出引用处 |
 | `get_routing` | 查看信号流：处理顺序、去向与发送量、侧链关系 |
-| `add_clip` | 新增片段，返回 `clip_index` |
+| `add_clip` | 新增片段（可带延音踏板 `pedal`），返回 `clip_index` |
+| `set_pedal` | 设置片段的延音踏板区间（CC64，踩下期间松键继续发声） |
 | `add_notes` | 向片段加入一批音符（支持 `velocity`、`accent`） |
 | `clear_clip` | 清空片段内所有音符 |
 | `set_automation` | 设置某音轨（`track_index`）、总线（`bus`）或主总线的自动化（替换或追加），立即校验 |
