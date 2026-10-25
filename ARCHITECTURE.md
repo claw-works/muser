@@ -12,9 +12,9 @@ muser 是一个**面向 AI 的无头（headless）编曲引擎**。它没有 GUI
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  3. 接口层 (muser-cli, 规划中的 muser-mcp)                     │
+│  3. 接口层 (muser-cli + muser-mcp)                            │
 │     - CLI 子命令：render / validate / instruments / new       │
-│     - 未来：MCP server，把能力作为 tools 暴露给 agent          │
+│     - MCP server (muser-mcp)：把能力作为 tools 暴露给 agent    │
 │     - skill 文档：告诉 AI 如何表达音乐意图 (SKILLS.md)         │
 ├─────────────────────────────────────────────────────────────┤
 │  2. 引擎适配层 (muser-engine)                                 │
@@ -43,6 +43,7 @@ AI 只需理解**第 1 层的 JSON 格式**和**第 3 层的命令**；第 0、2
 | `muser-core` | 1 | 领域模型 + 序列化。无音频依赖，编译极快。 | serde |
 | `muser-engine` | 2 | 把 core 模型编译成 manguebyte 乐器并离线渲染。 | muser-core, manguebyte |
 | `muser-cli` | 3 | CLI 可执行文件 `muser`。 | muser-core, muser-engine, clap |
+| `muser-mcp` | 3 | MCP server（stdio），把能力暴露为 agent tools。 | muser-core, muser-engine, rmcp |
 | `vendor/manguebyte` | 0 | 上游音频引擎（vendored）。 | — |
 
 ### 为什么 vendored 而非 git submodule / crates.io 依赖
@@ -203,11 +204,12 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 效果器链（reverb / delay / compressor），可挂到轨级或主总线
 - 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
   （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor
+- MCP server（`muser-mcp`）：10 个 tools（工程生命周期 + 增量编辑 + 渲染），stdio 运行
 
 尚未实现（路线图）：
 - 第三方插件作为**乐器**（需向插件喂音符事件，比作效果器更复杂）
 - 更多内置效果器类型（chorus / phaser / EQ / limiter，manguebyte 均自带）
-- MCP server（把 CLI 能力包成 agent tools，见 TOOLS.md）
+- MCP 增量编辑扩展（remove_track / update_track / clear_clip / load / save）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 - 音频图编排（manguebyte-graph：运行时热重连的信号图，供更复杂的路由）
 ```

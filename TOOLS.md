@@ -37,19 +37,51 @@ muser render beat.muser.json -o beat.wav
 
 ---
 
-## 二、MCP Server 设计（规划）
+## 二、MCP Server（已实现：`muser-mcp`）
 
-目标：让 Claude/Cursor 这类 agent **无需 shell**，直接以结构化 tool call 驱动引擎。
-建议新建 crate `muser-mcp`（依赖 `muser-core` + `muser-engine`，复用同一套逻辑）。
+crate `muser-mcp` 以 **stdio** 运行一个 MCP server，让 Claude/Cursor 这类 agent
+**无需 shell**，直接以结构化 tool call 驱动引擎。它依赖 `muser-core` + `muser-engine`，
+与 CLI 同源。
 
-### 设计原则
+### 运行
+
+```bash
+cargo run -p muser-mcp          # 以 stdio 启动 MCP server
+```
+
+在 MCP 客户端（如 Claude Desktop）的配置里，把 `muser-mcp` 可执行文件作为一个
+stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
+如何用 beats 时间、GM 鼓键、乐器语义名等。
+
+### 已实现的 Tools（10 个）
+
+| tool | 作用 |
+|---|---|
+| `create_project` | 新建空工程，返回 `project_id` |
+| `get_project` | 取工程完整 JSON |
+| `set_project` | 用完整 JSON 整体替换工程 |
+| `validate_project` | 校验工程 |
+| `set_tempo` | 设置速度 |
+| `add_track` | 新增音轨，返回 `track_index` |
+| `add_clip` | 新增片段，返回 `clip_index` |
+| `add_notes` | 向片段加入一批音符 |
+| `render` | 离线渲染为 WAV，返回时长/峰值 |
+| `list_instruments` | 列出可用乐器 |
+
+工程以**内存会话**（`project_id → Project`）管理。agent 的标准用法是**顺序**调用
+（等每个工具返回后再发下一个），这与真实 MCP 客户端行为一致。
+
+> 说明：服务器对每次工具调用持短时锁，正常的请求/响应式 agent 交互是安全的；
+> 若客户端异常地并发发起多个编辑，可能交错。未来可改为按 `project_id` 加会话级锁。
+
+### 设计原则（原始设计，供扩展参考）
 
 - **工程以句柄 + 内存状态管理**，避免每次都在磁盘读写大 JSON；同时支持 `load`/`save` 落盘。
 - 每个 tool 的输入/输出都是**结构化 JSON**，字段与 `muser-core` 模型一一对应。
 - **渲染返回元信息**（时长、峰值、文件路径），音频本身写文件，返回路径而非二进制。
 - 工具粒度兼顾"整体提交"与"增量编辑"两种 agent 工作风格。
 
-### Tools 清单
+### 可扩展的 Tools（尚未实现）
 
 #### 工程生命周期
 

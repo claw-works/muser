@@ -18,6 +18,7 @@ members = [
     "crates/muser-core",
     "crates/muser-engine",
     "crates/muser-cli",
+    "crates/muser-mcp",
 ]
 exclude = ["vendor"]
 
