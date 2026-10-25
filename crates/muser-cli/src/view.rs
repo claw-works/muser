@@ -78,22 +78,51 @@ fn node_id(n: Node) -> String {
     }
 }
 
-fn fields<'a>(p: &'a mut Project, id: &str) -> Result<(&'a mut f64, &'a mut bool), String> {
+type Fields<'a> = (&'a mut f64, &'a mut bool, &'a mut Vec<muser_core::Automation>);
+
+fn fields<'a>(p: &'a mut Project, id: &str) -> Result<Fields<'a>, String> {
     let (kind, i) = parse_node(id).ok_or_else(|| format!("无效的 node '{id}'"))?;
     match kind {
-        "tracks" => p.tracks.get_mut(i).map(|t| (&mut t.gain_db, &mut t.muted)),
-        _ => p.buses.get_mut(i).map(|b| (&mut b.gain_db, &mut b.muted)),
+        "tracks" => p.tracks.get_mut(i).map(|t| (&mut t.gain_db, &mut t.muted, &mut t.automation)),
+        _ => p.buses.get_mut(i).map(|b| (&mut b.gain_db, &mut b.muted, &mut b.automation)),
     }
     .ok_or_else(|| format!("{id} 不存在"))
 }
 
+/// 音量自动化的取值是绝对 dB，会盖过推子。推子改了 `delta` dB 时，把 `gain_db` 自动化整体平移同样的量
+/// （DAW 里的 trim），这样有音量自动化的轨推子照样有效。
+fn shift_gain_automation(autos: &mut [muser_core::Automation], delta: f64) {
+    use muser_core::automation::Shape;
+    let clamp = |v: f64| (v + delta).clamp(-80.0, 24.0);
+    for a in autos.iter_mut().filter(|a| a.target.trim() == "gain_db") {
+        match &mut a.shape {
+            Shape::Points { points, .. } => {
+                for (_, v) in points.iter_mut() {
+                    if let Some(x) = v.as_f64() {
+                        *v = json!(clamp(x));
+                    }
+                }
+            }
+            Shape::Lfo { min, max, .. } | Shape::Random { min, max, .. } => {
+                *min = clamp(*min);
+                *max = clamp(*max);
+            }
+        }
+    }
+}
+
+fn has_gain_automation(autos: &[muser_core::Automation]) -> bool {
+    autos.iter().any(|a| a.target.trim() == "gain_db")
+}
+
 fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
     for c in changes {
-        let (gain, muted) = fields(p, &c.node)?;
+        let (gain, muted, autos) = fields(p, &c.node)?;
         if let Some(g) = c.gain_db {
             if !(-80.0..=24.0).contains(&g) {
                 return Err(format!("{}.gain_db = {g} 超出范围 [-80, 24]", c.node));
             }
+            shift_gain_automation(autos, g - *gain);
             *gain = g;
         }
         if let Some(m) = c.muted {
@@ -104,8 +133,10 @@ fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
 }
 
 /// 把改动写进原始 JSON（只动改了的字段，保留文件里其它写法）。
-fn apply_to_json(v: &mut Value, changes: &[Change]) -> Result<()> {
+fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result<()> {
+    let mut working = working.clone();
     for c in changes {
+        let autos = fields(&mut working, &c.node).map_err(|e| anyhow!(e))?.2.clone();
         let (kind, i) = parse_node(&c.node).ok_or_else(|| anyhow!("无效的 node '{}'", c.node))?;
         let obj = v
             .get_mut(kind)
@@ -114,6 +145,9 @@ fn apply_to_json(v: &mut Value, changes: &[Change]) -> Result<()> {
             .ok_or_else(|| anyhow!("工程文件里没有 {}", c.node))?;
         if let Some(g) = c.gain_db {
             obj.insert("gain_db".into(), json!(g));
+            if has_gain_automation(&autos) {
+                obj.insert("automation".into(), serde_json::to_value(&autos)?);
+            }
         }
         if let Some(m) = c.muted {
             obj.insert("muted".into(), json!(m));
@@ -193,6 +227,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
             "id": id, "kind": "track", "name": if t.name.is_empty() { id.clone() } else { t.name.clone() },
             "instrument": t.instrument, "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
             "gain_db": t.gain_db, "muted": t.muted, "solo": solo.contains(&id), "effects": fx(&t.effects), "clips": clips,
+            "gain_auto": has_gain_automation(&t.automation),
         }));
     }
     for (i, b) in working.buses.iter().enumerate() {
@@ -200,6 +235,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
         nodes.push(json!({
             "id": id, "kind": "bus", "name": b.name, "output": b.output.as_deref().unwrap_or("master"), "sends": b.sends,
             "gain_db": b.gain_db, "muted": b.muted, "solo": solo.contains(&id), "effects": fx(&b.effects), "clips": [],
+            "gain_auto": has_gain_automation(&b.automation),
         }));
     }
     json!({
@@ -362,7 +398,7 @@ impl Shared {
         let write = || -> Result<()> {
             let text = std::fs::read_to_string(&self.path)?;
             let mut v: Value = serde_json::from_str(&text)?;
-            apply_to_json(&mut v, &changes)?;
+            apply_to_json(&mut v, &changes, working)?;
             std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
             Ok(())
         };
@@ -612,13 +648,42 @@ mod tests {
         assert_eq!((p.tracks[0].gain_db, p.buses[0].muted), (-4.5, true));
         assert_eq!(diff(&project(), &p), ch);
         let mut v: Value = serde_json::to_value(project()).unwrap();
-        apply_to_json(&mut v, &ch).unwrap();
+        apply_to_json(&mut v, &ch, &p).unwrap();
         assert_eq!(v["tracks"][0]["gain_db"], json!(-4.5));
         assert_eq!(v["buses"][0]["muted"], json!(true));
         let bad = vec![Change { node: "tracks[9]".into(), gain_db: Some(0.0), muted: None }];
         assert!(apply_to_project(&mut p, &bad).is_err());
         let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None }];
         assert!(apply_to_project(&mut p, &bad).unwrap_err().contains("超出范围"));
+    }
+
+    #[test]
+    fn fader_trims_gain_automation() {
+        let mut p = Project::from_json(
+            r#"{ "tempo": 120, "tracks": [{ "name": "a", "instrument": "synth.poly", "gain_db": -10, "clips": [],
+                 "automation": [{ "target": "gain_db", "shape": "points", "points": [[0, -30], [8, -10]] },
+                                { "target": "pan", "shape": "lfo", "period_beats": 4, "min": -0.5, "max": 0.5 }] }] }"#,
+        )
+        .unwrap();
+        let file = p.clone();
+        let ch = vec![Change { node: "tracks[0]".into(), gain_db: Some(-6.0), muted: None }];
+        apply_to_project(&mut p, &ch).unwrap();
+        let pts = match &p.tracks[0].automation[0].shape {
+            muser_core::automation::Shape::Points { points, .. } => points.iter().map(|(_, v)| v.as_f64().unwrap()).collect::<Vec<_>>(),
+            _ => unreachable!(),
+        };
+        assert_eq!(pts, [-26.0, -6.0], "音量自动化整体平移 +4 dB");
+        assert_eq!(p.tracks[0].automation[1], file.tracks[0].automation[1], "声像自动化不变");
+        let mut v: Value = serde_json::to_value(&file).unwrap();
+        apply_to_json(&mut v, &diff(&file, &p), &p).unwrap();
+        assert_eq!(v["tracks"][0]["automation"][0]["points"][0][1], json!(-26.0));
+        // 引擎确实听得到：渲染能量随推子变化。
+        let mut q = file.clone();
+        q.tracks[0].clips = serde_json::from_value(json!([{ "start": 0, "length": 8, "notes": [{ "pitch": 60, "start": 0, "length": 8 }] }])).unwrap();
+        let mut louder = q.clone();
+        apply_to_project(&mut louder, &[Change { node: "tracks[0]".into(), gain_db: Some(0.0), muted: None }]).unwrap();
+        let e = |p: &Project| muser_engine::render(p, RenderSettings { tail_seconds: 0.1, ..Default::default() }).unwrap().channel(0).iter().map(|s| f64::from(*s).powi(2)).sum::<f64>();
+        assert!(e(&louder) > e(&q) * 5.0);
     }
 
     #[test]

@@ -5,7 +5,7 @@
  "buses": [
   {
    "name": "drums",
-   "gain_db": 0,
+   "gain_db": 4,
    "effects": [
     {
      "type": "eq",
@@ -69,7 +69,8 @@
      "release_ms": 180,
      "sidechain": "kick"
     }
-   ]
+   ],
+   "gain_db": -3
   },
   {
    "name": "verb",
@@ -6910,7 +6911,7 @@
   {
    "name": "sub",
    "instrument": "poly.deep_sub",
-   "gain_db": -5,
+   "gain_db": -1,
    "effects": [
     {
      "type": "compressor",
@@ -7455,7 +7456,7 @@
   {
    "name": "reese",
    "instrument": "poly.reese",
-   "gain_db": 1,
+   "gain_db": 4,
    "instrument_params": {
     "cutoff": 900,
     "resonance": 0.25
@@ -8340,7 +8341,7 @@
    "name": "pad",
    "instrument": "poly.glass_pad",
    "output": "music",
-   "gain_db": -10,
+   "gain_db": -13,
    "sends": {
     "verb": -8
    },
@@ -8388,19 +8389,19 @@
      "points": [
       [
        28,
-       -10
+       -13
       ],
       [
        36,
-       -5
+       -8
       ],
       [
        60,
-       -5
+       -8
       ],
       [
        64,
-       -10
+       -13
       ]
      ]
     }
@@ -9378,7 +9379,7 @@
    "name": "keys",
    "instrument": "poly.fm_electric_piano",
    "output": "music",
-   "gain_db": -12,
+   "gain_db": -15,
    "pan": -0.2,
    "sends": {
     "verb": -12,
@@ -11564,7 +11565,7 @@
    "name": "strings",
    "instrument": "strings.ensemble",
    "output": "music",
-   "gain_db": -11,
+   "gain_db": -14,
    "sends": {
     "verb": -6
    },
@@ -11576,15 +11577,15 @@
      "points": [
       [
        192,
-       -30
+       -40
       ],
       [
        200,
-       0
+       -14
       ],
       [
        252,
-       0
+       -14
       ]
      ]
     }
@@ -11842,7 +11843,7 @@
    "name": "lead",
    "instrument": "poly.whistle_lead",
    "output": "music",
-   "gain_db": -11,
+   "gain_db": -12,
    "pan": 0.1,
    "sends": {
     "verb": -8,

@@ -258,7 +258,7 @@ function renderMixer() {
       <td class="ms"><button class="m" aria-label="静音">M</button> <button class="s" aria-label="独奏">S</button></td>`;
     const nameTd = tr.querySelector(".name");
     nameTd.textContent = n.kind === "bus" ? `[${n.name}]` : n.name;
-    const small = document.createElement("small"); small.textContent = sub; nameTd.appendChild(small);
+    const small = document.createElement("small"); small.textContent = sub + (n.gain_auto ? " · 有音量自动化（推子整体平移它）" : ""); nameTd.appendChild(small);
     const range = tr.querySelector("input"), dbTd = tr.querySelector(".db");
     range.value = n.gain_db; range.setAttribute("aria-label", `${n.name} 音量`);
     dbTd.textContent = fmtDb(n.gain_db);
