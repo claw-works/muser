@@ -19,7 +19,8 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 - 内置 SFZ 采样器：`sfz:/path/to.sfz` 直接加载 SFZ 音色库
 - 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级或主总线
 - 自动化：乐器参数、效果器参数、增益、声像随时间变化（时间点曲线 / LFO / 带种子的随机游走）
-- 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)（`host` 特性）
+- 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)，扫描本机插件、按参数名 + 文字设置参数、参数自动化（`host` 特性）
+- 试听：`muser audition` 按参数取值逐个渲染，报告响度、亮度、起音、余音，帮 AI 摸清陌生参数
 - 离线渲染为 WAV
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 
@@ -77,7 +78,7 @@ muser effects reverb
 ### 4. 以 MCP server 运行（给 agent 用）
 
 ```bash
-muser-mcp          # stdio MCP server，暴露 20 个 tools
+muser-mcp          # stdio MCP server，暴露 25 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，

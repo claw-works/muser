@@ -1,0 +1,448 @@
+{
+  "tempo": 124,
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "drums.909",
+      "gain_db": -6,
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 1,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 2,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 3,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 4,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 5,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 6,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 7,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 8,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 9,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 10,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 11,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 12,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 13,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 14,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 15,
+              "length": 0.2
+            },
+            {
+              "pitch": 46,
+              "start": 0.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 1.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 2.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 3.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 4.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 5.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 6.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 7.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 8.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 9.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 10.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 11.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 12.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 13.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 14.5,
+              "length": 0.15,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 46,
+              "start": 15.5,
+              "length": 0.15,
+              "velocity": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "surge",
+      "instrument": "plugin:/usr/lib/clap/Surge XT.clap",
+      "gain_db": 2,
+      "instrument_params": {
+        "A Osc 1 Retrigger": "On",
+        "A Osc 2 Retrigger": "On",
+        "A Osc 3 Retrigger": "On",
+        "A Filter 1 Type": "LP Vintage Ladder",
+        "A Filter 1 Resonance": "60 %",
+        "A Amp EG Release": "80 ms"
+      },
+      "effects": [
+        {
+          "type": "plugin",
+          "path": "/usr/lib/clap/Surge XT Effects.clap",
+          "params": {
+            "FX Type": "Delay"
+          }
+        }
+      ],
+      "automation": [
+        {
+          "target": "instrument",
+          "param": "A Filter 1 Cutoff",
+          "shape": "points",
+          "points": [
+            [
+              0,
+              "120 Hz"
+            ],
+            [
+              16,
+              "5000 Hz"
+            ]
+          ]
+        },
+        {
+          "target": "pan",
+          "shape": "lfo",
+          "wave": "sine",
+          "period_beats": 8,
+          "min": -0.4,
+          "max": 0.4
+        }
+      ],
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 0.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 1.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 1.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 39,
+              "start": 2.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 2.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 46,
+              "start": 3.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 3.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 4.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 4.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 5.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 5.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 39,
+              "start": 6.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 6.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 46,
+              "start": 7.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 7.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 8.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 8.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 9.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 9.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 39,
+              "start": 10.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 10.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 46,
+              "start": 11.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 11.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 12.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 12.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 13.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 13.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 39,
+              "start": 14.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 14.5,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 46,
+              "start": 15.0,
+              "length": 0.45,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 15.5,
+              "length": 0.45,
+              "velocity": 0.85
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "plugins/surge-sweep"
+}

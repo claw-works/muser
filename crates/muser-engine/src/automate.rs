@@ -77,15 +77,21 @@ pub struct MasterLanes {
 struct Rule {
     min: f64,
     max: f64,
-    unit: &'static str,
+    unit: String,
     /// 可用名字代替数字（如元音），第 i 个名字 = i。
     names: &'static [&'static str],
     base: f64,
+    /// 插件参数：字符串取值交给插件解析（如 "2000 Hz"）。
+    text: Option<Box<dyn Fn(&str) -> Option<f64>>>,
+    /// 写入时使用的参数名（插件为数字 id）；None 表示用自动化里写的名字。
+    key: Option<String>,
 }
 
 impl Rule {
     fn number(&self, v: &Value) -> Result<f64, String> {
         let x = match v {
+            Value::String(s) if self.text.is_some() => (self.text.as_ref().unwrap())(s)
+                .ok_or_else(|| format!("插件无法解析 '{s}'，可写 {}–{} 的数字", self.min, self.max))?,
             Value::String(s) => self
                 .names
                 .iter()
@@ -102,6 +108,7 @@ impl Rule {
         };
         if !x.is_finite() || x < self.min || x > self.max {
             let unit = if self.unit.is_empty() { String::new() } else { format!(" {}", self.unit) };
+            let unit = unit.as_str();
             return Err(format!("{x} 超出范围 [{}, {}]{unit}", self.min, self.max));
         }
         Ok(x)
@@ -113,12 +120,35 @@ fn instrument_rule(track: &Track, param: &str) -> Result<(Rule, Automatable), St
     let params::ParamKind::Number { min, max, unit, names, .. } = spec.kind else {
         return Err(format!("参数 '{param}' 不能自动化"));
     };
-    Ok((Rule { min, max, unit, names, base }, how))
+    Ok((Rule { min, max, unit: unit.into(), names, base, text: None, key: None }, how))
+}
+
+/// 插件参数的取值规则：打开插件（已应用基础参数），按名称或 id 找参数。
+#[cfg(feature = "host")]
+fn plugin_rule(path: &str, id: Option<&str>, base_params: &serde_json::Map<String, Value>, param: &str) -> Result<Rule, String> {
+    let (opened, pid) = crate::plugin::automation_target(path, id, base_params, param)?;
+    let p = opened.params.iter().find(|p| p.id == pid).expect("刚解析出的参数").clone();
+    let base = opened.plugin.param_value(pid).unwrap_or(p.default);
+    let (min, max, unit) = (p.min, p.max, p.unit.clone());
+    Ok(Rule {
+        min,
+        max,
+        unit,
+        names: &[],
+        base,
+        text: Some(Box::new(move |s: &str| opened.text_value(&p, s))),
+        key: Some(pid.0.to_string()),
+    })
+}
+
+#[cfg(not(feature = "host"))]
+fn plugin_rule(_path: &str, _id: Option<&str>, _base: &serde_json::Map<String, Value>, _param: &str) -> Result<Rule, String> {
+    Err("插件参数自动化需要 `host` 特性".into())
 }
 
 fn effect_rule(effect: &Effect, param: &str) -> Result<Rule, String> {
-    if matches!(effect, Effect::Plugin { .. }) {
-        return Err("插件效果器的参数自动化尚未支持".into());
+    if let Effect::Plugin { path, id, params } = effect {
+        return plugin_rule(path, id.as_deref(), params, param);
     }
     let spec = muser_core::effect_spec(effect.type_name()).expect("每个效果器都有描述");
     let p = spec.params.iter().find(|p| p.name == param).ok_or_else(|| {
@@ -134,11 +164,11 @@ fn effect_rule(effect: &Effect, param: &str) -> Result<Rule, String> {
         .find(|(n, _)| *n == param)
         .map(|(_, v)| v)
         .unwrap_or(p.default);
-    Ok(Rule { min: p.min, max: p.max, unit: p.unit, names: &[], base })
+    Ok(Rule { min: p.min, max: p.max, unit: p.unit.into(), names: &[], base, text: None, key: None })
 }
 
 fn scalar_rule(min: f64, max: f64, unit: &'static str, base: f64) -> Rule {
-    Rule { min, max, unit, names: &[], base }
+    Rule { min, max, unit: unit.into(), names: &[], base, text: None, key: None }
 }
 
 /// 检查取值并编译。
@@ -161,7 +191,7 @@ fn compile_lane(a: &Automation, rule: &Rule, seed: u64, total_beats: f64) -> Res
         }
     }
     Ok(Lane {
-        param: a.param.clone(),
+        param: rule.key.clone().unwrap_or_else(|| a.param.clone()),
         curve: a.compile(&values, seed, total_beats),
         base: rule.base,
         last: None,
@@ -178,7 +208,13 @@ pub fn compile_track(project: &Project, ti: usize, total_beats: f64) -> Result<T
         let target = Target::parse(&a.target).ok_or_else(|| at(format!("target '{}' 无效", a.target)))?;
         match target {
             Target::Instrument => {
-                let (rule, _) = instrument_rule(track, &a.param).map_err(at)?;
+                let rule = match track.instrument.trim().strip_prefix("plugin:") {
+                    Some(spec) => {
+                        let (path, id) = crate::plugin::split_spec(spec);
+                        plugin_rule(path, id, &track.instrument_params, &a.param).map_err(at)?
+                    }
+                    None => instrument_rule(track, &a.param).map_err(at)?.0,
+                };
                 out.instrument.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
             Target::Effect(i) => {

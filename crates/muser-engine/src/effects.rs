@@ -37,6 +37,8 @@ pub enum Fx {
     Limiter(Limiter<f32>),
     Phaser(Phaser<f32>),
     Other(Box<dyn Processor<f32>>),
+    #[cfg(feature = "host")]
+    Plugin(HostedPlugin),
 }
 
 impl Fx {
@@ -50,6 +52,8 @@ impl Fx {
             Fx::Limiter(p) => p,
             Fx::Phaser(p) => p,
             Fx::Other(p) => p.as_mut(),
+            #[cfg(feature = "host")]
+            Fx::Plugin(p) => p,
         }
     }
 
@@ -93,6 +97,8 @@ impl Fx {
             (Fx::Phaser(p), "rate_hz") => p.set_rate_hz(v),
             (Fx::Phaser(p), "feedback") => p.set_feedback(v),
             (Fx::Phaser(p), "mix") => p.set_mix(v),
+            #[cfg(feature = "host")]
+            (Fx::Plugin(p), id) => p.set_param(id, v),
             _ => {}
         }
     }
@@ -203,7 +209,7 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
                 .with_mix(*mix);
             Fx::Chorus(f)
         }
-        Effect::Plugin { path, id, params } => Fx::Other(build_plugin(path, id.as_deref(), params, spec)?),
+        Effect::Plugin { path, id, params } => build_plugin(path, id.as_deref(), params, spec)?,
     };
     Ok(fx)
 }
@@ -231,84 +237,61 @@ fn parse_filter_shape(shape: &str, gain_db: f64) -> Result<FilterShape, EffectEr
 fn build_plugin(
     path: &str,
     id: Option<&str>,
-    params: &std::collections::BTreeMap<u32, f64>,
+    params: &serde_json::Map<String, serde_json::Value>,
     spec: &ProcessSpec,
-) -> Result<Box<dyn Processor<f32>>, EffectError> {
-    use manguebyte::host::any::Library;
-
-    // 加载插件库。调用方须保证插件路径可信——加载会执行第三方代码。
-    let library = unsafe { Library::load(path) }.map_err(|e| EffectError::PluginLoad {
-        path: path.to_string(),
-        detail: format!("{e:?}"),
-    })?;
-
-    // 选择插件 id：显式指定，否则取库中第一个。
-    let plugin_id = match id {
-        Some(s) => s.to_string(),
-        None => library
-            .plugins()
-            .first()
-            .map(|p| p.id.clone())
-            .ok_or_else(|| EffectError::PluginLoad {
-                path: path.to_string(),
-                detail: "库中没有任何插件".to_string(),
-            })?,
-    };
-
-    let mut plugin = library
-        .create(&plugin_id)
-        .map_err(|e| EffectError::PluginLoad {
-            path: path.to_string(),
-            detail: format!("create('{plugin_id}') 失败: {e:?}"),
-        })?;
-
-    // 设置参数（best-effort）。
-    for (&pid, &value) in params {
-        let _ = plugin.set_param(manguebyte::ParamId(pid), value);
-    }
-
-    // 激活，拿到音频处理半（它本身就是 Processor）。
-    let processor = plugin
-        .activate(spec.sample_rate, spec.max_block_size)
-        .map_err(|e| EffectError::PluginLoad {
-            path: path.to_string(),
-            detail: format!("activate 失败: {e:?}"),
-        })?;
-
-    // activate 返回 Box<dyn Processor + Send>；为了持有 plugin 控制半不被 drop，
-    // 这里把二者打包进一个包装器。
-    Ok(Box::new(HostedPlugin {
-        _plugin: plugin,
-        processor,
-    }))
+) -> Result<Fx, EffectError> {
+    let load_err = |detail: String| EffectError::PluginLoad { path: path.to_string(), detail };
+    let mut opened = crate::plugin::Opened::open(path, id).map_err(load_err)?;
+    opened.apply(params).map_err(load_err)?;
+    let processor = opened.activate(spec.sample_rate, spec.max_block_size).map_err(load_err)?;
+    Ok(Fx::Plugin(HostedPlugin { processor, opened, blocks: 0 }))
 }
 
 #[cfg(not(feature = "host"))]
 fn build_plugin(
     _path: &str,
     _id: Option<&str>,
-    _params: &std::collections::BTreeMap<u32, f64>,
+    _params: &serde_json::Map<String, serde_json::Value>,
     _spec: &ProcessSpec,
-) -> Result<Box<dyn Processor<f32>>, EffectError> {
+) -> Result<Fx, EffectError> {
     Err(EffectError::HostDisabled)
 }
 
-/// 包装一个已激活的插件：控制半与音频半一起持有，音频处理委托给音频半。
-/// 控制半 drop 晚于音频半才安全，这里用字段顺序（Rust 按声明顺序逆序 drop，
-/// 即先 drop processor 再 drop _plugin）保证之。
+/// 一个已激活的插件：控制半与音频半一起持有，音频处理委托给音频半。
+/// 字段按声明顺序 drop：先音频半 `processor`，再控制半 `opened`。
 #[cfg(feature = "host")]
-struct HostedPlugin {
+pub struct HostedPlugin {
     processor: Box<dyn Processor<f32> + Send>,
-    _plugin: manguebyte::host::any::Plugin,
+    opened: crate::plugin::Opened,
+    blocks: u32,
+}
+
+#[cfg(feature = "host")]
+impl HostedPlugin {
+    /// 自动化：`id` 为插件参数的数字 id（字符串形式），值为插件自动化刻度。
+    /// 激活后由控制半排队送达，插件在下一块的第一帧收到。
+    pub fn set_param(&mut self, id: &str, v: f64) {
+        if let Ok(id) = id.parse::<u32>() {
+            let _ = self.opened.plugin.set_param(manguebyte::ParamId(id), v);
+        }
+    }
 }
 
 #[cfg(feature = "host")]
 impl Processor<f32> for HostedPlugin {
     fn prepare(&mut self, spec: &ProcessSpec) {
         self.processor.prepare(spec);
+        if let Err(w) = self.opened.settle(self.processor.as_mut(), spec) {
+            eprintln!("[muser] 警告: {w}");
+        }
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         self.processor.process(buffer);
+        // 定期回应插件的请求（参数回报、重启请求等），避免队列积压。
+        self.blocks = self.blocks.wrapping_add(1);
+        if self.blocks % 16 == 0 {
+            let _ = self.opened.plugin.pump();
+        }
     }
     fn reset(&mut self) {
         self.processor.reset();

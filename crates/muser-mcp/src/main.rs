@@ -186,6 +186,82 @@ struct SetSeedParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ScanPluginsParams {
+    /// 只列某类（可选）：instrument / effect。
+    #[serde(default)]
+    kind: Option<String>,
+    /// 忽略缓存重新扫描（可选）。
+    #[serde(default)]
+    refresh: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct PluginParams {
+    /// 插件路径，可带 #插件id（scan_plugins 返回的 path#id）。
+    plugin: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListPluginParamsParams {
+    /// 插件路径，可带 #插件id。
+    plugin: String,
+    /// 关键词过滤（空格分隔，全部命中，大小写不敏感），如 "filter cutoff"。大插件务必过滤。
+    #[serde(default)]
+    filter: Option<String>,
+    /// 先应用这些参数再列出（如 {"FX Type": "Reverb 2"}）：参数含义随它变化时有用。
+    #[serde(default)]
+    params: Option<serde_json::Map<String, serde_json::Value>>,
+    /// 最多返回多少个（默认 60）。
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct PluginParamValuesParams {
+    /// 插件路径，可带 #插件id。
+    plugin: String,
+    /// 参数名或数字 id。
+    param: String,
+    /// 先应用这些参数（可选）。
+    #[serde(default)]
+    params: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct AuditionParams {
+    /// 要试的乐器（内置名 / sfz:路径 / plugin:路径#id）；与 effect 二选一。
+    #[serde(default)]
+    instrument: Option<String>,
+    /// 乐器的基础参数（可选）。
+    #[serde(default)]
+    instrument_params: Option<serde_json::Map<String, serde_json::Value>>,
+    /// 要试的效果器（效果器 JSON，内置或 {"type":"plugin","path":...}）；与 instrument 二选一。
+    #[serde(default)]
+    effect: Option<serde_json::Value>,
+    /// 试效果器时发声的乐器（默认 synth.poly）。
+    #[serde(default)]
+    source: Option<String>,
+    /// 要试的参数名（内置参数名、效果器字段名或插件参数名）；省略只渲染原样一版。
+    #[serde(default)]
+    param: Option<String>,
+    /// 依次尝试的取值：数字，或插件可解析的文字（如 "200 Hz"）。
+    #[serde(default)]
+    values: Vec<serde_json::Value>,
+    /// 测试音高（默认 60；鼓组用 GM 鼓键）。
+    #[serde(default)]
+    pitch: Option<u8>,
+    /// 音符时长秒（默认 1）。
+    #[serde(default)]
+    hold_seconds: Option<f64>,
+    /// 余音录制秒（默认 1.5）。
+    #[serde(default)]
+    tail_seconds: Option<f64>,
+    /// 把每一版写成 wav 的目录（可选，给人听）。
+    #[serde(default)]
+    out_dir: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct NameParams {
     /// 名称，如 "reverb" / "guitar.nylon" / "poly.moog_bass"。
     name: String,
@@ -633,6 +709,79 @@ impl Muser {
         })
     }
 
+    #[tool(description = "扫描本机安装的外置插件（VST3/CLAP/LV2），返回名称、厂商、类型(instrument/effect)、path 与 id。乐器写 \"instrument\": \"plugin:<path>#<id>\"，效果器写 {\"type\":\"plugin\",\"path\":...,\"id\":...}。需 host 特性。")]
+    fn scan_plugins(&self, Parameters(p): Parameters<ScanPluginsParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::plugin::scan(p.refresh) {
+            Ok((mut found, failures)) => {
+                if let Some(k) = &p.kind {
+                    found.retain(|x| &x.kind == k);
+                }
+                let failures: Vec<_> = failures.iter().map(|(p, e)| serde_json::json!({ "path": p, "error": e })).collect();
+                json_result(&serde_json::json!({ "plugins": found, "failures": failures }))
+            }
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "外置插件信息：名称、厂商、类型、是否接收音符、音频输入输出、参数总数与按名称分组的统计、同文件中的其它插件。")]
+    fn plugin_info(&self, Parameters(p): Parameters<PluginParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::plugin::info(&p.plugin) {
+            Ok(info) => json_result(&info),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "列出/搜索外置插件参数：名称、id、范围、当前值及插件显示的文字。大插件（数百参数）请用 filter 关键词搜索。设置参数时用名称做键，值写插件显示的文字（如 \"2000 Hz\"）或数字。")]
+    fn list_plugin_params(&self, Parameters(p): Parameters<ListPluginParamsParams>) -> Result<CallToolResult, McpError> {
+        let base = p.params.unwrap_or_default();
+        match muser_engine::plugin::params(&p.plugin, p.filter.as_deref(), false, &base) {
+            Ok(list) => {
+                let total = list.len();
+                let limit = p.limit.unwrap_or(60).max(1);
+                let shown: Vec<_> = list.into_iter().take(limit).collect();
+                json_result(&serde_json::json!({ "total": total, "params": shown }))
+            }
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "列出插件某个参数可写的文字值（选项类参数即全部选项，如滤波类型、效果类型、波形；连续参数给出刻度）。")]
+    fn plugin_param_values(&self, Parameters(p): Parameters<PluginParamValuesParams>) -> Result<CallToolResult, McpError> {
+        let base = p.params.unwrap_or_default();
+        match muser_engine::plugin::values(&p.plugin, &p.param, 400, &base) {
+            Ok((param, values)) => {
+                let list: Vec<_> = values.iter().map(|(v, t)| serde_json::json!({ "value": v, "text": t })).collect();
+                json_result(&serde_json::json!({ "param": param, "values": list }))
+            }
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "试听：把乐器或效果器（内置或外置插件）的某个参数依次设成 values 中的值，各渲染一段测试音，返回听感特征：peak_db、rms_db、lufs（响度）、centroid_hz（频谱重心，越高越亮）、low/mid/high_pct（能量分布）、attack_ms（起音）、release_s（余音）。用来弄清陌生参数的作用。")]
+    fn audition(&self, Parameters(p): Parameters<AuditionParams>) -> Result<CallToolResult, McpError> {
+        use muser_engine::audition::{audition, AuditionSettings, Subject};
+        let subject = match (p.instrument, p.effect) {
+            (Some(name), None) => Subject::Instrument { name, params: p.instrument_params.unwrap_or_default() },
+            (None, Some(e)) => match serde_json::from_value(e) {
+                Ok(effect) => Subject::Effect { effect, source: p.source.unwrap_or_else(|| "synth.poly".into()) },
+                Err(e) => return Ok(user_err(format!("effect 解析失败: {e}"))),
+            },
+            _ => return Ok(user_err("请给出 instrument 或 effect 之一")),
+        };
+        let d = AuditionSettings::default();
+        let settings = AuditionSettings {
+            pitch: p.pitch.unwrap_or(d.pitch),
+            velocity: d.velocity,
+            hold_seconds: p.hold_seconds.unwrap_or(d.hold_seconds),
+            tail_seconds: p.tail_seconds.unwrap_or(d.tail_seconds),
+            out_dir: p.out_dir.map(Into::into),
+        };
+        match audition(&subject, p.param.as_deref(), &p.values, &settings) {
+            Ok(takes) => json_result(&takes),
+            Err(e) => Ok(user_err(e.to_string())),
+        }
+    }
+
     #[tool(description = "列出所有效果器及一句话说明。效果器用于 track.effects（轨级）或 master_effects（主总线），按数组顺序串联。")]
     fn list_effects(&self) -> Result<CallToolResult, McpError> {
         let list: Vec<_> = muser_core::EFFECT_SPECS
@@ -676,12 +825,16 @@ fn json_result<T: serde::Serialize + ?Sized>(value: &T) -> Result<CallToolResult
 调音色用 instrument_params（键与范围见 describe_instrument，只覆盖给出的项）；sfz:/path.sfz 可加载 SFZ 音色库。\
 要让声音随时间变化（滤波扫频、淡入淡出、声像摆动、随机游走）用 set_automation；describe_instrument 标出了哪些参数可自动化。\
 random 自动化由工程 seed 决定，set_seed 换种子即换一种变化。\
+外置插件：scan_plugins 找插件 → plugin_info / list_plugin_params(filter) / plugin_param_values 看参数 → audition 试听参数作用；\
+插件参数用名称做键、值写插件显示的文字（如 \"2000 Hz\"），可用于 instrument_params、plugin 效果器的 params 与自动化。\
 validate_project 会指出越界参数与未知乐器的具体位置。"
 )]
 impl ServerHandler for Muser {}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // 本进程被插件扫描器以子进程方式启动时，读完插件即退出。
+    muser_engine::plugin::serve_scanner_if_asked();
     // 以 stdio 运行 MCP server。
     let service = Muser::new().serve(stdio()).await?;
     service.waiting().await?;

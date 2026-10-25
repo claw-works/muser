@@ -1,19 +1,27 @@
 {
-  "name": "plugins/vsti-instrument",
-  "tempo": 110.0,
-  "master_gain_db": -3.0,
+  "tempo": 110,
+  "master_gain_db": -3,
   "tracks": [
     {
       "name": "lead",
-      "instrument": "plugin:/usr/lib/vst3/Surge XT.vst3",
+      "instrument": "plugin:/usr/lib/clap/Surge XT.clap",
+      "instrument_params": {
+        "A Osc 1 Retrigger": "On",
+        "A Osc 2 Retrigger": "On",
+        "A Osc 3 Retrigger": "On",
+        "A Filter 1 Type": "LP 24 dB",
+        "A Filter 1 Cutoff": "1800 Hz",
+        "A Filter 1 Resonance": "35 %",
+        "A Amp EG Release": "300 ms"
+      },
       "clips": [
         {
-          "start": 0.0,
-          "length": 4.0,
+          "start": 0,
+          "length": 4,
           "notes": [
             {
               "pitch": 60,
-              "start": 0.0,
+              "start": 0,
               "length": 0.5,
               "velocity": 0.8
             },
@@ -25,25 +33,26 @@
             },
             {
               "pitch": 67,
-              "start": 1.0,
+              "start": 1,
               "length": 0.5,
               "velocity": 0.8
             },
             {
               "pitch": 72,
               "start": 1.5,
-              "length": 1.0,
-              "velocity": 0.9
+              "length": 1,
+              "velocity": 0.8
             },
             {
               "pitch": 67,
-              "start": 3.0,
-              "length": 1.0,
-              "velocity": 0.7
+              "start": 3,
+              "length": 1,
+              "velocity": 0.8
             }
           ]
         }
       ]
     }
-  ]
+  ],
+  "name": "plugins/vsti-instrument"
 }

@@ -523,10 +523,8 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
         if rest.trim().is_empty() {
             return Err(InstrumentError::PluginLoad { path: String::new(), detail: "plugin: 后缺少插件路径".into() });
         }
-        if !params.is_empty() {
-            return Err(InstrumentError::Param { detail: PLUGIN_PARAMS_TODO.into() });
-        }
-        return Ok(());
+        let (path, id) = crate::plugin::split_spec(rest);
+        return crate::plugin::check_params(path, id, params).map_err(|detail| InstrumentError::Param { detail });
     }
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     if let Patch::Sfz(path) = &patch {
@@ -544,8 +542,11 @@ pub(crate) fn automation_param(
     param: &str,
 ) -> Result<(params::InstParamSpec, params::Automatable, f64), String> {
     let trimmed = name.trim();
-    if trimmed.starts_with("plugin:") || trimmed.starts_with("sfz:") {
-        return Err("插件与 sfz 乐器的参数自动化尚未支持".into());
+    if trimmed.starts_with("sfz:") {
+        return Err("sfz 乐器的参数自动化尚未支持".into());
+    }
+    if trimmed.starts_with("plugin:") {
+        return Err("内部错误：插件参数自动化应走 automate::plugin_rule".into());
     }
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| format!("未知乐器 '{name}'"))?;
     patch.apply(instrument_params)?;
@@ -608,14 +609,13 @@ pub fn check_name(name: &str) -> Result<(), InstrumentError> {
 // 解析
 // ---------------------------------------------------------------------------
 
-const PLUGIN_PARAMS_TODO: &str = "插件乐器的 instrument_params 尚未支持（计划中）";
 
 /// 解析失败。
 #[derive(Debug, thiserror::Error)]
 pub enum InstrumentError {
     #[error("未知乐器 '{name}'。用 `muser instruments` 查看全部；常用：drums.808 / drums.acoustic / synth.poly / poly.moog_bass / guitar.nylon / strings.ensemble / mallet.marimba；另可用 sfz:/path/to.sfz")]
     Unknown { name: String },
-    #[error("instrument_params 无效: {detail}（用 `muser instruments <名称>` 查看可调参数）")]
+    #[error("instrument_params 无效: {detail}（内置乐器用 `muser instruments <名称>`，插件用 `muser plugin params <插件>` 查看可调参数）")]
     Param { detail: String },
     #[error("{detail}")]
     Load { detail: String },
@@ -628,14 +628,16 @@ pub enum InstrumentError {
 /// 兼容旧名。
 pub type UnknownInstrument = InstrumentError;
 
-/// 把乐器名 + 参数解析为就绪的乐器。大小写不敏感。
+/// 把乐器名 + 参数解析为就绪的乐器（插件按 48 kHz / 512 帧激活）。大小写不敏感。
 pub fn resolve_with(name: &str, params: &InstrumentParams) -> Result<TrackInstrument, InstrumentError> {
+    resolve_for(name, params, &ProcessSpec { sample_rate: 48_000.0, max_block_size: 512, num_channels: 2 })
+}
+
+/// 同 [`resolve_with`]，插件按给定的采样率与块大小激活。
+pub fn resolve_for(name: &str, params: &InstrumentParams, spec: &ProcessSpec) -> Result<TrackInstrument, InstrumentError> {
     let trimmed = name.trim();
     if let Some(rest) = trimmed.strip_prefix("plugin:") {
-        if !params.is_empty() {
-            return Err(InstrumentError::Param { detail: PLUGIN_PARAMS_TODO.into() });
-        }
-        return resolve_plugin(rest);
+        return resolve_plugin(rest, params, spec);
     }
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     patch.apply(params).map_err(|detail| InstrumentError::Param { detail })?;
@@ -658,16 +660,21 @@ pub fn resolve(name: &str) -> Result<TrackInstrument, InstrumentError> {
 /// 由于子块恰好在事件处切分，这里把事件记为 offset 0 即可做到样本精确。
 #[cfg(feature = "host")]
 struct PluginInstrument {
+    // 先 drop 音频半，再 drop 控制半。
     processor: Box<dyn Processor<f32> + Send>,
-    _plugin: manguebyte::host::any::Plugin,
+    opened: crate::plugin::Opened,
     pending: manguebyte::prelude::EventBuffer,
     transport: manguebyte::prelude::Transport,
+    blocks: u32,
 }
 
 #[cfg(feature = "host")]
 impl Playable for PluginInstrument {
     fn prepare(&mut self, spec: &ProcessSpec) {
         self.processor.prepare(spec);
+        if let Err(w) = self.opened.settle(self.processor.as_mut(), spec) {
+            eprintln!("[muser] 警告: {w}");
+        }
     }
     fn note_on(&mut self, note: NoteRef, velocity: f32, _accent: bool) {
         use manguebyte::prelude::{Event, EventKind};
@@ -682,50 +689,41 @@ impl Playable for PluginInstrument {
         let ctx = ProcessContext::new(&self.pending, &self.transport);
         self.processor.process_with(buffer, &ctx);
         self.pending.clear();
+        self.blocks = self.blocks.wrapping_add(1);
+        if self.blocks % 16 == 0 {
+            let _ = self.opened.plugin.pump();
+        }
+    }
+    /// 自动化：`name` 为插件参数的数字 id（字符串形式），值为插件自动化刻度。
+    fn set_param(&mut self, name: &str, value: f64) {
+        if let Ok(id) = name.parse::<u32>() {
+            let _ = self.opened.plugin.set_param(manguebyte::ParamId(id), value);
+        }
     }
 }
 
 /// 解析 `plugin:` 乐器。`spec`：`/path/to.vst3` 或 `/path.vst3#插件id`。
 #[cfg(feature = "host")]
-fn resolve_plugin(spec: &str) -> Result<TrackInstrument, InstrumentError> {
-    use manguebyte::host::any::Library;
-
-    let (path, id) = match spec.rsplit_once('#') {
-        Some((p, i)) => (p.trim(), Some(i.trim())),
-        None => (spec.trim(), None),
-    };
+fn resolve_plugin(spec: &str, params: &InstrumentParams, ps: &ProcessSpec) -> Result<TrackInstrument, InstrumentError> {
+    let (path, id) = crate::plugin::split_spec(spec);
     let load_err = |detail: String| InstrumentError::PluginLoad { path: path.to_string(), detail };
-
-    // 加载会执行第三方代码，调用方须保证路径可信。
-    let library = unsafe { Library::load(path) }.map_err(|e| load_err(format!("{e:?}")))?;
-    let plugin_id = match id {
-        Some(s) => s.to_string(),
-        None => library
-            .plugins()
-            .first()
-            .map(|p| p.id.clone())
-            .ok_or_else(|| load_err("库中没有任何插件".into()))?,
-    };
-    let mut plugin = library
-        .create(&plugin_id)
-        .map_err(|e| load_err(format!("create('{plugin_id}') 失败: {e:?}")))?;
-    let processor = plugin
-        .activate(48_000.0, 512)
-        .map_err(|e| load_err(format!("activate 失败: {e:?}")))?;
-
+    let mut opened = crate::plugin::Opened::open(path, id).map_err(load_err)?;
+    opened.apply(params).map_err(|detail| InstrumentError::Param { detail })?;
+    let processor = opened.activate(ps.sample_rate, ps.max_block_size).map_err(load_err)?;
     Ok(TrackInstrument::new(
         PluginInstrument {
             processor,
-            _plugin: plugin,
+            opened,
             pending: manguebyte::prelude::EventBuffer::with_capacity(256),
             transport: manguebyte::prelude::Transport::STOPPED,
+            blocks: 0,
         },
         0,
     ))
 }
 
 #[cfg(not(feature = "host"))]
-fn resolve_plugin(_spec: &str) -> Result<TrackInstrument, InstrumentError> {
+fn resolve_plugin(_spec: &str, _params: &InstrumentParams, _ps: &ProcessSpec) -> Result<TrackInstrument, InstrumentError> {
     Err(InstrumentError::HostDisabled)
 }
 

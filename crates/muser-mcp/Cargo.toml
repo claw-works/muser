@@ -19,3 +19,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
 anyhow = { workspace = true }
+
+[features]
+default = []
+## 插件宿主：外置 VST3/CLAP/LV2 乐器与效果器、插件扫描与参数工具。
+host = ["muser-engine/host"]

@@ -24,6 +24,9 @@
 | 有哪些效果器 | `muser effects` | `list_effects` |
 | 某效果器的参数、范围、默认值、示例 | `muser effects <名称>` | `describe_effect` |
 | 工程是否合法、错在哪 | `muser validate <file>` | `validate_project` |
+| 本机有哪些外置插件 | `muser plugin scan` | `scan_plugins` |
+| 插件的参数、选项文字 | `muser plugin params <插件> --filter <词>`、`muser plugin values <插件> <参数>` | `list_plugin_params`、`plugin_param_values` |
+| 某个参数到底起什么作用 | `muser audition ... --param <名> --values ...` | `audition` |
 
 加 `--json` 得到机器可读输出。`validate` 会指出越界参数和未知乐器的具体位置，例如
 `tracks[0].effects[0]: reverb.mix = 1.8 超出范围 [0, 1]`。
@@ -88,7 +91,10 @@
 - 鼓组按鼓件设置，键用 GM 鼓键数字或别名（kick / snare / clap / closed_hat / open_hat / crash / ride …）。
 - 写错参数名、越界、类型不对，`validate` 都会指出，例如
   `instrument_params 无效: cutoff: 99999 超出范围 [30, 8000] Hz`。
-- 各类参数表与调音示例见对应的乐器子 skill。外置 VSTi 的参数调节尚未支持（计划中）。
+- 各类参数表与调音示例见对应的乐器子 skill。
+- 外置插件（`plugin:` 乐器、`plugin` 效果器）同样用 `instrument_params` / `params`，键是插件参数名，
+  值写插件显示的文字（如 `"2000 Hz"`、`"LP 24 dB"`）。遇到陌生插件按 [skills/plugins.md](skills/plugins.md) 的流程：
+  scan → info → 搜参数 → 看选项 → 试听 → 写进工程。
 
 ## 让声音动起来：automation
 
@@ -105,7 +111,7 @@
 - `target`：音轨上 `instrument` / `effects[i]` / `gain_db` / `pan`；工程上 `master_gain_db` / `master_effects[i]`。
 - `shape`：`points`（时间点曲线）、`lfo`（周期摆动）、`random`（随机）。时间单位都是拍。
 - `random` 由工程 `seed` 决定：同一 seed 每次渲染一样，换 seed 换一种变化——可以多渲染几版挑一个。
-- 哪些参数能自动化：`muser instruments <名称>` 里标了 `[可自动化]` / `[可自动化·下个音生效]`。
+- 哪些参数能自动化：`muser instruments <名称>` 里标了 `[可自动化]` / `[可自动化·下个音生效]`；插件参数用插件参数名，取值可写文字。
 - 完整说明与示例：[skills/automation.md](skills/automation.md)。
 
 ## 效果器索引

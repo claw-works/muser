@@ -80,10 +80,15 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 ## plugins
 
 需要 `cargo build -p muser-cli --features host` 构建的 muser，工程里的插件路径是本机绝对路径，换机器需修改。
+插件参数按名称设置，值写插件显示的文字（流程见 [skills/plugins.md](../skills/plugins.md)）。
 
-- `vst-effect`：poly 和弦经过 `Surge XT Effects.vst3`（外置 VST 效果器，`{ "type": "plugin", "path": ... }`）。
-- `vsti-instrument`：`Surge XT.vst3` 合成器作为音源（`"instrument": "plugin:/path.vst3"`）。
+| 工程 | 内容 |
+|---|---|
+| `vsti-instrument` | Surge XT（CLAP）当音源，`instrument_params` 设滤波类型、cutoff、谐振、释放 |
+| `vst-effect` | poly 和弦经过 Surge XT Effects，`params` 选 `"FX Type": "Reverb 2"` |
+| `surge-sweep` | Surge XT 贝斯线：插件 cutoff 自动化 120 Hz → 5000 Hz（文字取值）、声像 LFO，后接 Surge 延迟 |
 
+Surge XT 的振荡器默认自由相位，每次渲染略有不同；示范里开了 `A Osc N Retrigger` 使结果可复现。
 未启用 `host` 特性时报 `HostDisabled`；路径不存在报 `PluginLoad`。
 
 ---

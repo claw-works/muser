@@ -73,9 +73,10 @@ pub enum Effect {
         /// 当一个文件内含多个插件时，指定插件 id；缺省用第一个。
         #[serde(default)]
         id: Option<String>,
-        /// 要设置的插件参数（参数 id → 值），可省略。
-        #[serde(default)]
-        params: std::collections::BTreeMap<u32, f64>,
+        /// 插件参数（可省略）：键为插件参数名（大小写不敏感）或数字 id；值为文字（交给插件解析，
+        /// 如 "2000 Hz"）、数字（插件自动化刻度）或布尔。用 `muser plugin params` 查看。
+        #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+        params: serde_json::Map<String, serde_json::Value>,
     },
     /// 合唱：加厚、加宽音色。
     Chorus {
@@ -385,10 +386,10 @@ pub static EFFECT_SPECS: &[EffectSpec] = &[
     EffectSpec {
         name: "plugin",
         summary: "第三方插件效果器（VST3/CLAP/LV2）。需要用 host 特性构建。",
-        placement: "与内置效果器一样串在链上。path 是本机插件的绝对路径。",
+        placement: "与内置效果器一样串在链上。path 是本机插件的绝对路径；params 按插件参数名设置，值可写插件界面上的文字（如 \"2000 Hz\"）。用 `muser plugin params <path>` 查看参数。",
         params: &[],
         choices: &[],
-        example: r#"{ "type": "plugin", "path": "/usr/lib/vst3/Surge XT Effects.vst3" }"#,
+        example: r#"{ "type": "plugin", "path": "/usr/lib/clap/Surge XT Effects.clap", "params": { "FX Type": "Reverb 2" } }"#,
     },
 ];
 

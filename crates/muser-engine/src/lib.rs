@@ -3,10 +3,12 @@
 //! 把 [`muser_core::Project`] 编译成 manguebyte 的乐器/合成器并离线渲染为音频/WAV。
 //! 这是「领域模型 → 声音」的翻译层，是三层架构的中间层。
 
+pub mod audition;
 pub mod automate;
 pub mod effects;
 pub mod instrument;
 pub mod params;
+pub mod plugin;
 pub mod render;
 
 pub use instrument::{
@@ -26,6 +28,22 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
                 "tracks[{i}].instrument: {e}"
             )))
         })?;
+    }
+    // 插件效果器的参数（host 特性下会加载插件检查参数名与取值）。
+    let plugin_fx = |fx: &muser_core::Effect, at: String| -> Result<(), EngineError> {
+        if let muser_core::Effect::Plugin { path, id, params } = fx {
+            plugin::check_params(path, id.as_deref(), params)
+                .map_err(|m| EngineError::Core(muser_core::CoreError::Invalid(format!("{at}.params: {m}"))))?;
+        }
+        Ok(())
+    };
+    for (i, fx) in project.master_effects.iter().enumerate() {
+        plugin_fx(fx, format!("master_effects[{i}]"))?;
+    }
+    for (ti, track) in project.tracks.iter().enumerate() {
+        for (i, fx) in track.effects.iter().enumerate() {
+            plugin_fx(fx, format!("tracks[{ti}].effects[{i}]"))?;
+        }
     }
     automate::check(project).map_err(|m| EngineError::Core(muser_core::CoreError::Invalid(m)))?;
     Ok(())
@@ -576,5 +594,143 @@ mod tests {
         crate::validate(&auto_project("choir.aah", &[], serde_json::json!([
             { "target": "instrument", "param": "vowel", "shape": "points", "points": [[0, "a"], [4, "o"], [8, "u"]] }
         ]))).unwrap();
+    }
+
+    #[test]
+    fn audition_reports_brightness_and_attack() {
+        use crate::audition::{audition, AuditionSettings, Subject};
+        let s = AuditionSettings::default();
+        let cutoff = audition(
+            &Subject::Instrument { name: "poly.moog_bass".into(), params: Default::default() },
+            Some("cutoff"),
+            &[serde_json::json!(200), serde_json::json!(6000)],
+            &AuditionSettings { pitch: 36, ..s.clone() },
+        )
+        .unwrap();
+        assert!(cutoff[1].analysis.centroid_hz > cutoff[0].analysis.centroid_hz * 2.0, "{cutoff:?}");
+        let attack = audition(
+            &Subject::Instrument { name: "synth.poly".into(), params: Default::default() },
+            Some("attack"),
+            &[serde_json::json!(0.005), serde_json::json!(0.5)],
+            &s,
+        )
+        .unwrap();
+        assert!(attack[0].analysis.attack_ms < 100.0 && attack[1].analysis.attack_ms > 300.0, "{attack:?}");
+        // 效果器：混响让余音变长。
+        let rev = audition(
+            &Subject::Effect { effect: serde_json::from_str(r#"{"type":"reverb","decay_seconds":3}"#).unwrap(), source: "synth.poly".into() },
+            Some("mix"),
+            &[serde_json::json!(0.0), serde_json::json!(0.6)],
+            &AuditionSettings { hold_seconds: 0.3, tail_seconds: 3.0, ..s },
+        )
+        .unwrap();
+        assert!(rev[1].analysis.release_s > rev[0].analysis.release_s + 0.3, "{rev:?}");
+        // 未知效果器字段
+        assert!(audition(
+            &Subject::Effect { effect: serde_json::from_str(r#"{"type":"reverb"}"#).unwrap(), source: "synth.poly".into() },
+            Some("mixx"), &[serde_json::json!(1)], &AuditionSettings::default()
+        ).unwrap_err().to_string().contains("没有参数"));
+    }
+
+    #[test]
+    fn audition_parse_value() {
+        use crate::audition::parse_value;
+        assert_eq!(parse_value("0.5"), serde_json::json!(0.5));
+        assert_eq!(parse_value("true"), serde_json::json!(true));
+        assert_eq!(parse_value(" 200 Hz "), serde_json::json!("200 Hz"));
+    }
+
+    /// 以下测试使用本机安装的 Surge XT（CLAP）；没有则跳过。
+    #[cfg(feature = "host")]
+    const SURGE: &str = "/usr/lib/clap/Surge XT.clap";
+    #[cfg(feature = "host")]
+    const SURGE_FX: &str = "/usr/lib/clap/Surge XT Effects.clap";
+    #[cfg(feature = "host")]
+    fn have(path: &str) -> bool {
+        let ok = std::path::Path::new(path).exists();
+        if !ok {
+            eprintln!("跳过：未安装 {path}");
+        }
+        ok
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn plugin_params_by_name_and_text() {
+        if !have(SURGE) {
+            return;
+        }
+        let o = crate::plugin::Opened::open(SURGE, None).unwrap();
+        // 大小写不敏感
+        let p = o.resolve("a filter 1 cutoff").unwrap().clone();
+        assert_eq!(p.name, "A Filter 1 Cutoff");
+        // 连续参数：文字交给插件解析
+        let v = o.value(&p, &serde_json::json!("1000 Hz")).unwrap();
+        assert_eq!(o.plugin.param_to_text(p.id, v).unwrap(), "1000.00 Hz");
+        // 选项参数
+        let t = o.resolve("A Filter 1 Type").unwrap().clone();
+        let v = o.value(&t, &serde_json::json!("LP 24 dB")).unwrap();
+        assert_eq!(o.plugin.param_to_text(t.id, v).unwrap(), "LP 24 dB");
+        // 错误：名称、文字、范围
+        assert!(o.resolve("A Filter 1 Cutof").unwrap_err().contains("A Filter 1 Cutoff"));
+        assert!(o.value(&t, &serde_json::json!("banana")).is_err());
+        assert!(o.value(&p, &serde_json::json!(5.0)).unwrap_err().contains("超出"));
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn plugin_option_text_fallback() {
+        // Surge XT Effects 对 FX Type 的文字解析总是返回 0；应回退为查表。
+        if !have(SURGE_FX) {
+            return;
+        }
+        let o = crate::plugin::Opened::open(SURGE_FX, None).unwrap();
+        let t = o.resolve("FX Type").unwrap().clone();
+        for name in ["Reverb 2", "Distortion", "Chorus"] {
+            let v = o.value(&t, &serde_json::json!(name)).unwrap();
+            assert_eq!(o.plugin.param_to_text(t.id, v).unwrap(), name);
+        }
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn plugin_effect_type_is_applied() {
+        // 不同 FX Type 渲染结果应不同（验证激活后预热重发生效）。
+        if !have(SURGE_FX) {
+            return;
+        }
+        use crate::audition::{audition, AuditionSettings, Subject};
+        let fx: muser_core::Effect = serde_json::from_value(serde_json::json!({ "type": "plugin", "path": SURGE_FX })).unwrap();
+        let takes = audition(
+            &Subject::Effect { effect: fx, source: "synth.poly".into() },
+            Some("FX Type"),
+            &[serde_json::json!("Delay"), serde_json::json!("Distortion")],
+            &AuditionSettings { hold_seconds: 0.5, tail_seconds: 1.0, ..Default::default() },
+        )
+        .unwrap();
+        assert_ne!(takes[0].analysis, takes[1].analysis, "{takes:?}");
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn plugin_instrument_params_and_automation() {
+        if !have(SURGE) {
+            return;
+        }
+        let mut p = auto_project(&format!("plugin:{SURGE}"), &[(48, 0.0, 8.0)], serde_json::json!([
+            { "target": "instrument", "param": "A Filter 1 Cutoff", "shape": "points", "points": [[0, "150 Hz"], [8, "6000 Hz"]] }
+        ]));
+        p.tracks[0].instrument_params = serde_json::from_value(serde_json::json!({
+            "A Filter 1 Type": "LP 24 dB", "A Osc 1 Retrigger": "On"
+        })).unwrap();
+        let a = render(&p, quiet()).unwrap();
+        assert!(seg_brightness(&a, 3 * SEC, 7 * SEC / 2) > seg_brightness(&a, SEC / 2, SEC) * 5.0, "插件 cutoff 自动化应变亮");
+        // Retrigger 开启后可复现
+        let b = render(&p, quiet()).unwrap();
+        assert_eq!(a.channel(0), b.channel(0));
+        // 错误参数名
+        p.tracks[0].automation[0].param = "A Filter 1 Cutof".into();
+        let e = crate::validate(&p).unwrap_err().to_string();
+        assert!(e.contains("automation[0]") && e.contains("A Filter 1 Cutoff"), "{e}");
     }
 }

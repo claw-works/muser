@@ -1,62 +1,65 @@
 {
-  "name": "plugins/vst-effect",
-  "tempo": 100.0,
-  "master_gain_db": -3.0,
+  "tempo": 100,
+  "master_gain_db": -3,
   "tracks": [
     {
       "name": "keys",
       "instrument": "synth.poly",
-      "gain_db": -4.0,
+      "gain_db": -4,
       "effects": [
         {
           "type": "plugin",
-          "path": "/usr/lib/vst3/Surge XT Effects.vst3"
+          "path": "/usr/lib/clap/Surge XT Effects.clap",
+          "params": {
+            "FX Type": "Reverb 2"
+          }
         }
       ],
       "clips": [
         {
-          "start": 0.0,
-          "length": 4.0,
+          "start": 0,
+          "length": 4,
           "notes": [
             {
               "pitch": 60,
-              "start": 0.0,
-              "length": 1.0,
+              "start": 0,
+              "length": 1,
               "velocity": 0.6
             },
             {
               "pitch": 64,
-              "start": 0.0,
-              "length": 1.0,
+              "start": 0,
+              "length": 1,
               "velocity": 0.6
             },
             {
               "pitch": 67,
-              "start": 0.0,
-              "length": 1.0,
+              "start": 0,
+              "length": 1,
               "velocity": 0.6
             },
             {
               "pitch": 62,
-              "start": 2.0,
-              "length": 1.0,
+              "start": 2,
+              "length": 1,
               "velocity": 0.6
             },
             {
               "pitch": 65,
-              "start": 2.0,
-              "length": 1.0,
+              "start": 2,
+              "length": 1,
               "velocity": 0.6
             },
             {
               "pitch": 69,
-              "start": 2.0,
-              "length": 1.0,
+              "start": 2,
+              "length": 1,
               "velocity": 0.6
             }
           ]
         }
       ]
     }
-  ]
+  ],
+  "name": "plugins/vst-effect"
 }

@@ -70,7 +70,7 @@ fn render_track(
         num_channels: 2,
     };
 
-    let mut inst = instrument::resolve_with(&track.instrument, &track.instrument_params)?;
+    let mut inst = instrument::resolve_for(&track.instrument, &track.instrument_params, &spec)?;
     inst.prepare(&spec);
     let channel = inst.channel();
 
