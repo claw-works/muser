@@ -1,0 +1,13 @@
+[package]
+name = "muser-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "muser 引擎适配层：把 core 模型编译成 manguebyte 的 Synth/Graph 并离线渲染为 wav"
+
+[dependencies]
+muser-core = { workspace = true }
+# 只需 manguebyte 的离线能力（dsp/formats/graph），不开 devices，保持纯离线。
+manguebyte = { workspace = true, default-features = false }
+thiserror = { workspace = true }

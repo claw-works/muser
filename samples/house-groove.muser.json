@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "name": "house-groove",
+  "tempo": 124.0,
+  "time_signature": { "numerator": 4, "denominator": 4 },
+  "master_gain_db": -2.0,
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "drums.house",
+      "gain_db": 0.0,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 8.0,
+          "notes": [
+            { "pitch": 36, "start": 0.0, "length": 0.2, "velocity": 1.0 },
+            { "pitch": 36, "start": 1.0, "length": 0.2, "velocity": 1.0 },
+            { "pitch": 36, "start": 2.0, "length": 0.2, "velocity": 1.0 },
+            { "pitch": 36, "start": 3.0, "length": 0.2, "velocity": 1.0 },
+            { "pitch": 36, "start": 4.0, "length": 0.2, "velocity": 1.0 },
+            { "pitch": 36, "start": 5.0, "length": 0.2, "velocity": 1.0 },
+            { "pitch": 36, "start": 6.0, "length": 0.2, "velocity": 1.0 },
+            { "pitch": 36, "start": 7.0, "length": 0.2, "velocity": 1.0 },
+
+            { "pitch": 39, "start": 1.0, "length": 0.2, "velocity": 0.8 },
+            { "pitch": 39, "start": 3.0, "length": 0.2, "velocity": 0.8 },
+            { "pitch": 39, "start": 5.0, "length": 0.2, "velocity": 0.8 },
+            { "pitch": 39, "start": 7.0, "length": 0.2, "velocity": 0.8 },
+
+            { "pitch": 46, "start": 0.5, "length": 0.15, "velocity": 0.6 },
+            { "pitch": 46, "start": 1.5, "length": 0.15, "velocity": 0.6 },
+            { "pitch": 46, "start": 2.5, "length": 0.15, "velocity": 0.6 },
+            { "pitch": 46, "start": 3.5, "length": 0.15, "velocity": 0.6 },
+            { "pitch": 46, "start": 4.5, "length": 0.15, "velocity": 0.6 },
+            { "pitch": 46, "start": 5.5, "length": 0.15, "velocity": 0.6 },
+            { "pitch": 46, "start": 6.5, "length": 0.15, "velocity": 0.6 },
+            { "pitch": 46, "start": 7.5, "length": 0.15, "velocity": 0.6 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bass",
+      "instrument": "synth.fm",
+      "gain_db": -3.0,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 8.0,
+          "notes": [
+            { "pitch": 33, "start": 0.25, "length": 0.4, "velocity": 0.85 },
+            { "pitch": 33, "start": 0.75, "length": 0.4, "velocity": 0.7 },
+            { "pitch": 33, "start": 1.75, "length": 0.4, "velocity": 0.8 },
+            { "pitch": 33, "start": 2.75, "length": 0.4, "velocity": 0.7 },
+            { "pitch": 33, "start": 3.25, "length": 0.4, "velocity": 0.8 },
+
+            { "pitch": 38, "start": 4.25, "length": 0.4, "velocity": 0.85 },
+            { "pitch": 38, "start": 4.75, "length": 0.4, "velocity": 0.7 },
+            { "pitch": 36, "start": 5.75, "length": 0.4, "velocity": 0.8 },
+            { "pitch": 31, "start": 6.75, "length": 0.4, "velocity": 0.8 },
+            { "pitch": 33, "start": 7.25, "length": 0.4, "velocity": 0.75 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chords",
+      "instrument": "synth.poly",
+      "gain_db": -7.0,
+      "pan": 0.15,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 8.0,
+          "notes": [
+            { "pitch": 60, "start": 0.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 64, "start": 0.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 69, "start": 0.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 60, "start": 1.5, "length": 0.6, "velocity": 0.5 },
+            { "pitch": 64, "start": 1.5, "length": 0.6, "velocity": 0.5 },
+            { "pitch": 69, "start": 1.5, "length": 0.6, "velocity": 0.5 },
+            { "pitch": 60, "start": 2.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 64, "start": 2.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 69, "start": 2.5, "length": 0.6, "velocity": 0.55 },
+
+            { "pitch": 62, "start": 4.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 65, "start": 4.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 69, "start": 4.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 62, "start": 5.5, "length": 0.6, "velocity": 0.5 },
+            { "pitch": 65, "start": 5.5, "length": 0.6, "velocity": 0.5 },
+            { "pitch": 69, "start": 5.5, "length": 0.6, "velocity": 0.5 },
+            { "pitch": 62, "start": 6.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 65, "start": 6.5, "length": 0.6, "velocity": 0.55 },
+            { "pitch": 69, "start": 6.5, "length": 0.6, "velocity": 0.55 }
+          ]
+        }
+      ]
+    }
+  ]
+}

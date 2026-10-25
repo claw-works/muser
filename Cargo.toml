@@ -1,0 +1,43 @@
+# muser 顶层 workspace
+#
+# 面向 AI 的无头（headless）编曲引擎：AI 通过结构化接口/CLI/MCP 驱动，
+# 底层音频由 vendored 的 manguebyte 提供。
+#
+# 分层：
+#   vendor/manguebyte  —— 上游音频引擎（独立 workspace，vendored 引入，通过 path 依赖使用）
+#   crates/muser-core   —— 领域模型层：Project/Track/Clip/Note 的结构化表示 + 序列化
+#   crates/muser-engine —— 引擎适配层：把 core 模型编译成 manguebyte 的 Synth/Graph 并离线渲染
+#   crates/muser-cli    —— 接口层：render 等命令，AI 通过它驱动引擎
+#
+# 注意：vendor/manguebyte 本身是一个 Cargo workspace，Cargo 不允许 workspace 嵌套，
+#       因此这里用 exclude 排除它，并在各 crate 中以 path 依赖直接引用其成员 crate。
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/muser-core",
+    "crates/muser-engine",
+    "crates/muser-cli",
+]
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["muser contributors"]
+
+[workspace.dependencies]
+# 本地 crate
+muser-core = { path = "crates/muser-core" }
+muser-engine = { path = "crates/muser-engine" }
+
+# vendored 上游引擎（path 依赖，指向其 workspace 内的成员 crate）
+manguebyte = { path = "vendor/manguebyte/crates/manguebyte", default-features = false }
+
+# 公共第三方依赖
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }

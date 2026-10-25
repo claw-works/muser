@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "name": "lofi-dusk",
+  "tempo": 85.0,
+  "time_signature": { "numerator": 4, "denominator": 4 },
+  "master_gain_db": -1.0,
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "drums.lofi",
+      "gain_db": 0.0,
+      "pan": 0.0,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 8.0,
+          "notes": [
+            { "pitch": 36, "start": 0.0, "length": 0.25, "velocity": 0.9 },
+            { "pitch": 38, "start": 1.0, "length": 0.25, "velocity": 0.8 },
+            { "pitch": 36, "start": 2.5, "length": 0.25, "velocity": 0.7 },
+            { "pitch": 38, "start": 3.0, "length": 0.25, "velocity": 0.8 },
+            { "pitch": 36, "start": 4.0, "length": 0.25, "velocity": 0.9 },
+            { "pitch": 38, "start": 5.0, "length": 0.25, "velocity": 0.8 },
+            { "pitch": 36, "start": 6.0, "length": 0.25, "velocity": 0.6 },
+            { "pitch": 36, "start": 6.5, "length": 0.25, "velocity": 0.7 },
+            { "pitch": 38, "start": 7.0, "length": 0.25, "velocity": 0.8 },
+
+            { "pitch": 42, "start": 0.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 42, "start": 0.5, "length": 0.1, "velocity": 0.35 },
+            { "pitch": 42, "start": 1.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 42, "start": 1.5, "length": 0.1, "velocity": 0.35 },
+            { "pitch": 42, "start": 2.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 42, "start": 2.5, "length": 0.1, "velocity": 0.35 },
+            { "pitch": 42, "start": 3.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 42, "start": 3.5, "length": 0.1, "velocity": 0.35 },
+            { "pitch": 42, "start": 4.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 42, "start": 4.5, "length": 0.1, "velocity": 0.35 },
+            { "pitch": 42, "start": 5.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 42, "start": 5.5, "length": 0.1, "velocity": 0.35 },
+            { "pitch": 42, "start": 6.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 42, "start": 6.5, "length": 0.1, "velocity": 0.35 },
+            { "pitch": 42, "start": 7.0, "length": 0.1, "velocity": 0.5 },
+            { "pitch": 46, "start": 7.5, "length": 0.2, "velocity": 0.45 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bass",
+      "instrument": "synth.fm",
+      "gain_db": -2.0,
+      "pan": 0.0,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 8.0,
+          "notes": [
+            { "pitch": 33, "start": 0.0, "length": 1.5, "velocity": 0.8 },
+            { "pitch": 33, "start": 2.0, "length": 1.0, "velocity": 0.7 },
+            { "pitch": 29, "start": 4.0, "length": 1.5, "velocity": 0.8 },
+            { "pitch": 31, "start": 6.0, "length": 1.5, "velocity": 0.75 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "keys",
+      "instrument": "synth.poly",
+      "gain_db": -6.0,
+      "pan": -0.2,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 8.0,
+          "notes": [
+            { "pitch": 69, "start": 0.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 72, "start": 0.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 76, "start": 0.0, "length": 2.0, "velocity": 0.5 },
+
+            { "pitch": 65, "start": 2.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 69, "start": 2.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 72, "start": 2.0, "length": 2.0, "velocity": 0.5 },
+
+            { "pitch": 64, "start": 4.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 68, "start": 4.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 71, "start": 4.0, "length": 2.0, "velocity": 0.5 },
+
+            { "pitch": 62, "start": 6.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 65, "start": 6.0, "length": 2.0, "velocity": 0.5 },
+            { "pitch": 69, "start": 6.0, "length": 2.0, "velocity": 0.5 }
+          ]
+        }
+      ]
+    }
+  ]
+}

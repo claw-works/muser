@@ -1,0 +1,4 @@
+[submodule "vendor/manguebyte"]
+	path = vendor/manguebyte
+	url = https://github.com/alessonqueirozdev-hub/manguebyte.git
+	shallow = true

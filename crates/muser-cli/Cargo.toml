@@ -1,0 +1,18 @@
+[package]
+name = "muser-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "muser 接口层：AI/用户通过 CLI 驱动引擎（render 等命令）"
+
+[[bin]]
+name = "muser"
+path = "src/main.rs"
+
+[dependencies]
+muser-core = { workspace = true }
+muser-engine = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
