@@ -118,6 +118,48 @@ struct RenderParams {
     tail: Option<f64>,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RemoveTrackParams {
+    project_id: String,
+    /// 要删除的音轨下标。
+    track_index: usize,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct UpdateTrackParams {
+    project_id: String,
+    track_index: usize,
+    /// 新增益 dB（可选）。
+    #[serde(default)]
+    gain_db: Option<f64>,
+    /// 新声像 -1~1（可选）。
+    #[serde(default)]
+    pan: Option<f64>,
+    /// 是否静音（可选）。
+    #[serde(default)]
+    muted: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ClearClipParams {
+    project_id: String,
+    track_index: usize,
+    clip_index: usize,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct LoadProjectParams {
+    /// 磁盘上的工程 JSON 路径。
+    path: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SaveProjectParams {
+    project_id: String,
+    /// 落盘路径。
+    path: String,
+}
+
 /// 工具级错误 → 用户可见的 CallToolResult::error。
 fn user_err(msg: impl Into<String>) -> CallToolResult {
     CallToolResult::error(vec![ContentBlock::text(msg.into())])
@@ -324,6 +366,113 @@ impl Muser {
                 p.output_path, seconds, peak_db
             ))),
             Err(e) => Ok(user_err(format!("渲染失败: {e}"))),
+        }
+    }
+
+    #[tool(description = "删除一条音轨（后续音轨下标前移）。")]
+    fn remove_track(
+        &self,
+        Parameters(p): Parameters<RemoveTrackParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let id = p.project_id.clone();
+        let ti = p.track_index;
+        self.with_project(&id, |proj| {
+            if ti >= proj.tracks.len() {
+                return Err(user_err(format!("track_index {ti} 越界")));
+            }
+            proj.tracks.remove(ti);
+            Ok(ok_text(format!("已删除音轨 {ti}，现有 {} 轨", proj.tracks.len())))
+        })
+    }
+
+    #[tool(description = "更新音轨属性（增益/声像/静音），只改提供的字段。")]
+    fn update_track(
+        &self,
+        Parameters(p): Parameters<UpdateTrackParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let id = p.project_id.clone();
+        let ti = p.track_index;
+        self.with_project(&id, |proj| {
+            let track = proj
+                .tracks
+                .get_mut(ti)
+                .ok_or_else(|| user_err(format!("track_index {ti} 越界")))?;
+            if let Some(g) = p.gain_db {
+                track.gain_db = g;
+            }
+            if let Some(pan) = p.pan {
+                track.pan = pan;
+            }
+            if let Some(m) = p.muted {
+                track.muted = m;
+            }
+            Ok(ok_text(format!(
+                "已更新音轨 {ti}: gain={}dB pan={} muted={}",
+                track.gain_db, track.pan, track.muted
+            )))
+        })
+    }
+
+    #[tool(description = "清空某片段内的所有音符（保留片段本身）。")]
+    fn clear_clip(
+        &self,
+        Parameters(p): Parameters<ClearClipParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let id = p.project_id.clone();
+        let (ti, ci) = (p.track_index, p.clip_index);
+        self.with_project(&id, |proj| {
+            let track = proj
+                .tracks
+                .get_mut(ti)
+                .ok_or_else(|| user_err(format!("track_index {ti} 越界")))?;
+            let clip = track
+                .clips
+                .get_mut(ci)
+                .ok_or_else(|| user_err(format!("clip_index {ci} 越界")))?;
+            let n = clip.notes.len();
+            clip.notes.clear();
+            Ok(ok_text(format!("已清空片段，移除 {n} 个音符")))
+        })
+    }
+
+    #[tool(description = "从磁盘读取一个工程 JSON 到会话，返回新的 project_id。")]
+    fn load_project(
+        &self,
+        Parameters(p): Parameters<LoadProjectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let text = match std::fs::read_to_string(&p.path) {
+            Ok(t) => t,
+            Err(e) => return Ok(user_err(format!("读取 '{}' 失败: {e}", p.path))),
+        };
+        let project = match Project::from_json(&text) {
+            Ok(proj) => proj,
+            Err(e) => return Ok(user_err(format!("解析工程 JSON 失败: {e}"))),
+        };
+        if let Err(e) = project.validate() {
+            return Ok(user_err(format!("工程校验失败: {e}")));
+        }
+        let id = self.alloc_id();
+        self.sessions.lock().unwrap().insert(id.clone(), project);
+        Ok(ok_text(format!("已载入，project_id = {id}")))
+    }
+
+    #[tool(description = "把会话中的工程写到磁盘 JSON 文件。")]
+    fn save_project(
+        &self,
+        Parameters(p): Parameters<SaveProjectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let sessions = self.sessions.lock().unwrap();
+        let proj = match sessions.get(&p.project_id) {
+            Some(proj) => proj,
+            None => return Ok(user_err(format!("找不到工程 '{}'", p.project_id))),
+        };
+        let json = match proj.to_json() {
+            Ok(j) => j,
+            Err(e) => return Ok(user_err(format!("序列化失败: {e}"))),
+        };
+        match std::fs::write(&p.path, json) {
+            Ok(()) => Ok(ok_text(format!("已保存 → {}", p.path))),
+            Err(e) => Ok(user_err(format!("写入 '{}' 失败: {e}", p.path))),
         }
     }
 

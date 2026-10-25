@@ -69,7 +69,7 @@ cargo run -p muser-cli -- instruments
 ### 4. 以 MCP server 运行（给 agent 用）
 
 ```bash
-cargo run -p muser-mcp          # stdio MCP server，暴露 10 个 tools
+cargo run -p muser-mcp          # stdio MCP server，暴露 15 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，

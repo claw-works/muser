@@ -53,7 +53,7 @@ cargo run -p muser-mcp          # 以 stdio 启动 MCP server
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（10 个）
+### 已实现的 Tools（15 个）
 
 | tool | 作用 |
 |---|---|
@@ -61,10 +61,15 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `get_project` | 取工程完整 JSON |
 | `set_project` | 用完整 JSON 整体替换工程 |
 | `validate_project` | 校验工程 |
+| `load_project` | 从磁盘读工程 JSON 到会话，返回新 `project_id` |
+| `save_project` | 把会话中的工程写到磁盘 JSON |
 | `set_tempo` | 设置速度 |
 | `add_track` | 新增音轨，返回 `track_index` |
+| `remove_track` | 删除音轨 |
+| `update_track` | 更新音轨增益/声像/静音（只改提供的字段） |
 | `add_clip` | 新增片段，返回 `clip_index` |
 | `add_notes` | 向片段加入一批音符 |
+| `clear_clip` | 清空片段内所有音符 |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
 | `list_instruments` | 列出可用乐器 |
 
