@@ -15,3 +15,4 @@
 - 音色由 .sfz 文件决定，暂不支持 `instrument_params`；需要调整时可在轨上加效果器（如 `eq`、`reverb`）。
 - 免费音色库：freepats（钢琴、吉他等）、Versilian VSCO（管弦乐）、sfzinstruments.github.io。
 - 路径是本机路径，工程换机器后需改成新位置。
+- 钢琴类音色配合延音踏板：clip 的 `pedal` 字段，见 [pedal.md](../pedal.md)。

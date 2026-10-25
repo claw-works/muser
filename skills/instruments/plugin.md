@@ -28,3 +28,4 @@
 - 加载插件会运行第三方代码，只使用可信的本机插件。
 
 陌生插件怎么摸清楚：见 [plugins.md](../plugins.md)。
+- 插件乐器收到延音踏板（CC64）：clip 的 `pedal` 字段，见 [pedal.md](../pedal.md)。

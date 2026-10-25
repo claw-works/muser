@@ -270,14 +270,14 @@ function renderMixer() {
     const tr = document.createElement("tr");
     if (n.kind === "bus") tr.classList.add("bus");
     if (changed.has(n.id)) tr.classList.add("changed");
-    const sub = n.kind === "track" ? n.instrument : "汇集送进来的信号";
+    const sub = n.kind === "track" ? shortInstrument(n.instrument) : "汇集送进来的信号";
     tr.innerHTML = `<td class="name"></td><td><input type="range" min="-60" max="12" step="0.5"></td><td class="db"></td>
       <td><canvas class="meter" width="96" height="12"></canvas></td>
       <td class="ms"><button class="m" aria-label="静音">M</button> <button class="s" aria-label="独奏">S</button></td><td class="chain-td"></td>`;
     const nameTd = tr.querySelector(".name");
     nameTd.textContent = n.name;
     if (n.kind === "bus") { const pill = document.createElement("span"); pill.className = "pill"; pill.textContent = "总线"; nameTd.appendChild(pill); }
-    const small = document.createElement("small"); small.textContent = sub + (n.gain_auto ? " · 有音量自动化（推子整体平移它）" : ""); nameTd.appendChild(small);
+    const small = document.createElement("small"); if (n.kind === "track") small.title = n.instrument; small.textContent = sub + (n.gain_auto ? " · 有音量自动化（推子整体平移它）" : ""); nameTd.appendChild(small);
     tr.querySelector("canvas").dataset.id = n.id;
     tr.querySelector(".chain-td").appendChild(chainView(n.chain, n.output, n.sends));
     const range = tr.querySelector("input"), dbTd = tr.querySelector(".db");
@@ -309,6 +309,14 @@ function renderMixer() {
   tb.appendChild(tr);
 }
 
+/** 乐器名缩短：sfz: / plugin: 只留文件名（去掉扩展名），完整路径放在悬停提示里。 */
+function shortInstrument(s) {
+  const m = /^(sfz|plugin):(.*)$/.exec(s || "");
+  if (!m) return s;
+  const [path, id] = m[2].split("#");
+  const file = path.replace(/\/+$/, "").split("/").pop().replace(/\.(sfz|clap|vst3|lv2|so)$/i, "");
+  return `${m[1]}: ${file}${id && m[1] === "plugin" ? "" : ""}`;
+}
 const FX_COLORS = { eq: "#5b9bff", compressor: "#ffa04d", limiter: "#ff6b6b", reverb: "#b18cff", delay: "#58d6c8",
   chorus: "#86df98", phaser: "#86df98", flanger: "#86df98", plugin: "#e6b8ff" };
 const fxColor = (t) => FX_COLORS[t] || "#c0c4cc";

@@ -147,7 +147,7 @@ muser/
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — 三层架构、数据流、工程文件格式、vendored 策略、路线图
 - [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（总入口：工作流、速查、乐器与效果器索引）
-- [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误
+- [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误；自动化、路由、延音踏板
 - [TOOLS.md](TOOLS.md) — CLI 命令与 MCP tools 清单
 - [samples/](samples/) — 分组示范工程（风格曲、音源、调音、效果器、自动化、路由、插件）
 

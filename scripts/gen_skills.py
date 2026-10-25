@@ -550,6 +550,69 @@ def automation_page():
     return "".join(lines)
 
 
+PEDAL_EXAMPLES = [
+    ("钢琴分解和弦：每小节一次切分踏板", "音符按谱上的实际时值（十六分音符短促弹奏），延音全靠踏板；新小节第一个音弹下约 0.1 拍后才踩下，"
+     "前一个区间延续到这一刻稍后（4.03）才抬起——换和弦时既不断音也不糊。", {
+        "start": 0, "length": 8, "pedal": [[0.1, 4.03], [4.1, 8.0]],
+        "notes": [{"pitch": p, "start": i * 0.25, "length": 0.2} for i, p in enumerate([48, 52, 55, 60, 64, 55, 60, 64] * 2)]
+                 + [{"pitch": p, "start": 4 + i * 0.25, "length": 0.2} for i, p in enumerate([48, 50, 57, 62, 65, 57, 62, 65] * 2)]}),
+    ("和弦长音：弹一下就放，踏板延音到下一个和弦", "左手只按很短的时值，踏板让和弦持续一整小节；第 3 小节不踩，和弦干脆地断开（对比）。", {
+        "start": 0, "length": 12, "pedal": [[0.05, 3.95], [4.05, 7.95]],
+        "notes": [{"pitch": p, "start": s, "length": 0.5} for s, ch in ((0, [48, 55, 64]), (4, [45, 52, 60]), (8, [41, 48, 57])) for p in ch]}),
+    ("一直踩着：营造朦胧的混响感（德彪西式）", "整段不换踏板，所有音叠在一起；只适合同一和声或刻意制造的音响，和弦一变就会糊。", {
+        "start": 0, "length": 8, "pedal": [[0, 8]],
+        "notes": [{"pitch": p, "start": i * 0.5, "length": 0.4} for i, p in enumerate([72, 74, 76, 79, 81, 79, 76, 74] * 2)]}),
+]
+
+
+def pedal_page():
+    lines = [HEADER, """# 延音踏板（pedal）
+
+clip 的 `pedal` 是延音踏板（MIDI CC64）**踩下的区间**列表：`[[起, 止], ...]`，单位拍，相对 clip 起点，按时间递增、互不重叠。
+
+- 踩下期间松开的键继续发声，踏板抬起时一起进入释音；踩着时按下的新音同样被保持。
+- 支持：内置合成器（`poly.*`、`synth.*`、电钢、弦乐等）、SFZ 采样器（`sfz:`）、插件乐器（`plugin:`，转发 CC64，由插件处理）。鼓组忽略。
+- 同一时刻的顺序：松键 → 抬踏板 → 踩踏板 → 按新音。所以"前一区间在 4.0 结束、下一区间从 4.0 开始"也能正确换踏板。
+- 区间超出 clip 末尾时截到 clip 结束；写错（倒序、重叠、起点超出 clip）会报出位置，如 `tracks[0].clips[0].pedal[1]`。
+- MCP：`add_clip` 可带 `pedal`，或用 `set_pedal` 整体替换某个 clip 的踏板。
+
+## 怎么踩
+
+- **音符写真实时值，延音交给踏板**。不要把每个音拉长来模拟踏板：真踏板下，抬起时所有音一起停，听感更像钢琴。
+- **换和弦就换踏板**，用切分踏板（legato pedal）：新和弦的第一个音弹下之后（约 0.05–0.1 拍）再踩下，前一个区间延续到这一刻稍后才抬起。
+  先抬后弹会断音；弹之前就踩下会把旧和弦带进来。
+- 同一和声里可以一直踩；和声一变就必须换，否则会糊。
+- 低音区比高音区更容易糊：低音走动快的段落，换得更勤，或只在长音上踩。
+- 断奏、跳音的段落不踩。
+- 电钢、pad 也可以用踏板保持和弦；合成器的 release 很长时，踏板的效果就不明显。
+- 踏板只延长已弹下的音，不模拟没弹的弦的共鸣；需要更开阔的感觉时，再加一点混响（发送到混响总线）。
+
+## 示例
+
+每个示例是一个 clip（放进音轨的 `clips` 里），都经过 `muser validate` 校验：
+"""]
+    clips = []
+    for title, desc, clip in PEDAL_EXAMPLES:
+        clips.append(clip)
+        shown = dict(clip)
+        n = len(shown["notes"])
+        shown["notes"] = shown["notes"][:3] + ["…"] if n > 3 else shown["notes"]
+        text = json.dumps(shown, ensure_ascii=False).replace('"…"', "…")
+        lines.append(f"\n### {title}\n\n{desc}\n\n```json\n{text}\n```\n\n（共 {n} 个音符）\n")
+    project = {"tempo": 72, "tracks": [{"instrument": "poly.polysynth_piano", "clips": clips}]}
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(project, f)
+        path = f.name
+    try:
+        r = subprocess.run([MUSER, "validate", path], capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit(f"踏板示例未通过校验:\n{r.stderr}")
+    finally:
+        os.unlink(path)
+    lines.append("\n完整示范：`samples/songs/bach-prelude-c`（巴赫 C 大调前奏曲，每小节切分换踏板）。\n")
+    return "".join(lines)
+
+
 def sfz_page():
     return HEADER + """# 乐器：SFZ 采样音色库
 
@@ -566,6 +629,7 @@ def sfz_page():
 - 音色由 .sfz 文件决定，暂不支持 `instrument_params`；需要调整时可在轨上加效果器（如 `eq`、`reverb`）。
 - 免费音色库：freepats（钢琴、吉他等）、Versilian VSCO（管弦乐）、sfzinstruments.github.io。
 - 路径是本机路径，工程换机器后需改成新位置。
+- 钢琴类音色配合延音踏板：clip 的 `pedal` 字段，见 [pedal.md](../pedal.md)。
 """
 
 
@@ -598,6 +662,7 @@ def plugin_page():
 - 加载插件会运行第三方代码，只使用可信的本机插件。
 
 陌生插件怎么摸清楚：见 [plugins.md](../plugins.md)。
+- 插件乐器收到延音踏板（CC64）：clip 的 `pedal` 字段，见 [pedal.md](../pedal.md)。
 """
 
 
@@ -950,6 +1015,8 @@ def main():
         f.write(plugins_guide_page())
     with open(os.path.join(OUT, "routing.md"), "w") as f:
         f.write(routing_page())
+    with open(os.path.join(OUT, "pedal.md"), "w") as f:
+        f.write(pedal_page())
     # 内置插件画像 → skills/plugins/<name>.md
     pdir = os.path.join(OUT, "plugins")
     os.makedirs(pdir, exist_ok=True)
@@ -961,7 +1028,7 @@ def main():
             md = md.replace("> 来源：画像文件", "> 来源：muser 内置").replace("> Source: profile file", "> Source: bundled with muser")
             with open(os.path.join(pdir, f[:-5] + ".md"), "w") as out:
                 out.write(HEADER.replace("参数表来自代码描述表", "内容来自 profiles/" + f) + md)
-    print(f"已生成 {len(EFFECTS)} 个效果器页、{len(FAMILY_PAGES) + 3} 个乐器页、自动化页、路由页（{len(ROUTING_EXAMPLES)} 个示例）；{count} 个场景预设/调音/自动化示例通过校验")
+    print(f"已生成 {len(EFFECTS)} 个效果器页、{len(FAMILY_PAGES) + 3} 个乐器页、自动化页、路由页（{len(ROUTING_EXAMPLES)} 个示例）、踏板页；{count} 个场景预设/调音/自动化示例通过校验")
 
 
 if __name__ == "__main__":
