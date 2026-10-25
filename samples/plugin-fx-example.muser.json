@@ -1,0 +1,25 @@
+{
+  "name": "plugin-fx-example",
+  "tempo": 100.0,
+  "master_gain_db": -3.0,
+  "tracks": [
+    {
+      "name": "keys",
+      "instrument": "synth.poly",
+      "gain_db": -4.0,
+      "effects": [
+        { "type": "plugin", "path": "/usr/lib/vst3/Surge XT Effects.vst3" }
+      ],
+      "clips": [
+        { "start": 0.0, "length": 4.0, "notes": [
+          { "pitch": 60, "start": 0.0, "length": 1.0, "velocity": 0.6 },
+          { "pitch": 64, "start": 0.0, "length": 1.0, "velocity": 0.6 },
+          { "pitch": 67, "start": 0.0, "length": 1.0, "velocity": 0.6 },
+          { "pitch": 62, "start": 2.0, "length": 1.0, "velocity": 0.6 },
+          { "pitch": 65, "start": 2.0, "length": 1.0, "velocity": 0.6 },
+          { "pitch": 69, "start": 2.0, "length": 1.0, "velocity": 0.6 }
+        ]}
+      ]
+    }
+  ]
+}

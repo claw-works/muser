@@ -27,6 +27,20 @@
 依次渲染这些工程并对比试听，即可体验 muser 的内置效果器链
 （reverb / delay / chorus / eq / limiter）。
 
+## 外置 VST 效果器示例
+
+`plugin-fx-example.muser.json` 演示用 `plugin` 效果器加载**本机的第三方 VST3/CLAP**
+（示例里用的是 `Surge XT Effects.vst3`）。它的 `path` 是本机绝对路径，**换台机器需改成
+你自己的插件路径**。
+
+需要用 `host` 特性构建才能加载：
+
+```bash
+cargo run -p muser-cli --features host -- render samples/plugin-fx-example.muser.json -o out.wav
+```
+
+未启用 `host` 特性时渲染会报 `HostDisabled`；路径不存在会报 `PluginLoad`。
+
 ## 如何重新渲染
 
 ```bash

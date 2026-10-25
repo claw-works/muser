@@ -203,7 +203,8 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 轨增益、等功率声像、主增益、结尾余响
 - 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter，可挂到轨级或主总线
 - 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
-  （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor
+  （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor。
+  已用真实插件验证：加载本机 `Surge XT Effects.vst3`，输出与无插件对照显著不同。
 - MCP server（`muser-mcp`）：15 个 tools（工程生命周期 + 增量编辑 + 磁盘读写 + 渲染），stdio 运行
 
 尚未实现（路线图）：
