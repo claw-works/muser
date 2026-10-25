@@ -10,6 +10,8 @@
 //! - `effects [name] [--json]`              列出效果器 / 查看某效果器参数
 //! - `new [-o project.json]`                生成一个示例工程 JSON（供 AI 参考格式）
 
+mod view;
+
 use std::fs;
 
 use anyhow::{Context, Result};
@@ -110,6 +112,27 @@ enum Command {
         /// 以 JSON 输出。
         #[arg(long)]
         json: bool,
+    },
+    /// 生成给人看的播放页：时间线、成品/分轨播放、分轨音量与静音。
+    /// 默认输出单文件静态 HTML；--serve 起本地服务，与引擎联动（改动重新渲染、保存回工程、文件变化自动刷新）。
+    View {
+        /// 工程文件路径。
+        project: String,
+        /// 输出 HTML 路径（默认与工程同名 .html）。
+        #[arg(short, long)]
+        output: Option<String>,
+        /// 起本地联动服务（只监听 127.0.0.1）。
+        #[arg(long)]
+        serve: bool,
+        /// --serve 的端口。
+        #[arg(long, default_value_t = 8737)]
+        port: u16,
+        /// 采样率。
+        #[arg(long, default_value_t = 48_000)]
+        sample_rate: u32,
+        /// 结尾余响秒数。
+        #[arg(long, default_value_t = 2.0)]
+        tail: f64,
     },
     /// 打印工程的信号流：每条音轨/总线送到哪里、发送量、侧链、处理顺序。
     Routing {
@@ -253,6 +276,21 @@ fn main() -> Result<()> {
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::Routing { project } => cmd_routing(&project),
+        Command::View { project, output, serve, port, sample_rate, tail } => {
+            let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
+            if serve {
+                view::serve(&project, settings, port)
+            } else {
+                let out = output.unwrap_or_else(|| {
+                    let base = project.strip_suffix(".json").unwrap_or(&project);
+                    format!("{}.html", base.strip_suffix(".muser").unwrap_or(base))
+                });
+                let p = load_project(&project)?;
+                let (bytes, stems) = view::write_static(&p, settings, &out)?;
+                println!("已生成 {out}（{:.1} MB，成品 + {stems} 条分轨），用浏览器打开即可", bytes as f64 / 1e6);
+                Ok(())
+            }
+        }
         Command::Plugin { command } => cmd_plugin(command),
         Command::Audition { instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json } => {
             cmd_audition(instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json)

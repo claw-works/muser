@@ -13,3 +13,6 @@ samples/**/*.wav
 
 # 插件状态文件：与插件版本、平台绑定，由 scripts/render_samples.sh 现场生成
 *.muserstate
+
+# muser view 生成的播放页（内嵌音频，体积大）
+samples/**/*.html

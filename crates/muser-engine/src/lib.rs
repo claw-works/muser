@@ -17,7 +17,9 @@ pub use instrument::{
     describe as describe_instrument, InstrumentInfo, NoteConvention, TrackInstrument,
 };
 pub use params::Automatable;
-pub use render::{render, render_to_wav, EngineError, RenderSettings};
+/// 渲染结果用的立体声缓冲（来自 manguebyte）。
+pub use manguebyte::prelude::AudioBuffer;
+pub use render::{render, render_to_wav, render_with_stems, EngineError, Rendered, RenderSettings, Stem};
 
 /// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
 /// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。
@@ -939,5 +941,26 @@ mod tests {
         let mut bad = p.clone();
         bad.tracks[0].effects.push(serde_json::from_value(serde_json::json!({ "type": "compressor", "sidechain": "grp" })).unwrap());
         assert!(crate::validate(&bad).unwrap_err().to_string().contains("环"));
+    }
+
+    #[test]
+    fn stems_sum_to_master_input() {
+        // 无主总线效果、主增益 0：stem 之和应等于成品。
+        let p = proj(serde_json::json!({ "tempo": 120,
+            "buses": [{ "name": "verb", "effects": [{ "type": "reverb", "mix": 1.0 }] }, { "name": "grp", "gain_db": -3 }],
+            "tracks": [
+                { "name": "a", "instrument": "synth.poly", "sends": { "verb": -6 }, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 1 }] }] },
+                { "name": "b", "instrument": "drums.909", "output": "grp", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 36, "start": 0, "length": 0.2 }] }] },
+                { "name": "c", "instrument": "synth.poly", "muted": true, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 64, "start": 0, "length": 1 }] }] } ] }));
+        let r = render_with_stems(&p, quiet()).unwrap();
+        let labels: Vec<_> = r.stems.iter().map(|s| s.label.as_str()).collect();
+        assert_eq!(labels, ["a", "verb", "grp"], "b 经 grp、c 静音，不单独成 stem");
+        for ch in 0..2 {
+            for f in (0..r.mix.num_frames()).step_by(97) {
+                let sum: f32 = r.stems.iter().map(|s| s.audio.channel(ch)[f]).sum();
+                assert!((sum - r.mix.channel(ch)[f]).abs() < 1e-5);
+            }
+        }
+        assert_eq!(render(&p, quiet()).unwrap().channel(0), r.mix.channel(0));
     }
 }

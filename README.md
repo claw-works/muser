@@ -23,7 +23,7 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 - 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)，扫描本机插件、按参数名 + 文字设置参数、参数自动化（`host` 特性）
 - 试听：`muser audition` 按参数取值逐个渲染，报告响度、亮度、起音、余音，帮 AI 摸清陌生参数
 - 插件画像：把插件使用经验（别名、预设、试听结论）存成可分享的数据文件；插件音色可存为状态文件
-- 离线渲染为 WAV
+- 离线渲染为 WAV；`muser view` 生成给人看的播放页（时间线、分轨音量/静音），`--serve` 与引擎联动
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 
 ## 快速上手
@@ -76,6 +76,11 @@ muser effects reverb
 
 # 查看信号流（总线、发送、侧链）
 muser routing song.muser.json
+
+# 给人听：生成播放页（时间线 + 分轨音量/静音），浏览器打开
+muser view song.muser.json -o song.html
+# 或与引擎联动：页面上调音量 → 重新渲染 → 保存回工程；AI 改了工程，页面自动刷新
+muser view song.muser.json --serve      # http://127.0.0.1:8737/
 ```
 
 > 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。

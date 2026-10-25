@@ -119,6 +119,13 @@
 - 哪些参数能自动化：`muser instruments <名称>` 里标了 `[可自动化]` / `[可自动化·下个音生效]`；插件参数用插件参数名，取值可写文字。
 - 完整说明与示例：[skills/automation.md](skills/automation.md)。
 
+## 给人听：muser view
+
+做完一版后，可以生成播放页给人听、让人调音量：`muser view song.muser.json -o song.html`
+（或 `--serve` 起本地联动服务，人在页面上点「保存」会直接改工程的 `gain_db` / `muted`）。
+人复制给你的改动 JSON 形如 `{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`：
+按 `node` 把对应音轨/总线的字段改成给出的值即可（MCP：`update_track` / `set_bus`）。
+
 ## 混音路由：总线、发送、侧链
 
 默认每条轨直接进主总线。要让几条轨"一起处理"或"共用一个效果"，用工程的 `buses`：

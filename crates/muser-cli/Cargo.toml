@@ -15,7 +15,9 @@ muser-core = { workspace = true }
 muser-engine = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+tiny_http = "=0.12.0"
 
 [features]
 default = []

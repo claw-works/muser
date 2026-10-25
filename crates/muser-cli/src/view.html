@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muser view</title>
+<style>
+  :root {
+    --bg: #15171c; --panel: #1e2129; --line: #2c313c; --text: #e6e8ee; --dim: #9aa1b2;
+    --accent: #5ac8fa; --warn: #ffb454; --err: #ff6b6b; --ok: #7bd88f; --clip: #2f4f6f; --note: #8fd3ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+  header { padding: 12px 18px; display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; }
+  .meta { color: var(--dim); }
+  .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim); }
+  .badge.live { color: var(--ok); border-color: var(--ok); }
+  .banner { margin: 10px 18px 0; padding: 8px 12px; border-radius: 6px; display: none; white-space: pre-wrap; }
+  .banner.err { display: block; background: #3a1f24; color: var(--err); }
+  .banner.info { display: block; background: #2b2a1f; color: var(--warn); }
+  .transport { display: flex; gap: 10px; align-items: center; padding: 10px 18px; flex-wrap: wrap; }
+  button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.on { background: var(--accent); color: #0b1720; border-color: var(--accent); }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  .time { font-variant-numeric: tabular-nums; min-width: 150px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  label.inline { display: inline-flex; gap: 6px; align-items: center; color: var(--dim); }
+  #timeline-wrap { padding: 0 18px; }
+  #timeline { width: 100%; display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 14px 18px 30px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  h2 { font-size: 14px; color: var(--dim); font-weight: 600; margin: 0 0 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  td.name { white-space: nowrap; }
+  td.name small { display: block; color: var(--dim); font-size: 12px; }
+  tr.bus td.name { color: var(--accent); }
+  tr.changed td.name::before { content: "● "; color: var(--warn); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .db { font-variant-numeric: tabular-nums; width: 76px; white-space: nowrap; text-align: right; color: var(--dim); }
+  .ms button { padding: 2px 8px; font-size: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+  pre { margin: 8px 0 0; padding: 8px; background: #111318; border-radius: 4px; max-height: 240px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .hint { color: var(--dim); font-size: 12px; margin: 6px 0 0; }
+  #loading { padding: 40px 18px; color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">muser view</h1>
+  <span class="meta" id="meta"></span>
+  <span class="badge" id="mode-badge"></span>
+</header>
+<div class="banner" id="banner" role="status" aria-live="polite"></div>
+<div id="loading">加载音频中…</div>
+<div id="app" hidden>
+  <div class="transport">
+    <button id="play" aria-label="播放/暂停（空格）">▶ 播放</button>
+    <button id="stop" aria-label="回到开头">■</button>
+    <span class="time" id="time">0:00.0 / 0:00.0</span>
+    <label class="inline"><input type="checkbox" id="loop"> 循环</label>
+    <span class="seg" role="group" aria-label="监听来源">
+      <button id="mode-mix" class="on" title="引擎渲染的完整成品（含主总线效果）">成品</button>
+      <button id="mode-stems" title="各分轨在浏览器里相加，推子即时生效">分轨预览</button>
+    </span>
+    <label class="inline">监听音量 <input type="range" id="monitor" min="-40" max="6" step="0.5" value="0" style="width:120px" aria-label="监听音量"> <span class="db" id="monitor-db">0.0 dB</span></label>
+  </div>
+  <div id="timeline-wrap"><canvas id="timeline" aria-label="时间线：点击跳转"></canvas></div>
+  <main>
+    <section>
+      <h2>混音</h2>
+      <table>
+        <thead><tr><th>名称</th><th style="width:45%">音量 gain_db</th><th></th><th>静音/独奏</th></tr></thead>
+        <tbody id="mixer"></tbody>
+      </table>
+      <p class="hint" id="mixer-hint"></p>
+    </section>
+    <aside class="panel">
+      <h2>改动</h2>
+      <div id="changes-empty" class="hint">还没有改动。拖推子、点 M 静音试试。</div>
+      <pre id="changes" hidden></pre>
+      <div class="row">
+        <button id="apply" class="primary" hidden>应用并重新渲染</button>
+        <button id="save" hidden>保存到工程文件</button>
+        <button id="copy">复制改动 JSON</button>
+        <button id="reset">重置</button>
+      </div>
+      <p class="hint" id="changes-hint"></p>
+    </aside>
+  </main>
+</div>
+<script>
+"use strict";
+const EMBEDDED = /*MUSER_DATA*/null;
+const SERVE = EMBEDDED === null;
+const $ = (id) => document.getElementById(id);
+const dbToGain = (db) => Math.pow(10, db / 20);
+const fmtTime = (s) => { const m = Math.floor(s / 60); return `${m}:${(s - m * 60).toFixed(1).padStart(4, "0")}`; };
+const fmtDb = (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
+
+let data = null;          // 工程摘要 + 音频地址
+let mixBuf = null, stemBufs = [];
+let ctx = null, monitorGain = null, stemsBus = null;
+let sources = [], stemGains = [];
+let playing = false, startAt = 0, pausedAt = 0;
+let mode = "mix";
+let edits = {};           // node id -> { gain_db?, muted? }
+let solo = new Set();     // node id（只对分轨）
+let waveform = null;
+
+function banner(text, kind) {
+  const b = $("banner");
+  b.className = "banner" + (text ? " " + kind : "");
+  b.textContent = text || "";
+}
+
+async function decode(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`读取音频失败: ${url}`);
+  const bytes = await res.arrayBuffer();
+  return await ctx.decodeAudioData(bytes);
+}
+
+async function load(payload) {
+  if (!ctx) {
+    ctx = new AudioContext();
+    monitorGain = ctx.createGain();
+    monitorGain.connect(ctx.destination);
+  }
+  const mix = await decode(payload.mix);
+  const stems = [];
+  for (const s of payload.stems) stems.push(await decode(s.url));
+  const pos = position();
+  const wasPlaying = playing;
+  stopSources();
+  data = payload; mixBuf = mix; stemBufs = stems;
+  edits = {}; solo = new Set();
+  // 新版本已经包含改动：回到引擎渲染的成品。
+  mode = "mix"; $("mode-mix").classList.add("on"); $("mode-stems").classList.remove("on");
+  computeWaveform();
+  renderHeader(); renderMixer(); renderChanges(); drawTimeline();
+  pausedAt = Math.min(pos, duration());
+  if (wasPlaying) play(pausedAt);
+  $("loading").hidden = true; $("app").hidden = false;
+}
+
+// ---------- 播放 ----------
+function duration() { return mixBuf ? mixBuf.duration : 0; }
+function position() {
+  if (!playing) return pausedAt;
+  let p = ctx.currentTime - startAt;
+  if ($("loop").checked) p = p % duration();
+  return Math.min(p, duration());
+}
+function stopSources() {
+  for (const s of sources) { try { s.stop(); } catch (_) {} s.disconnect(); }
+  sources = []; stemGains = [];
+  if (stemsBus) { stemsBus.disconnect(); stemsBus = null; }
+  playing = false;
+}
+function makeSource(buf, dest) {
+  const s = ctx.createBufferSource();
+  s.buffer = buf;
+  s.loop = $("loop").checked;
+  s.connect(dest);
+  return s;
+}
+function play(at) {
+  stopSources();
+  if (ctx.state === "suspended") ctx.resume();
+  if (mode === "mix") {
+    sources.push(makeSource(mixBuf, monitorGain));
+  } else {
+    stemsBus = ctx.createGain();
+    stemsBus.gain.value = dbToGain(data.master_gain_db);
+    stemsBus.connect(monitorGain);
+    data.stems.forEach((s, i) => {
+      const g = ctx.createGain();
+      g.connect(stemsBus);
+      stemGains[i] = g;
+      sources.push(makeSource(stemBufs[i], g));
+    });
+    updateStemGains();
+  }
+  const t = ctx.currentTime + 0.03;
+  for (const s of sources) s.start(t, at);
+  startAt = t - at;
+  playing = true;
+  $("play").textContent = "❚❚ 暂停";
+}
+function pause() {
+  pausedAt = position();
+  stopSources();
+  $("play").textContent = "▶ 播放";
+}
+function seek(t) {
+  pausedAt = Math.max(0, Math.min(t, duration()));
+  if (playing) play(pausedAt);
+  drawTimeline();
+}
+function setMode(m) {
+  mode = m;
+  $("mode-mix").classList.toggle("on", m === "mix");
+  $("mode-stems").classList.toggle("on", m === "stems");
+  if (playing) play(position());
+  renderMixerHint();
+}
+function tick() {
+  if (playing && !$("loop").checked && position() >= duration()) { pause(); pausedAt = 0; }
+  $("time").textContent = `${fmtTime(position())} / ${fmtTime(duration())}`;
+  drawTimeline();
+  requestAnimationFrame(tick);
+}
+
+// ---------- 混音状态 ----------
+function nodeById(id) { return data.nodes.find((n) => n.id === id); }
+function current(n) {
+  const e = edits[n.id] || {};
+  return { gain_db: e.gain_db ?? n.gain_db, muted: e.muted ?? n.muted };
+}
+function setEdit(n, key, value) {
+  const e = edits[n.id] || (edits[n.id] = {});
+  if (value === n[key]) delete e[key]; else e[key] = value;
+  if (Object.keys(e).length === 0) delete edits[n.id];
+  // 分轨上的改动即时可听：自动切到分轨预览。
+  if (n.stem !== null && mode === "mix" && Object.keys(edits).length) setMode("stems");
+  updateStemGains(); renderChanges();
+  const row = document.querySelector(`tr[data-id="${CSS.escape(n.id)}"]`);
+  if (row) row.classList.toggle("changed", !!edits[n.id]);
+}
+function updateStemGains() {
+  if (!stemGains.length) return;
+  data.stems.forEach((s, i) => {
+    const n = nodeById(s.node);
+    const c = current(n);
+    const delta = c.gain_db - n.gain_db;
+    // 工程里已静音的节点没有分轨，这里的 n 都是渲染时在发声的。
+    let g = c.muted ? 0 : dbToGain(delta);
+    if (solo.size && !solo.has(n.id)) g = 0;
+    stemGains[i].gain.setTargetAtTime(g, ctx.currentTime, 0.01);
+  });
+}
+
+// ---------- 界面 ----------
+function renderHeader() {
+  $("title").textContent = data.name || "muser view";
+  $("meta").textContent = `${data.tempo} BPM · ${data.time_signature} · ${fmtTime(data.seconds)} · ${data.nodes.filter((n) => n.kind === "track").length} 轨` +
+    (data.project_path ? ` · ${data.project_path}` : "");
+  const badge = $("mode-badge");
+  badge.textContent = SERVE ? `联动 · 版本 ${data.version}` : "静态快照";
+  badge.classList.toggle("live", SERVE);
+  $("apply").hidden = !SERVE; $("save").hidden = !SERVE;
+  if (data.error) banner("渲染失败（仍在播放上一版）：\n" + data.error, "err"); else banner("", "");
+}
+
+function renderMixer() {
+  const tb = $("mixer");
+  tb.innerHTML = "";
+  for (const n of data.nodes) {
+    const tr = document.createElement("tr");
+    tr.dataset.id = n.id;
+    if (n.kind === "bus") tr.classList.add("bus");
+    const live = n.stem !== null;            // 有分轨：推子即时可听
+    const editable = live || SERVE;
+    const c = current(n);
+    const sub = n.kind === "track"
+      ? `${n.instrument} → ${n.output}${Object.keys(n.sends).length ? " · 发送 " + Object.keys(n.sends).join(", ") : ""}`
+      : `总线 → ${n.output}${n.effects.length ? " · " + n.effects.join(" → ") : ""}`;
+    tr.innerHTML = `<td class="name"></td><td><input type="range" min="-60" max="12" step="0.5"></td><td class="db"></td>
+      <td class="ms"><button class="m" aria-label="静音">M</button> <button class="s" aria-label="独奏">S</button></td>`;
+    const nameTd = tr.querySelector(".name");
+    nameTd.textContent = n.kind === "bus" ? `[${n.name}]` : n.name;
+    const small = document.createElement("small"); small.textContent = sub; nameTd.appendChild(small);
+    const range = tr.querySelector("input"), dbTd = tr.querySelector(".db");
+    range.value = c.gain_db; range.disabled = !editable;
+    range.setAttribute("aria-label", `${n.name} 音量`);
+    if (!editable) range.title = "经过总线的音轨没有单独分轨，静态页里不能即时调；用 muser view --serve 可以";
+    dbTd.textContent = fmtDb(c.gain_db);
+    range.addEventListener("input", () => { dbTd.textContent = fmtDb(+range.value); setEdit(n, "gain_db", +range.value); });
+    range.addEventListener("dblclick", () => { range.value = n.gain_db; range.dispatchEvent(new Event("input")); });
+    const mb = tr.querySelector(".m"), sb = tr.querySelector(".s");
+    mb.classList.toggle("on", c.muted); mb.disabled = !editable;
+    mb.addEventListener("click", () => { const v = !current(n).muted; mb.classList.toggle("on", v); setEdit(n, "muted", v); });
+    sb.disabled = !live;
+    sb.title = live ? "只听这一路（预览用，不写入工程）" : "只有直接进主总线的音轨/总线能独奏";
+    sb.addEventListener("click", () => {
+      if (solo.has(n.id)) solo.delete(n.id); else solo.add(n.id);
+      sb.classList.toggle("on", solo.has(n.id));
+      if (mode === "mix") setMode("stems"); else updateStemGains();
+    });
+    tr.classList.toggle("changed", !!edits[n.id]);
+    tb.appendChild(tr);
+  }
+  renderMixerHint();
+}
+
+function renderMixerHint() {
+  const notes = [];
+  if (mode === "stems") {
+    notes.push("分轨预览：各分轨在浏览器里相加，推子即时生效。");
+    if (data.master_effects.length) notes.push(`不含主总线效果（${data.master_effects.join(" → ")}），响度与成品会有差别，以成品为准。`);
+    notes.push("推子只改音量，不改变侧链被压的深度。");
+  } else {
+    notes.push("成品：引擎渲染的完整混音。拖动有分轨的推子会自动切到分轨预览。");
+  }
+  if (data.nodes.some((n) => n.stem === null))
+    notes.push(SERVE ? "经过总线的音轨：改完点「应用并重新渲染」后生效。" : "经过总线的音轨在静态页里不能即时调（用 --serve 模式）。");
+  $("mixer-hint").textContent = notes.join(" ");
+}
+
+function changeList() {
+  return Object.entries(edits).map(([id, e]) => ({ node: id, name: nodeById(id).name, ...e }));
+}
+function renderChanges() {
+  const list = changeList();
+  $("changes-empty").hidden = list.length > 0;
+  $("changes").hidden = list.length === 0;
+  $("changes").textContent = list.map((c) => {
+    const n = nodeById(c.node), parts = [];
+    if ("gain_db" in c) parts.push(`gain_db ${n.gain_db} → ${c.gain_db}`);
+    if ("muted" in c) parts.push(`muted ${n.muted} → ${c.muted}`);
+    return `${c.node}（${c.name}）: ${parts.join("，")}`;
+  }).join("\n");
+  $("save").textContent = list.length ? "应用并保存到工程文件" : "保存到工程文件";
+  $("apply").disabled = list.length === 0;
+  $("save").disabled = list.length === 0 && !data.dirty;
+  $("changes-hint").textContent = SERVE
+    ? (data.dirty ? "已应用但未保存到文件。" : "")
+    : "静态页不能改工程：复制改动 JSON 交给 AI，或用 muser view --serve 直接保存。";
+}
+
+// ---------- 时间线 ----------
+function computeWaveform() {
+  const w = 2000, L = mixBuf.getChannelData(0), R = mixBuf.numberOfChannels > 1 ? mixBuf.getChannelData(1) : L;
+  const per = Math.max(1, Math.floor(L.length / w)), peaks = new Float32Array(w);
+  for (let i = 0; i < w; i++) {
+    let m = 0;
+    for (let j = i * per, e = Math.min(L.length, j + per); j < e; j += 4) m = Math.max(m, Math.abs(L[j]), Math.abs(R[j]));
+    peaks[i] = m;
+  }
+  waveform = peaks;
+}
+function drawTimeline() {
+  if (!data) return;
+  const cv = $("timeline"), dpr = window.devicePixelRatio || 1;
+  const tracks = data.nodes.filter((n) => n.kind === "track");
+  const rowH = 30, waveH = 56, rulerH = 18, H = rulerH + waveH + tracks.length * rowH + 6;
+  const W = cv.clientWidth;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + "px";
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const secPerBeat = 60 / data.tempo, total = duration();
+  const xOfBeat = (b) => (b * secPerBeat) / total * W;
+  // 小节线
+  g.font = "11px system-ui"; g.textBaseline = "middle";
+  for (let bar = 0; bar * data.beats_per_bar * secPerBeat < total; bar++) {
+    const x = xOfBeat(bar * data.beats_per_bar);
+    g.fillStyle = "#2c313c"; g.fillRect(x, rulerH, 1, H - rulerH);
+    g.fillStyle = "#9aa1b2"; g.fillText(String(bar + 1), x + 3, rulerH / 2);
+  }
+  // 曲尾（余响区）
+  const endX = xOfBeat(data.duration_beats);
+  g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(endX, rulerH, W - endX, H - rulerH);
+  // 波形
+  const mid = rulerH + waveH / 2;
+  g.fillStyle = "#5ac8fa88";
+  for (let x = 0; x < W; x++) {
+    const p = waveform[Math.floor(x / W * waveform.length)] || 0;
+    const h = Math.min(1, p) * (waveH / 2 - 2);
+    g.fillRect(x, mid - h, 1, h * 2 || 1);
+  }
+  // 音轨行
+  tracks.forEach((t, i) => {
+    const y = rulerH + waveH + i * rowH;
+    const muted = current(t).muted;
+    g.globalAlpha = muted ? 0.35 : 1;
+    let lo = 127, hi = 0;
+    for (const c of t.clips) for (const n of c.notes) { lo = Math.min(lo, n[2]); hi = Math.max(hi, n[2]); }
+    const span = Math.max(1, hi - lo);
+    for (const c of t.clips) {
+      const x0 = xOfBeat(c.start), x1 = xOfBeat(c.start + c.length);
+      g.fillStyle = "#2f4f6f"; g.fillRect(x0, y + 3, Math.max(1, x1 - x0 - 1), rowH - 6);
+      g.fillStyle = "#8fd3ff";
+      for (const n of c.notes) {
+        if (n[0] >= c.length) continue;
+        const nx = xOfBeat(c.start + n[0]), nw = Math.max(1.5, xOfBeat(c.start + Math.min(n[0] + n[1], c.length)) - nx);
+        const ny = y + 5 + (1 - (n[2] - lo) / span) * (rowH - 12);
+        g.fillRect(nx, ny, nw, 2);
+      }
+    }
+    g.globalAlpha = 1;
+    const label = t.name + (muted ? "（静音）" : "");
+    g.fillStyle = "rgba(21,23,28,.75)"; g.fillRect(2, y + 3, g.measureText(label).width + 6, 14);
+    g.fillStyle = "#e6e8ee"; g.fillText(label, 5, y + 10);
+  });
+  // 播放头
+  const px = position() / total * W;
+  g.fillStyle = "#ffb454"; g.fillRect(px, 0, 2, H);
+}
+
+// ---------- 交互 ----------
+$("play").addEventListener("click", () => (playing ? pause() : play(pausedAt)));
+$("stop").addEventListener("click", () => { pause(); seek(0); });
+$("loop").addEventListener("change", () => { if (playing) play(position()); });
+$("mode-mix").addEventListener("click", () => setMode("mix"));
+$("mode-stems").addEventListener("click", () => setMode("stems"));
+$("monitor").addEventListener("input", (e) => {
+  $("monitor-db").textContent = fmtDb(+e.target.value);
+  if (monitorGain) monitorGain.gain.value = dbToGain(+e.target.value);
+});
+$("timeline").addEventListener("click", (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  seek((e.clientX - r.left) / r.width * duration());
+});
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !["INPUT", "BUTTON"].includes(document.activeElement.tagName)) {
+    e.preventDefault(); playing ? pause() : play(pausedAt);
+  }
+});
+window.addEventListener("resize", drawTimeline);
+$("reset").addEventListener("click", () => { edits = {}; solo = new Set(); renderMixer(); renderChanges(); updateStemGains(); });
+$("copy").addEventListener("click", async () => {
+  const text = JSON.stringify({ changes: changeList() }, null, 2);
+  try { await navigator.clipboard.writeText(text); $("copy").textContent = "已复制"; }
+  catch (_) { prompt("复制下面的 JSON：", text); }
+  setTimeout(() => ($("copy").textContent = "复制改动 JSON"), 1500);
+});
+
+// ---------- 联动（--serve） ----------
+async function post(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const out = await res.json();
+  if (!res.ok) throw new Error(out.error || res.statusText);
+  return out;
+}
+async function submit(save) {
+  $("apply").disabled = $("save").disabled = true;
+  banner(save ? "保存并重新渲染中…" : "重新渲染中…", "info");
+  try {
+    const hadChanges = changeList().length > 0;
+    await post("/api/apply", { changes: changeList(), save });
+    if (hadChanges) await refresh(true);
+    else { data.dirty = false; banner("已保存到工程文件", "info"); renderChanges(); }
+  } catch (e) {
+    banner("失败：" + e.message, "err");
+    renderChanges();
+  }
+}
+let version = -1;
+async function refresh(force) {
+  const st = await (await fetch("/api/state")).json();
+  if (st.rendering && !force) return;
+  if (force || st.version !== version) {
+    version = st.version;
+    await load(st);
+  } else if (st.error !== data.error) {
+    data.error = st.error; renderHeader();
+  }
+}
+if (SERVE) {
+  $("apply").addEventListener("click", () => submit(false));
+  $("save").addEventListener("click", () => submit(true));
+  (async function poll() {
+    try {
+      const v = await (await fetch("/api/version")).json();
+      if (v.rendering) banner("工程有变化，重新渲染中…", "info");
+      else if (v.version !== version || v.error !== (data && data.error)) await refresh(false);
+    } catch (_) { banner("与 muser 的连接断开了（muser view --serve 是否还在运行？）", "err"); }
+    setTimeout(poll, 1000);
+  })();
+} else {
+  version = EMBEDDED.version;
+  load(EMBEDDED).catch((e) => banner(String(e), "err"));
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

@@ -220,8 +220,32 @@ fn mix_into(dst: &mut AudioBuffer<f32>, src: &AudioBuffer<f32>, cx: &Ctx, level_
     }
 }
 
+/// 分轨（stem）：一个直接进主总线的音轨或总线，在主总线效果与主增益之前送进主总线的信号。
+/// 所有 stem 相加 = 主总线效果链的输入。
+pub struct Stem {
+    pub node: Node,
+    /// 显示名：音轨名（空名时 `tracks[i]`）或总线名。
+    pub label: String,
+    pub audio: AudioBuffer<f32>,
+}
+
+/// 成品混音 + 分轨。
+pub struct Rendered {
+    pub mix: AudioBuffer<f32>,
+    pub stems: Vec<Stem>,
+}
+
 /// 把工程渲染成一块立体声音频缓冲。
 pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer<f32>, EngineError> {
+    Ok(render_graph(project, settings, false)?.mix)
+}
+
+/// 渲染成品混音，同时给出各分轨（见 [`Stem`]）。
+pub fn render_with_stems(project: &Project, settings: RenderSettings) -> Result<Rendered, EngineError> {
+    render_graph(project, settings, true)
+}
+
+fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> Result<Rendered, EngineError> {
     crate::validate(project)?;
     let plan: Plan = routing::plan(project).map_err(invalid)?;
 
@@ -254,6 +278,7 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
     let mut master = AudioBuffer::<f32>::new(2, total_frames);
     let mut bus_in: HashMap<usize, AudioBuffer<f32>> = HashMap::new();
     let mut keys: HashMap<Node, AudioBuffer<f32>> = HashMap::new();
+    let mut stems: Vec<Stem> = Vec::new();
 
     for &node in &plan.order {
         let (muted, effects_list, gain_db, pan, mut lanes, law): (bool, &[Effect], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) =
@@ -298,6 +323,16 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
                 };
                 let send_lanes = e.send.as_ref().and_then(|s| lanes.sends.get(s));
                 mix_into(dst, &buf, &cx, e.level_db, send_lanes);
+                if capture && e.to.is_none() {
+                    let mut audio = AudioBuffer::<f32>::new(2, total_frames);
+                    mix_into(&mut audio, &buf, &cx, e.level_db, send_lanes);
+                    let label = match node {
+                        Node::Track(i) if project.tracks[i].name.is_empty() => format!("tracks[{i}]"),
+                        Node::Track(i) => project.tracks[i].name.clone(),
+                        Node::Bus(i) => project.buses[i].name.clone(),
+                    };
+                    stems.push(Stem { node, label, audio });
+                }
             }
         }
         if key_nodes.contains(&node) {
@@ -328,7 +363,7 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
             }
         }
     }
-    Ok(master)
+    Ok(Rendered { mix: master, stems })
 }
 
 fn invalid(m: String) -> EngineError {
