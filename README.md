@@ -16,7 +16,7 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 
 - 多轨编曲：鼓组 + 合成器 + 贝斯，多 clip、多音符
 - 10 种鼓组（808/909/606/CR-78/acoustic/trap/techno/house/dnb/lofi）+ 复音合成器 + FM 合成器
-- 效果器链（reverb / delay / compressor / chorus / eq / limiter），挂在轨级或主总线
+- 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级或主总线
 - 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)（`host` 特性）
 - 离线渲染为 WAV
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）

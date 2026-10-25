@@ -23,9 +23,11 @@
 | `fx-demo-chorus` | keys: `chorus` (rate 0.9Hz, depth 4ms, mix 0.5) | 和弦变厚、变宽，有轻微起伏 |
 | `fx-demo-eq` | keys: `eq` 高架+6dB@4k + 低切200Hz | 和弦更亮更清爽，低频被切 |
 | `fx-demo-limiter` | master: +6dB 增益 + `limiter` (ceiling -0.3dB) | 整体更响，峰值被收在 0dB 内不爆 |
+| `fx-demo-phaser` | keys: `phaser` (rate 0.5Hz, feedback 0.4, mix 0.6) | 和弦上有流动的"喷气式"扫频感 |
+| `fx-demo-flanger` | keys: `flanger` (rate 0.2Hz, feedback 0.7, mix 0.6) | 和弦带金属感的扫动、梳状着色 |
 
 依次渲染这些工程并对比试听，即可体验 muser 的内置效果器链
-（reverb / delay / chorus / eq / limiter）。
+（reverb / delay / chorus / eq / limiter / phaser / flanger）。
 
 ## 外置 VST 效果器示例
 

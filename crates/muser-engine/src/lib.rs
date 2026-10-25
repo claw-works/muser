@@ -180,6 +180,25 @@ mod tests {
     }
 
     #[test]
+    fn phaser_flanger_render() {
+        use muser_core::Effect;
+        let mut p = demo_project();
+        p.tracks[0].effects.push(Effect::Phaser {
+            rate_hz: 0.5,
+            feedback: 0.4,
+            mix: 0.5,
+        });
+        p.master_effects.push(Effect::Flanger {
+            rate_hz: 0.2,
+            feedback: 0.7,
+            mix: 0.5,
+        });
+        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
+            .expect("phaser/flanger 渲染应成功");
+        assert!(audio.peak() > 0.0, "应发声");
+    }
+
+    #[test]
     fn eq_unknown_shape_errors() {
         use muser_core::Effect;
         let mut p = demo_project();

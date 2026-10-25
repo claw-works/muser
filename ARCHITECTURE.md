@@ -201,7 +201,7 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 多轨、多 clip、多音符的离线渲染
 - 10 种鼓组 + 复音合成器 + FM 合成器
 - 轨增益、等功率声像、主增益、结尾余响
-- 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter，可挂到轨级或主总线
+- 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter / phaser / flanger，可挂到轨级或主总线
 - 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
   （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor。
   已用真实插件验证：加载本机 `Surge XT Effects.vst3`，输出与无插件对照显著不同。
@@ -214,7 +214,7 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、
   可选 `--features host` 构建、`cargo fmt --check` / `clippy`）
 - 插件乐器/效果器的**参数调节**（包络、滤波等插件内部参数）
-- 更多内置效果器类型（phaser / flanger / waveshaper 等，manguebyte 均自带）
+- 更多内置效果器类型（waveshaper / 多段 EQ 等，manguebyte 均自带）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 - 音频图编排（manguebyte-graph：运行时热重连的信号图，供更复杂的路由）
 ```

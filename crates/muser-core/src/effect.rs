@@ -114,6 +114,30 @@ pub enum Effect {
         #[serde(default = "default_limiter_release")]
         release_ms: f64,
     },
+    /// 相位器：扫频的梳状滤波，营造流动的"喷气式"质感。
+    Phaser {
+        /// 调制速率（Hz）。
+        #[serde(default = "default_phaser_rate")]
+        rate_hz: f64,
+        /// 反馈量 0.0-1.0（越高谐振越强）。
+        #[serde(default = "default_phaser_feedback")]
+        feedback: f64,
+        /// 干湿比 0.0-1.0。
+        #[serde(default = "default_phaser_mix")]
+        mix: f64,
+    },
+    /// 镶边：短延迟的调制，营造金属感的扫动。
+    Flanger {
+        /// 调制速率（Hz）。
+        #[serde(default = "default_flanger_rate")]
+        rate_hz: f64,
+        /// 反馈量 0.0-1.0。
+        #[serde(default = "default_flanger_feedback")]
+        feedback: f64,
+        /// 干湿比 0.0-1.0。
+        #[serde(default = "default_flanger_mix")]
+        mix: f64,
+    },
 }
 
 // —— 各参数的默认值（选取音乐上常用、安全的起点）——
@@ -173,6 +197,24 @@ fn default_limiter_ceiling() -> f64 {
 }
 fn default_limiter_release() -> f64 {
     50.0
+}
+fn default_phaser_rate() -> f64 {
+    0.5
+}
+fn default_phaser_feedback() -> f64 {
+    0.3
+}
+fn default_phaser_mix() -> f64 {
+    0.5
+}
+fn default_flanger_rate() -> f64 {
+    0.2
+}
+fn default_flanger_feedback() -> f64 {
+    0.7
+}
+fn default_flanger_mix() -> f64 {
+    0.5
 }
 
 #[cfg(test)]
@@ -238,6 +280,17 @@ mod tests {
         match lim {
             Effect::Limiter { ceiling_db, .. } => assert_eq!(ceiling_db, -0.3),
             _ => panic!("应解析为 Limiter"),
+        }
+
+        let ph: Effect = serde_json::from_str(r#"{ "type": "phaser" }"#).unwrap();
+        assert!(matches!(ph, Effect::Phaser { .. }));
+        let fl: Effect = serde_json::from_str(r#"{ "type": "flanger", "mix": 0.6 }"#).unwrap();
+        match fl {
+            Effect::Flanger { mix, feedback, .. } => {
+                assert_eq!(mix, 0.6);
+                assert_eq!(feedback, 0.7); // 默认
+            }
+            _ => panic!("应解析为 Flanger"),
         }
     }
 }

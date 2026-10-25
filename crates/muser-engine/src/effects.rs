@@ -11,8 +11,8 @@
 use muser_core::Effect;
 
 use manguebyte::prelude::{
-    AudioBuffer, Chorus, Compressor, Delay, Filter, FilterShape, Limiter, ProcessSpec, Processor,
-    Reverb,
+    AudioBuffer, Chorus, Compressor, Delay, Filter, FilterShape, Limiter, Phaser, ProcessSpec,
+    Processor, Reverb,
 };
 
 /// 效果链构建错误。
@@ -110,6 +110,29 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Box<dyn Processor<f3
                 .with_ceiling_db(*ceiling_db)
                 .with_release_ms(*release_ms);
             Box::new(l)
+        }
+        Effect::Phaser {
+            rate_hz,
+            feedback,
+            mix,
+        } => {
+            let p = Phaser::<f32>::new()
+                .with_rate_hz(*rate_hz)
+                .with_feedback(*feedback)
+                .with_mix(*mix);
+            Box::new(p)
+        }
+        Effect::Flanger {
+            rate_hz,
+            feedback,
+            mix,
+        } => {
+            // Chorus::flanger() 预设（2ms 中心延迟），再覆盖 rate/feedback/mix。
+            let f = Chorus::<f32>::flanger()
+                .with_rate_hz(*rate_hz)
+                .with_feedback(*feedback)
+                .with_mix(*mix);
+            Box::new(f)
         }
         Effect::Plugin { path, id, params } => build_plugin(path, id.as_deref(), params, spec)?,
     };

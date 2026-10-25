@@ -87,6 +87,8 @@
 | `chorus` | 加厚/加宽音色 | `rate_hz`(0.8) `depth_ms`(3) `mix`(0.4) |
 | `eq` | 均衡/滤波一个频段 | `shape`(peak) `frequency`(1000) `q`(0.707) `gain_db`(0) |
 | `limiter` | 限峰防爆（放主总线末端） | `ceiling_db`(-0.3) `release_ms`(50) |
+| `phaser` | 扫频梳状滤波，流动感 | `rate_hz`(0.5) `feedback`(0.3) `mix`(0.5) |
+| `flanger` | 短延迟调制，金属扫动 | `rate_hz`(0.2) `feedback`(0.7) `mix`(0.5) |
 | `plugin` | 第三方插件 (CLAP/VST3/LV2) | `path`(必填) `id`(可选) `params`(可选, {参数id: 值}) |
 
 > `eq` 的 `shape` 可取：`lowpass` `highpass` `bandpass` `notch` `allpass`
