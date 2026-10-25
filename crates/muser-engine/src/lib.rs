@@ -10,6 +10,36 @@ pub mod instrument;
 pub mod params;
 pub mod plugin;
 pub mod profile;
+pub mod vital;
+
+/// 当前线程正在渲染的工程速度与拍号，交给插件的走带（tempo 同步的 LFO、延迟等）。
+pub mod transport {
+    use std::cell::Cell;
+
+    thread_local! {
+        static CURRENT: Cell<(f64, u16, u16)> = const { Cell::new((120.0, 4, 4)) };
+    }
+
+    /// 设置当前线程的速度与拍号；返回的守卫在离开作用域时恢复原值。
+    pub fn set(tempo: f64, numerator: u16, denominator: u16) -> Guard {
+        let old = CURRENT.with(|c| c.replace((tempo, numerator, denominator)));
+        Guard(old)
+    }
+
+    /// 从工程开头开始播放的走带。
+    pub fn start() -> manguebyte::prelude::Transport {
+        let (tempo, n, d) = CURRENT.with(|c| c.get());
+        manguebyte::prelude::Transport { time_signature: Some((n, d)), ..manguebyte::prelude::Transport::playing_at(tempo) }
+    }
+
+    pub struct Guard((f64, u16, u16));
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            CURRENT.with(|c| c.set(self.0));
+        }
+    }
+}
 pub mod render;
 
 pub use instrument::{
@@ -975,5 +1005,141 @@ mod tests {
             assert!(s.audio.peak() > 0.01, "{name} 应有声音");
         }
         assert_eq!(render(&p, quiet()).unwrap().channel(0), r.mix.channel(0));
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn juce_state_patch_and_numbers() {
+        use crate::plugin::{patch_juce_state, split_number};
+        let xml = r#"<?xml version="1.0"?> <root a="1" currentProcessorName="Galactic"/>"#;
+        let mut clap = b"VC2!".to_vec();
+        clap.extend_from_slice(&((xml.len() + 1) as u32).to_le_bytes());
+        clap.extend_from_slice(xml.as_bytes());
+        clap.push(0);
+        let out = patch_juce_state(&clap, "currentProcessorName", "Density \"2\"").unwrap();
+        let text = String::from_utf8_lossy(&out[8..]).to_string();
+        assert!(text.contains(r#"currentProcessorName="Density &quot;2&quot;""#), "{text}");
+        assert_eq!(u32::from_le_bytes(out[4..8].try_into().unwrap()) as usize, out.len() - 8);
+        // 没有该属性时追加；VST3 容器修正组件长度。
+        let mut vst3 = b"MBVST3\0\x01".to_vec();
+        vst3.extend_from_slice(&[0u8; 16]);
+        vst3.extend_from_slice(&(clap.len() as u64).to_le_bytes());
+        vst3.extend_from_slice(&clap);
+        vst3.extend_from_slice(&0u64.to_le_bytes());
+        let out = patch_juce_state(&vst3, "effect", "Kalman").unwrap();
+        let comp = u64::from_le_bytes(out[24..32].try_into().unwrap()) as usize;
+        assert_eq!(comp, out.len() - 32 - 8);
+        assert!(String::from_utf8_lossy(&out).contains(r#"effect="Kalman"/>"#));
+        assert!(patch_juce_state(b"not juce", "a", "b").is_err());
+
+        assert_eq!(split_number("-6.02dB"), Some((-6.02, "db".into())));
+        assert_eq!(split_number("0.5 secs"), Some((0.5, "secs".into())));
+        assert_eq!(split_number("1.26e-09 secs"), Some((1.26e-9, "secs".into())));
+        assert_eq!(split_number("16v"), Some((16.0, "v".into())));
+        assert_eq!(split_number("Off"), None);
+    }
+
+    #[test]
+    fn profile_selector_and_english_markdown() {
+        use crate::profile::{Loaded, Origin, Profile, render_markdown};
+        let p = Profile::from_json(
+            r#"{ "schema_version": 1, "plugin": { "name": "X", "ids": ["x"] }, "source": { "lang": "en" },
+                 "selector": { "key": "Effect", "juce_xml_attribute": "cur",
+                   "choices": [{ "name": "Galactic", "group": "Reverb" }, { "name": "Density", "group": "Saturation", "tags": ["recommended"] }] } }"#,
+        )
+        .unwrap();
+        let sel = p.selector.as_ref().unwrap();
+        assert_eq!(sel.key, "effect");
+        assert_eq!(sel.resolve("density").unwrap(), "Density");
+        assert!(sel.resolve("Densty").unwrap_err().contains("Density"));
+        let md = render_markdown(&Loaded { origin: Origin::Bundled, path: None, profile: p });
+        assert!(md.contains("# Plugin: X") && md.contains("## Choosing the effect") && md.contains("### Saturation"), "{md}");
+        let bad = |extra: &str| Profile::from_json(&format!(r#"{{ "schema_version": 1, "plugin": {{ "name": "X", "ids": ["x"] }} {extra} }}"#)).is_err();
+        assert!(bad(r#", "selector": { "key": "e", "juce_xml_attribute": "a b" }"#));
+        assert!(bad(r#", "selector": { "key": "e", "juce_xml_attribute": "a", "choices": [{ "name": "A" }, { "name": "a" }] }"#));
+        assert!(bad(r#", "source": { "lang": "fr" }"#));
+        assert!(bad(r#", "state_format": "other""#));
+        // 只有 state_format 声明的保留键能写进预设。
+        assert!(bad(r#", "presets": [{ "name": "p", "params": { "@wavetable": "sine" } }]"#));
+        assert!(Profile::from_json(r#"{ "schema_version": 1, "plugin": { "name": "X", "ids": ["x"] }, "state_format": "vital",
+            "presets": [{ "name": "p", "params": { "@wavetable": "sine", "@modulations": [{ "source": "env_2", "destination": "filter_1_cutoff" }] } }] }"#).is_ok());
+    }
+
+    #[cfg(feature = "host")]
+    const AIRWINDOWS: &str = concat!(env!("HOME"), "/.clap/Airwindows Consolidated.clap");
+    #[cfg(feature = "host")]
+    const VITAL: &str = "/usr/lib/vst3/Vital.vst3";
+    #[cfg(feature = "host")]
+    const PLASMA: &str = concat!(env!("HOME"), "/.vst3/Plasma.vst3");
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn airwindows_selector_switches_effect() {
+        if !have(AIRWINDOWS) {
+            return;
+        }
+        let params = |base: serde_json::Value| {
+            crate::plugin::params(AIRWINDOWS, None, false, &serde_json::from_value(base).unwrap()).unwrap()
+        };
+        let names = |v: Vec<crate::plugin::PluginParam>| v.into_iter().map(|p| p.name).take(3).collect::<Vec<_>>();
+        assert_eq!(names(params(serde_json::json!({ "effect": "Pressure4" }))), ["Pressure", "Speed", "Mewiness"]);
+        assert_eq!(names(params(serde_json::json!({ "@preset": "plate" }))), ["Input", "Regen", "DeRez"]);
+        let err = crate::plugin::params(AIRWINDOWS, None, false, &serde_json::from_value(serde_json::json!({ "effect": "Pressur4" })).unwrap()).unwrap_err();
+        assert!(err.contains("Pressure4"), "{err}");
+        // 工程里：选效果 + 设参数 + 自动化效果参数，渲染与干声不同。
+        let run = |fx: Option<serde_json::Value>| {
+            let mut t = serde_json::json!({ "instrument": "synth.poly", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 0.5 }] }] });
+            if let Some(fx) = fx {
+                t["effects"] = serde_json::json!([fx]);
+                t["automation"] = serde_json::json!([{ "target": "effects[0]", "param": "Wetness", "shape": "points", "points": [[0, 0.1], [2, 0.8]] }]);
+            }
+            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [t] })), quiet()).unwrap()
+        };
+        let dry = run(None);
+        let wet = run(Some(serde_json::json!({ "type": "plugin", "path": AIRWINDOWS, "params": { "effect": "kPlate140" } })));
+        assert!(energy(&wet, SEC / 2, SEC * 2) > energy(&dry, SEC / 2, SEC * 2) * 3.0, "plate 应有尾音");
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn vital_wavetable_modulation_and_tempo() {
+        if !have(VITAL) {
+            return;
+        }
+        let spec = format!("plugin:{VITAL}");
+        let run = |params: serde_json::Value| {
+            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": spec, "instrument_params": params,
+                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 48, "start": 0, "length": 1.5 }] }] }] })), quiet()).unwrap()
+        };
+        let bright = |a: &AudioBuffer<f32>| seg_brightness(a, 0, SEC / 2);
+        let saw = run(serde_json::json!({}));
+        let sine = run(serde_json::json!({ "@wavetable": "sine" }));
+        assert!(bright(&saw) > bright(&sine) * 2.0, "sine 波表应更暗");
+        // 低截止 + 包络调制：开头亮、之后暗。
+        let filt = run(serde_json::json!({ "filter": "On", "cutoff": "-24 semitones", "resonance": "0%", "env2_decay": "0.15 secs", "env2_sustain": "0",
+            "@modulations": [{ "source": "env_2", "destination": "filter_1_cutoff", "amount": 0.6 }] }));
+        assert!(seg_brightness(&filt, 0, SEC / 20) > seg_brightness(&filt, SEC / 2, SEC) * 1.5, "滤波包络应先亮后暗");
+        // 文字取值按显示数值解析（Vital 自己的解析会把 0.5 secs 读成 16 秒）。
+        let slow = run(serde_json::json!({ "attack": "0.5 secs" }));
+        assert!(energy(&slow, 0, SEC / 10) < energy(&slow, SEC / 2, SEC * 6 / 10) * 0.2, "attack 0.5 s");
+        assert!(energy(&slow, SEC / 2, SEC * 6 / 10) > 0.0);
+        let err = crate::validate(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": spec,
+            "instrument_params": { "@modulations": [{ "source": "env_9", "destination": "filter_1_cutoff" }] }, "clips": [] }] }))).unwrap_err();
+        assert!(err.to_string().contains("env_1"), "{err}");
+    }
+
+    #[cfg(feature = "host")]
+    #[test]
+    fn plasma_preset_distorts() {
+        if !have(PLASMA) {
+            return;
+        }
+        let run = |fx: serde_json::Value| {
+            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "bass.finger", "effects": [fx],
+                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 40, "start": 0, "length": 1 }] }] }] })), quiet()).unwrap()
+        };
+        let clean = run(serde_json::json!({ "type": "plugin", "path": PLASMA, "params": { "mix": "0.00" } }));
+        let dirty = run(serde_json::json!({ "type": "plugin", "path": PLASMA, "params": { "@preset": "scream" } }));
+        assert!(seg_brightness(&dirty, 0, SEC / 2) > seg_brightness(&clean, 0, SEC / 2) * 2.0);
     }
 }

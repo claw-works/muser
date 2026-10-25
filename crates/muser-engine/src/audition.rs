@@ -269,10 +269,24 @@ pub fn audition(
 }
 
 /// 把命令行里的取值转成 JSON：能读成数字/布尔就用数字/布尔，否则当文字。
+/// 用双引号括起来强制当文字（插件显示为纯数字时，如 `"200.0"`）。
 pub fn parse_value(s: &str) -> Value {
     match serde_json::from_str::<Value>(s.trim()) {
-        Ok(v @ (Value::Number(_) | Value::Bool(_))) => v,
+        Ok(v @ (Value::Number(_) | Value::Bool(_) | Value::String(_))) => v,
         _ => Value::String(s.trim().to_string()),
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_value_quotes() {
+        assert_eq!(parse_value("200"), serde_json::json!(200));
+        assert_eq!(parse_value("\"200.0\""), serde_json::json!("200.0"));
+        assert_eq!(parse_value("200 Hz"), serde_json::json!("200 Hz"));
+        assert_eq!(parse_value("true"), serde_json::json!(true));
+    }
+}

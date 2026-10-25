@@ -122,6 +122,14 @@ pub fn read_state_file(path: &std::path::Path) -> Result<(StateHeader, Vec<u8>),
     Ok((header, rest[nl + 1..].to_vec()))
 }
 
+/// 展开路径开头的 `~/`（用户主目录），让工程与画像里的插件路径可以跨机器通用。
+pub fn expand_home(path: &str) -> std::borrow::Cow<'_, str> {
+    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(rest), Some(home)) => std::borrow::Cow::Owned(format!("{}/{rest}", home.to_string_lossy().trim_end_matches('/'))),
+        _ => std::borrow::Cow::Borrowed(path),
+    }
+}
+
 /// 把 `path#id` 拆开。
 pub fn split_spec(spec: &str) -> (&str, Option<&str>) {
     match spec.trim().rsplit_once('#') {
@@ -206,14 +214,115 @@ mod imp {
         }
     }
 
+    /// 把 "-6.02dB" / "0.5 secs" / "16v" 拆成 (数值, 小写单位)。
+    pub(crate) fn split_number(t: &str) -> Option<(f64, String)> {
+        let t = t.trim();
+        let end = t
+            .char_indices()
+            .take_while(|(i, c)| c.is_ascii_digit() || *c == '.' || ((*c == '-' || *c == '+') && (*i == 0 || matches!(t.as_bytes()[i - 1], b'e' | b'E'))) || ((*c == 'e' || *c == 'E') && *i > 0 && t[i + 1..].starts_with(|d: char| d.is_ascii_digit() || d == '-' || d == '+')))
+            .map(|(i, c)| i + c.len_utf8())
+            .last()?;
+        let v: f64 = t[..end].parse().ok()?;
+        Some((v, t[end..].trim().to_lowercase()))
+    }
+
+    /// 改写插件状态中 JUCE `copyXmlToBinary` 块（`VC2!`、u32 长度、XML、0）里根元素的一个属性。
+    /// 状态可以就是这个块（CLAP），或包在本宿主的 VST3 容器里（组件状态，会同步修正长度）。
+    pub(crate) fn patch_juce_state(data: &[u8], attr: &str, value: &str) -> Result<Vec<u8>, String> {
+        const VST3: &[u8] = b"MBVST3\0\x01";
+        let (prefix_len, comp_len) = if data.starts_with(VST3) {
+            let at = VST3.len() + 16;
+            let n = data.get(at..at + 8).ok_or("VST3 状态过短")?;
+            (at + 8, Some(u64::from_le_bytes(n.try_into().unwrap()) as usize))
+        } else {
+            (0, None)
+        };
+        let block = &data[prefix_len..];
+        if !block.starts_with(b"VC2!") || block.len() < 8 {
+            return Err("插件状态不是 JUCE XML 格式（只支持 CLAP / VST3 版）".into());
+        }
+        let n = u32::from_le_bytes(block[4..8].try_into().unwrap()) as usize;
+        let xml_bytes = block.get(8..8 + n).ok_or("状态长度不符")?;
+        let xml = std::str::from_utf8(xml_bytes).map_err(|_| "状态里的 XML 不是 UTF-8")?;
+        let xml = xml.trim_end_matches('\0');
+        // 根元素：跳过 <?xml ...?> 声明。
+        let root = xml
+            .match_indices('<')
+            .map(|(i, _)| i)
+            .find(|&i| !xml[i..].starts_with("<?") && !xml[i..].starts_with("<!"))
+            .ok_or("XML 没有根元素")?;
+        let end = root + xml[root..].find('>').ok_or("XML 根元素未结束")?;
+        let tag = &xml[root..end];
+        let escaped = value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+        let needle = format!(" {attr}=\"");
+        let new_tag = match tag.find(&needle) {
+            Some(i) => {
+                let vstart = i + needle.len();
+                let vend = vstart + tag[vstart..].find('"').ok_or("属性值未结束")?;
+                format!("{}{}{}", &tag[..vstart], escaped, &tag[vend..])
+            }
+            None => {
+                let self_closing = tag.ends_with('/');
+                let body = tag.trim_end_matches('/');
+                format!("{body} {attr}=\"{escaped}\"{}", if self_closing { "/" } else { "" })
+            }
+        };
+        let new_xml = format!("{}{}{}", &xml[..root], new_tag, &xml[end..]);
+        let mut new_block = Vec::with_capacity(new_xml.len() + 9);
+        new_block.extend_from_slice(b"VC2!");
+        new_block.extend_from_slice(&((new_xml.len() + 1) as u32).to_le_bytes());
+        new_block.extend_from_slice(new_xml.as_bytes());
+        new_block.push(0);
+        let old_block_len = 8 + n;
+        let mut out = Vec::with_capacity(data.len() + new_block.len());
+        out.extend_from_slice(&data[..prefix_len]);
+        match comp_len {
+            Some(cl) => {
+                if cl < old_block_len {
+                    return Err("VST3 组件状态长度不符".into());
+                }
+                let new_cl = cl - old_block_len + new_block.len();
+                out.truncate(prefix_len - 8);
+                out.extend_from_slice(&(new_cl as u64).to_le_bytes());
+                out.extend_from_slice(&new_block);
+                out.extend_from_slice(&data[prefix_len + old_block_len..]);
+            }
+            None => {
+                out.extend_from_slice(&new_block);
+                out.extend_from_slice(&block[old_block_len..]);
+            }
+        }
+        Ok(out)
+    }
+
+    /// 进程内已加载的插件库：每个路径只加载一次，并且不再卸载。
+    ///
+    /// 有的插件在后台线程里做事（如 JUCE 插件的联网检查更新），卸载动态库时线程还在跑就会崩溃；
+    /// 长时间运行的进程（`muser view --serve`、MCP server）会反复渲染，因此库常驻，后续打开直接复用。
+    fn load_library(path: &str) -> Result<Library, String> {
+        use std::collections::HashMap;
+        use std::sync::{Mutex, OnceLock};
+        static LOADED: OnceLock<Mutex<HashMap<String, Library>>> = OnceLock::new();
+        let key = std::fs::canonicalize(path).map_or_else(|_| path.to_string(), |p| p.display().to_string());
+        let mut map = LOADED.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(lib) = map.get(&key) {
+            return Ok(lib.clone());
+        }
+        // SAFETY: 加载会执行第三方代码；路径由用户在工程/命令中给出，视为可信的本机插件。
+        let library = unsafe { Library::load(path) }.map_err(|e| format!("加载插件 '{path}' 失败: {e:?}"))?;
+        map.insert(key, library.clone());
+        Ok(library)
+    }
+
     impl Opened {
         /// 加载并创建插件。`id` 省略时用文件里的第一个插件。
         pub fn open(path: &str, id: Option<&str>) -> Result<Opened, String> {
+            let expanded = super::expand_home(path);
+            let path: &str = &expanded;
             if !std::path::Path::new(path).exists() {
                 return Err(format!("找不到插件 '{path}'（用 `muser plugin scan` 查看本机插件）"));
             }
-            // SAFETY: 加载会执行第三方代码；路径由用户在工程/命令中给出，视为可信的本机插件。
-            let library = unsafe { Library::load(path) }.map_err(|e| format!("加载插件 '{path}' 失败: {e:?}"))?;
+            let library = load_library(path)?;
             let plugin_id = match id {
                 Some(s) => s.to_string(),
                 None => library
@@ -323,11 +432,44 @@ mod imp {
             }
             match (lo, hi) {
                 (Some(a), Some(b)) => Some((a + b) / 2.0),
-                // 连续参数（如 "200 Hz" 显示为 "200.00 Hz"）：查表无精确匹配时，只有带数字的文字才信任
-                // 插件的解析；纯文字又匹配不上任何档位（如 "banana"），视为无法解析。
-                _ if s.chars().any(|c| c.is_ascii_digit()) => parsed,
+                // 连续参数（如 "200 Hz" 显示为 "200.00 Hz"）：按显示出来的数值在范围内二分查找；
+                // 找不到再信任插件自己的解析。纯文字又匹配不上任何档位（如 "banana"），视为无法解析。
+                _ if s.chars().any(|c| c.is_ascii_digit()) => self.numeric_value(p, s).or(parsed),
                 _ => None,
             }
+        }
+
+        /// 按显示数值查找：文字是"数字 + 单位"时，沿范围取样读出插件显示的数值（单位须相同），
+        /// 在单调区间里二分到目标数值。插件自己的文字解析不可靠时（如 Vital 的非线性刻度）用它。
+        fn numeric_value(&self, p: &Param, s: &str) -> Option<f64> {
+            let (want, unit) = split_number(s)?;
+            let read = |x: f64| -> Option<f64> {
+                let t = self.plugin.param_to_text(p.id, x)?;
+                let (v, u) = split_number(&t)?;
+                (u == unit).then_some(v)
+            };
+            let n = 256;
+            let xs: Vec<f64> = (0..n).map(|i| p.min + (p.max - p.min) * i as f64 / (n - 1) as f64).collect();
+            let vs: Vec<Option<f64>> = xs.iter().map(|x| read(*x)).collect();
+            for i in 0..n - 1 {
+                let (Some(a), Some(b)) = (vs[i], vs[i + 1]) else { continue };
+                if (a <= want && want <= b) || (b <= want && want <= a) {
+                    let (mut lo, mut hi, rising) = (xs[i], xs[i + 1], b >= a);
+                    for _ in 0..48 {
+                        let mid = (lo + hi) / 2.0;
+                        match read(mid) {
+                            Some(v) if (v < want) == rising => lo = mid,
+                            Some(_) => hi = mid,
+                            None => break,
+                        }
+                    }
+                    let x = (lo + hi) / 2.0;
+                    let got = read(x)?;
+                    let tol = (want.abs() * 0.02).max(1e-6);
+                    return ((got - want).abs() <= tol.max((a - b).abs() * 1e-3)).then_some(x);
+                }
+            }
+            None
         }
 
         /// 把 JSON 值换成插件自动化刻度上的数值。
@@ -358,14 +500,18 @@ mod imp {
         /// 应用一组参数（激活前调用）。顺序：`@state` 状态文件 → 画像 `setup`（`"@setup": false` 关闭）
         /// → `@preset` 画像预设 → 其余参数（键可以是参数名、数字 id 或画像别名）。
         pub fn apply(&mut self, params: &serde_json::Map<String, Value>) -> Result<(), String> {
+            let format = self.profile.as_ref().map(|p| p.profile.state_format.clone()).unwrap_or_default();
+            let extra = crate::profile::state_keys(&format);
             for k in params.keys().filter(|k| k.starts_with('@')) {
-                if !["@state", "@setup", "@preset"].contains(&k.as_str()) {
-                    return Err(format!("未知的保留键 '{k}'，可用: @state / @setup / @preset"));
+                if !["@state", "@setup", "@preset"].contains(&k.as_str()) && !extra.contains(&k.as_str()) {
+                    let mut all = vec!["@state", "@setup", "@preset"];
+                    all.extend_from_slice(extra);
+                    return Err(format!("未知的保留键 '{k}'，可用: {}", all.join(" / ")));
                 }
             }
             if let Some(v) = params.get("@state") {
                 let path = v.as_str().ok_or("@state 应为状态文件路径")?;
-                self.load_state_file(std::path::Path::new(path))?;
+                self.load_state_file(std::path::Path::new(&*super::expand_home(path)))?;
             }
             let use_setup = match params.get("@setup") {
                 None => true,
@@ -373,27 +519,97 @@ mod imp {
                 Some(v) => return Err(format!("@setup 应为 true/false，实际 {v}")),
             };
             let profile = self.profile.clone();
+            // 选择器：工程参数里的值优先，其次是预设里的值；先于 setup / 预设 / 其余参数应用。
+            let selector = profile.as_ref().and_then(|p| p.profile.selector.clone());
+            let preset_params = match params.get("@preset") {
+                Some(v) => {
+                    let name = v.as_str().ok_or("@preset 应为预设名")?;
+                    let pr = profile.as_ref().ok_or("这个插件没有画像，不能用 @preset（`muser plugin profile draft` 生成一份）")?;
+                    let preset = pr.profile.preset(name).ok_or_else(|| {
+                        format!(
+                            "画像里没有预设 '{name}'，可用: {}",
+                            pr.profile.presets.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    })?;
+                    Some((name.to_string(), preset.params.clone()))
+                }
+                None => None,
+            };
+            // 状态改写（如 Vital 的波表、调制矩阵）：预设里的先、工程里的后（同键覆盖）。
+            if format == "vital" {
+                let mut patch = serde_json::Map::new();
+                for (k, v) in preset_params.iter().flat_map(|(_, m)| m.iter()).chain(params.iter()) {
+                    if extra.contains(&k.as_str()) {
+                        patch.insert(k.clone(), v.clone());
+                    }
+                }
+                if crate::vital::wants_patch(&patch) {
+                    let data = self.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
+                    let mut doc = crate::vital::read_json(&data)?;
+                    crate::vital::patch(&mut doc, &patch)?;
+                    let out = crate::vital::write_json(&data, &doc)?;
+                    self.plugin.load_state(&out).map_err(|e| format!("插件拒绝了改写后的状态: {e:?}"))?;
+                    for _ in 0..4 {
+                        let _ = self.plugin.pump();
+                    }
+                    self.params = self.plugin.params();
+                    self.applied.clear();
+                }
+            }
+            let is_sel = |k: &str| selector.as_ref().is_some_and(|s| s.key.eq_ignore_ascii_case(k.trim()));
+            if let Some(sel) = &selector {
+                let chosen = params
+                    .iter()
+                    .chain(preset_params.iter().flat_map(|(_, m)| m.iter()))
+                    .find(|(k, _)| is_sel(k))
+                    .map(|(_, v)| v.clone());
+                if let Some(v) = chosen {
+                    let name = v.as_str().ok_or_else(|| format!("{} 应为文字，实际 {v}", sel.key))?;
+                    let name = sel.resolve(name)?;
+                    self.select(sel, &name)?;
+                }
+            }
             if use_setup {
                 if let Some(pr) = &profile {
                     let setup = pr.profile.setup.clone();
                     self.apply_plain(&setup).map_err(|e| format!("画像 setup: {e}"))?;
                 }
             }
-            if let Some(v) = params.get("@preset") {
-                let name = v.as_str().ok_or("@preset 应为预设名")?;
-                let pr = profile.as_ref().ok_or("这个插件没有画像，不能用 @preset（`muser plugin profile draft` 生成一份）")?;
-                let preset = pr.profile.preset(name).ok_or_else(|| {
-                    format!(
-                        "画像里没有预设 '{name}'，可用: {}",
-                        pr.profile.presets.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
-                    )
-                })?;
-                let values = preset.params.clone();
+            if let Some((name, values)) = preset_params {
+                let values: serde_json::Map<String, Value> =
+                    values.into_iter().filter(|(k, _)| !is_sel(k) && !k.starts_with('@')).collect();
                 self.apply_plain(&values).map_err(|e| format!("预设 '{name}': {e}"))?;
             }
-            let rest: serde_json::Map<String, Value> =
-                params.iter().filter(|(k, _)| !k.starts_with('@')).map(|(k, v)| (k.clone(), v.clone())).collect();
+            let rest: serde_json::Map<String, Value> = params
+                .iter()
+                .filter(|(k, _)| !k.starts_with('@') && !is_sel(k))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
             self.apply_plain(&rest)
+        }
+
+        /// 切换选择器（见 [`crate::profile::Selector`]）：改写插件状态里 JUCE XML 根元素的属性并装回，
+        /// 刷新参数表；`reset_params` 时把参数设为插件为新选项上报的默认值。
+        fn select(&mut self, sel: &crate::profile::Selector, choice: &str) -> Result<(), String> {
+            let data = self.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
+            let patched = patch_juce_state(&data, &sel.juce_xml_attribute, choice)
+                .map_err(|e| format!("切换 {} 失败: {e}", sel.key))?;
+            self.plugin.load_state(&patched).map_err(|e| format!("切换 {} 失败，插件拒绝了状态: {e:?}", sel.key))?;
+            // 有的格式（VST3）在主线程消息里才宣布参数表变化。
+            for _ in 0..4 {
+                let _ = self.plugin.pump();
+            }
+            self.params = self.plugin.params();
+            self.applied.clear();
+            if sel.reset_params {
+                let defaults: Vec<(ParamId, f64)> =
+                    self.params.iter().filter(|p| !p.read_only).map(|p| (p.id, p.default)).collect();
+                for (id, x) in defaults {
+                    self.plugin.set_param(id, x).map_err(|e| format!("设置参数 {} 失败: {e:?}", id.0))?;
+                    self.applied.push((id, x));
+                }
+            }
+            Ok(())
         }
 
         /// 读取状态文件并装进插件（检查插件 id）。
@@ -411,6 +627,8 @@ mod imp {
             }
             self.plugin.load_state(&data).map_err(|e| format!("插件拒绝了状态文件: {e:?}"))?;
             self.state_loaded = true;
+            // 有的插件按状态换一套参数（如 Airwindows Consolidated 按所选效果改参数名）。
+            self.params = self.plugin.params();
             Ok(())
         }
 
@@ -623,6 +841,7 @@ mod imp {
         let mut o = Opened::open_spec(spec)?;
         o.apply(base)?;
         let _running = o.run_briefly(base)?;
+        o.params = o.plugin.params();
         let words: Vec<String> = filter.unwrap_or("").to_lowercase().split_whitespace().map(String::from).collect();
         Ok(o.params
             .iter()
@@ -641,6 +860,7 @@ mod imp {
         let mut o = Opened::open_spec(spec)?;
         o.apply(base)?;
         let _running = o.run_briefly(base)?;
+        o.params = o.plugin.params();
         let p = o.resolve(key)?;
         let n = samples.clamp(2, 4096);
         let mut out: Vec<(f64, String)> = Vec::new();
@@ -803,11 +1023,14 @@ mod imp {
                 tested_version: e.version.clone(),
                 updated: String::new(),
                 notes: format!("由 `muser plugin profile draft` 自动生成的草稿（{} 个参数中挑出 {} 个）。请试听后修改说明、补充预设。", visible.len(), params.len()),
+                lang: String::new(),
             },
             setup: serde_json::Map::new(),
             params,
             presets: Vec::new(),
             tips: Vec::new(),
+            selector: None,
+            state_format: String::new(),
         }
         .sanitized()?)
     }

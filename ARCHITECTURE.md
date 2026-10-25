@@ -237,6 +237,13 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
   来源与验证版本；用户目录 > `MUSER_PROFILE_PATH` > 内置；结构校验与文字清洗（为社区分享做准备）；
   自动草稿与试听回写；渲染为 skill 文档。工程参数里的保留键：`@state` / `@setup` / `@preset`
 - 插件状态（state）：保存/加载插件完整音色，文件头记录插件 id 与版本，装错插件会被拒绝
+- 画像扩展：`selector`（"类型/程序"只在状态里的插件：改写 JUCE XML 状态的根属性切换并刷新参数表，
+  如 Airwindows Consolidated 的 `effect`）；`state_format: "vital"`（解析 Vital 状态里的 JSON 预设，
+  `@wavetable` 生成波表、`@modulations` 写调制矩阵）；`source.lang: "en"` 生成英文 skill
+- 内置画像（`profiles/`）：Surge XT、Surge XT Effects、Vital、Airwindows Consolidated（效果清单来自 Airwindows 注册表，
+  与安装版本取交集）、Plasma
+- 插件走带：渲染时把工程速度、拍号交给插件（按块推进），tempo 同步的 LFO / 延迟正确；插件动态库在进程内常驻复用
+  （有的插件卸载时后台线程仍在运行会崩溃）；路径支持 `~/`
 - 试听（audition）：按参数取值逐个渲染测试音，报告响度、频谱重心、频段占比、起音、余音——给 AI 的"耳朵"
 - 自动化：points / lfo / random（带种子）三种形状，目标覆盖内置乐器参数、效果器参数、
   轨增益与声像、主增益与主总线效果器；乐器/效果器每 64 帧更新，增益与声像逐帧更新

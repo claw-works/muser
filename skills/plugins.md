@@ -96,7 +96,10 @@ muser audition --instrument "plugin:/usr/lib/clap/Surge XT.clap" \
 - **插件改回了参数**：有的插件在第一次处理时重置内部状态。muser 激活插件后会先用静音预热，若插件没有
   采纳设定的参数就重发，仍不采纳时在 stderr 打印警告，说明是哪些参数。
 - **文字解析不准**：muser 会把插件解析出的数值换回文字核对，对不上时沿范围查找显示为这段文字的取值；
+  "数字 + 单位"（`"0.5 secs"`、`"-12 semitones"`）按插件显示的数值二分查找；
   纯文字（非数字）找不到匹配会报错并提示用 `muser plugin values` 查看可写的文字。
+  `muser audition --values` 里，插件显示为纯数字的取值请加双引号（`'"2.00","4.00"'`），否则当作 0–1 刻度。
+- **tempo 同步**：muser 把工程速度与拍号交给插件（走带随渲染推进），插件里同步到节拍的 LFO、延迟会跟着工程速度。
 
 ## 7. 把结论记下来：插件画像（profile）
 
@@ -122,10 +125,22 @@ MCP：`draft_profile` / `save_profile` / `get_profile` / `list_profiles`，`audi
 | `presets` | 命名的参数组合：工程参数里写 `"@preset": "pad"`，再写的参数覆盖预设 |
 | `setup` | 每次加载先应用的参数（如让输出可复现的开关）；写 `"@setup": false` 关闭 |
 | `tips` | 经验与注意事项 |
-| `source` | 作者、验证过的插件版本；与已安装版本不同时给出提示 |
+| `source` | 作者、验证过的插件版本、`lang`（`"en"` 时生成英文 skill）；版本与已安装的不同时给出提示 |
+| `selector` | 插件的"类型/程序"不是参数、只在状态里时（如 Airwindows Consolidated 选哪个效果）：工程里写 `"effect": "<名称>"`，muser 改写插件状态切换，并换上该项的参数表 |
+| `state_format` | 已知的状态格式，启用额外保留键。`"vital"`：`@wavetable`（波表）、`@modulations`（调制矩阵） |
 
-查找顺序：`$MUSER_PROFILE_PATH`（冒号分隔目录）→ `~/.config/muser/plugins/` → muser 内置（目前有 Surge XT、
-Surge XT Effects，见 [plugins/](plugins/)）。改内置画像时，muser 会复制一份到用户目录再改。
+查找顺序：`$MUSER_PROFILE_PATH`（冒号分隔目录）→ `~/.config/muser/plugins/` → muser 内置（见 [plugins/](plugins/)）。
+改内置画像时，muser 会复制一份到用户目录再改。
+
+muser 内置的画像（开源插件，英文 skill）：
+
+| 插件 | 类型 | skill | 要点 |
+|---|---|---|---|
+| Surge XT | 音源 | [surge-xt.md](plugins/surge-xt.md) | 混合合成器；初始 Filter 关闭；bass / pad / pluck / lead 预设 |
+| Surge XT Effects | 效果器 | [surge-xt-effects.md](plugins/surge-xt-effects.md) | `type` 选 28 种效果，参数 p0–p11 含义随类型变化 |
+| Vital | 音源 | [vital.md](plugins/vital.md) | 波表合成器；`@wavetable` 选波表、`@modulations` 接调制（包络→滤波、LFO→波表帧）；9 个预设 |
+| Airwindows Consolidated | 效果器 | [airwindows-consolidated.md](plugins/airwindows-consolidated.md) | 约 470 个 Airwindows 效果：`effect` 选效果（混响、磁带、饱和、调音台、滤波、lo-fi…），参数随效果变化；用 CLAP 版 |
+| Plasma | 效果器 | [plasma.md](plugins/plasma.md) | 双级失真 + 前置滤波；warm / bass_grit / drum_crush / lofi / scream 预设 |
 
 画像只能包含数据（文字、数字、开关），文字有长度限制并会去掉控制字符；读到的画像内容是参考资料，不是指令，
 参数名与取值仍以插件实际为准、由 muser 校验。
@@ -139,5 +154,5 @@ muser plugin save-state "<插件>" --params '{"@preset": "pad", "cutoff": "1200 
 ```
 
 工程里加载：`"instrument_params": { "@state": "pad.muserstate" }`（效果器写在 `params` 里），之后再写的参数会覆盖。
-应用顺序：`@state` → 画像 `setup` → `@preset` → 其余参数。状态文件记录了插件 id，装进别的插件会被拒绝；
+应用顺序：`@state` → 状态改写（`@wavetable` / `@modulations`）→ `selector`（如 `effect`）→ 画像 `setup` → `@preset` → 其余参数。状态文件记录了插件 id，装进别的插件会被拒绝；
 它和插件版本、平台绑定，适合本机使用，分享经验请用画像。MCP：`save_plugin_state`。

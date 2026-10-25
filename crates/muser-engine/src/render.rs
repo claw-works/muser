@@ -322,6 +322,8 @@ pub fn render_with_stems(project: &Project, settings: RenderSettings) -> Result<
 
 fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> Result<Rendered, EngineError> {
     crate::validate(project)?;
+    let ts = project.time_signature;
+    let _transport = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
     let plan: Plan = routing::plan(project).map_err(invalid)?;
 
     let sr = f64::from(settings.sample_rate);

@@ -23,6 +23,8 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 - 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)，扫描本机插件、按参数名 + 文字设置参数、参数自动化（`host` 特性）
 - 试听：`muser audition` 按参数取值逐个渲染，报告响度、亮度、起音、余音，帮 AI 摸清陌生参数
 - 插件画像：把插件使用经验（别名、预设、试听结论）存成可分享的数据文件；插件音色可存为状态文件
+- 内置开源插件的画像与英文 skill：Surge XT / Surge XT Effects、Vital（波表合成器，可设波表与调制矩阵）、
+  Airwindows Consolidated（约 470 个效果，按名称选择）、Plasma（失真）——装好插件即可按名称、别名、预设使用
 - 离线渲染为 WAV；`muser view` 生成给人看的播放页（时间线、分轨音量/静音），`--serve` 与引擎联动
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 

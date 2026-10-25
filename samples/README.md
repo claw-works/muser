@@ -91,7 +91,8 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 
 ## plugins
 
-需要 `cargo build -p muser-cli --features host` 构建的 muser，工程里的插件路径是本机绝对路径，换机器需修改。
+需要 `cargo build -p muser-cli --features host` 构建的 muser，以及本机装好对应插件。插件路径写系统目录或 `~/`
+（主目录下的 `~/.clap`、`~/.vst3`），装在别处时改路径即可。
 插件参数按名称设置，值写插件显示的文字（流程见 [skills/plugins.md](../skills/plugins.md)）。
 
 | 工程 | 内容 |
@@ -101,6 +102,9 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `surge-sweep` | Surge XT 贝斯线：插件 cutoff 自动化 120 Hz → 5000 Hz（文字取值）、声像 LFO，后接 Surge 延迟 |
 | `surge-presets` | 三轨都用 Surge XT 内置画像的预设：`"@preset": "bass"`（并用别名 `cutoff` 覆盖）、`pad`（接 Surge XT Effects 的 `reverb` 预设）、`pluck`（别名自动化） |
 | `surge-state` | `"@state"` 加载状态文件 `surge-lead.muserstate`；该文件由 `surge-lead.state.json` 描述，渲染脚本现场生成（不入库） |
+| `vital-synthwave` | 四个声部全用 Vital 内置画像预设：`bass`（滤波包络）、`pad`（LFO 扫波表帧）、`pluck`（琶音，cutoff 自动化渐亮）、`pwm_lead`（第 5 小节进）；底鼓侧链压 bass、pad 和混响总线 |
+| `airwindows-mix` | 整套混音用 Airwindows Consolidated：鼓件 `Console9Channel` → 鼓总线 `Console9Buss` + `BussColors4`，军鼓送 `kRockstar2` 房间；电钢 `Tube` + `TremoSquare`，贝斯 `Density2`，主总线 `ToTape9` |
+| `plasma-grit` | Plasma：鼓总线并行 `drum_crush`；贝斯 `bass_grit` 前 4 小节 mix 为 0、第 5 小节起由 30 % 渐增到 60 %（后半段亮度约 3.4 倍）；supersaw 主音 `scream` 40 % |
 
 Surge XT 的振荡器默认自由相位；内置画像的 `setup` 会自动打开 `A Osc N Retrigger`，使结果可复现。
 未启用 `host` 特性时报 `HostDisabled`；路径不存在报 `PluginLoad`。

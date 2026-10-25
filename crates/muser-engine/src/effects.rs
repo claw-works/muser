@@ -248,7 +248,14 @@ fn build_plugin(
     let mut opened = crate::plugin::Opened::open(path, id).map_err(load_err)?;
     opened.apply(params).map_err(load_err)?;
     let processor = opened.activate(spec.sample_rate, spec.max_block_size).map_err(load_err)?;
-    Ok(Fx::Plugin(HostedPlugin { processor, opened, blocks: 0 }))
+    Ok(Fx::Plugin(HostedPlugin {
+        processor,
+        opened,
+        blocks: 0,
+        transport: crate::transport::start(),
+        events: manguebyte::prelude::EventBuffer::with_capacity(1),
+        sample_rate: spec.sample_rate,
+    }))
 }
 
 #[cfg(not(feature = "host"))]
@@ -268,6 +275,10 @@ pub struct HostedPlugin {
     processor: Box<dyn Processor<f32> + Send>,
     opened: crate::plugin::Opened,
     blocks: u32,
+    /// 按块推进的走带：tempo 同步的插件效果（延迟、LFO）跟随工程速度。
+    transport: manguebyte::prelude::Transport,
+    events: manguebyte::prelude::EventBuffer,
+    sample_rate: f64,
 }
 
 #[cfg(feature = "host")]
@@ -290,7 +301,9 @@ impl Processor<f32> for HostedPlugin {
         }
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        self.processor.process(buffer);
+        let ctx = manguebyte::prelude::ProcessContext::new(&self.events, &self.transport);
+        self.processor.process_with(buffer, &ctx);
+        self.transport.advance(buffer.num_frames(), self.sample_rate);
         // 定期回应插件的请求（参数回报、重启请求等），避免队列积压。
         self.blocks = self.blocks.wrapping_add(1);
         if self.blocks % 16 == 0 {

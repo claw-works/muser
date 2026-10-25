@@ -1,0 +1,849 @@
+{
+  "schema_version": 1,
+  "plugin": {
+    "name": "Vital",
+    "vendor": "Vital Audio",
+    "ids": [
+      "56535456697461766974616C00000000",
+      "http://vital.audio"
+    ]
+  },
+  "source": {
+    "author": "muser",
+    "tested_version": "1.0.7",
+    "updated": "2026-10-25",
+    "lang": "en",
+    "notes": "Vital is an open-source (GPL) spectral-warping wavetable synth: 3 wavetable oscillators, a sample/noise oscillator, 2 filters, 6 envelopes, 8 LFOs, a 64-slot modulation matrix and built-in effects (chorus, compressor, delay, distortion, EQ, flanger, phaser, reverb). It has 2852 parameters; the ones below are what you need for most sounds. Use the VST3 build as an instrument: \"instrument\": \"plugin:/usr/lib/vst3/Vital.vst3\". The init sound is a plain saw, unfiltered, 8 voices, Volume -6 dB. Wavetables and the modulation matrix are not parameters: muser sets them with the reserved keys @wavetable and @modulations (see Tips)."
+  },
+  "state_format": "vital",
+  "params": [
+    {
+      "name": "Oscillator 1 Wave Frame",
+      "alias": "frame",
+      "role": "timbre",
+      "description": "Position in oscillator 1's wavetable, 0–256. Only matters for multi-frame tables (@wavetable basic / pwm / harmonics / formant); a good target for automation or @modulations (osc_1_wave_frame)",
+      "values": [
+        "0",
+        "64",
+        "128",
+        "192",
+        "256"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Unison Voices",
+      "alias": "unison",
+      "role": "unison",
+      "description": "Number of stacked, detuned copies of oscillator 1. 1v = plain; 3–5v = thick; 7–16v = supersaw",
+      "values": [
+        "1v",
+        "3v",
+        "5v",
+        "7v",
+        "9v",
+        "16v"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Unison Detune",
+      "alias": "detune",
+      "role": "detune",
+      "description": "Spread of the unison voices. 10–20 % subtle, 30–50 % wide supersaw",
+      "values": [
+        "10%",
+        "20%",
+        "35%",
+        "50%"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Stereo Spread",
+      "alias": "spread",
+      "role": "stereo",
+      "description": "Stereo width of the unison voices (default 100 %); lower it for basses",
+      "values": [
+        "0%",
+        "50%",
+        "100%"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Transpose",
+      "alias": "transpose",
+      "role": "pitch",
+      "description": "Semitones (-48 … 48). -12 = one octave down",
+      "values": [
+        "-24",
+        "-12",
+        "0",
+        "7",
+        "12"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Level",
+      "alias": "osc1_level",
+      "role": "level",
+      "description": "Oscillator 1 volume (0–1, default 0.5)",
+      "values": [
+        "0.25",
+        "0.5",
+        "0.75",
+        "1"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Stack Style",
+      "alias": "stack",
+      "role": "unison",
+      "description": "How unison voices are tuned: Unison (detuned), Octave, Power Chord, Major / Minor Chord, Harmonics…",
+      "values": [
+        "Unison",
+        "Center Drop 12",
+        "Octave",
+        "Power Chord",
+        "Major Chord",
+        "Minor Chord",
+        "Harmonics"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Distortion Type",
+      "alias": "warp",
+      "role": "timbre",
+      "description": "Phase distortion of the oscillator (Vital's 'warp'): Sync, Formant, Bend, Squeeze, Pulse, FM / RM from another oscillator",
+      "values": [
+        "None",
+        "Sync",
+        "Formant",
+        "Bend",
+        "Squeeze",
+        "Pulse",
+        "FM <- Osc"
+      ]
+    },
+    {
+      "name": "Oscillator 1 Distortion Amount",
+      "alias": "warp_amount",
+      "role": "timbre",
+      "description": "Amount of the warp (default 50 %)",
+      "values": [
+        "0%",
+        "25%",
+        "50%",
+        "75%"
+      ]
+    },
+    {
+      "name": "Oscillator 2 Switch",
+      "alias": "osc2",
+      "role": "switch",
+      "description": "Turns oscillator 2 on (default Off). Then set osc2_transpose / osc2_level, and its wavetable with @wavetable {\"2\": …}",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Oscillator 2 Transpose",
+      "alias": "osc2_transpose",
+      "role": "pitch",
+      "description": "Semitones; -12 for a sub octave, 7 for a fifth, 12 for an octave up",
+      "values": [
+        "-12",
+        "-5",
+        "0",
+        "7",
+        "12"
+      ]
+    },
+    {
+      "name": "Oscillator 2 Tune",
+      "alias": "osc2_tune",
+      "role": "pitch",
+      "description": "Fine tune of oscillator 2; a small offset (0.05–0.1) against oscillator 1 gives beating / thickness",
+      "values": [
+        "-0.1",
+        "0",
+        "0.05",
+        "0.1"
+      ]
+    },
+    {
+      "name": "Oscillator 2 Level",
+      "alias": "osc2_level",
+      "role": "level",
+      "description": "Oscillator 2 volume (0–1)",
+      "values": [
+        "0.25",
+        "0.5",
+        "0.75"
+      ]
+    },
+    {
+      "name": "Oscillator 2 Unison Voices",
+      "alias": "osc2_unison",
+      "role": "unison",
+      "values": [
+        "1v",
+        "3v",
+        "5v"
+      ]
+    },
+    {
+      "name": "Filter 1 Switch",
+      "alias": "filter",
+      "role": "switch",
+      "description": "Turns filter 1 on (default Off — the init sound is unfiltered). Oscillators 1 and 2 feed filter 1 by default",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Filter 1 Model",
+      "alias": "filter_model",
+      "role": "type",
+      "description": "Filter character. Analog = clean, Dirty = driven, Ladder = Moog-like, Digital, Diode = acid, Formant = vowels, Comb, Phaser",
+      "values": [
+        "Analog",
+        "Dirty",
+        "Ladder",
+        "Digital",
+        "Diode",
+        "Formant",
+        "Comb",
+        "Phaser"
+      ]
+    },
+    {
+      "name": "Filter 1 Style",
+      "alias": "filter_style",
+      "role": "type",
+      "description": "Slope / mode of the model: 12dB, 24dB, Notch Blend, Notch Spread, B/P/N",
+      "values": [
+        "12dB",
+        "24dB",
+        "Notch Blend",
+        "B/P/N"
+      ]
+    },
+    {
+      "name": "Filter 1 Cutoff",
+      "alias": "cutoff",
+      "role": "cutoff",
+      "description": "Cutoff in semitones relative to middle C (MIDI 60 ≈ 262 Hz), -52 … +76. -24 ≈ 65 Hz, -12 ≈ 131 Hz, 0 ≈ 262 Hz, 12 ≈ 523 Hz, 24 ≈ 1 kHz, 36 ≈ 2.1 kHz, 48 ≈ 4.2 kHz, 60 ≈ 8.4 kHz",
+      "values": [
+        "-24 semitones",
+        "-12 semitones",
+        "0 semitones",
+        "12 semitones",
+        "24 semitones",
+        "36 semitones",
+        "48 semitones",
+        "60 semitones"
+      ]
+    },
+    {
+      "name": "Filter 1 Resonance",
+      "alias": "resonance",
+      "role": "resonance",
+      "description": "Resonance (default 50 % — quite high; 10–30 % for a smooth filter)",
+      "values": [
+        "0%",
+        "20%",
+        "40%",
+        "70%"
+      ]
+    },
+    {
+      "name": "Filter 1 Drive",
+      "alias": "filter_drive",
+      "role": "drive",
+      "description": "Drive into the filter (0–20 dB)",
+      "values": [
+        "0dB",
+        "6dB",
+        "12dB"
+      ]
+    },
+    {
+      "name": "Filter 1 Key Track",
+      "alias": "keytrack",
+      "role": "cutoff",
+      "description": "How much the cutoff follows the note (default 0 %); 50–100 % keeps high notes as bright as low ones",
+      "values": [
+        "0%",
+        "50%",
+        "100%"
+      ]
+    },
+    {
+      "name": "Filter 1 FILTER Input",
+      "alias": "filter_input",
+      "role": "routing",
+      "description": "Whether filter 1 receives the other filter's output. Leave Off unless chaining filters",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Envelope 1 Attack",
+      "alias": "attack",
+      "role": "attack",
+      "description": "Amplitude envelope (Envelope 1 drives the volume)",
+      "values": [
+        "0 secs",
+        "0.01 secs",
+        "0.1 secs",
+        "0.5 secs",
+        "1 secs"
+      ]
+    },
+    {
+      "name": "Envelope 1 Decay",
+      "alias": "decay",
+      "role": "decay",
+      "values": [
+        "0.2 secs",
+        "0.5 secs",
+        "1 secs",
+        "2 secs"
+      ]
+    },
+    {
+      "name": "Envelope 1 Sustain",
+      "alias": "sustain",
+      "role": "sustain",
+      "description": "0–1; 0 for plucks and keys that die away",
+      "values": [
+        "0",
+        "0.3",
+        "0.7",
+        "1"
+      ]
+    },
+    {
+      "name": "Envelope 1 Release",
+      "alias": "release",
+      "role": "release",
+      "description": "Default 0.09 s — short. 0.3–1 s for keys, 1–3 s for pads",
+      "values": [
+        "0.05 secs",
+        "0.3 secs",
+        "1 secs",
+        "2 secs"
+      ]
+    },
+    {
+      "name": "Envelope 2 Attack",
+      "alias": "env2_attack",
+      "role": "attack",
+      "description": "Envelope 2 does nothing until routed with @modulations (source env_2), e.g. to filter_1_cutoff",
+      "values": [
+        "0 secs",
+        "0.05 secs",
+        "0.3 secs"
+      ]
+    },
+    {
+      "name": "Envelope 2 Decay",
+      "alias": "env2_decay",
+      "role": "decay",
+      "description": "Length of the filter 'blip' when env_2 → filter_1_cutoff: 0.1–0.3 s pluck / bass, 1 s+ slow sweep",
+      "values": [
+        "0.1 secs",
+        "0.25 secs",
+        "0.5 secs",
+        "1 secs"
+      ]
+    },
+    {
+      "name": "Envelope 2 Sustain",
+      "alias": "env2_sustain",
+      "role": "sustain",
+      "description": "0 for a filter that closes back after the blip",
+      "values": [
+        "0",
+        "0.3",
+        "1"
+      ]
+    },
+    {
+      "name": "Envelope 2 Release",
+      "alias": "env2_release",
+      "role": "release",
+      "values": [
+        "0.1 secs",
+        "0.5 secs"
+      ]
+    },
+    {
+      "name": "LFO 1 Tempo",
+      "alias": "lfo_rate",
+      "role": "rate",
+      "description": "LFO 1 speed in note values when LFO 1 Sync is Tempo (default, follows the project tempo). 1/8 = wobble, 1/1–4/1 = slow movement",
+      "values": [
+        "4/1",
+        "2/1",
+        "1/1",
+        "1/2",
+        "1/4",
+        "1/8",
+        "1/16"
+      ]
+    },
+    {
+      "name": "LFO 1 Sync",
+      "alias": "lfo_sync",
+      "role": "rate",
+      "description": "Tempo (default), Tempo Dotted, Tempo Triplets, Seconds (then LFO 1 Frequency), Keytrack",
+      "values": [
+        "Seconds",
+        "Tempo",
+        "Tempo Dotted",
+        "Tempo Triplets"
+      ]
+    },
+    {
+      "name": "Modulation 1 Amount",
+      "alias": "mod1_amount",
+      "role": "amount",
+      "description": "Amount of the first @modulations entry (-1 … 1). Modulation 2 Amount … for the next ones. Automatable: e.g. a filter envelope that gets deeper over the song",
+      "values": [
+        "-0.5",
+        "0",
+        "0.25",
+        "0.5",
+        "1"
+      ]
+    },
+    {
+      "name": "Polyphony",
+      "alias": "polyphony",
+      "role": "voices",
+      "description": "Voices (default 8). 1 voices + Legato On for mono basses and leads",
+      "values": [
+        "1 voices",
+        "4 voices",
+        "8 voices",
+        "16 voices"
+      ]
+    },
+    {
+      "name": "Legato",
+      "alias": "legato",
+      "role": "mode",
+      "description": "With Polyphony 1: overlapping notes don't retrigger the envelopes",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Portamento Time",
+      "alias": "glide",
+      "role": "glide",
+      "description": "Glide time between notes (default ≈ 0)",
+      "values": [
+        "0 secs",
+        "0.05 secs",
+        "0.15 secs",
+        "0.3 secs"
+      ]
+    },
+    {
+      "name": "Velocity Track",
+      "alias": "velocity",
+      "role": "level",
+      "description": "How much note velocity changes the volume (default 0 % — all notes equally loud)",
+      "values": [
+        "0%",
+        "30%",
+        "60%",
+        "100%"
+      ]
+    },
+    {
+      "name": "Volume",
+      "alias": "volume",
+      "role": "gain",
+      "description": "Master volume, default -6.02dB. Leave headroom: multi-voice unison patches get loud",
+      "values": [
+        "-12dB",
+        "-6dB",
+        "-3dB",
+        "0dB"
+      ]
+    },
+    {
+      "name": "Reverb Switch",
+      "alias": "reverb",
+      "role": "switch",
+      "description": "Built-in reverb on/off; then Reverb Mix, Reverb Decay Time, Reverb Size",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Reverb Mix",
+      "alias": "reverb_mix",
+      "role": "mix",
+      "values": [
+        "10%",
+        "25%",
+        "40%"
+      ]
+    },
+    {
+      "name": "Reverb Decay Time",
+      "alias": "reverb_decay",
+      "role": "decay",
+      "values": [
+        "1 secs",
+        "2.5 secs",
+        "5 secs"
+      ]
+    },
+    {
+      "name": "Delay Switch",
+      "alias": "delay",
+      "role": "switch",
+      "description": "Built-in delay on/off; follows the project tempo (Delay Tempo, default 1/8)",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Delay Tempo",
+      "alias": "delay_time",
+      "role": "time",
+      "values": [
+        "1/4",
+        "1/8",
+        "1/16"
+      ]
+    },
+    {
+      "name": "Delay Mix",
+      "alias": "delay_mix",
+      "role": "mix",
+      "values": [
+        "15%",
+        "25%",
+        "40%"
+      ]
+    },
+    {
+      "name": "Delay Feedback",
+      "alias": "delay_feedback",
+      "role": "feedback",
+      "values": [
+        "30%",
+        "50%",
+        "70%"
+      ]
+    },
+    {
+      "name": "Chorus Switch",
+      "alias": "chorus",
+      "role": "switch",
+      "description": "Built-in chorus on/off (wide, quite strong at its default 50 % mix)",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Chorus Mix",
+      "alias": "chorus_mix",
+      "role": "mix",
+      "values": [
+        "20%",
+        "35%",
+        "50%"
+      ]
+    },
+    {
+      "name": "Distortion Switch",
+      "alias": "distortion",
+      "role": "switch",
+      "description": "Built-in distortion on/off; Distortion Type, Distortion Drive",
+      "values": [
+        "Off",
+        "On"
+      ]
+    },
+    {
+      "name": "Distortion Type",
+      "alias": "distortion_type",
+      "role": "type",
+      "values": [
+        "Soft Clip",
+        "Hard Clip",
+        "Linear Fold",
+        "Sine Fold",
+        "Bit Crush",
+        "Down Sample"
+      ]
+    },
+    {
+      "name": "Distortion Drive",
+      "alias": "distortion_drive",
+      "role": "drive",
+      "values": [
+        "3 dB",
+        "6 dB",
+        "12 dB"
+      ]
+    },
+    {
+      "name": "Macro 1",
+      "alias": "macro1",
+      "role": "macro",
+      "description": "Macro knob 1 (0–1); does nothing until routed with @modulations (source macro_control_1). Route one macro to several destinations, then automate the macro",
+      "values": [
+        "0",
+        "0.5",
+        "1"
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "bass",
+      "description": "Saw + square sub octave through a 24 dB ladder; a short filter envelope 'blip' on every note; mono legato",
+      "params": {
+        "Oscillator 2 Switch": "On",
+        "@wavetable": {
+          "1": "saw",
+          "2": "square"
+        },
+        "Oscillator 2 Transpose": "-12",
+        "Oscillator 2 Level": "0.5",
+        "Filter 1 Switch": "On",
+        "Filter 1 Model": "Ladder",
+        "Filter 1 Style": "24dB",
+        "Filter 1 Cutoff": "-24 semitones",
+        "Filter 1 Resonance": "30%",
+        "Filter 1 FILTER Input": "On",
+        "Oscillator 2 Destination": "FILTER 1",
+        "@modulations": [
+          {
+            "source": "env_2",
+            "destination": "filter_1_cutoff",
+            "amount": 0.45
+          }
+        ],
+        "Envelope 2 Decay": "0.25 secs",
+        "Envelope 2 Sustain": "0",
+        "Envelope 1 Release": "0.06 secs",
+        "Polyphony": "1 voices",
+        "Legato": "On",
+        "Volume": "-3dB"
+      }
+    },
+    {
+      "name": "sub",
+      "description": "Pure sine one octave down, mono: sub bass under a busier bass or kick",
+      "params": {
+        "@wavetable": "sine",
+        "Oscillator 1 Transpose": "-12",
+        "Envelope 1 Release": "0.08 secs",
+        "Polyphony": "1 voices",
+        "Volume": "0dB"
+      }
+    },
+    {
+      "name": "reese",
+      "description": "Detuned 4-voice saw, lightly filtered and driven: drum & bass / dubstep reese",
+      "params": {
+        "Oscillator 1 Unison Voices": "4v",
+        "Oscillator 1 Unison Detune": "15%",
+        "Oscillator 1 Stereo Spread": "60%",
+        "Filter 1 Switch": "On",
+        "Filter 1 Cutoff": "12 semitones",
+        "Filter 1 Resonance": "20%",
+        "Distortion Switch": "On",
+        "Distortion Drive": "6 dB",
+        "Polyphony": "1 voices",
+        "Volume": "-4dB"
+      }
+    },
+    {
+      "name": "supersaw",
+      "description": "9-voice detuned saw plus a 5-voice octave above, open filter, a little reverb: trance / EDM lead or chords",
+      "params": {
+        "Oscillator 1 Unison Voices": "9v",
+        "Oscillator 1 Unison Detune": "35%",
+        "Oscillator 2 Switch": "On",
+        "@wavetable": {
+          "2": "saw"
+        },
+        "Oscillator 2 Transpose": "12",
+        "Oscillator 2 Unison Voices": "5v",
+        "Oscillator 2 Level": "0.35",
+        "Filter 1 Switch": "On",
+        "Filter 1 Cutoff": "48 semitones",
+        "Envelope 1 Release": "0.3 secs",
+        "Reverb Switch": "On",
+        "Reverb Mix": "20%",
+        "Volume": "-8dB"
+      }
+    },
+    {
+      "name": "pad",
+      "description": "Morphing wavetable (sine→triangle) slowly moved by LFO 1, 6 unison voices, slow attack, chorus and long reverb",
+      "params": {
+        "@wavetable": "basic",
+        "Oscillator 1 Wave Frame": "60",
+        "Oscillator 1 Unison Voices": "6v",
+        "Oscillator 1 Unison Detune": "25%",
+        "@modulations": [
+          {
+            "source": "lfo_1",
+            "destination": "osc_1_wave_frame",
+            "amount": 0.25
+          }
+        ],
+        "LFO 1 Tempo": "4/1",
+        "Filter 1 Switch": "On",
+        "Filter 1 Cutoff": "24 semitones",
+        "Envelope 1 Attack": "0.8 secs",
+        "Envelope 1 Release": "2 secs",
+        "Chorus Switch": "On",
+        "Chorus Mix": "35%",
+        "Reverb Switch": "On",
+        "Reverb Mix": "35%",
+        "Reverb Decay Time": "4 secs",
+        "Volume": "-4dB"
+      }
+    },
+    {
+      "name": "pluck",
+      "description": "Filter envelope pluck: short decay, no sustain, 1/8 tempo delay and reverb",
+      "params": {
+        "Filter 1 Switch": "On",
+        "Filter 1 Cutoff": "-6 semitones",
+        "Filter 1 Resonance": "25%",
+        "@modulations": [
+          {
+            "source": "env_2",
+            "destination": "filter_1_cutoff",
+            "amount": 0.55
+          }
+        ],
+        "Envelope 2 Decay": "0.2 secs",
+        "Envelope 2 Sustain": "0",
+        "Envelope 1 Decay": "0.5 secs",
+        "Envelope 1 Sustain": "0",
+        "Envelope 1 Release": "0.3 secs",
+        "Oscillator 1 Unison Voices": "3v",
+        "Oscillator 1 Unison Detune": "15%",
+        "Delay Switch": "On",
+        "Delay Mix": "25%",
+        "Delay Tempo": "1/8",
+        "Reverb Switch": "On",
+        "Reverb Mix": "20%",
+        "Volume": "0dB"
+      }
+    },
+    {
+      "name": "wobble",
+      "description": "Dirty resonant filter wobbling at 1/8 notes (LFO 1, tempo-synced), square sub, distortion: dubstep",
+      "params": {
+        "Oscillator 2 Switch": "On",
+        "@wavetable": {
+          "2": "square"
+        },
+        "Oscillator 2 Transpose": "-12",
+        "Filter 1 Switch": "On",
+        "Filter 1 Model": "Dirty",
+        "Filter 1 Cutoff": "-24 semitones",
+        "Filter 1 Resonance": "45%",
+        "Filter 1 FILTER Input": "On",
+        "@modulations": [
+          {
+            "source": "lfo_1",
+            "destination": "filter_1_cutoff",
+            "amount": 0.6
+          }
+        ],
+        "LFO 1 Tempo": "1/8",
+        "Distortion Switch": "On",
+        "Distortion Drive": "8 dB",
+        "Polyphony": "1 voices",
+        "Volume": "-6dB"
+      }
+    },
+    {
+      "name": "pwm_lead",
+      "description": "Pulse-width-modulated lead (pwm wavetable swept by LFO 1), mono with glide, a touch of delay",
+      "params": {
+        "@wavetable": "pwm",
+        "@modulations": [
+          {
+            "source": "lfo_1",
+            "destination": "osc_1_wave_frame",
+            "amount": 0.4
+          }
+        ],
+        "LFO 1 Tempo": "1/1",
+        "Filter 1 Switch": "On",
+        "Filter 1 Cutoff": "36 semitones",
+        "Polyphony": "1 voices",
+        "Legato": "On",
+        "Portamento Time": "0.05 secs",
+        "Delay Switch": "On",
+        "Delay Mix": "20%",
+        "Volume": "-6dB"
+      }
+    },
+    {
+      "name": "keys",
+      "description": "Harmonic wavetable that darkens as the note decays (env_2 → frame), velocity → brightness, chorus: soft synth keys",
+      "params": {
+        "@wavetable": "harmonics",
+        "Oscillator 1 Wave Frame": "100",
+        "@modulations": [
+          {
+            "source": "env_2",
+            "destination": "osc_1_wave_frame",
+            "amount": -0.3
+          },
+          {
+            "source": "velocity",
+            "destination": "filter_1_cutoff",
+            "amount": 0.3
+          }
+        ],
+        "Envelope 2 Decay": "0.8 secs",
+        "Envelope 2 Sustain": "0.2",
+        "Filter 1 Switch": "On",
+        "Filter 1 Cutoff": "30 semitones",
+        "Envelope 1 Decay": "1.5 secs",
+        "Envelope 1 Sustain": "0.3",
+        "Envelope 1 Release": "0.4 secs",
+        "Chorus Switch": "On",
+        "Chorus Mix": "25%",
+        "Volume": "0dB"
+      }
+    }
+  ],
+  "tips": [
+    "@wavetable picks the oscillator wavetable: \"@wavetable\": \"basic\" (all three oscillators) or {\"1\": \"basic\", \"2\": \"square\"}. Built-in tables: saw (init), sine, triangle, square, basic (sine → triangle → saw → square at Wave Frame 0 / 85 / 170 / 256), pwm (pulse narrowing across frames), harmonics (sine → 16 harmonics), formant (vocal / sync-like). Frames of multi-frame tables are chosen with `frame` (Oscillator 1 Wave Frame).",
+    "@modulations wires the modulation matrix: [{\"source\": \"env_2\", \"destination\": \"filter_1_cutoff\", \"amount\": 0.5}, …] (up to 64; amount -1 … 1, optional \"bipolar\": true). It replaces the whole matrix. Without it, envelopes 2–6, LFOs, macros and velocity do nothing.",
+    "Modulation sources: env_1 … env_6, lfo_1 … lfo_8, random_1 … random_4, macro_control_1 … macro_control_4, velocity, note, aftertouch, mod_wheel, pitch_wheel.",
+    "Modulation destinations are Vital's internal names: filter_1_cutoff, filter_1_resonance, filter_1_drive, osc_1_wave_frame, osc_1_level, osc_1_pan, osc_1_tune, osc_1_unison_detune, osc_1_distortion_amount, osc_2_… (same for oscillator 2), volume, reverb_dry_wet, delay_dry_wet, chorus_dry_wet, distortion_drive. A wrong name is rejected with similar names.",
+    "Modulation amounts are fractions of the destination's whole range: for filter_1_cutoff (128 semitones) 0.25 ≈ +32 semitones (two and a half octaves), 0.5 ≈ +64. Start at 0.3–0.6 with the cutoff set low.",
+    "Filter 1 is Off in the init patch: set \"filter\": \"On\" first, otherwise cutoff / resonance do nothing. Its default resonance is 50 %, quite peaky.",
+    "LFOs, the delay and other tempo-synced features follow the project tempo (muser sends it to the plugin).",
+    "Continuous parameters take the displayed text: \"0.5 secs\", \"-12 semitones\", \"30%\", \"-6dB\", \"7v\". Plain numbers are on the plugin's 0–1 scale, which is non-linear for times and cutoff — prefer the text.",
+    "For mono basses and leads: polyphony \"1 voices\" and legato \"On\"; add glide for slides.",
+    "Unison patches get loud and wide quickly; lower `volume` and use `spread` 30–60 % on basses so the low end stays mono.",
+    "Any parameter can be automated by name or alias, e.g. frame, cutoff, Modulation 1 Amount, Macro 1."
+  ]
+}

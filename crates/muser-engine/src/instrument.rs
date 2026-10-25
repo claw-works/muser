@@ -665,6 +665,7 @@ struct PluginInstrument {
     opened: crate::plugin::Opened,
     pending: manguebyte::prelude::EventBuffer,
     transport: manguebyte::prelude::Transport,
+    sample_rate: f64,
     blocks: u32,
 }
 
@@ -689,6 +690,7 @@ impl Playable for PluginInstrument {
         let ctx = ProcessContext::new(&self.pending, &self.transport);
         self.processor.process_with(buffer, &ctx);
         self.pending.clear();
+        self.transport.advance(buffer.num_frames(), self.sample_rate);
         self.blocks = self.blocks.wrapping_add(1);
         if self.blocks % 16 == 0 {
             let _ = self.opened.plugin.pump();
@@ -715,7 +717,8 @@ fn resolve_plugin(spec: &str, params: &InstrumentParams, ps: &ProcessSpec) -> Re
             processor,
             opened,
             pending: manguebyte::prelude::EventBuffer::with_capacity(256),
-            transport: manguebyte::prelude::Transport::STOPPED,
+            transport: crate::transport::start(),
+            sample_rate: ps.sample_rate,
             blocks: 0,
         },
         0,

@@ -89,6 +89,7 @@ enum Command {
         #[arg(long)]
         param: Option<String>,
         /// 取值，逗号分隔；数字按数字处理，其余作为文字交给插件解析（如 "200 Hz,2000 Hz"）。
+        /// 插件显示为纯数字的文字用双引号括起来（如 '"200.0","800.0"'）；负数用 --values=-12,0 的写法。
         #[arg(long, value_delimiter = ',')]
         values: Vec<String>,
         /// 测试音高（MIDI；鼓组用 GM 鼓键）。

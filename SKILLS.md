@@ -97,8 +97,18 @@
   值写插件显示的文字（如 `"2000 Hz"`、`"LP 24 dB"`）。遇到陌生插件按 [skills/plugins.md](skills/plugins.md) 的流程：
   scan → info → 搜参数 → 看选项 → 试听 → 写进工程 → 存成画像。
 - 有画像的插件（`muser plugin profile list`）可以用短别名（`"cutoff"`）和预设（`"@preset": "pad"`），
-  画像的 `setup` 会自动应用（`"@setup": false` 关闭）。内置画像：[Surge XT](skills/plugins/surge-xt.md)、
-  [Surge XT Effects](skills/plugins/surge-xt-effects.md)。完整音色可以存成状态文件，用 `"@state": "<文件>"` 加载。
+  画像的 `setup` 会自动应用（`"@setup": false` 关闭）。完整音色可以存成状态文件，用 `"@state": "<文件>"` 加载。
+- muser 内置这些开源插件的画像（装了就能直接用，英文 skill）：
+
+  | 插件 | 用途 | 要点 |
+  |---|---|---|
+  | [Surge XT](skills/plugins/surge-xt.md) | 音源 | 混合合成器，bass / pad / pluck / lead 预设 |
+  | [Surge XT Effects](skills/plugins/surge-xt-effects.md) | 效果器 | `type` 选 28 种效果 |
+  | [Vital](skills/plugins/vital.md) | 音源 | 波表合成器：`@wavetable` 选波表、`@modulations` 接调制；bass / sub / reese / supersaw / pad / pluck / wobble / pwm_lead / keys 预设 |
+  | [Airwindows Consolidated](skills/plugins/airwindows-consolidated.md) | 效果器 | 约 470 个效果，`"effect": "<名称>"` 选择（混响、磁带、饱和、调音台、lo-fi…），参数随效果变化 |
+  | [Plasma](skills/plugins/plasma.md) | 效果器 | 双级失真：warm / bass_grit / drum_crush / lofi / scream 预设 |
+
+  插件路径可写 `~/`（如 `~/.clap/Airwindows Consolidated.clap`）。
 
 ## 让声音动起来：automation
 
@@ -121,10 +131,23 @@
 
 ## 给人听：muser view
 
-做完一版后，可以生成播放页给人听、让人调音量：`muser view song.muser.json -o song.html`
-（或 `--serve` 起本地联动服务，人在页面上点「保存」会直接改工程的 `gain_db` / `muted`）。
-人复制给你的改动 JSON 形如 `{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`：
-按 `node` 把对应音轨/总线的字段改成给出的值即可（MCP：`update_track` / `set_bus`）。
+`muser view` 生成播放页（时间线、成品/分轨播放、每条音轨与总线的推子、静音、独奏，实时生效）。由你判断何时给人看：
+
+- **该给人看**：一首曲子完成一版（结构、配器、混音都有了）；混音或编曲有大改动；用户说"让我听听/看看"；
+  需要人来判断音量平衡、选 A/B 版本时。
+- **不必给人看**：每次小改参数、自己用 `muser audition` 或 `muser render` 自检时——先自己确认能渲染、没有明显问题再给人。
+
+```bash
+muser view song.muser.json -o song.html && xdg-open song.html     # macOS 用 open
+```
+
+- 用户要边听边让你改时，用联动模式：后台运行 `muser view song.muser.json --serve`，打开 `http://127.0.0.1:8737/`。
+  之后你改工程文件，页面会自动重新渲染刷新；用户在页面点「保存」会直接改工程的 `gain_db` / `muted`——
+  **改工程前先重新读文件**，别覆盖用户刚保存的改动。用完结束该进程。
+- 打开后告诉用户页面路径、听什么（如"对比 2-3 小节的侧链泵感"），以及页面里推子是预览、要保存才写回工程。
+- 用户复制给你的改动 JSON 形如 `{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`：
+  按 `node` 把对应音轨/总线的字段改成给出的值（MCP：`update_track` / `set_bus`）。
+- 没有图形界面的环境（远程/容器）打不开浏览器：生成 HTML 后告诉用户文件路径，让用户自己拷走打开。
 
 ## 混音路由：总线、发送、侧链
 
