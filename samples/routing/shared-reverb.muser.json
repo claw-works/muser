@@ -1,0 +1,442 @@
+{
+  "name": "routing/shared-reverb",
+  "tempo": 84,
+  "tracks": [
+    {
+      "name": "piano",
+      "instrument": "poly.fm_electric_piano",
+      "gain_db": -4,
+      "pan": -0.3,
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "notes": [
+            {
+              "pitch": 69,
+              "start": 0,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 76,
+              "start": 2,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 69,
+              "start": 3,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 65,
+              "start": 4,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 69,
+              "start": 5.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 72,
+              "start": 6,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 65,
+              "start": 7,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 60,
+              "start": 8,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 64,
+              "start": 9.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 67,
+              "start": 10,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 60,
+              "start": 11,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 67,
+              "start": 12,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 71,
+              "start": 13.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 74,
+              "start": 14,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 67,
+              "start": 15,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 69,
+              "start": 16,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 72,
+              "start": 17.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 76,
+              "start": 18,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 69,
+              "start": 19,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 65,
+              "start": 20,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 69,
+              "start": 21.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 72,
+              "start": 22,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 65,
+              "start": 23,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 60,
+              "start": 24,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 64,
+              "start": 25.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 67,
+              "start": 26,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 60,
+              "start": 27,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 67,
+              "start": 28,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 71,
+              "start": 29.5,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 74,
+              "start": 30,
+              "length": 0.9,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 67,
+              "start": 31,
+              "length": 0.9,
+              "velocity": 0.75
+            }
+          ]
+        }
+      ],
+      "sends": {
+        "hall": -10
+      }
+    },
+    {
+      "name": "strings",
+      "instrument": "strings.ensemble",
+      "gain_db": -8,
+      "pan": 0.3,
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "notes": [
+            {
+              "pitch": 57,
+              "start": 0,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 53,
+              "start": 4,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 57,
+              "start": 4,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 4,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 48,
+              "start": 8,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 52,
+              "start": 8,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 8,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 12,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 59,
+              "start": 12,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 62,
+              "start": 12,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 57,
+              "start": 16,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 16,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 16,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 53,
+              "start": 20,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 57,
+              "start": 20,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 20,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 48,
+              "start": 24,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 52,
+              "start": 24,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 24,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 28,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 59,
+              "start": 28,
+              "length": 3.9,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 62,
+              "start": 28,
+              "length": 3.9,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ],
+      "sends": {
+        "hall": -6
+      }
+    },
+    {
+      "name": "choir",
+      "instrument": "choir.ooh",
+      "gain_db": -10,
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "notes": [
+            {
+              "pitch": 76,
+              "start": 16,
+              "length": 3.8,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 72,
+              "start": 20,
+              "length": 3.8,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 67,
+              "start": 24,
+              "length": 3.8,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 74,
+              "start": 28,
+              "length": 3.8,
+              "velocity": 0.6
+            }
+          ]
+        }
+      ],
+      "sends": {
+        "hall": -3
+      }
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "buses": [
+    {
+      "name": "hall",
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 300
+        },
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 3.5,
+          "size": 0.85,
+          "damping": 0.4
+        }
+      ]
+    }
+  ],
+  "master_gain_db": 3
+}

@@ -71,6 +71,12 @@ struct AddTrackParams {
     /// 轨增益 dB（可选，默认 0）。
     #[serde(default)]
     gain_db: Option<f64>,
+    /// 输出到哪里（可选）："master"（默认）或总线名。
+    #[serde(default)]
+    output: Option<String>,
+    /// 发送（可选）：总线名 → dB，如 {"reverb": -8}。
+    #[serde(default)]
+    sends: Option<std::collections::BTreeMap<String, f64>>,
     /// 声像 -1~1（可选，默认 0）。
     #[serde(default)]
     pan: Option<f64>,
@@ -151,6 +157,27 @@ struct UpdateTrackParams {
     /// 合并到现有乐器参数（可选）：给出的键覆盖，值为 null 的键删除。
     #[serde(default)]
     instrument_params: Option<serde_json::Map<String, serde_json::Value>>,
+    /// 改输出（可选）："master" 或总线名。
+    #[serde(default)]
+    output: Option<String>,
+    /// 合并到现有发送（可选）：总线名 → dB，值为 null 删除该发送。
+    #[serde(default)]
+    sends: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SetBusParams {
+    project_id: String,
+    /// 总线定义：{"name": "reverb", "effects": [...], "gain_db": 0, "pan": 0, "muted": false,
+    /// "output": "master" | "<总线>", "sends": {...}, "automation": [...]}。同名总线会被整体替换。
+    bus: serde_json::Value,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RemoveBusParams {
+    project_id: String,
+    /// 要删除的总线名。仍被音轨/总线引用（output、sends、侧链）时会报错。
+    name: String,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -163,9 +190,12 @@ struct ClearClipParams {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct SetAutomationParams {
     project_id: String,
-    /// 音轨下标；省略表示主总线（工程级 automation，目标 master_gain_db / master_effects[i]）。
+    /// 音轨下标；与 bus 都省略表示主总线（工程级 automation，目标 master_gain_db / master_effects[i]）。
     #[serde(default)]
     track_index: Option<usize>,
+    /// 总线名（可选）：设置该总线的自动化（目标 effects[i] / gain_db / pan / sends.<总线>）。
+    #[serde(default)]
+    bus: Option<String>,
     /// 自动化列表。每条：{"target": "instrument" | "effects[i]" | "gain_db" | "pan" | "master_gain_db" | "master_effects[i]",
     /// "param": 参数名（gain_db/pan/master_gain_db 省略；鼓组用 "kick.tune"），"shape": "points" | "lfo" | "random", ...}。
     /// points: {"points": [[拍, 值], ...], "curve": "linear"|"exp"|"smooth"|"step"}；
@@ -458,6 +488,15 @@ impl Muser {
             if let Err(e) = muser_engine::check_instrument_with(&track.instrument, &track.instrument_params) {
                 return Err(user_err(e.to_string()));
             }
+            track.output = p.output.clone().filter(|o| o != muser_core::MASTER);
+            track.sends = p.sends.clone().unwrap_or_default();
+            if track.output.is_some() || !track.sends.is_empty() {
+                let mut candidate = proj.clone();
+                candidate.tracks.push(track.clone());
+                if let Err(e) = muser_core::routing::plan(&candidate) {
+                    return Err(user_err(e));
+                }
+            }
             if let Some(g) = p.gain_db {
                 track.gain_db = g;
             }
@@ -599,12 +638,47 @@ impl Muser {
             if let Err(e) = muser_engine::check_instrument_with(&instrument, &params) {
                 return Err(user_err(e.to_string()));
             }
+            let mut output = track.output.clone();
+            if let Some(o) = &p.output {
+                output = Some(o.clone()).filter(|o| o != muser_core::MASTER);
+            }
+            let mut sends = track.sends.clone();
+            if let Some(patch) = &p.sends {
+                for (k, v) in patch {
+                    match v {
+                        serde_json::Value::Null => {
+                            sends.remove(k);
+                        }
+                        v => match v.as_f64() {
+                            Some(db) => {
+                                sends.insert(k.clone(), db);
+                            }
+                            None => return Err(user_err(format!("sends.{k} 应为 dB 数字或 null"))),
+                        },
+                    }
+                }
+            }
+            if output != track.output || sends != track.sends {
+                let (old_o, old_s) = (track.output.clone(), track.sends.clone());
+                track.output = output;
+                track.sends = sends;
+                let check = muser_core::routing::plan(proj);
+                let track = &mut proj.tracks[ti];
+                if let Err(e) = check {
+                    track.output = old_o;
+                    track.sends = old_s;
+                    return Err(user_err(e));
+                }
+            }
+            let track = &mut proj.tracks[ti];
             track.instrument = instrument;
             track.instrument_params = params;
             Ok(ok_text(format!(
-                "已更新音轨 {ti}: instrument={} instrument_params={} gain={}dB pan={} muted={}",
+                "已更新音轨 {ti}: instrument={} instrument_params={} output={} sends={:?} gain={}dB pan={} muted={}",
                 track.instrument,
                 serde_json::Value::Object(track.instrument_params.clone()),
+                track.output.as_deref().unwrap_or("master"),
+                track.sends,
                 track.gain_db,
                 track.pan,
                 track.muted
@@ -704,7 +778,7 @@ impl Muser {
         }
     }
 
-    #[tool(description = "设置自动化：让乐器参数、效果器参数、增益、声像随时间变化。track_index 省略时作用于主总线。默认整体替换（空列表=清空），append=true 追加。会立即校验参数名与取值范围。")]
+    #[tool(description = "设置自动化：让乐器参数、效果器参数、增益、声像、发送量(sends.<总线>)随时间变化。给 track_index 作用于音轨，给 bus 作用于总线，都省略作用于主总线。默认整体替换（空列表=清空），append=true 追加。会立即校验参数名与取值范围。")]
     fn set_automation(
         &self,
         Parameters(p): Parameters<SetAutomationParams>,
@@ -716,13 +790,20 @@ impl Muser {
         let id = p.project_id.clone();
         self.with_project(&id, |proj| {
             let mut candidate = proj.clone();
-            let slot = match p.track_index {
-                Some(ti) => &mut candidate
+            let slot = match (p.track_index, &p.bus) {
+                (Some(_), Some(_)) => return Err(user_err("track_index 与 bus 只能给一个")),
+                (Some(ti), None) => &mut candidate
                     .tracks
                     .get_mut(ti)
                     .ok_or_else(|| user_err(format!("track_index {ti} 越界")))?
                     .automation,
-                None => &mut candidate.automation,
+                (None, Some(name)) => &mut candidate
+                    .buses
+                    .iter_mut()
+                    .find(|b| &b.name == name)
+                    .ok_or_else(|| user_err(format!("没有总线 '{name}'")))?
+                    .automation,
+                (None, None) => &mut candidate.automation,
             };
             if p.append {
                 slot.extend(list);
@@ -736,9 +817,82 @@ impl Muser {
             *proj = candidate;
             Ok(ok_text(format!(
                 "{} 现有 {count} 条自动化",
-                p.track_index.map_or("主总线".to_string(), |t| format!("音轨 {t}"))
+                match (&p.track_index, &p.bus) {
+                    (Some(t), _) => format!("音轨 {t}"),
+                    (_, Some(b)) => format!("总线 {b}"),
+                    _ => "主总线".to_string(),
+                }
             )))
         })
+    }
+
+    #[tool(description = "新增或替换一条总线（bus）：汇集音轨/总线的信号统一处理，用于共用混响/延迟（音轨用 sends 送过来）、鼓组编组（音轨 output 指向它）。总线定义里可写 effects、gain_db、pan、muted、output、sends、automation。会立即校验（名称、引用、环路）。")]
+    fn set_bus(&self, Parameters(p): Parameters<SetBusParams>) -> Result<CallToolResult, McpError> {
+        let bus: muser_core::Bus = match serde_json::from_value(p.bus) {
+            Ok(b) => b,
+            Err(e) => return Ok(user_err(format!("bus 解析失败: {e}"))),
+        };
+        let id = p.project_id.clone();
+        self.with_project(&id, |proj| {
+            let mut candidate = proj.clone();
+            match candidate.buses.iter_mut().find(|b| b.name == bus.name) {
+                Some(slot) => *slot = bus.clone(),
+                None => candidate.buses.push(bus.clone()),
+            }
+            if let Err(e) = muser_engine::validate(&candidate) {
+                return Err(user_err(e.to_string()));
+            }
+            *proj = candidate;
+            Ok(ok_text(format!("总线 '{}' 已设置；现有总线: {}", bus.name, proj.buses.iter().map(|b| b.name.as_str()).collect::<Vec<_>>().join(", "))))
+        })
+    }
+
+    #[tool(description = "删除一条总线。仍被引用（音轨/总线的 output、sends，或压缩器 sidechain）时报错并指出引用处。")]
+    fn remove_bus(&self, Parameters(p): Parameters<RemoveBusParams>) -> Result<CallToolResult, McpError> {
+        let id = p.project_id.clone();
+        self.with_project(&id, |proj| {
+            let mut candidate = proj.clone();
+            let before = candidate.buses.len();
+            candidate.buses.retain(|b| b.name != p.name);
+            if candidate.buses.len() == before {
+                return Err(user_err(format!("没有总线 '{}'", p.name)));
+            }
+            if let Err(e) = muser_core::routing::plan(&candidate) {
+                return Err(user_err(format!("不能删除：{e}")));
+            }
+            *proj = candidate;
+            Ok(ok_text(format!("已删除总线 '{}'", p.name)))
+        })
+    }
+
+    #[tool(description = "查看工程的信号流：每条音轨/总线的去向（output 与 sends）、处理顺序、侧链关系。")]
+    fn get_routing(&self, Parameters(p): Parameters<ProjectIdParams>) -> Result<CallToolResult, McpError> {
+        use muser_core::routing::{self, Node};
+        let sessions = self.sessions.lock().unwrap();
+        let Some(proj) = sessions.get(&p.project_id) else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        let plan = match routing::plan(proj) {
+            Ok(x) => x,
+            Err(e) => return Ok(user_err(e)),
+        };
+        let name = |n: Node| match n {
+            Node::Track(i) => serde_json::json!({ "track": i, "name": proj.tracks[i].name }),
+            Node::Bus(i) => serde_json::json!({ "bus": proj.buses[i].name }),
+        };
+        let nodes: Vec<_> = plan
+            .order
+            .iter()
+            .map(|n| {
+                let outs: Vec<_> = plan.edges.iter().filter(|e| e.from == *n).map(|e| serde_json::json!({
+                    "to": e.to.map_or("master".to_string(), |b| proj.buses[b].name.clone()),
+                    "send_db": e.send.as_ref().map(|_| e.level_db)
+                })).collect();
+                serde_json::json!({ "node": name(*n), "outputs": outs })
+            })
+            .collect();
+        let sc: Vec<_> = plan.sidechains.iter().map(|s| serde_json::json!({ "key": name(s.key), "node": name(s.node), "effect": s.effect })).collect();
+        json_result(&serde_json::json!({ "order": nodes, "sidechains": sc }))
     }
 
     #[tool(description = "设置工程随机种子。没写 seed 的 random 自动化都由它推导：同一种子渲染结果完全相同，换种子听另一种随机变化。")]
@@ -978,6 +1132,8 @@ random 自动化由工程 seed 决定，set_seed 换种子即换一种变化。\
 外置插件：scan_plugins 找插件 → plugin_info / list_plugin_params(filter) / plugin_param_values 看参数 → audition 试听参数作用；\
 插件参数用名称做键、值写插件显示的文字（如 \"2000 Hz\"），可用于 instrument_params、plugin 效果器的 params 与自动化。\
 有画像（get_profile）的插件可用短别名与 \"@preset\"；save_plugin_state 存音色，参数里写 \"@state\" 加载；摸清插件后 save_profile 留存经验。\
+混音路由：set_bus 建总线（共用混响/延迟、鼓组编组），音轨用 output 指向总线、用 sends 按 dB 送一份到总线；\
+压缩器写 \"sidechain\": \"<音轨或总线名>\" 做底鼓压贝斯的泵感；get_routing 查看信号流。\
 validate_project 会指出越界参数与未知乐器的具体位置。"
 )]
 impl ServerHandler for Muser {}

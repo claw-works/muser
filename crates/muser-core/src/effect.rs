@@ -63,6 +63,10 @@ pub enum Effect {
         /// 补偿增益（dB）。
         #[serde(default)]
         makeup_db: f64,
+        /// 侧链（可省略）：用另一条音轨或总线的信号（按名称）来触发压缩，
+        /// 例如 `"kick"`：底鼓一响就把本轨压下去（ducking / 泵感）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sidechain: Option<String>,
     },
     /// 第三方插件作为效果器（CLAP/VST3/LV2）。
     ///
@@ -308,7 +312,7 @@ pub static EFFECT_SPECS: &[EffectSpec] = &[
     EffectSpec {
         name: "compressor",
         summary: "压缩器：压低超过阈值的峰值，让动态更平稳、更紧实。",
-        placement: "单轨上放在链首（EQ 之后）控制动态；主总线上做\"胶水\"，在 limiter 之前。",
+        placement: "单轨上放在链首（EQ 之后）控制动态；主总线上做\"胶水\"，在 limiter 之前。写 \"sidechain\": \"<音轨或总线名>\" 时改由那条信号触发：底鼓压贝斯/pad 的泵感（常用 threshold -30、ratio 6-10、attack 1-5、release 100-200）。",
         params: &[
             p("threshold_db", -60.0, 0.0, -18.0, "dB", "阈值。越低压得越多。轻压 -12；常规 -18；重压 -30"),
             p("ratio", 1.0, 100.0, 4.0, ":1", "压缩比。2 温和；4 常规；8+ 接近限幅"),
@@ -426,7 +430,7 @@ impl Effect {
             Effect::Delay { time_seconds, feedback, mix } => {
                 vec![("time_seconds", time_seconds), ("feedback", feedback), ("mix", mix)]
             }
-            Effect::Compressor { threshold_db, ratio, attack_ms, release_ms, makeup_db } => vec![
+            Effect::Compressor { threshold_db, ratio, attack_ms, release_ms, makeup_db, .. } => vec![
                 ("threshold_db", threshold_db),
                 ("ratio", ratio),
                 ("attack_ms", attack_ms),
@@ -478,6 +482,9 @@ impl Effect {
                         cs.choices.join(" / ")
                     ));
                 }
+            }
+            Effect::Compressor { sidechain: Some(s), .. } if s.trim().is_empty() => {
+                return Err("compressor.sidechain 不能为空字符串".to_string());
             }
             Effect::Plugin { path, .. } if path.trim().is_empty() => {
                 return Err("plugin.path 不能为空".to_string());

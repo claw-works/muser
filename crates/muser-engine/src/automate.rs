@@ -55,14 +55,16 @@ pub fn scalar(lanes: &[Lane], beat: f64, base: f64) -> f64 {
         .unwrap_or(base)
 }
 
-/// 一条音轨的全部自动化。
+/// 一条音轨（或总线）的全部自动化。总线没有 `instrument`。
 #[derive(Default)]
 pub struct TrackLanes {
     pub instrument: Vec<Lane>,
-    /// 下标对应 `track.effects`。
+    /// 下标对应 `effects`。
     pub effects: Vec<Vec<Lane>>,
     pub gain: Vec<Lane>,
     pub pan: Vec<Lane>,
+    /// 发送量自动化：总线名 → lanes。
+    pub sends: std::collections::BTreeMap<String, Vec<Lane>>,
 }
 
 /// 主总线的全部自动化。
@@ -230,9 +232,47 @@ pub fn compile_track(project: &Project, ti: usize, total_beats: f64) -> Result<T
                 let rule = scalar_rule(-1.0, 1.0, "", track.pan);
                 out.pan.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
+            Target::Send(bus) => {
+                let base = *track.sends.get(&bus).ok_or_else(|| at(format!("没有发送到 '{bus}'")))?;
+                let rule = scalar_rule(GAIN_RANGE.0, GAIN_RANGE.1, "dB", base);
+                out.sends.entry(bus).or_default().push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
+            }
             Target::MasterGain | Target::MasterEffect(_) => {
                 return Err(at("主总线目标请写在工程级 automation".into()));
             }
+        }
+    }
+    Ok(out)
+}
+
+/// 编译一条总线的自动化（目标 effects[i] / gain_db / pan / sends.<总线>）。
+pub fn compile_bus(project: &Project, bi: usize, total_beats: f64) -> Result<TrackLanes, String> {
+    let bus = &project.buses[bi];
+    let mut out = TrackLanes { effects: (0..bus.effects.len()).map(|_| Vec::new()).collect(), ..Default::default() };
+    for (ai, a) in bus.automation.iter().enumerate() {
+        let at = |e: String| format!("buses[{bi}].automation[{ai}]: {e}");
+        // 种子空间与音轨分开：总线用 tracks.len() + bi。
+        let seed = derive_seed(project.seed, Some(project.tracks.len() + bi), ai);
+        match Target::parse(&a.target).ok_or_else(|| at(format!("target '{}' 无效", a.target)))? {
+            Target::Effect(i) => {
+                let fx = bus.effects.get(i).ok_or_else(|| at(format!("没有 effects[{i}]")))?;
+                let rule = effect_rule(fx, &a.param).map_err(at)?;
+                out.effects[i].push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
+            }
+            Target::Gain => {
+                let rule = scalar_rule(GAIN_RANGE.0, GAIN_RANGE.1, "dB", bus.gain_db);
+                out.gain.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
+            }
+            Target::Pan => {
+                let rule = scalar_rule(-1.0, 1.0, "", bus.pan);
+                out.pan.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
+            }
+            Target::Send(name) => {
+                let base = *bus.sends.get(&name).ok_or_else(|| at(format!("没有发送到 '{name}'")))?;
+                let rule = scalar_rule(GAIN_RANGE.0, GAIN_RANGE.1, "dB", base);
+                out.sends.entry(name).or_default().push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
+            }
+            _ => return Err(at("总线上可自动化的目标: effects[i] / gain_db / pan / sends.<总线>".into())),
         }
     }
     Ok(out)
@@ -275,6 +315,9 @@ pub fn check(project: &Project) -> Result<(), String> {
         if !project.tracks[ti].automation.is_empty() {
             compile_track(project, ti, beats)?;
         }
+    }
+    for bi in 0..project.buses.len() {
+        compile_bus(project, bi, beats)?;
     }
     compile_master(project, beats).map(|_| ())
 }

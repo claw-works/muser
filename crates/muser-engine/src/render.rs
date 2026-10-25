@@ -1,17 +1,24 @@
 //! 离线渲染器：把 [`muser_core::Project`] 编译成音频并写出 WAV。
 //!
 //! 流程（纯离线，不碰音频设备）：
-//! 1. 对每条未静音的音轨，按 `instrument` 解析出一件乐器（[`crate::instrument`]）。
-//! 2. 把该轨所有 clip 里的音符，换算成**样本精确**的时间线事件（note_on/note_off）。
-//! 3. 分块（block）推进处理：每块开始前触发到点的事件，再 `process` 出该块音频。
-//! 4. 按音轨增益/声像混入主缓冲。
-//! 5. 应用主增益，写出 16-bit 立体声 WAV。
+//! 1. 按路由计划（[`muser_core::routing::plan`]）的顺序处理每个节点：先音轨，后汇集它们的总线。
+//! 2. 音轨：乐器按样本精确的音符事件渲染 → 轨效果链 → 增益/声像，得到推子后信号。
+//! 3. 总线：送进来的信号求和 → 总线效果链 → 增益/平衡。
+//! 4. 每个节点的推子后信号送到它的 `output`（主总线或某条总线），并按 `sends` 的量各送一份。
+//!    被侧链引用的节点保留一份推子后信号，作为压缩器的触发信号。
+//! 5. 主总线：求和 → `master_effects` → 主增益，写出 16-bit 立体声 WAV。
+//!
+//! 有延迟的效果器（limiter 前瞻、插件）处理后把信号前移相应帧数，各路信号保持对齐。
 
-use muser_core::Project;
+use std::collections::{HashMap, HashSet};
+
+use muser_core::routing::{self, Node, Plan};
+use muser_core::{Effect, Project};
 
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, WavFormat, decibels, wav};
 
 use crate::automate::{self, MasterLanes, TrackLanes};
+use crate::effects::{self, Fx};
 use crate::instrument;
 
 /// 渲染参数。
@@ -55,28 +62,28 @@ enum Act {
     Off { key: u8 },
 }
 
-/// 把一条音轨渲染进 `master`（已按声像分配到左右声道）。
-fn render_track(
-    track: &muser_core::Track,
+struct Ctx {
     tempo: f64,
+    sr: f64,
     settings: RenderSettings,
     total_frames: usize,
-    mut lanes: TrackLanes,
-    master: &mut AudioBuffer<f32>,
-) -> Result<(), EngineError> {
-    let spec = ProcessSpec {
-        sample_rate: f64::from(settings.sample_rate),
-        max_block_size: settings.block_size,
-        num_channels: 2,
-    };
+    spec: ProcessSpec,
+}
 
-    let mut inst = instrument::resolve_for(&track.instrument, &track.instrument_params, &spec)?;
-    inst.prepare(&spec);
+impl Ctx {
+    fn beat_at(&self, frame: usize) -> f64 {
+        frame as f64 / self.sr * self.tempo / 60.0
+    }
+}
+
+/// 渲染一条音轨的乐器部分（干声）。
+fn render_instrument(track: &muser_core::Track, cx: &Ctx, lanes: &mut TrackLanes) -> Result<AudioBuffer<f32>, EngineError> {
+    let (settings, total_frames, sr, tempo) = (cx.settings, cx.total_frames, cx.sr, cx.tempo);
+    let mut inst = instrument::resolve_for(&track.instrument, &track.instrument_params, &cx.spec)?;
+    inst.prepare(&cx.spec);
     let channel = inst.channel();
 
     // 收集全轨事件（样本帧, 动作），并按时间排序；同帧先 Off 后 On。
-    let sr = f64::from(settings.sample_rate);
-    let beat_at = |frame: usize| frame as f64 / sr * tempo / 60.0;
     let mut acts: Vec<(usize, Act)> = Vec::new();
     for clip in &track.clips {
         let clip_start = clip.start.to_seconds(tempo) * sr;
@@ -85,8 +92,7 @@ fn render_track(
         for note in &clip.notes {
             let on = (clip_start + note.start.to_seconds(tempo) * sr) as usize;
             // 音符结束不超过 clip 边界（被裁剪）。
-            let raw_off = (clip_start
-                + (note.start + note.length).to_seconds(tempo) * sr) as usize;
+            let raw_off = (clip_start + (note.start + note.length).to_seconds(tempo) * sr) as usize;
             let off = raw_off.min(clip_end_frame);
             if off <= on {
                 continue;
@@ -95,120 +101,217 @@ fn render_track(
             acts.push((off, Act::Off { key: note.pitch }));
         }
     }
-    // 排序：先按帧，再让 Off 排在 On 前面（避免同帧 On 被随即 Off）。
     acts.sort_by_key(|&(frame, act)| (frame, matches!(act, Act::On { .. })));
 
-    // 该轨自己的渲染缓冲（立体声），渲染完再按增益/声像混入 master。
-    let mut track_buf = AudioBuffer::<f32>::new(2, total_frames);
+    let mut out = AudioBuffer::<f32>::new(2, total_frames);
     let mut block = AudioBuffer::<f32>::new(2, settings.block_size);
-
     let (mut frame, mut next) = (0usize, 0usize);
     while frame < total_frames {
-        // 触发所有到点（<= 当前帧）的事件。
         while let Some(&(at, act)) = acts.get(next) {
             if at > frame {
                 break;
             }
             match act {
-                Act::On { key, velocity, accent } => {
-                    inst.note_on(NoteRef::new(channel, key), velocity, accent)
-                }
+                Act::On { key, velocity, accent } => inst.note_on(NoteRef::new(channel, key), velocity, accent),
                 Act::Off { key } => inst.note_off(NoteRef::new(channel, key), 0.0),
             }
             next += 1;
         }
-        // 乐器自动化：在块开始处写入当前值。
         for lane in lanes.instrument.iter_mut() {
-            if let Some(v) = lane.poll(beat_at(frame)) {
+            if let Some(v) = lane.poll(cx.beat_at(frame)) {
                 inst.set_param(&lane.param, v);
             }
         }
-        // 这一块推进到：下一个事件帧 或 块大小 或 总长，三者取最小（但至少前进 1 帧）。
-        // 有乐器自动化时块不超过 automate::BLOCK 帧。
         let step = if lanes.instrument.is_empty() { settings.block_size } else { settings.block_size.min(automate::BLOCK) };
         let until = acts.get(next).map_or(total_frames, |&(at, _)| at.min(total_frames));
-        let end = (frame + step)
-            .min(until)
-            .max(frame + 1)
-            .min(total_frames);
+        let end = (frame + step).min(until).max(frame + 1).min(total_frames);
         block.set_num_frames(end - frame);
         inst.process(&mut block);
         for ch in 0..2 {
-            track_buf.channel_mut(ch)[frame..end].copy_from_slice(block.channel(ch));
+            out.channel_mut(ch)[frame..end].copy_from_slice(block.channel(ch));
         }
         frame = end;
     }
 
     // 上游模型在极端参数下可能数值发散；宁可报错也不写出爆音。
-    if (0..2).any(|ch| track_buf.channel(ch).iter().any(|s| !s.is_finite() || s.abs() > 64.0)) {
+    if (0..2).any(|ch| out.channel(ch).iter().any(|s| !s.is_finite() || s.abs() > 64.0)) {
         return Err(EngineError::Unstable(format!(
             "音轨 '{}'（{}）输出数值发散，请调整 instrument_params（如增大 release / attack）",
             track.name, track.instrument
         )));
     }
+    Ok(out)
+}
 
-    // 轨级效果链（在增益/声像之前施加）。
-    if !track.effects.is_empty() {
-        let mut chain = crate::effects::build_chain(&track.effects, &spec)?;
-        crate::effects::apply_chain(&mut chain, &mut track_buf, settings.block_size, &mut lanes.effects, &beat_at);
+/// 施加效果链；`keys[i]` 为第 i 个效果器的侧链触发信号。处理后补偿链路延迟。
+fn run_chain(
+    fx: &[Effect],
+    buf: &mut AudioBuffer<f32>,
+    cx: &Ctx,
+    lanes: &mut [Vec<automate::Lane>],
+    keys: &[Option<&AudioBuffer<f32>>],
+) -> Result<(), EngineError> {
+    if fx.is_empty() {
+        return Ok(());
     }
-
-    // 增益 + 等功率声像，混入 master。有自动化时逐帧计算。
-    let gains = |gain_db: f64, pan: f64| {
-        let gain = decibels::db_to_gain(gain_db);
-        // 等功率声像：angle 从 0(左) 到 π/2(右)。
-        let angle = (pan.clamp(-1.0, 1.0) + 1.0) * 0.5 * std::f64::consts::FRAC_PI_2;
-        ((angle.cos() * gain) as f32, (angle.sin() * gain) as f32)
-    };
-    let fixed = lanes.gain.is_empty() && lanes.pan.is_empty();
-    let (mut gl, mut gr) = gains(track.gain_db, track.pan);
-    for frame in 0..total_frames {
-        if !fixed {
-            let beat = beat_at(frame);
-            (gl, gr) = gains(
-                automate::scalar(&lanes.gain, beat, track.gain_db),
-                automate::scalar(&lanes.pan, beat, track.pan),
-            );
+    let mut chain: Vec<Fx> = effects::build_chain(fx, &cx.spec)?;
+    let beat_at = |f: usize| cx.beat_at(f);
+    effects::apply_chain(&mut chain, buf, cx.settings.block_size, lanes, &beat_at, keys);
+    let latency = effects::chain_latency(&chain);
+    if latency > 0 {
+        let n = buf.num_frames();
+        for ch in 0..2 {
+            let c = buf.channel_mut(ch);
+            let l = latency.min(n);
+            c.copy_within(l.., 0);
+            c[n - l..].fill(0.0);
         }
-        master.channel_mut(0)[frame] += track_buf.channel(0)[frame] * gl;
-        master.channel_mut(1)[frame] += track_buf.channel(1)[frame] * gr;
     }
     Ok(())
+}
+
+/// 等功率声像（音轨）：居中时两声道各 -3 dB。
+fn pan_gains(gain_db: f64, pan: f64) -> (f32, f32) {
+    let gain = decibels::db_to_gain(gain_db);
+    let angle = (pan.clamp(-1.0, 1.0) + 1.0) * 0.5 * std::f64::consts::FRAC_PI_2;
+    ((angle.cos() * gain) as f32, (angle.sin() * gain) as f32)
+}
+
+/// 平衡（总线，已是立体声）：居中不衰减，偏向一侧时减弱另一侧。
+fn balance_gains(gain_db: f64, pan: f64) -> (f32, f32) {
+    let g = decibels::db_to_gain(gain_db) as f32;
+    let p = pan.clamp(-1.0, 1.0) as f32;
+    (g * (1.0 - p.max(0.0)), g * (1.0 + p.min(0.0)))
+}
+
+/// 推子：增益与声像（有自动化时逐帧）。
+fn fader(buf: &mut AudioBuffer<f32>, cx: &Ctx, gain_db: f64, pan: f64, lanes: &TrackLanes, law: fn(f64, f64) -> (f32, f32)) {
+    let fixed = lanes.gain.is_empty() && lanes.pan.is_empty();
+    let (mut gl, mut gr) = law(gain_db, pan);
+    for frame in 0..buf.num_frames() {
+        if !fixed {
+            let beat = cx.beat_at(frame);
+            (gl, gr) = law(automate::scalar(&lanes.gain, beat, gain_db), automate::scalar(&lanes.pan, beat, pan));
+        }
+        buf.channel_mut(0)[frame] *= gl;
+        buf.channel_mut(1)[frame] *= gr;
+    }
+}
+
+/// 把 `src` 按 `level_db`（可被 lanes 自动化）加进 `dst`。
+fn mix_into(dst: &mut AudioBuffer<f32>, src: &AudioBuffer<f32>, cx: &Ctx, level_db: f64, lanes: Option<&Vec<automate::Lane>>) {
+    match lanes.filter(|l| !l.is_empty()) {
+        None => {
+            let g = decibels::db_to_gain(level_db) as f32;
+            for ch in 0..2 {
+                for (d, s) in dst.channel_mut(ch).iter_mut().zip(src.channel(ch)) {
+                    *d += s * g;
+                }
+            }
+        }
+        Some(l) => {
+            for frame in 0..src.num_frames() {
+                let g = decibels::db_to_gain(automate::scalar(l, cx.beat_at(frame), level_db)) as f32;
+                for ch in 0..2 {
+                    dst.channel_mut(ch)[frame] += src.channel(ch)[frame] * g;
+                }
+            }
+        }
+    }
 }
 
 /// 把工程渲染成一块立体声音频缓冲。
 pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer<f32>, EngineError> {
     crate::validate(project)?;
+    let plan: Plan = routing::plan(project).map_err(invalid)?;
 
     let sr = f64::from(settings.sample_rate);
     let duration = project.duration_beats().to_seconds(project.tempo);
-    let total_frames =
-        ((duration + settings.tail_seconds) * sr).ceil() as usize + 1;
+    let total_frames = ((duration + settings.tail_seconds) * sr).ceil() as usize + 1;
+    let cx = Ctx {
+        tempo: project.tempo,
+        sr,
+        settings,
+        total_frames,
+        spec: ProcessSpec { sample_rate: sr, max_block_size: settings.block_size, num_channels: 2 },
+    };
+    let beats = automate::total_beats(project, settings.tail_seconds);
+
+    // 需要保留推子后信号的节点：被侧链引用的。
+    let mut key_nodes: HashSet<Node> = plan.sidechains.iter().map(|s| s.key).collect();
+    let mut master_keys: Vec<Option<Node>> = Vec::new();
+    for e in &project.master_effects {
+        let k = match e {
+            Effect::Compressor { sidechain: Some(name), .. } => Some(routing::find_node(project, name).map_err(invalid)?),
+            _ => None,
+        };
+        if let Some(k) = k {
+            key_nodes.insert(k);
+        }
+        master_keys.push(k);
+    }
 
     let mut master = AudioBuffer::<f32>::new(2, total_frames);
-    let beats = automate::total_beats(project, settings.tail_seconds);
-    let beat_at = |frame: usize| frame as f64 / sr * project.tempo / 60.0;
+    let mut bus_in: HashMap<usize, AudioBuffer<f32>> = HashMap::new();
+    let mut keys: HashMap<Node, AudioBuffer<f32>> = HashMap::new();
 
-    for (ti, track) in project.tracks.iter().enumerate() {
-        if track.muted {
+    for &node in &plan.order {
+        let (muted, effects_list, gain_db, pan, mut lanes, law): (bool, &[Effect], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) =
+            match node {
+                Node::Track(i) => {
+                    let t = &project.tracks[i];
+                    (t.muted, &t.effects, t.gain_db, t.pan, automate::compile_track(project, i, beats).map_err(invalid)?, pan_gains)
+                }
+                Node::Bus(i) => {
+                    let b = &project.buses[i];
+                    (b.muted, &b.effects, b.gain_db, b.pan, automate::compile_bus(project, i, beats).map_err(invalid)?, balance_gains)
+                }
+            };
+        // 静音且不作为侧链键的节点：完全跳过（静音节点的输入照常丢弃）。
+        if muted && !key_nodes.contains(&node) {
+            if let Node::Bus(i) = node {
+                bus_in.remove(&i);
+            }
             continue;
         }
-        let lanes = automate::compile_track(project, ti, beats).map_err(invalid)?;
-        render_track(track, project.tempo, settings, total_frames, lanes, &mut master)?;
+        let mut buf = match node {
+            Node::Track(i) => render_instrument(&project.tracks[i], &cx, &mut lanes)?,
+            Node::Bus(i) => bus_in.remove(&i).unwrap_or_else(|| AudioBuffer::<f32>::new(2, total_frames)),
+        };
+        let chain_keys: Vec<Option<&AudioBuffer<f32>>> = (0..effects_list.len())
+            .map(|ei| {
+                plan.sidechains
+                    .iter()
+                    .find(|s| s.node == node && s.effect == ei)
+                    .and_then(|s| keys.get(&s.key))
+            })
+            .collect();
+        run_chain(effects_list, &mut buf, &cx, &mut lanes.effects, &chain_keys)?;
+        drop(chain_keys);
+        fader(&mut buf, &cx, gain_db, pan, &lanes, law);
+
+        if !muted {
+            for e in plan.edges.iter().filter(|e| e.from == node) {
+                let dst = match e.to {
+                    None => &mut master,
+                    Some(b) => bus_in.entry(b).or_insert_with(|| AudioBuffer::<f32>::new(2, total_frames)),
+                };
+                let send_lanes = e.send.as_ref().and_then(|s| lanes.sends.get(s));
+                mix_into(dst, &buf, &cx, e.level_db, send_lanes);
+            }
+        }
+        if key_nodes.contains(&node) {
+            keys.insert(node, buf);
+        }
     }
+
+    // 侧链键只被比它晚处理的节点使用；主总线用到的保留到最后。
+    keys.retain(|n, _| master_keys.contains(&Some(*n)));
+
     let MasterLanes { effects: mut master_fx_lanes, gain: master_gain_lanes } =
         automate::compile_master(project, beats).map_err(invalid)?;
-
-    // 主总线效果链（在主增益之前施加）。
-    if !project.master_effects.is_empty() {
-        let spec = ProcessSpec {
-            sample_rate: sr,
-            max_block_size: settings.block_size,
-            num_channels: 2,
-        };
-        let mut chain = crate::effects::build_chain(&project.master_effects, &spec)?;
-        crate::effects::apply_chain(&mut chain, &mut master, settings.block_size, &mut master_fx_lanes, &beat_at);
-    }
+    let mk: Vec<Option<&AudioBuffer<f32>>> = master_keys.iter().map(|k| k.and_then(|n| keys.get(&n))).collect();
+    run_chain(&project.master_effects, &mut master, &cx, &mut master_fx_lanes, &mk)?;
 
     // 主增益（有自动化时逐帧）。
     if master_gain_lanes.is_empty() {
@@ -218,7 +321,7 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
         }
     } else {
         for frame in 0..total_frames {
-            let db = automate::scalar(&master_gain_lanes, beat_at(frame), project.master_gain_db);
+            let db = automate::scalar(&master_gain_lanes, cx.beat_at(frame), project.master_gain_db);
             let g = decibels::db_to_gain(db) as f32;
             for ch in 0..2 {
                 master.channel_mut(ch)[frame] *= g;

@@ -7,7 +7,9 @@
 
 ## 写在哪里
 
-- 音轨的 `automation`：目标 `instrument`（乐器参数）、`effects[i]`（该轨第 i 个效果器，从 0 起）、`gain_db`、`pan`。
+- 音轨的 `automation`：目标 `instrument`（乐器参数）、`effects[i]`（该轨第 i 个效果器，从 0 起）、`gain_db`、`pan`、
+  `sends.<总线>`（发送量 dB，须先在 `sends` 里写了该总线）。
+- 总线的 `automation`：目标 `effects[i]`、`gain_db`、`pan`、`sends.<总线>`（见 [routing.md](routing.md)）。
 - 工程的 `automation`：目标 `master_gain_db`、`master_effects[i]`。
 
 ```json

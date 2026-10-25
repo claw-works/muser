@@ -111,6 +111,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// 打印工程的信号流：每条音轨/总线送到哪里、发送量、侧链、处理顺序。
+    Routing {
+        /// 工程文件路径。
+        project: String,
+    },
     /// 生成一个示例工程 JSON（供 AI 参考格式）。
     New {
         /// 输出路径；缺省打印到 stdout。
@@ -247,6 +252,7 @@ fn main() -> Result<()> {
         }
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
+        Command::Routing { project } => cmd_routing(&project),
         Command::Plugin { command } => cmd_plugin(command),
         Command::Audition { instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json } => {
             cmd_audition(instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json)
@@ -713,6 +719,57 @@ fn cmd_audition(
         }
     }
     println!("\n重心越高越亮；余音带 + 表示被渲染长度截断（用 --tail 加长）。");
+    Ok(())
+}
+
+fn cmd_routing(path: &str) -> Result<()> {
+    use muser_core::routing::{self, Node};
+    let p = load_project(path)?;
+    let plan = routing::plan(&p).map_err(|e| anyhow::anyhow!(e))?;
+    let name = |n: Node| match n {
+        Node::Track(i) => {
+            let t = &p.tracks[i];
+            format!("{}{}", if t.name.is_empty() { format!("tracks[{i}]") } else { t.name.clone() }, if t.muted { "（静音）" } else { "" })
+        }
+        Node::Bus(i) => format!("[{}]{}", p.buses[i].name, if p.buses[i].muted { "（静音）" } else { "" }),
+    };
+    let fx = |list: &[muser_core::Effect]| {
+        if list.is_empty() {
+            String::new()
+        } else {
+            format!(" → {}", list.iter().map(|e| match e {
+                muser_core::Effect::Compressor { sidechain: Some(k), .. } => format!("compressor⟵{k}"),
+                e => e.type_name().to_string(),
+            }).collect::<Vec<_>>().join(" → "))
+        }
+    };
+    println!("处理顺序与去向：");
+    for n in &plan.order {
+        let (src, effects) = match *n {
+            Node::Track(i) => (format!("{}（{}）", name(*n), p.tracks[i].instrument), &p.tracks[i].effects),
+            Node::Bus(i) => (name(*n), &p.buses[i].effects),
+        };
+        let outs: Vec<String> = plan
+            .edges
+            .iter()
+            .filter(|e| e.from == *n)
+            .map(|e| {
+                let to = e.to.map_or("master".to_string(), |b| format!("[{}]", p.buses[b].name));
+                match &e.send {
+                    Some(_) => format!("{to} 发送 {:+.1} dB", e.level_db),
+                    None => to,
+                }
+            })
+            .collect();
+        println!("  {src}{} ⇒ {}", fx(effects), outs.join("，"));
+    }
+    println!("  master{} → 主增益 {:+.1} dB", fx(&p.master_effects), p.master_gain_db);
+    if !plan.sidechains.is_empty() {
+        println!("侧链：");
+        for s in &plan.sidechains {
+            println!("  {} 触发 {} 的 effects[{}]", name(s.key), name(s.node), s.effect);
+        }
+    }
     Ok(())
 }
 

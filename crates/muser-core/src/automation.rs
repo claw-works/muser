@@ -16,7 +16,8 @@ use crate::Beats;
 /// 一条自动化。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Automation {
-    /// 作用对象。音轨上：`"instrument"`、`"effects[0]"`（该轨第 1 个效果器）、`"gain_db"`、`"pan"`；
+    /// 作用对象。音轨上：`"instrument"`、`"effects[0]"`（该轨第 1 个效果器）、`"gain_db"`、`"pan"`、
+    /// `"sends.<总线名>"`（发送量 dB）；总线上同音轨（没有 instrument）；
     /// 工程上：`"master_gain_db"`、`"master_effects[0]"`。
     pub target: String,
     /// 参数名，与 `instrument_params` / 效果器参数同名；鼓组用 `"kick.tune"` 这种 `鼓件.参数`。
@@ -114,12 +115,14 @@ pub enum RandomStyle {
 }
 
 /// 自动化的目标。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
     Instrument,
     Effect(usize),
     Gain,
     Pan,
+    /// 发送到某条总线的量（dB）。
+    Send(String),
     MasterGain,
     MasterEffect(usize),
 }
@@ -135,6 +138,7 @@ impl Target {
             "gain_db" => Target::Gain,
             "pan" => Target::Pan,
             "master_gain_db" => Target::MasterGain,
+            _ if s.starts_with("sends.") && s.len() > 6 => Target::Send(s[6..].trim().to_string()),
             _ => {
                 if let Some(i) = index("master_effects") {
                     Target::MasterEffect(i)
@@ -146,13 +150,13 @@ impl Target {
     }
 
     /// 是否属于工程（主总线）级。
-    pub fn is_master(self) -> bool {
+    pub fn is_master(&self) -> bool {
         matches!(self, Target::MasterGain | Target::MasterEffect(_))
     }
 
     /// 目标本身就是一个值（不需要 param）。
-    pub fn is_scalar(self) -> bool {
-        matches!(self, Target::Gain | Target::Pan | Target::MasterGain)
+    pub fn is_scalar(&self) -> bool {
+        matches!(self, Target::Gain | Target::Pan | Target::MasterGain | Target::Send(_))
     }
 }
 
@@ -426,5 +430,7 @@ mod tests {
         assert_eq!(Target::parse("master_effects[0]"), Some(Target::MasterEffect(0)));
         assert_eq!(Target::parse("instrument"), Some(Target::Instrument));
         assert_eq!(Target::parse("effects"), None);
+        assert_eq!(Target::parse("sends.reverb"), Some(Target::Send("reverb".into())));
+        assert_eq!(Target::parse("sends."), None);
     }
 }

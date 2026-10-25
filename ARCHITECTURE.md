@@ -142,6 +142,16 @@ samples = seconds × sample_rate
   "automation": [               // 主总线自动化（可省略）：目标 master_gain_db / master_effects[i]
     { "target": "master_effects[0]", "param": "ratio", "shape": "points", "points": [[0, 2], [16, 4]] }
   ],
+  "buses": [                    // 总线（可省略）：汇集送来的信号 → effects → gain_db/pan → output
+    {
+      "name": "reverb",         // 必填，唯一，不能叫 master、不能含 "."
+      "effects": [{ "type": "reverb", "mix": 1.0 }],
+      "gain_db": 0.0, "pan": 0.0, "muted": false,
+      "output": "master",       // 去向（可省略，默认 master）：master 或另一条总线
+      "sends": {},              // 发送到其它总线（dB）
+      "automation": []          // 目标 effects[i] / gain_db / pan / sends.<总线>
+    }
+  ],
   "tracks": [                   // 音轨数组
     {
       "name": "drums",          // 轨名（可省略）
@@ -155,7 +165,9 @@ samples = seconds × sample_rate
       "effects": [              // 轨级效果链（可省略，默认空；在增益/声像前施加）
         { "type": "reverb", "mix": 0.3 }
       ],
-      "automation": [           // 轨自动化（可省略）：目标 instrument / effects[i] / gain_db / pan
+      "output": "master",       // 去向（可省略，默认 master）：master 或总线名
+      "sends": { "reverb": -6 }, // 推子后发送到总线（可省略）：总线名 → dB
+      "automation": [           // 轨自动化（可省略）：目标 instrument / effects[i] / gain_db / pan / sends.<总线>
         { "target": "pan", "shape": "lfo", "period_beats": 8, "min": -0.5, "max": 0.5 }
       ],
       "clips": [                // 片段数组
@@ -184,6 +196,8 @@ samples = seconds × sample_rate
 - 每个 clip 的 `start` ≥ 0，`length` > 0
 - 超出 clip `length` 的音符会在渲染时被裁剪到 clip 边界
 - 鼓组音轨的 `pitch` 用 GM 鼓键编号（36=底鼓, 38=军鼓, 42=闭镲, …）
+- 路由（`muser_core::routing::plan`）：总线名合法且唯一；output / sends / compressor 的 `sidechain` 引用存在；
+  不自指、不成环（侧链键也算依赖）。通过后按拓扑序得到处理顺序
 
 ### 时间直觉速查（4/4 拍）
 
@@ -227,19 +241,23 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 自动化：points / lfo / random（带种子）三种形状，目标覆盖内置乐器参数、效果器参数、
   轨增益与声像、主增益与主总线效果器；乐器/效果器每 64 帧更新，增益与声像逐帧更新
 - 轨增益、等功率声像、主增益、结尾余响
-- 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter / phaser / flanger，可挂到轨级或主总线
+- 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter / phaser / flanger，可挂到轨级、总线或主总线
+- 路由：总线（`buses`）、音轨/总线的 `output` 与推子后 `sends`（可自动化）、总线套总线；compressor `sidechain`
+  由任意音轨/总线的推子后信号触发（静音的键轨照样触发）；按拓扑序离线处理，缓冲用完即释放；
+  有延迟的效果器（limiter 前瞻、插件上报的延迟）在各自链路上补偿，保证并联信号对齐。
+  AI 只写这些简单字段，不接触节点/连线图
 - 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
   （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor。
   已用真实插件验证：加载本机 `Surge XT Effects.vst3`，输出与无插件对照显著不同。
 - 第三方插件作为**乐器**（`host` 特性）：音轨 `instrument` 用 `plugin:路径[#id]`，
   音符经 `process_with`+`ProcessContext` 喂给插件。已用真实 VSTi 验证：
   `Surge XT.vst3` 有音符时 RMS 895、无音符时 RMS 0（完全静音），证明响应音符发声。
-- MCP server（`muser-mcp`）：30 个 tools（工程生命周期 + 增量编辑 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
+- MCP server（`muser-mcp`）：33 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
 
 尚未实现（路线图）：
 - CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、
   可选 `--features host` 构建、`cargo fmt --check` / `clippy`）
 - 更多内置效果器类型（waveshaper / 多段 EQ 等，manguebyte 均自带）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
-- 音频图编排（manguebyte-graph：运行时热重连的信号图，供更复杂的路由）
+- 简易预览：`muser play [--loop --watch]`（内存渲染后播放）
 ```

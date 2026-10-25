@@ -148,13 +148,17 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
             attack_ms,
             release_ms,
             makeup_db,
+            sidechain,
         } => {
-            let c = Compressor::<f32>::new()
+            let mut c = Compressor::<f32>::new()
                 .with_threshold_db(*threshold_db)
                 .with_ratio(*ratio)
                 .with_attack_ms(*attack_ms)
                 .with_release_ms(*release_ms)
                 .with_makeup_db(*makeup_db);
+            if sidechain.is_some() {
+                c.set_key_source(manguebyte::prelude::KeySource::Sidechain);
+            }
             Fx::Compressor(c)
         }
         Effect::Chorus {
@@ -301,18 +305,35 @@ impl Processor<f32> for HostedPlugin {
     }
 }
 
+/// 整条效果链的延迟（帧）：各效果器上报的延迟之和（如 limiter 的前瞻）。
+pub fn chain_latency(chain: &[Fx]) -> usize {
+    chain
+        .iter()
+        .map(|fx| match fx {
+            Fx::Limiter(l) => l.latency_samples(),
+            Fx::Other(p) => p.latency_samples(),
+            #[cfg(feature = "host")]
+            Fx::Plugin(p) => p.latency_samples(),
+            _ => 0,
+        })
+        .sum()
+}
+
 /// 把整条效果链分块施加到 `buffer`（in-place）。`lanes[i]` 是第 i 个效果器的自动化，
 /// 有自动化的效果器按 [`crate::automate::BLOCK`] 帧一块，每块开始前写入当前值。
+/// `keys[i]` 是第 i 个效果器（侧链压缩器）的触发信号，与 `buffer` 帧对齐。
 pub fn apply_chain(
     chain: &mut [Fx],
     buffer: &mut AudioBuffer<f32>,
     block_size: usize,
     lanes: &mut [Vec<crate::automate::Lane>],
     beat_at: &dyn Fn(usize) -> f64,
+    keys: &[Option<&AudioBuffer<f32>>],
 ) {
     let frames = buffer.num_frames();
     for (i, fx) in chain.iter_mut().enumerate() {
         let lanes = lanes.get_mut(i).map(|l| l.as_mut_slice()).unwrap_or(&mut []);
+        let key = keys.get(i).copied().flatten();
         let step = if lanes.is_empty() { block_size } else { block_size.min(crate::automate::BLOCK) };
         let mut start = 0;
         while start < frames {
@@ -323,7 +344,14 @@ pub fn apply_chain(
                 }
             }
             let end = (start + step).min(frames);
-            buffer.windowed(start..end, |block| fx.process(block));
+            match (key, &mut *fx) {
+                (Some(k), Fx::Compressor(c)) => {
+                    let mut ctx = manguebyte::prelude::ProcessContext::empty().with_sidechain(k);
+                    ctx.offset = start;
+                    buffer.windowed(start..end, |block| c.process_with(block, &ctx));
+                }
+                _ => buffer.windowed(start..end, |block| fx.process(block)),
+            }
             start = end;
         }
     }

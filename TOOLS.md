@@ -60,6 +60,10 @@ muser render beat.muser.json -o beat.wav
 报告峰值、RMS、LUFS、频谱重心、低/中/高频占比、起音时间、余音长度。内置与外置都可用。
 `--record` 把结果记进该插件的用户画像。
 
+### `muser routing <project>`
+
+打印信号流：处理顺序、每条音轨/总线的去向（output、发送量）、效果链与侧链关系。改完路由先看一眼。
+
 ### `muser new [-o <path>]`
 生成一个示例工程 JSON（AI 可用来参考标准格式）。缺省打印到 stdout。
 
@@ -81,7 +85,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（30 个）
+### 已实现的 Tools（33 个）
 
 | tool | 作用 |
 |---|---|
@@ -92,13 +96,16 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `load_project` | 从磁盘读工程 JSON 到会话，返回新 `project_id` |
 | `save_project` | 把会话中的工程写到磁盘 JSON |
 | `set_tempo` | 设置速度 |
-| `add_track` | 新增音轨（可带 `instrument_params`），返回 `track_index`；乐器名与参数立即校验 |
+| `add_track` | 新增音轨（可带 `instrument_params`、`output`、`sends`），返回 `track_index`；乐器名、参数与路由立即校验 |
 | `remove_track` | 删除音轨 |
-| `update_track` | 更新增益/声像/静音、更换乐器、合并式更新 `instrument_params`（值为 null 删除该键）；立即校验 |
+| `update_track` | 更新增益/声像/静音、更换乐器、`output`，合并式更新 `instrument_params` 与 `sends`（值为 null 删除该键）；立即校验 |
+| `set_bus` | 新增或替换（同名）一条总线：effects / gain_db / pan / muted / output / sends / automation；立即校验名称、引用与环路 |
+| `remove_bus` | 删除总线；仍被引用时报错并指出引用处 |
+| `get_routing` | 查看信号流：处理顺序、去向与发送量、侧链关系 |
 | `add_clip` | 新增片段，返回 `clip_index` |
 | `add_notes` | 向片段加入一批音符（支持 `velocity`、`accent`） |
 | `clear_clip` | 清空片段内所有音符 |
-| `set_automation` | 设置某音轨或主总线的自动化（替换或追加），立即校验 |
+| `set_automation` | 设置某音轨（`track_index`）、总线（`bus`）或主总线的自动化（替换或追加），立即校验 |
 | `set_seed` | 设置工程随机种子（决定 random 自动化） |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
 | `scan_plugins` | 扫描本机外置插件（需 host 特性） |

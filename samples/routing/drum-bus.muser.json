@@ -1,0 +1,400 @@
+{
+  "name": "routing/drum-bus",
+  "tempo": 96,
+  "tracks": [
+    {
+      "name": "kick",
+      "instrument": "drums.acoustic",
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0,
+              "length": 0.2,
+              "velocity": 1.0
+            },
+            {
+              "pitch": 36,
+              "start": 1.5,
+              "length": 0.2,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 2.5,
+              "length": 0.2,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 36,
+              "start": 4,
+              "length": 0.2,
+              "velocity": 1.0
+            },
+            {
+              "pitch": 36,
+              "start": 5.5,
+              "length": 0.2,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 6.5,
+              "length": 0.2,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 36,
+              "start": 8,
+              "length": 0.2,
+              "velocity": 1.0
+            },
+            {
+              "pitch": 36,
+              "start": 9.5,
+              "length": 0.2,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 10.5,
+              "length": 0.2,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 36,
+              "start": 12,
+              "length": 0.2,
+              "velocity": 1.0
+            },
+            {
+              "pitch": 36,
+              "start": 13.5,
+              "length": 0.2,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 14.5,
+              "length": 0.2,
+              "velocity": 0.9
+            }
+          ]
+        }
+      ],
+      "output": "drums"
+    },
+    {
+      "name": "snare",
+      "instrument": "drums.acoustic",
+      "gain_db": -2,
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 38,
+              "start": 1,
+              "length": 0.2,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 38,
+              "start": 3,
+              "length": 0.2,
+              "velocity": 0.95
+            },
+            {
+              "pitch": 38,
+              "start": 5,
+              "length": 0.2,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 38,
+              "start": 7,
+              "length": 0.2,
+              "velocity": 0.95
+            },
+            {
+              "pitch": 38,
+              "start": 9,
+              "length": 0.2,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 38,
+              "start": 11,
+              "length": 0.2,
+              "velocity": 0.95
+            },
+            {
+              "pitch": 38,
+              "start": 13,
+              "length": 0.2,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 38,
+              "start": 15,
+              "length": 0.2,
+              "velocity": 0.95
+            }
+          ]
+        }
+      ],
+      "output": "drums",
+      "sends": {
+        "room": -10
+      }
+    },
+    {
+      "name": "hats",
+      "instrument": "drums.acoustic",
+      "gain_db": -8,
+      "pan": 0.25,
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 42,
+              "start": 0.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 0.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 1.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 1.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 2.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 2.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 3.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 3.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 4.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 4.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 5.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 5.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 6.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 6.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 7.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 7.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 8.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 8.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 9.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 9.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 10.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 10.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 11.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 11.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 12.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 12.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 13.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 13.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 14.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 14.5,
+              "length": 0.1,
+              "velocity": 0.5
+            },
+            {
+              "pitch": 42,
+              "start": 15.0,
+              "length": 0.1,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 15.5,
+              "length": 0.1,
+              "velocity": 0.5
+            }
+          ]
+        }
+      ],
+      "output": "drums"
+    }
+  ],
+  "buses": [
+    {
+      "name": "drums",
+      "gain_db": 2,
+      "effects": [
+        {
+          "type": "compressor",
+          "threshold_db": -24,
+          "ratio": 4,
+          "attack_ms": 15,
+          "release_ms": 120,
+          "makeup_db": 5
+        },
+        {
+          "type": "eq",
+          "shape": "high_shelf",
+          "frequency": 7000,
+          "gain_db": 2
+        },
+        {
+          "type": "limiter",
+          "ceiling_db": -1
+        }
+      ]
+    },
+    {
+      "name": "room",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 0.8,
+          "size": 0.35
+        }
+      ]
+    }
+  ]
+}

@@ -9,6 +9,7 @@
 | [`params/`](#params) | 调音色（`instrument_params`）A/B 对比 |
 | [`effects/`](#effects) | 内置效果器 A/B 对比 |
 | [`automation/`](#automation) | 自动化：参数随时间变化 |
+| [`routing/`](#routing) | 混音路由：总线、发送、侧链（A/B 对比） |
 | [`plugins/`](#plugins) | 外置 VST 效果器与 VSTi 音源（需 `host` 特性 + 本机插件） |
 
 wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
@@ -76,6 +77,17 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `pad-motion` | 前 2 小节淡入；声像正弦摆动；cutoff 三角 LFO；第 5 小节起方波 gate | 慢慢浮现、左右流动，后半段变成 trance gate |
 | `choir-vowels` | 合唱元音 a→e→o→u→a，亮度先升后降 | 和弦在元音间平滑变化 |
 | `build-up` | 主总线混响 mix 0.05→0.45；stab 的 lowpass 400→16000 Hz；军鼓调音逐步升高 | 典型的电子乐 build-up：越来越亮、越来越湿、越来越紧 |
+
+## routing
+
+总线、发送与侧链（见 [skills/routing.md](../skills/routing.md)）。成对的工程只差路由，可直接 A/B。
+
+| 工程 | 做法 | 听感 |
+|---|---|---|
+| `shared-reverb` / `shared-reverb-dry` | 电钢、弦乐、合唱各按 -10 / -6 / -3 dB 送进同一条 `hall` 混响总线（总线先 highpass 300 Hz） | 三件乐器在同一个空间里，结尾有约 2 秒的厅堂尾音；dry 版贴耳、干 |
+| `drum-bus` / `drum-bus-raw` | 原声鼓三件 `output` 到 `drums` 总线：compressor 4:1 + 高架 + limiter；军鼓再送一点到短房间混响 | 鼓更紧、更响、更"粘"成一体，军鼓带房间感 |
+| `sidechain-pump` / `sidechain-pump-off` | pad、贝斯和混响总线都挂 `sidechain: "kick"` 的压缩器（-30 dB、6:1、release 180 ms）；拍手/镲走 `drums` 总线 | 底鼓一响 pad 与贝斯就让开，随四拍"呼吸"（pad+贝斯拍头比拍中低约 13 dB；关闭时约 1.5 dB） |
+| `dub-throws` | 军鼓平时几乎不送，每两小节末用 `sends.echo` 的 step 自动化"甩"进延迟；`echo` 总线左右摆动并送进 `space` 混响总线；和弦也送 echo/space；鼓走 `rhythm` 总线压缩 | dub 式回声在乐句末飘出去、在左右之间游走、融进大混响 |
 
 ## plugins
 

@@ -112,15 +112,38 @@
 ]
 ```
 
-- `target`：音轨上 `instrument` / `effects[i]` / `gain_db` / `pan`；工程上 `master_gain_db` / `master_effects[i]`。
+- `target`：音轨上 `instrument` / `effects[i]` / `gain_db` / `pan` / `sends.<总线>`；总线上 `effects[i]` / `gain_db` / `pan` / `sends.<总线>`；
+  工程上 `master_gain_db` / `master_effects[i]`。
 - `shape`：`points`（时间点曲线）、`lfo`（周期摆动）、`random`（随机）。时间单位都是拍。
 - `random` 由工程 `seed` 决定：同一 seed 每次渲染一样，换 seed 换一种变化——可以多渲染几版挑一个。
 - 哪些参数能自动化：`muser instruments <名称>` 里标了 `[可自动化]` / `[可自动化·下个音生效]`；插件参数用插件参数名，取值可写文字。
 - 完整说明与示例：[skills/automation.md](skills/automation.md)。
 
+## 混音路由：总线、发送、侧链
+
+默认每条轨直接进主总线。要让几条轨"一起处理"或"共用一个效果"，用工程的 `buses`：
+
+```json
+"buses": [
+  { "name": "reverb", "effects": [{ "type": "eq", "shape": "highpass", "frequency": 300 }, { "type": "reverb", "mix": 1.0, "decay_seconds": 3 }] },
+  { "name": "drums",  "effects": [{ "type": "compressor", "threshold_db": -24, "ratio": 4, "attack_ms": 15 }] }
+],
+"tracks": [
+  { "name": "kick", "instrument": "drums.909", "output": "drums" },
+  { "name": "pad",  "instrument": "poly.warm_analog_pad", "sends": { "reverb": -6 },
+    "effects": [{ "type": "compressor", "threshold_db": -30, "ratio": 6, "attack_ms": 1, "release_ms": 180, "sidechain": "kick" }] }
+]
+```
+
+- `output`：整份信号去哪（`"master"` 默认，或总线名）。鼓组编组、分组处理用它。
+- `sends`：额外送一份到效果总线，`{总线: dB}`，推子后发送。共用混响/延迟用它，总线里效果器 `mix: 1`。
+- `sidechain`：compressor 由另一条轨/总线的信号触发——底鼓压 pad/贝斯的泵感。触发轨 muted 也照样触发。
+- 总线可以有自己的 `effects` / `gain_db` / `pan` / `output` / `sends` / `automation`，总线可以送进总线，不能成环。
+- `muser routing <工程>` 打印信号流，改完先看一眼。完整说明与混音经验：[skills/routing.md](skills/routing.md)。
+
 ## 效果器索引
 
-效果器写在 `track.effects`（轨级，在该轨增益/声像之前）或 `master_effects`（主总线，在主增益之前），
+效果器写在 `track.effects`（轨级，在该轨增益/声像之前）、总线的 `effects` 或 `master_effects`（主总线，在主增益之前），
 按数组顺序串联。每个参数都可省略，`{ "type": "reverb" }` 就是一个可用的混响。
 
 | type | 作用 | 子 skill |

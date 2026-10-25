@@ -17,8 +17,9 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 - 多轨编曲：鼓组 + 合成器 + 贝斯，多 clip、多音符
 - 115 个内置音源：10 套鼓组、68 个合成器预设，以及吉他、贝斯、风琴、马林巴等打击旋律乐器、弦乐、管乐、合唱（全部由 manguebyte 实时合成，不依赖系统 MIDI 音源），每个都可用 `instrument_params` 调音色
 - 内置 SFZ 采样器：`sfz:/path/to.sfz` 直接加载 SFZ 音色库
-- 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级或主总线
-- 自动化：乐器参数、效果器参数、增益、声像随时间变化（时间点曲线 / LFO / 带种子的随机游走）
+- 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级、总线或主总线
+- 混音路由：总线编组、发送到共用混响/延迟、总线套总线、压缩器侧链（底鼓压贝斯的泵感），自动延迟补偿
+- 自动化：乐器参数、效果器参数、增益、声像、发送量随时间变化（时间点曲线 / LFO / 带种子的随机游走）
 - 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)，扫描本机插件、按参数名 + 文字设置参数、参数自动化（`host` 特性）
 - 试听：`muser audition` 按参数取值逐个渲染，报告响度、亮度、起音、余音，帮 AI 摸清陌生参数
 - 插件画像：把插件使用经验（别名、预设、试听结论）存成可分享的数据文件；插件音色可存为状态文件
@@ -72,6 +73,9 @@ muser instruments
 muser instruments guitar.nylon
 muser effects
 muser effects reverb
+
+# 查看信号流（总线、发送、侧链）
+muser routing song.muser.json
 ```
 
 > 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。
@@ -79,7 +83,7 @@ muser effects reverb
 ### 4. 以 MCP server 运行（给 agent 用）
 
 ```bash
-muser-mcp          # stdio MCP server，暴露 30 个 tools
+muser-mcp          # stdio MCP server，暴露 33 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，
@@ -125,10 +129,10 @@ muser/
 │  ├─ muser-cli/      CLI 可执行文件 `muser`
 │  └─ muser-mcp/      MCP server（stdio）
 ├─ vendor/manguebyte/ 上游音频引擎（git submodule）
-├─ samples/           示范工程（songs/instruments/params/effects/automation/plugins 分组）
+├─ samples/           示范工程（songs/instruments/params/effects/automation/routing/plugins 分组）
 ├─ ARCHITECTURE.md    架构、分层、工程 JSON schema、路线图
 ├─ SKILLS.md          给 AI 的编曲操作手册（总入口）
-├─ skills/            子 skill：每个乐器类别、每个效果器、内置插件画像一页
+├─ skills/            子 skill：每个乐器类别、每个效果器、自动化、路由、内置插件画像
 ├─ profiles/          muser 内置的插件画像（JSON）
 ├─ scripts/           gen_skills.py 生成 skills/；render_samples.sh 批量渲染示范
 └─ TOOLS.md           CLI + MCP 工具清单
@@ -140,7 +144,7 @@ muser/
 - [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（总入口：工作流、速查、乐器与效果器索引）
 - [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误
 - [TOOLS.md](TOOLS.md) — CLI 命令与 MCP tools 清单
-- [samples/](samples/) — 分组示范工程（风格曲、音源、调音、效果器、自动化、插件）
+- [samples/](samples/) — 分组示范工程（风格曲、音源、调音、效果器、自动化、路由、插件）
 
 ## 许可
 

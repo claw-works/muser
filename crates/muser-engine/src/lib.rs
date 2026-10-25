@@ -46,6 +46,11 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
             plugin_fx(fx, format!("tracks[{ti}].effects[{i}]"))?;
         }
     }
+    for (bi, bus) in project.buses.iter().enumerate() {
+        for (i, fx) in bus.effects.iter().enumerate() {
+            plugin_fx(fx, format!("buses[{bi}].effects[{i}]"))?;
+        }
+    }
     automate::check(project).map_err(|m| EngineError::Core(muser_core::CoreError::Invalid(m)))?;
     Ok(())
 }
@@ -137,6 +142,7 @@ mod tests {
             attack_ms: 10.0,
             release_ms: 120.0,
             makeup_db: 0.0,
+            sidechain: None,
         });
         // 主总线加混响
         p.master_effects.push(Effect::Reverb {
@@ -818,5 +824,120 @@ mod tests {
         assert_eq!(by("resonance"), Some("A Filter 1 Resonance"));
         assert_eq!(by("attack"), Some("A Amp EG Attack"));
         assert!(d.plugin.ids.contains(&"org.surge-synth-team.surge-xt".to_string()));
+    }
+
+    fn proj(v: serde_json::Value) -> Project {
+        serde_json::from_value(v).unwrap()
+    }
+    fn energy(a: &AudioBuffer<f32>, from: usize, to: usize) -> f64 {
+        (0..2).map(|ch| a.channel(ch)[from..to.min(a.num_frames())].iter().map(|s| f64::from(*s).powi(2)).sum::<f64>()).sum()
+    }
+
+    #[test]
+    fn routing_bus_output_and_gain() {
+        let base = serde_json::json!({ "tempo": 120, "tracks": [
+            { "name": "a", "instrument": "synth.poly", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 2 }] }] } ] });
+        let direct = render(&proj(base.clone()), quiet()).unwrap();
+        let mut v = base.clone();
+        v["buses"] = serde_json::json!([{ "name": "grp", "gain_db": -6 }]);
+        v["tracks"][0]["output"] = serde_json::json!("grp");
+        let via = render(&proj(v), quiet()).unwrap();
+        let ratio = energy(&via, 0, SEC) / energy(&direct, 0, SEC);
+        assert!((ratio - 0.251).abs() < 0.01, "经 -6 dB 总线，能量应为 1/4，实际 {ratio}");
+    }
+
+    #[test]
+    fn routing_send_reverb_adds_tail_and_keeps_dry() {
+        let v = |send: Option<f64>| {
+            let mut t = serde_json::json!({ "name": "a", "instrument": "synth.poly",
+                "clips": [{ "start": 0, "length": 1, "notes": [{ "pitch": 60, "start": 0, "length": 0.5 }] }] });
+            if let Some(db) = send {
+                t["sends"] = serde_json::json!({ "verb": db });
+            }
+            proj(serde_json::json!({ "tempo": 120,
+                "buses": [{ "name": "verb", "effects": [{ "type": "reverb", "mix": 1.0, "decay_seconds": 3.0 }] }],
+                "tracks": [t] }))
+        };
+        let s = RenderSettings { tail_seconds: 2.5, ..Default::default() };
+        let dry = render(&v(None), s).unwrap();
+        let wet = render(&v(Some(-6.0)), s).unwrap();
+        assert!(energy(&wet, SEC, 2 * SEC) > energy(&dry, SEC, 2 * SEC) * 50.0, "发送到混响总线应有尾音");
+        // 干声仍在：开头 0.2 秒基本一致（混响尚未建立）。
+        let (a, b) = (energy(&dry, 0, SEC / 5), energy(&wet, 0, SEC / 5));
+        assert!(b >= a * 0.95, "干声应保留 {a} {b}");
+    }
+
+    #[test]
+    fn routing_sidechain_ducks_on_kick() {
+        // pad 持续发声；kick 每拍一下。pad 的压缩器由 kick 触发。
+        let v = |sidechain: bool, kick_muted: bool| {
+            let mut comp = serde_json::json!({ "type": "compressor", "threshold_db": -40, "ratio": 20, "attack_ms": 1, "release_ms": 80 });
+            if sidechain {
+                comp["sidechain"] = serde_json::json!("kick");
+            }
+            proj(serde_json::json!({ "tempo": 120, "tracks": [
+                { "name": "kick", "instrument": "drums.909", "muted": kick_muted,
+                  "clips": [{ "start": 0, "length": 4, "notes": (0..4).map(|b| serde_json::json!({ "pitch": 36, "start": b, "length": 0.1 })).collect::<Vec<_>>() }] },
+                { "name": "pad", "instrument": "synth.poly", "gain_db": -12, "effects": if sidechain { vec![comp] } else { vec![] },
+                  "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 4 }] }] } ] }))
+        };
+        let s = quiet();
+        // 只听 pad：kick 静音（但仍作为侧链键）。
+        let plain = render(&v(false, true), s).unwrap();
+        let ducked = render(&v(true, true), s).unwrap();
+        // 第 2 拍（0.5 s 起）的头 50 ms：被压；拍子中段（0.75 s 附近）基本恢复。
+        let hit = SEC / 2;
+        let (p_hit, d_hit) = (energy(&plain, hit, hit + SEC / 20), energy(&ducked, hit, hit + SEC / 20));
+        let mid = SEC * 3 / 4 + SEC / 10;
+        let (p_mid, d_mid) = (energy(&plain, mid, mid + SEC / 20), energy(&ducked, mid, mid + SEC / 20));
+        assert!(d_hit < p_hit * 0.25, "底鼓处应被压下 {p_hit} → {d_hit}");
+        assert!(d_mid > p_mid * 0.5, "拍子中段应恢复 {p_mid} → {d_mid}");
+        assert!(d_mid > d_hit * 3.0);
+    }
+
+    #[test]
+    fn routing_send_automation() {
+        let p = proj(serde_json::json!({ "tempo": 120,
+            "buses": [{ "name": "fx", "effects": [] }, { "name": "sink", "muted": true }],
+            "tracks": [{ "name": "a", "instrument": "synth.poly", "output": "sink",
+                "sends": { "fx": -80 },
+                "automation": [{ "target": "sends.fx", "shape": "points", "points": [[0, -80], [4, 0]] }],
+                "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 4 }] }] }] }));
+        let a = render(&p, quiet()).unwrap();
+        assert!(energy(&a, 3 * SEC / 2, 2 * SEC) > energy(&a, SEC / 10, SEC / 2) * 100.0, "发送量从 -80 升到 0 dB");
+        // 发送目标不存在 / 发送里没有该总线
+        let mut bad = p.clone();
+        bad.tracks[0].automation[0].target = "sends.nope".into();
+        assert!(crate::validate(&bad).unwrap_err().to_string().contains("nope"));
+    }
+
+    #[test]
+    fn routing_latency_is_compensated() {
+        // 同一个短促音：一份经过带前瞻的 limiter，一份不经过；起音位置应一致。
+        let v = |limiter: bool| {
+            proj(serde_json::json!({ "tempo": 120, "tracks": [{ "name": "a", "instrument": "drums.909",
+                "effects": if limiter { vec![serde_json::json!({ "type": "limiter", "ceiling_db": -1 })] } else { vec![] },
+                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 36, "start": 1, "length": 0.1 }] }] }] }))
+        };
+        let onset = |a: &AudioBuffer<f32>| a.channel(0).iter().position(|s| s.abs() > 1e-3).unwrap();
+        let (x, y) = (onset(&render(&v(false), quiet()).unwrap()), onset(&render(&v(true), quiet()).unwrap()));
+        assert!((x as i64 - y as i64).abs() <= 2, "limiter 延迟应被补偿：{x} vs {y}");
+    }
+
+    #[test]
+    fn routing_bus_automation_and_errors() {
+        let p = proj(serde_json::json!({ "tempo": 120,
+            "buses": [{ "name": "grp", "automation": [{ "target": "gain_db", "shape": "points", "points": [[0, -60], [4, 0]] }] }],
+            "tracks": [{ "name": "a", "instrument": "synth.poly", "output": "grp",
+                "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 4 }] }] }] }));
+        let a = render(&p, quiet()).unwrap();
+        assert!(energy(&a, 3 * SEC / 2, 2 * SEC) > energy(&a, SEC / 10, SEC / 2) * 100.0);
+        let mut bad = p.clone();
+        bad.buses[0].automation[0].target = "instrument".into();
+        bad.buses[0].automation[0].param = "cutoff".into();
+        assert!(crate::validate(&bad).unwrap_err().to_string().contains("总线没有乐器"));
+        let mut bad = p.clone();
+        bad.tracks[0].effects.push(serde_json::from_value(serde_json::json!({ "type": "compressor", "sidechain": "grp" })).unwrap());
+        assert!(crate::validate(&bad).unwrap_err().to_string().contains("环"));
     }
 }

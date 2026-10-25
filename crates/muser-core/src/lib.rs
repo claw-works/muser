@@ -14,10 +14,12 @@ use serde::{Deserialize, Serialize};
 
 pub mod automation;
 pub mod effect;
+pub mod routing;
 pub mod time;
 
 pub use automation::{Automation, CompiledCurve, Curve, LfoWave, RandomStyle, Shape, Target};
 pub use effect::{effect_spec, ChoiceSpec, Effect, EffectSpec, ParamSpec, EFFECT_SPECS};
+pub use routing::{Bus, MASTER};
 pub use time::{Beats, TimeSignature};
 
 /// 一个完整的编曲工程。AI 的顶层产出物，也是工程文件（`.muser.json`）的根。
@@ -46,6 +48,9 @@ pub struct Project {
     /// 随机种子：没有写 `seed` 的 random 自动化由它推导。换一个就换一种随机变化。默认 0。
     #[serde(default, skip_serializing_if = "is_zero")]
     pub seed: u64,
+    /// 总线（可省略）：汇集音轨/总线的信号统一处理，如共用混响、鼓组压缩。见 [`routing`]。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buses: Vec<Bus>,
     /// 所有音轨。
     #[serde(default)]
     pub tracks: Vec<Track>,
@@ -67,6 +72,7 @@ impl Project {
             master_effects: Vec::new(),
             automation: Vec::new(),
             seed: 0,
+            buses: Vec::new(),
             tracks: Vec::new(),
         }
     }
@@ -98,8 +104,19 @@ impl Project {
                 self.tempo
             )));
         }
+        routing::plan(self).map_err(CoreError::Invalid)?;
         for (i, a) in self.automation.iter().enumerate() {
-            check_automation(a, true, self.master_effects.len(), &format!("automation[{i}]"))?;
+            check_automation(a, Layer::Master, self.master_effects.len(), &[], &format!("automation[{i}]"))?;
+        }
+        for (bi, bus) in self.buses.iter().enumerate() {
+            let sends: Vec<&str> = bus.sends.keys().map(String::as_str).collect();
+            for (i, a) in bus.automation.iter().enumerate() {
+                check_automation(a, Layer::Bus, bus.effects.len(), &sends, &format!("buses[{bi}].automation[{i}]"))?;
+            }
+            for (i, e) in bus.effects.iter().enumerate() {
+                e.validate()
+                    .map_err(|m| CoreError::Invalid(format!("buses[{bi}].effects[{i}]: {m}")))?;
+            }
         }
         for (i, e) in self.master_effects.iter().enumerate() {
             e.validate()
@@ -112,8 +129,9 @@ impl Project {
                     track.pan
                 )));
             }
+            let sends: Vec<&str> = track.sends.keys().map(String::as_str).collect();
             for (i, a) in track.automation.iter().enumerate() {
-                check_automation(a, false, track.effects.len(), &format!("tracks[{ti}].automation[{i}]"))?;
+                check_automation(a, Layer::Track, track.effects.len(), &sends, &format!("tracks[{ti}].automation[{i}]"))?;
             }
             for (i, e) in track.effects.iter().enumerate() {
                 e.validate()
@@ -151,27 +169,47 @@ impl Project {
     }
 }
 
-/// 自动化的结构检查：目标是否属于这一层、效果器下标是否存在、是否缺 param、形状是否合法。
+/// 自动化写在哪一层。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Layer {
+    Master,
+    Track,
+    Bus,
+}
+
+/// 自动化的结构检查：目标是否属于这一层、效果器下标与发送是否存在、是否缺 param、形状是否合法。
 /// 参数名与取值范围由 muser-engine 按参数表检查。
-fn check_automation(a: &Automation, master: bool, effects: usize, at: &str) -> Result<(), CoreError> {
+fn check_automation(a: &Automation, layer: Layer, effects: usize, sends: &[&str], at: &str) -> Result<(), CoreError> {
     let err = |m: String| CoreError::Invalid(format!("{at}: {m}"));
-    let target = Target::parse(&a.target).ok_or_else(|| {
-        err(format!(
-            "target '{}' 无效，可选: {}",
-            a.target,
-            if master { "master_gain_db / master_effects[i]" } else { "instrument / effects[i] / gain_db / pan" }
-        ))
-    })?;
-    if target.is_master() != master {
-        return Err(err(format!(
-            "target '{}' 不能写在{}",
-            a.target,
-            if master { "工程级 automation（只能 master_gain_db / master_effects[i]）" } else { "音轨上（主总线目标写在工程级 automation）" }
-        )));
+    let allowed = match layer {
+        Layer::Master => "master_gain_db / master_effects[i]",
+        Layer::Track => "instrument / effects[i] / gain_db / pan / sends.<总线>",
+        Layer::Bus => "effects[i] / gain_db / pan / sends.<总线>",
+    };
+    let target = Target::parse(&a.target).ok_or_else(|| err(format!("target '{}' 无效，可选: {allowed}", a.target)))?;
+    let ok = match (&target, layer) {
+        (Target::MasterGain | Target::MasterEffect(_), Layer::Master) => true,
+        (Target::Instrument, Layer::Track) => true,
+        (Target::Effect(_) | Target::Gain | Target::Pan | Target::Send(_), Layer::Track | Layer::Bus) => true,
+        _ => false,
+    };
+    if !ok {
+        let hint = match target {
+            Target::MasterGain | Target::MasterEffect(_) => "；主总线目标写在工程级 automation",
+            Target::Instrument if layer == Layer::Bus => "；总线没有乐器",
+            _ if layer == Layer::Master => "；音轨/总线的目标写在各自的 automation",
+            _ => "",
+        };
+        return Err(err(format!("target '{}' 不能写在这里，可选: {allowed}{hint}", a.target)));
     }
     if let Target::Effect(i) | Target::MasterEffect(i) = target {
         if i >= effects {
             return Err(err(format!("target '{}' 越界：这里只有 {effects} 个效果器", a.target)));
+        }
+    }
+    if let Target::Send(name) = &target {
+        if !sends.contains(&name.as_str()) {
+            return Err(err(format!("没有发送到 '{name}'：先在 sends 里写上它（可写 -80 表示从无声开始）")));
         }
     }
     if target.is_scalar() && !a.param.is_empty() {
@@ -209,7 +247,13 @@ pub struct Track {
     /// 轨级效果器链（按顺序串联），默认空。在增益/声像之前施加。
     #[serde(default)]
     pub effects: Vec<Effect>,
-    /// 音轨自动化（目标 `instrument` / `effects[i]` / `gain_db` / `pan`），默认空。
+    /// 输出到哪里：`"master"`（默认）或某条总线的名字。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// 发送：总线名 → 发送量（dB，推子后），如 `{ "reverb": -8 }`。
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub sends: std::collections::BTreeMap<String, f64>,
+    /// 音轨自动化（目标 `instrument` / `effects[i]` / `gain_db` / `pan` / `sends.<总线>`），默认空。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<Automation>,
     /// 该音轨上的所有 clip。
@@ -227,6 +271,8 @@ impl Track {
             pan: 0.0,
             muted: false,
             effects: Vec::new(),
+            output: None,
+            sends: std::collections::BTreeMap::new(),
             automation: Vec::new(),
             clips: Vec::new(),
         }
