@@ -62,8 +62,12 @@ struct AddTrackParams {
     /// 轨名（可选）。
     #[serde(default)]
     name: Option<String>,
-    /// 语义乐器名（见 list_instruments），如 "drums.808" / "synth.poly"。
+    /// 乐器名（见 list_instruments），如 "drums.808" / "poly.moog_bass" / "sfz:/path/to.sfz"。
     instrument: String,
+    /// 覆盖音色的参数（可选），键与范围见 describe_instrument，如 {"cutoff": 800, "release": 0.2}；
+    /// 鼓组按鼓件：{"kick": {"tune": -2}}。
+    #[serde(default)]
+    instrument_params: Option<serde_json::Map<String, serde_json::Value>>,
     /// 轨增益 dB（可选，默认 0）。
     #[serde(default)]
     gain_db: Option<f64>,
@@ -94,6 +98,9 @@ struct NoteSpec {
     /// 力度 0-1（可选，默认 0.8）。
     #[serde(default)]
     velocity: Option<f32>,
+    /// 重音（可选）。鼓组、acid 贝斯等会让重音更响更亮。
+    #[serde(default)]
+    accent: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -138,6 +145,12 @@ struct UpdateTrackParams {
     /// 是否静音（可选）。
     #[serde(default)]
     muted: Option<bool>,
+    /// 更换乐器（可选）。更换时原有 instrument_params 会被清空，除非同时提供新的。
+    #[serde(default)]
+    instrument: Option<String>,
+    /// 合并到现有乐器参数（可选）：给出的键覆盖，值为 null 的键删除。
+    #[serde(default)]
+    instrument_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -291,7 +304,7 @@ impl Muser {
         })
     }
 
-    #[tool(description = "新增一条音轨，返回其下标 (track_index)。")]
+    #[tool(description = "新增一条音轨，返回其下标 (track_index)。可同时给出 instrument_params 调音色；乐器名与参数会立即校验。")]
     fn add_track(
         &self,
         Parameters(p): Parameters<AddTrackParams>,
@@ -299,6 +312,10 @@ impl Muser {
         let id = p.project_id.clone();
         self.with_project(&id, |proj| {
             let mut track = Track::new(p.name.unwrap_or_default(), p.instrument);
+            track.instrument_params = p.instrument_params.unwrap_or_default();
+            if let Err(e) = muser_engine::check_instrument_with(&track.instrument, &track.instrument_params) {
+                return Err(user_err(e.to_string()));
+            }
             if let Some(g) = p.gain_db {
                 track.gain_db = g;
             }
@@ -352,6 +369,7 @@ impl Muser {
                 if let Some(v) = n.velocity {
                     note.velocity = v;
                 }
+                note.accent = n.accent.unwrap_or(false);
                 clip.notes.push(note);
             }
             Ok(ok_text(format!("已加入 {count} 个音符")))
@@ -398,7 +416,7 @@ impl Muser {
         })
     }
 
-    #[tool(description = "更新音轨属性（增益/声像/静音），只改提供的字段。")]
+    #[tool(description = "更新音轨：增益/声像/静音、更换乐器、调整乐器参数(instrument_params，合并式更新)。只改提供的字段；参数会立即校验。")]
     fn update_track(
         &self,
         Parameters(p): Parameters<UpdateTrackParams>,
@@ -419,9 +437,35 @@ impl Muser {
             if let Some(m) = p.muted {
                 track.muted = m;
             }
+            let mut instrument = track.instrument.clone();
+            let mut params = track.instrument_params.clone();
+            if let Some(name) = &p.instrument {
+                if *name != instrument {
+                    params.clear();
+                }
+                instrument = name.clone();
+            }
+            if let Some(patch) = &p.instrument_params {
+                for (k, v) in patch {
+                    if v.is_null() {
+                        params.remove(k);
+                    } else {
+                        params.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            if let Err(e) = muser_engine::check_instrument_with(&instrument, &params) {
+                return Err(user_err(e.to_string()));
+            }
+            track.instrument = instrument;
+            track.instrument_params = params;
             Ok(ok_text(format!(
-                "已更新音轨 {ti}: gain={}dB pan={} muted={}",
-                track.gain_db, track.pan, track.muted
+                "已更新音轨 {ti}: instrument={} instrument_params={} gain={}dB pan={} muted={}",
+                track.instrument,
+                serde_json::Value::Object(track.instrument_params.clone()),
+                track.gain_db,
+                track.pan,
+                track.muted
             )))
         })
     }
@@ -504,7 +548,7 @@ impl Muser {
         json_result(&list)
     }
 
-    #[tool(description = "查看某个乐器的详情：类别、音高约定(gm_drums 用 GM 鼓键 / pitched 用 MIDI 音高)、推荐音域、复音数、音色说明。")]
+    #[tool(description = "查看某个乐器的详情：类别、音高约定(gm_drums 用 GM 鼓键 / pitched 用 MIDI 音高)、推荐音域、复音数、音色说明，以及可调参数(instrument_params 的键、范围、单位、说明、该预设当前取值)。")]
     fn describe_instrument(
         &self,
         Parameters(p): Parameters<NameParams>,
@@ -558,6 +602,7 @@ fn json_result<T: serde::Serialize + ?Sized>(value: &T) -> Result<CallToolResult
 最后用 render 离线渲染为 WAV。时间单位是拍(beats)：1.0=四分音符。\
 选乐器前先用 list_instruments / describe_instrument 查看（drums.* 用 GM 鼓键：36=底鼓,38=军鼓,42=闭镲；\
 其余用 MIDI 音高：60=中央C）。加效果器前用 list_effects / describe_effect 查看参数范围与示例。\
+调音色用 instrument_params（键与范围见 describe_instrument，只覆盖给出的项）；sfz:/path.sfz 可加载 SFZ 音色库。\
 validate_project 会指出越界参数与未知乐器的具体位置。"
 )]
 impl ServerHandler for Muser {}

@@ -20,7 +20,7 @@
 | 想知道 | CLI | MCP tool |
 |---|---|---|
 | 有哪些乐器 | `muser instruments [--family F]` | `list_instruments` |
-| 某乐器的音高约定、音域、复音数 | `muser instruments <名称>` | `describe_instrument` |
+| 某乐器的音高约定、音域、复音数、**可调参数与预设当前值** | `muser instruments <名称>` | `describe_instrument` |
 | 有哪些效果器 | `muser effects` | `list_effects` |
 | 某效果器的参数、范围、默认值、示例 | `muser effects <名称>` | `describe_effect` |
 | 工程是否合法、错在哪 | `muser validate <file>` | `validate_project` |
@@ -31,7 +31,7 @@
 ## 核心心智模型
 
 - **Project**：一个 `tempo`（速度）+ 若干 **Track**（音轨）+ 可选的 `master_effects`。
-- **Track**：一件 `instrument`（乐器）+ 可选的 `effects` + 若干 **Clip**（片段）。
+- **Track**：一件 `instrument`（乐器）+ 可选的 `instrument_params`（调音色）+ 可选的 `effects` + 若干 **Clip**（片段）。
 - **Clip**：在时间线上有 `start` 和 `length`，里面是若干 **Note**（音符）。
 - **时间单位是拍 (beats)**，`1.0` = 一个四分音符，与 tempo 无关。
 - Clip 的 `start` 从**工程开头**算；Note 的 `start` 从**所在 clip 的开头**算。
@@ -49,8 +49,9 @@
 - 鼓组（`drums.*`）用 **GM 鼓键**：36=底鼓, 38=军鼓, 39=拍手, 42=闭镲, 46=开镲, 49=吊镲, 51=叮叮镲。
   完整键位与每套鼓支持的键见 [skills/instruments/drums.md](skills/instruments/drums.md)。
 - `velocity`（力度）0-1，默认 0.8。
+- `accent`（重音）true/false，默认 false。鼓组与 `bass.acid*` 的重音更响更亮（acid 的 303 味道主要靠它）；其它乐器忽略。
 
-## 乐器索引（共 115 个内置 + 外置 VSTi）
+## 乐器索引（共 115 个内置 + SFZ 音色库 + 外置 VSTi）
 
 | 类别 | 子 skill | 代表 |
 |---|---|---|
@@ -64,9 +65,30 @@
 | 弦乐 | [strings.md](skills/instruments/strings.md) | `strings.violin` `strings.cello` `strings.ensemble` `*_pizz` … |
 | 管乐 | [wind.md](skills/instruments/wind.md) | `wind.flute` `wind.sax` `wind.trumpet` … |
 | 人声 | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
+| SFZ 音色库 | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz`（内置采样器，无需插件） |
 | 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 
 所有内置音源都由 manguebyte 实时合成（物理建模、模态合成、FM、减法合成等），不依赖系统 MIDI 音源。
+
+## 调音色：instrument_params
+
+每个内置乐器都开放一组常用参数，在所选乐器/预设的音色**之上覆盖**，只写想改的项：
+
+```json
+{ "instrument": "poly.moog_bass", "instrument_params": { "cutoff": 900, "resonance": 0.5, "release": 0.15 } }
+{ "instrument": "strings.cello",  "instrument_params": { "attack": 0.4, "vibrato_depth": 25 } }
+{ "instrument": "organ.jazz",     "instrument_params": { "drawbars": "838000000", "percussion": "second" } }
+{ "instrument": "drums.808",      "instrument_params": { "kick": { "tune": -3, "decay": 1.8 }, "snare": { "snap": 0.8 } } }
+```
+
+- 参数名在各乐器间统一：`attack` / `decay` / `sustain` / `release`（秒）、`tone`（Hz，最终明暗）、
+  `cutoff` / `resonance`（滤波）、`vibrato_rate`（Hz）/ `vibrato_depth`（音分）。用真实单位，不是 0-1。
+- 每个乐器有哪些参数、范围、**该预设当前值**：`muser instruments <名称>`（MCP `describe_instrument`）。
+  先看当前值再改，比凭空写数更稳。
+- 鼓组按鼓件设置，键用 GM 鼓键数字或别名（kick / snare / clap / closed_hat / open_hat / crash / ride …）。
+- 写错参数名、越界、类型不对，`validate` 都会指出，例如
+  `instrument_params 无效: cutoff: 99999 超出范围 [30, 8000] Hz`。
+- 各类参数表与调音示例见对应的乐器子 skill。外置 VSTi 的参数调节尚未支持（计划中）。
 
 ## 效果器索引
 
@@ -170,6 +192,8 @@
 
 - 渲染前**务必** `validate`；它会给出出错的具体字段与可选值。
 - 鼓组没声音或声音不对 → 用了音阶音高，或用了该套鼓不支持的键（见 drums.md）。
+- 音色不对 → 先 `muser instruments <名称>` 看预设当前值，再用 `instrument_params` 小步调整。
+- 渲染报"输出数值发散" → 某个乐器参数取了极端值（如很短的 release），往常规范围调。
 - 拉奏弦乐/管乐短音听起来很弱 → 音符太短，弦乐短音改用 `*_pizz`。
 - 混响尾音被截断 → 渲染时加大 `--tail`（默认 2 秒）。
 - 整体发闷/发浑 → 非贝斯轨加 `eq` highpass，减少多条轨上的 reverb。

@@ -41,6 +41,8 @@ pub enum EngineError {
     Instrument(#[from] instrument::UnknownInstrument),
     #[error(transparent)]
     Effect(#[from] crate::effects::EffectError),
+    #[error("渲染失败: {0}")]
+    Unstable(String),
     #[error("写出 WAV 失败: {0}")]
     Wav(String),
 }
@@ -48,7 +50,7 @@ pub enum EngineError {
 /// 时间线上一个样本精确的演奏动作。
 #[derive(Debug, Clone, Copy)]
 enum Act {
-    On { key: u8, velocity: f32 },
+    On { key: u8, velocity: f32, accent: bool },
     Off { key: u8 },
 }
 
@@ -66,7 +68,7 @@ fn render_track(
         num_channels: 2,
     };
 
-    let mut inst = instrument::resolve(&track.instrument)?;
+    let mut inst = instrument::resolve_with(&track.instrument, &track.instrument_params)?;
     inst.prepare(&spec);
     let channel = inst.channel();
 
@@ -86,7 +88,7 @@ fn render_track(
             if off <= on {
                 continue;
             }
-            acts.push((on, Act::On { key: note.pitch, velocity: note.velocity }));
+            acts.push((on, Act::On { key: note.pitch, velocity: note.velocity, accent: note.accent }));
             acts.push((off, Act::Off { key: note.pitch }));
         }
     }
@@ -105,8 +107,8 @@ fn render_track(
                 break;
             }
             match act {
-                Act::On { key, velocity } => {
-                    inst.note_on(NoteRef::new(channel, key), velocity)
+                Act::On { key, velocity, accent } => {
+                    inst.note_on(NoteRef::new(channel, key), velocity, accent)
                 }
                 Act::Off { key } => inst.note_off(NoteRef::new(channel, key), 0.0),
             }
@@ -124,6 +126,14 @@ fn render_track(
             track_buf.channel_mut(ch)[frame..end].copy_from_slice(block.channel(ch));
         }
         frame = end;
+    }
+
+    // 上游模型在极端参数下可能数值发散；宁可报错也不写出爆音。
+    if (0..2).any(|ch| track_buf.channel(ch).iter().any(|s| !s.is_finite() || s.abs() > 64.0)) {
+        return Err(EngineError::Unstable(format!(
+            "音轨 '{}'（{}）输出数值发散，请调整 instrument_params（如增大 release / attack）",
+            track.name, track.instrument
+        )));
     }
 
     // 轨级效果链（在增益/声像之前施加）。

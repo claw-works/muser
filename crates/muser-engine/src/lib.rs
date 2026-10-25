@@ -5,10 +5,11 @@
 
 pub mod effects;
 pub mod instrument;
+pub mod params;
 pub mod render;
 
 pub use instrument::{
-    available as available_instruments, catalog as instrument_catalog, check_name as check_instrument,
+    available as available_instruments, catalog as instrument_catalog, check as check_instrument_with, check_name as check_instrument,
     describe as describe_instrument, InstrumentInfo, NoteConvention, TrackInstrument,
 };
 pub use render::{render, render_to_wav, EngineError, RenderSettings};
@@ -18,7 +19,7 @@ pub use render::{render, render_to_wav, EngineError, RenderSettings};
 pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
     project.validate()?;
     for (i, track) in project.tracks.iter().enumerate() {
-        instrument::check_name(&track.instrument).map_err(|e| {
+        instrument::check(&track.instrument, &track.instrument_params).map_err(|e| {
             EngineError::Core(muser_core::CoreError::Invalid(format!(
                 "tracks[{i}].instrument: {e}"
             )))
@@ -30,6 +31,7 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use manguebyte::prelude::AudioBuffer;
     use muser_core::{Clip, Note, Project, Track};
 
     /// 构造一个最小工程：808 鼓组，4 拍里 kick+snare。
@@ -295,5 +297,145 @@ mod tests {
             EngineError::Effect(crate::effects::EffectError::PluginLoad { .. }) => {}
             other => panic!("应报 PluginLoad，实际: {other:?}"),
         }
+    }
+
+    fn render_one(instrument: &str, params: serde_json::Value, notes: &[(u8, f64, f64)]) -> Result<AudioBuffer<f32>, EngineError> {
+        let mut p = Project::new("t", 120.0);
+        let mut t = Track::new("t", instrument);
+        t.instrument_params = params.as_object().cloned().unwrap_or_default();
+        let mut c = Clip::new(0.0, 4.0);
+        for &(pitch, start, len) in notes {
+            c.notes.push(Note::new(pitch, start, len));
+        }
+        t.clips.push(c);
+        p.tracks.push(t);
+        render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
+    }
+
+    fn rms(a: &AudioBuffer<f32>) -> f64 {
+        let n = a.num_frames().max(1);
+        (a.channel(0).iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / n as f64).sqrt()
+    }
+
+    /// 高频能量占比的粗略指标：一阶差分能量 / 信号能量。越亮越大。
+    fn brightness(a: &AudioBuffer<f32>) -> f64 {
+        let x = a.channel(0);
+        let diff: f64 = x.windows(2).map(|w| f64::from(w[1] - w[0]).powi(2)).sum();
+        let total: f64 = x.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>().max(1e-12);
+        diff / total
+    }
+
+    #[test]
+    fn every_instrument_accepts_its_own_current_params() {
+        // 把 describe 给出的当前值原样写回，必须通过校验——保证范围与预设一致。
+        for info in crate::instrument::catalog() {
+            let full = crate::instrument::describe(&info.name).unwrap();
+            if full.notes == crate::NoteConvention::GmDrums {
+                continue;
+            }
+            let mut params = muser_core::InstrumentParams::new();
+            for pi in &full.params {
+                if !pi.current.is_null() {
+                    params.insert(pi.spec.name.to_string(), pi.current.clone());
+                }
+            }
+            crate::instrument::check(&info.name, &params)
+                .unwrap_or_else(|e| panic!("{} 的当前参数应能写回: {e}\n{params:?}", info.name));
+        }
+    }
+
+    #[test]
+    fn poly_cutoff_changes_brightness() {
+        let notes = [(48, 0.0, 2.0), (55, 0.0, 2.0)];
+        let dark = render_one("poly.moog_bass", serde_json::json!({ "cutoff": 200 }), &notes).unwrap();
+        let bright = render_one("poly.moog_bass", serde_json::json!({ "cutoff": 8000 }), &notes).unwrap();
+        assert!(brightness(&bright) > brightness(&dark) * 1.5, "cutoff 应改变明暗: {} vs {}", brightness(&dark), brightness(&bright));
+    }
+
+    #[test]
+    fn release_lengthens_tail() {
+        // 音符 1 拍（0.5s）；比较 0.8s 之后的能量。
+        let notes = [(48, 0.0, 1.0)];
+        let tail = |a: &AudioBuffer<f32>| a.channel(0)[38_400..].iter().map(|s| f64::from(*s).powi(2)).sum::<f64>();
+        for inst in ["strings.cello", "guitar.nylon", "choir.aah", "poly.warm_analog_pad"] {
+            let short = render_one(inst, serde_json::json!({ "release": 0.15 }), &notes).unwrap();
+            let long = render_one(inst, serde_json::json!({ "release": 3.0 }), &notes).unwrap();
+            assert!(tail(&long) > tail(&short) * 3.0, "{inst}: release 应拉长尾音 {} vs {}", tail(&short), tail(&long));
+        }
+    }
+
+    #[test]
+    fn bowed_release_floor_is_enforced() {
+        let e = render_one("strings.violin", serde_json::json!({ "release": 0.05 }), &[]).unwrap_err().to_string();
+        assert!(e.contains("超出范围"), "{e}");
+    }
+
+    #[test]
+    fn param_errors_are_precise() {
+        let e = render_one("poly.moog_bass", serde_json::json!({ "cutof": 500 }), &[]).unwrap_err().to_string();
+        assert!(e.contains("cutof") && e.contains("可用") && e.contains("cutoff"), "{e}");
+        let e = render_one("strings.cello", serde_json::json!({ "vibrato_depth": 500 }), &[]).unwrap_err().to_string();
+        assert!(e.contains("vibrato_depth") && e.contains("超出范围"), "{e}");
+        let e = render_one("organ.jazz", serde_json::json!({ "drawbars": "999" }), &[]).unwrap_err().to_string();
+        assert!(e.contains("drawbars") && e.contains("9 位"), "{e}");
+        let e = render_one("organ.jazz", serde_json::json!({ "percussion": "fourth" }), &[]).unwrap_err().to_string();
+        assert!(e.contains("second"), "{e}");
+    }
+
+    #[test]
+    fn named_and_typed_values() {
+        render_one("choir.aah", serde_json::json!({ "vowel": "o", "singers": 3 }), &[(60, 0.0, 1.0)]).unwrap();
+        render_one("organ.gospel", serde_json::json!({ "drawbars": "888000000", "percussion": "third" }), &[(60, 0.0, 1.0)]).unwrap();
+        render_one("wind.trombone", serde_json::json!({ "portamento": true }), &[(50, 0.0, 1.0)]).unwrap();
+        let e = render_one("choir.aah", serde_json::json!({ "singers": 2.5 }), &[]).unwrap_err().to_string();
+        assert!(e.contains("整数"), "{e}");
+    }
+
+    #[test]
+    fn drum_piece_params() {
+        let notes = [(36, 0.0, 0.25)];
+        let base = render_one("drums.808", serde_json::json!({}), &notes).unwrap();
+        let quiet = render_one("drums.808", serde_json::json!({ "kick": { "level": 0.25 } }), &notes).unwrap();
+        assert!(rms(&quiet) < rms(&base) * 0.5, "kick.level 应降低音量");
+        let e = render_one("drums.606", serde_json::json!({ "clap": { "level": 1 } }), &[]).unwrap_err().to_string();
+        assert!(e.contains("没有鼓键 39"), "{e}");
+        let e = render_one("drums.808", serde_json::json!({ "bogus": { "level": 1 } }), &[]).unwrap_err().to_string();
+        assert!(e.contains("未知鼓件"), "{e}");
+    }
+
+    #[test]
+    fn acid_accent_is_louder() {
+        let mk = |accent: bool| {
+            let mut p = Project::new("a", 120.0);
+            let mut t = Track::new("b", "bass.acid");
+            let mut c = Clip::new(0.0, 2.0);
+            let mut n = Note::new(36, 0.0, 0.5);
+            n.accent = accent;
+            c.notes.push(n);
+            t.clips.push(c);
+            p.tracks.push(t);
+            render(&p, RenderSettings { tail_seconds: 0.2, ..Default::default() }).unwrap()
+        };
+        assert!(rms(&mk(true)) > rms(&mk(false)) * 1.2, "重音应更响");
+    }
+
+    #[test]
+    fn sfz_missing_file_errors_on_validate() {
+        let mut p = Project::new("s", 120.0);
+        p.tracks.push(Track::new("s", "sfz:/no/such/file.sfz"));
+        let e = crate::validate(&p).unwrap_err().to_string();
+        assert!(e.contains("找不到 SFZ 文件"), "{e}");
+    }
+
+    /// 用本机的 freepats 音色库做真实测试；不存在则跳过。
+    #[test]
+    fn sfz_real_library_makes_sound() {
+        let path = "/data/Music/SFZ-samples/freepats/FM-Piano1/FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz";
+        if !std::path::Path::new(path).is_file() {
+            eprintln!("跳过：未找到 {path}");
+            return;
+        }
+        let audio = render_one(&format!("sfz:{path}"), serde_json::json!({}), &[(60, 0.0, 1.0), (64, 0.0, 1.0)]).unwrap();
+        assert!(audio.peak() > 1e-3, "sfz 应发声，峰值 {}", audio.peak());
     }
 }

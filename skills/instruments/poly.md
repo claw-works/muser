@@ -9,6 +9,47 @@
 - pad 类起音和释音都较慢，音符要长（2 拍以上），并提前一点开始。
 - fx 类（riser / downlifter 等）通常放一个长音（4-8 拍）在段落转换前。
 
+## 可调参数（instrument_params，所有 poly.* 通用）
+
+在预设音色上覆盖，只写想改的项。各预设的当前值用 `muser instruments poly.<名称>` 查看。
+以下预设没有启用滤波器，`cutoff` / `resonance` / `filter_env` 对它们无效（校验会拒绝）：`poly.deep_sub`、`poly.808_glide`、`poly.chiptune`、`poly.soft_sine_pad`、`poly.bell_pluck`、`poly.marimba`、`poly.glass_pluck`、`poly.kalimba`、`poly.fm_electric_piano`、`poly.drawbar_organ`、`poly.vibraphone`。
+
+| 参数 | 范围 | 说明 |
+|---|---|---|
+| `attack` | 0 – 20 s | 音量起音时间。0.001-0.01 干脆；0.1-0.5 柔和；>1 慢慢浮现（pad） |
+| `decay` | 0 – 20 s | 音量从峰值落到 sustain 的时间 |
+| `sustain` | 0 – 1 | 按住时保持的音量比例。0 = 只有起音（pluck）；1 = 一直满音量（pad/风琴） |
+| `release` | 0 – 20 s | 松开后余音长度。0.05-0.2 利落；0.5-2 有尾巴；>3 很长的铺底 |
+| `cutoff` | 20 – 20000 Hz | 滤波截止频率：越低越闷越暗，越高越亮。贝斯 200-1500；lead 1500-6000 |
+| `resonance` | 0 – 1 | 滤波谐振：截止频率处的突起。0.2-0.4 有个性；0.7+ 啸叫感（acid） |
+| `filter_env` | -8 – 8 oct | 滤波包络把截止频率推开多少个八度。正值 = 起音时变亮再回落（'哇'声）；0 = 不动 |
+| `filter_attack` | 0 – 20 s | 滤波包络起音时间 |
+| `filter_decay` | 0 – 20 s | 滤波包络衰减时间：越短'哇'声越短促 |
+| `filter_sustain` | 0 – 1 | 滤波包络保持比例 |
+| `filter_release` | 0 – 20 s | 滤波包络释放时间 |
+| `glide` | 0 – 5 s | 滑音时间；只在单音/连奏型预设上起作用（重叠的音符之间滑过去） |
+
+### 调音示例
+
+- 把 moog bass 变得更亮更有'哇'声
+
+  ```json
+  { "instrument": "poly.moog_bass", "instrument_params": {"cutoff": 900, "resonance": 0.5, "filter_env": 5} }
+  ```
+
+- pad 更慢地浮现、更长的尾巴
+
+  ```json
+  { "instrument": "poly.warm_analog_pad", "instrument_params": {"attack": 1.5, "release": 4.0} }
+  ```
+
+- lead 加滑音
+
+  ```json
+  { "instrument": "poly.mono_saw_lead", "instrument_params": {"glide": 0.12} }
+  ```
+
+
 ## bass（15 个，推荐音域 24–60）
 
 | instrument | 说明 |

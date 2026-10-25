@@ -1,0 +1,294 @@
+{
+  "name": "params-acid-preset",
+  "tempo": 128,
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "drums.909",
+      "gain_db": -4,
+      "clips": [
+        {
+          "start": 0,
+          "length": 8,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 1,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 2,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 3,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 4,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 5,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 6,
+              "length": 0.2
+            },
+            {
+              "pitch": 36,
+              "start": 7,
+              "length": 0.2
+            },
+            {
+              "pitch": 42,
+              "start": 0.5,
+              "length": 0.1,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 42,
+              "start": 1.5,
+              "length": 0.1,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 42,
+              "start": 2.5,
+              "length": 0.1,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 42,
+              "start": 3.5,
+              "length": 0.1,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 42,
+              "start": 4.5,
+              "length": 0.1,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 42,
+              "start": 5.5,
+              "length": 0.1,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 42,
+              "start": 6.5,
+              "length": 0.1,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 42,
+              "start": 7.5,
+              "length": 0.1,
+              "velocity": 0.6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "acid",
+      "instrument": "bass.acid",
+      "gain_db": -3,
+      "clips": [
+        {
+          "start": 0,
+          "length": 8,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 0.25,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 0.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 0.75,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 39,
+              "start": 1.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 1.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 46,
+              "start": 1.75,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 2.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 2.25,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 2.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 43,
+              "start": 2.75,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 3.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 41,
+              "start": 3.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 3.75,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 4.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 4.25,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 4.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 4.75,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 39,
+              "start": 5.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 5.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 46,
+              "start": 5.75,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 6.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 6.25,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 48,
+              "start": 6.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 43,
+              "start": 6.75,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 7.0,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 41,
+              "start": 7.5,
+              "length": 0.22,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 36,
+              "start": 7.75,
+              "length": 0.22,
+              "velocity": 0.85
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

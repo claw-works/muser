@@ -145,6 +145,33 @@ fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Resu
             println!("  音域:   {} - {}", info.range.0, info.range.1);
             println!("  复音数: {}", info.polyphony);
             println!("  说明:   {}", info.description);
+            if !info.params.is_empty() {
+                println!("  可调参数（instrument_params）:");
+                for p in &info.params {
+                    let spec = serde_json::to_value(p.spec)?;
+                    let range = match spec["type"].as_str() {
+                        Some("number") => {
+                            let unit = spec["unit"].as_str().unwrap_or("");
+                            let mut r = format!("{} – {}{}", spec["min"], spec["max"], if unit.is_empty() { String::new() } else { format!(" {unit}") });
+                            if spec["integer"] == true { r.push_str("（整数）"); }
+                            if let Some(n) = spec["names"].as_array() {
+                                r.push_str(&format!("，或 {}", n.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join("/")));
+                            }
+                            r
+                        }
+                        Some("choice") => spec["choices"].as_array().map(|c| c.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
+                        Some("bool") => "true / false".into(),
+                        Some("drawbars") => "9 位数字串，每位 0-8".into(),
+                        _ => String::new(),
+                    };
+                    let current = if p.current.is_null() { String::new() } else { format!("  当前 {}", p.current) };
+                    println!("    {:<16} {range}{current}", p.spec.name);
+                    println!("    {:<16} {}", "", p.spec.description);
+                }
+            }
+            if !info.params_note.is_empty() {
+                println!("  说明:   {}", info.params_note);
+            }
         }
         return Ok(());
     }
@@ -169,7 +196,7 @@ fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Resu
         println!("  {:<28} {}", info.name, info.description);
     }
     println!(
-        "\n共 {} 个。另可用 plugin:/path/to.vst3 加载第三方 VSTi（需 host 特性）。\n`muser instruments <名称>` 查看详情。",
+        "\n共 {} 个。另可用 sfz:/path/to.sfz 加载 SFZ 音色库，plugin:/path/to.vst3 加载第三方 VSTi（需 host 特性）。\n`muser instruments <名称>` 查看详情与可调参数。",
         list.len()
     );
     Ok(())

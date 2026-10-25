@@ -17,6 +17,33 @@
 | `drums.dnb` | 35–81 | 24 | drum & bass 套鼓：紧实的军鼓与深底鼓 |
 | `drums.lofi` | 35–81 | 24 | lo-fi 套鼓：柔软、暗、带 12-bit 采样质感 |
 
+## 可调参数（instrument_params）
+
+在所选乐器/预设的音色上覆盖，只写想改的项；其余保持原样。`muser instruments <名称>` 可看到该预设的当前值。
+
+按鼓件设置：{ "kick": { "tune": -2, "decay": 1.5 }, "38": { "snap": 0.8 } }。键可用 GM 鼓键数字或别名（kick snare clap closed_hat open_hat crash ride tom_low tom_mid tom_high …）。
+
+每个鼓件可调：
+
+| 参数 | 范围 | 说明 |
+|---|---|---|
+| `tune` | -24 – 24 st | 鼓件调音（半音）。底鼓 -3 更沉；军鼓 +2 更紧 |
+| `decay` | 0.1 – 10 x | 余音长度（原长的倍数）。0.5 短促；2 更长（808 长尾底鼓） |
+| `level` | 0 – 4 x | 音量（倍数），1 = 原样 |
+| `tone` | 0 – 1 | 音色（随鼓件而异，一般是明暗） |
+| `snap` | 0 – 1 | 起音的'脆'（随鼓件而异，军鼓为响弦） |
+| `texture` | 0 – 1 | 质感（随鼓件而异） |
+| `pan` | -1 – 1 | 声像：-1 左 ~ 1 右 |
+
+### 调音示例
+
+- 底鼓更沉更长、军鼓更脆、闭镲小声
+
+  ```json
+  { "instrument": "drums.808", "instrument_params": {"kick": {"tune": -3, "decay": 1.8}, "snare": {"snap": 0.8}, "closed_hat": {"level": 0.6}} }
+  ```
+
+
 ## GM 鼓键
 
 | pitch | 鼓件 |

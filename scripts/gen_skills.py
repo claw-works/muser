@@ -263,6 +263,97 @@ def instrument_row(i):
     return f"| `{i['name']}` | {i['range'][0]}–{i['range'][1]} | {i['polyphony']} | {i['description']} |\n"
 
 
+def describe(name):
+    return muser_json("instruments", name)
+
+
+def fmt_range(p):
+    t = p["type"]
+    if t == "number":
+        unit = f" {p['unit']}" if p["unit"] else ""
+        r = f"{fmt_num(p['min'])} – {fmt_num(p['max'])}{unit}"
+        if p.get("integer"):
+            r += "（整数）"
+        if p.get("names"):
+            r += "，或 " + " / ".join(f"`\"{n}\"`" for n in p["names"])
+        return r
+    if t == "choice":
+        return " / ".join(f"`\"{c}\"`" for c in p["choices"])
+    if t == "bool":
+        return "`true` / `false`"
+    if t == "drawbars":
+        return "9 位数字串，每位 0-8"
+    return ""
+
+
+def fmt_val(v):
+    if v is None:
+        return "—"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, str):
+        return f'"{v}"'
+    return fmt_num(round(v, 4))
+
+
+# 每类乐器调音示例（会经 muser validate 校验）。
+PARAM_EXAMPLES = {
+    "drums": [("底鼓更沉更长、军鼓更脆、闭镲小声", "drums.808", {"kick": {"tune": -3, "decay": 1.8}, "snare": {"snap": 0.8}, "closed_hat": {"level": 0.6}})],
+    "synth": [("FM 音色更长的尾巴", "synth.fm", {"release": 1.2})],
+    "guitar": [("更暗、更闷的指弹（靠近琴颈拨弦）", "guitar.nylon", {"tone": 2500, "pluck_brightness": 1500, "pluck_position": 0.3}),
+               ("闷音（palm mute 感）", "guitar.steel", {"decay": 0.3, "release": 0.05})],
+    "bass": [("更闷更短的指弹贝斯", "bass.finger", {"tone": 1200, "decay": 1.0}),
+             ("尖叫 acid（配合 accent 音符）", "bass.acid", {"cutoff": 250, "resonance": 0.9, "env_mod": 0.8, "decay": 0.3, "accent": 1.0})],
+    "organ": [("柔和的抒情拉杆 + 打击泛音", "organ.jazz", {"drawbars": "838000000", "percussion": "second", "click": 0.2})],
+    "mallet": [("软槌、长余音的马林巴", "mallet.marimba", {"softness": 5, "decay": 3.0}),
+               ("颤音琴打开电机颤音", "mallet.vibraphone", {"motor_rate": 5, "motor_depth": 0.6})],
+    "strings": [("慢起音、深揉弦的抒情大提琴", "strings.cello", {"attack": 0.4, "vibrato_depth": 25, "vibrato_delay": 0.3, "release": 1.0}),
+                ("小编制弦乐组（2 人）", "strings.ensemble", {"players": 2})],
+    "wind": [("气声多、颤音少的长笛", "wind.flute", {"breath_noise": 0.6, "vibrato_depth": 5}),
+             ("滑音长号", "wind.trombone", {"portamento": True})],
+    "choir": [("'ooh' 元音、6 人、偏暗", "choir.aah", {"vowel": "o", "singers": 6, "brightness": 2500})],
+}
+
+POLY_EXAMPLES = [
+    ("把 moog bass 变得更亮更有'哇'声", "poly.moog_bass", {"cutoff": 900, "resonance": 0.5, "filter_env": 5}),
+    ("pad 更慢地浮现、更长的尾巴", "poly.warm_analog_pad", {"attack": 1.5, "release": 4.0}),
+    ("lead 加滑音", "poly.mono_saw_lead", {"glide": 0.12}),
+]
+
+
+def params_section(family, items):
+    # 同类乐器参数表一致（鼓组除外），取第一个作代表；当前值逐个列出。
+    infos = [describe(i["name"]) for i in items]
+    rep = infos[0]
+    if not rep["params"]:
+        return ""
+    lines = ["\n## 可调参数（instrument_params）\n\n",
+             "在所选乐器/预设的音色上覆盖，只写想改的项；其余保持原样。`muser instruments <名称>` 可看到该预设的当前值。\n\n"]
+    if family == "drums":
+        lines.append(rep["params_note"].split("这套鼓支持的鼓键")[0].strip() + "\n\n")
+        lines.append("每个鼓件可调：\n\n| 参数 | 范围 | 说明 |\n|---|---|---|\n")
+        for p in rep["params"]:
+            lines.append(f"| `{p['name']}` | {fmt_range(p)} | {p['description']} |\n")
+    else:
+        lines.append("| 参数 | 范围 | 说明 |\n|---|---|---|\n")
+        for p in rep["params"]:
+            lines.append(f"| `{p['name']}` | {fmt_range(p)} | {p['description']} |\n")
+        if family != "synth_one":
+            names = [p["name"] for p in rep["params"]]
+            lines.append("\n各乐器的预设取值：\n\n| instrument | " + " | ".join(f"`{n}`" for n in names) + " |\n|---|" + "---|" * len(names) + "\n")
+            for info in infos:
+                cur = {p["name"]: p["current"] for p in info["params"]}
+                if [p["name"] for p in info["params"]] != names:
+                    continue
+                lines.append(f"| `{info['name']}` | " + " | ".join(fmt_val(cur[n]) for n in names) + " |\n")
+    ex = PARAM_EXAMPLES.get(family, [])
+    if ex:
+        lines.append("\n### 调音示例\n\n")
+        for title, inst, params in ex:
+            lines.append(f"- {title}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
+    return "".join(lines)
+
+
 def family_page(family, title, tips):
     items = [i for i in INSTRUMENTS if i["family"] == family]
     note = "GM 鼓键" if family == "drums" else "MIDI 音高（60 = 中央 C）"
@@ -270,6 +361,17 @@ def family_page(family, title, tips):
     lines.append("| instrument | 推荐音域 | 复音数 | 说明 |\n|---|---|---|---|\n")
     for i in items:
         lines.append(instrument_row(i))
+    if family == "synth":
+        # synth.poly 与 synth.fm 参数不同，分别列出，不带"各乐器预设取值"表。
+        for i in items:
+            sec = params_section("synth_one", [i])
+            lines.append(sec.replace("## 可调参数（instrument_params）", f"## `{i['name']}` 的可调参数"))
+        if PARAM_EXAMPLES.get("synth"):
+            lines.append("\n### 调音示例\n\n")
+            for title, inst, params in PARAM_EXAMPLES["synth"]:
+                lines.append(f"- {title}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
+    else:
+        lines.append(params_section(family, items))
     if family == "drums":
         lines.append("\n## GM 鼓键\n\n| pitch | 鼓件 |\n|---|---|\n")
         for k, n in GM_KEYS:
@@ -294,12 +396,44 @@ def poly_page():
     lines = [HEADER, "# 乐器：poly 合成器预设\n\n", "音符 `pitch` 使用 **MIDI 音高（60 = 中央 C）**。查看最新列表：`muser instruments --family poly`。\n\n"]
     for t in POLY_TIPS:
         lines.append(f"- {t}\n")
+    rep = describe("poly.moog_bass")
+    nofilter = []
+    for i in INSTRUMENTS:
+        if i["family"].startswith("poly/"):
+            cur = {p["name"]: p["current"] for p in describe(i["name"])["params"]}
+            if cur.get("cutoff") is None:
+                nofilter.append(f"`{i['name']}`")
+    lines.append("\n## 可调参数（instrument_params，所有 poly.* 通用）\n\n在预设音色上覆盖，只写想改的项。各预设的当前值用 `muser instruments poly.<名称>` 查看。\n以下预设没有启用滤波器，`cutoff` / `resonance` / `filter_env` 对它们无效（校验会拒绝）：{nofilter}。\n\n| 参数 | 范围 | 说明 |\n|---|---|---|\n".replace("{nofilter}", "、".join(nofilter)))
+    for p in rep["params"]:
+        lines.append(f"| `{p['name']}` | {fmt_range(p)} | {p['description']} |\n")
+    lines.append("\n### 调音示例\n\n")
+    for title, inst, params in POLY_EXAMPLES:
+        lines.append(f"- {title}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
     for c in cats:
         items = [i for i in INSTRUMENTS if i["family"] == f"poly/{c}"]
         lines.append(f"\n## {c}（{len(items)} 个，推荐音域 {items[0]['range'][0]}–{items[0]['range'][1]}）\n\n| instrument | 说明 |\n|---|---|\n")
         for i in items:
             lines.append(f"| `{i['name']}` | {i['description']} |\n")
     return "".join(lines)
+
+
+def sfz_page():
+    return HEADER + """# 乐器：SFZ 采样音色库
+
+用 muser 内置的 SFZ 采样器（manguebyte-sampler）播放 `.sfz` 音色库，不需要任何外部插件。
+
+```json
+{ "name": "piano", "instrument": "sfz:/path/to/Piano.sfz", "clips": [ ... ] }
+```
+
+- 语法：`sfz:<.sfz 文件路径>`；采样文件按 .sfz 里的相对路径从其所在目录读取（支持 WAV、FLAC 等）。
+- 音符 `pitch` 用 MIDI 音高；音域、力度层、循环、释放采样都由 .sfz 文件定义。最多 32 个同时发声。
+- `muser validate` 会检查 .sfz 文件是否存在；采样缺失或格式错误会在渲染时报出。
+- 部分 SFZ opcode（如 `<curve>`、`<effect>`）不支持，渲染时会在 stderr 提示数量，音色可能与原设计略有差异。
+- 音色由 .sfz 文件决定，暂不支持 `instrument_params`；需要调整时可在轨上加效果器（如 `eq`、`reverb`）。
+- 免费音色库：freepats（钢琴、吉他等）、Versilian VSCO（管弦乐）、sfzinstruments.github.io。
+- 路径是本机路径，工程换机器后需改成新位置。
+"""
 
 
 def plugin_page():
@@ -327,6 +461,9 @@ def validate_presets():
     for name, extra in EFFECT_EXTRA.items():
         for _, preset in extra["presets"]:
             tracks.append({"instrument": "synth.poly", "effects": [preset], "clips": []})
+    for examples in list(PARAM_EXAMPLES.values()) + [POLY_EXAMPLES]:
+        for _, inst, params in examples:
+            tracks.append({"instrument": inst, "instrument_params": params, "clips": []})
     project = {"tempo": 120, "tracks": tracks}
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         json.dump(project, f)
@@ -343,6 +480,7 @@ def validate_presets():
 def main():
     assert {e["name"] for e in EFFECTS} == set(EFFECT_EXTRA), "效果器与 EFFECT_EXTRA 不一致，请补充"
     families = {i["family"] for i in INSTRUMENTS if not i["family"].startswith("poly/")}
+    assert set(PARAM_EXAMPLES) <= set(FAMILY_PAGES), "PARAM_EXAMPLES 有未知类别"
     assert families == set(FAMILY_PAGES), f"乐器类别与 FAMILY_PAGES 不一致: {families}"
     count = validate_presets()
 
@@ -358,7 +496,9 @@ def main():
         f.write(poly_page())
     with open(os.path.join(OUT, "instruments", "plugin.md"), "w") as f:
         f.write(plugin_page())
-    print(f"已生成 {len(EFFECTS)} 个效果器页、{len(FAMILY_PAGES) + 2} 个乐器页；{count} 个场景预设通过校验")
+    with open(os.path.join(OUT, "instruments", "sfz.md"), "w") as f:
+        f.write(sfz_page())
+    print(f"已生成 {len(EFFECTS)} 个效果器页、{len(FAMILY_PAGES) + 3} 个乐器页；{count} 个场景预设/调音示例通过校验")
 
 
 if __name__ == "__main__":

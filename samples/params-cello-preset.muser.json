@@ -1,0 +1,63 @@
+{
+  "name": "params-cello-preset",
+  "tempo": 72,
+  "tracks": [
+    {
+      "name": "cello",
+      "instrument": "strings.cello",
+      "clips": [
+        {
+          "start": 0,
+          "length": 12,
+          "notes": [
+            {
+              "pitch": 48,
+              "start": 0,
+              "length": 2,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 50,
+              "start": 2,
+              "length": 1,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 52,
+              "start": 3,
+              "length": 1,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 55,
+              "start": 4,
+              "length": 3,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 53,
+              "start": 7,
+              "length": 1,
+              "velocity": 0.75
+            },
+            {
+              "pitch": 52,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.75
+            }
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 0.3,
+          "decay_seconds": 2.2,
+          "size": 0.7
+        }
+      ],
+      "gain_db": 12.0
+    }
+  ]
+}

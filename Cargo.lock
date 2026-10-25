@@ -447,6 +447,7 @@ dependencies = [
  "manguebyte-midi",
  "manguebyte-params",
  "manguebyte-plugin",
+ "manguebyte-sampler",
  "manguebyte-vst3",
 ]
 
@@ -534,6 +535,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "manguebyte-sampler"
+version = "0.1.0"
+dependencies = [
+ "manguebyte-core",
+ "manguebyte-dsp",
+ "manguebyte-formats",
+ "manguebyte-midi",
+]
+
+[[package]]
 name = "manguebyte-vst3"
 version = "0.1.0"
 dependencies = [
@@ -589,6 +600,7 @@ dependencies = [
  "manguebyte",
  "muser-core",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

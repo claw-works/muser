@@ -33,7 +33,8 @@ muser render beat.muser.json -o beat.wav
 ### `muser instruments [name] [--family <F>] [--json]`
 - 无参数：按类别列出全部 115 个内置乐器及说明。
 - `--family`：只列某类（drums / synth / poly / guitar / bass / organ / mallet / strings / wind / choir）。
-- `<name>`：显示该乐器的类别、音高约定（GM 鼓键 / 音阶音高）、推荐音域、复音数、说明。
+- `<name>`：显示该乐器的类别、音高约定（GM 鼓键 / 音阶音高）、推荐音域、复音数、说明，
+  以及可调参数（`instrument_params` 的键、范围、单位、说明、该预设当前值）。
 - `--json`：机器可读输出。
 
 ### `muser effects [name] [--json]`
@@ -73,15 +74,15 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `load_project` | 从磁盘读工程 JSON 到会话，返回新 `project_id` |
 | `save_project` | 把会话中的工程写到磁盘 JSON |
 | `set_tempo` | 设置速度 |
-| `add_track` | 新增音轨，返回 `track_index` |
+| `add_track` | 新增音轨（可带 `instrument_params`），返回 `track_index`；乐器名与参数立即校验 |
 | `remove_track` | 删除音轨 |
-| `update_track` | 更新音轨增益/声像/静音（只改提供的字段） |
+| `update_track` | 更新增益/声像/静音、更换乐器、合并式更新 `instrument_params`（值为 null 删除该键）；立即校验 |
 | `add_clip` | 新增片段，返回 `clip_index` |
-| `add_notes` | 向片段加入一批音符 |
+| `add_notes` | 向片段加入一批音符（支持 `velocity`、`accent`） |
 | `clear_clip` | 清空片段内所有音符 |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
 | `list_instruments` | 列出乐器（可按 `family` 过滤），返回名称/类别/音高约定/音域/复音数/说明 |
-| `describe_instrument` | 查看某个乐器的详情 |
+| `describe_instrument` | 查看某个乐器的详情与可调参数（含该预设当前值） |
 | `list_effects` | 列出所有效果器及说明 |
 | `describe_effect` | 查看某个效果器的参数（范围/默认/单位/听感）、放置建议与 JSON 示例 |
 

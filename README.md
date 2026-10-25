@@ -15,7 +15,8 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 ## 能做什么
 
 - 多轨编曲：鼓组 + 合成器 + 贝斯，多 clip、多音符
-- 115 个内置音源：10 套鼓组、68 个合成器预设，以及吉他、贝斯、风琴、马林巴等打击旋律乐器、弦乐、管乐、合唱（全部由 manguebyte 实时合成，不依赖系统 MIDI 音源）
+- 115 个内置音源：10 套鼓组、68 个合成器预设，以及吉他、贝斯、风琴、马林巴等打击旋律乐器、弦乐、管乐、合唱（全部由 manguebyte 实时合成，不依赖系统 MIDI 音源），每个都可用 `instrument_params` 调音色
+- 内置 SFZ 采样器：`sfz:/path/to.sfz` 直接加载 SFZ 音色库
 - 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级或主总线
 - 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)（`host` 特性）
 - 离线渲染为 WAV

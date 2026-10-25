@@ -1,0 +1,200 @@
+{
+  "name": "sfz-piano",
+  "tempo": 84,
+  "tracks": [
+    {
+      "name": "piano",
+      "instrument": "sfz:/data/Music/SFZ-samples/freepats/PianoFB/PianoFB SFZ+FLAC-20200401/PianoFB 20200401.sfz",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 0.22,
+          "decay_seconds": 1.8,
+          "size": 0.6
+        }
+      ],
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 48,
+              "start": 0,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 55,
+              "start": 0,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 45,
+              "start": 4,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 52,
+              "start": 4,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 57,
+              "start": 4,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 60,
+              "start": 4,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 41,
+              "start": 8,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 48,
+              "start": 8,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 53,
+              "start": 8,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 57,
+              "start": 8,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 43,
+              "start": 12,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 50,
+              "start": 12,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 55,
+              "start": 12,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 59,
+              "start": 12,
+              "length": 3.8,
+              "velocity": 0.55
+            },
+            {
+              "pitch": 72,
+              "start": 0,
+              "length": 1,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 71,
+              "start": 1,
+              "length": 0.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 76,
+              "start": 2,
+              "length": 2,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 4,
+              "length": 1,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 74,
+              "start": 5,
+              "length": 1,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 76,
+              "start": 6,
+              "length": 2,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 77,
+              "start": 8,
+              "length": 1.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 76,
+              "start": 9.5,
+              "length": 0.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 74,
+              "start": 10,
+              "length": 2,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 71,
+              "start": 12,
+              "length": 1,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 72,
+              "start": 13,
+              "length": 1,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 74,
+              "start": 14,
+              "length": 2,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

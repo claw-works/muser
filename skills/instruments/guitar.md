@@ -9,6 +9,41 @@
 | `guitar.nylon` | 40–84 | 8 | 尼龙弦古典吉他：温暖柔和，适合分解和弦、拉丁、民谣 |
 | `guitar.steel` | 40–84 | 8 | 钢弦民谣吉他：明亮清脆，适合扫弦与分解和弦 |
 
+## 可调参数（instrument_params）
+
+在所选乐器/预设的音色上覆盖，只写想改的项；其余保持原样。`muser instruments <名称>` 可看到该预设的当前值。
+
+| 参数 | 范围 | 说明 |
+|---|---|---|
+| `decay` | 0.05 – 60 s | 按住时弦振动持续多久（中央 C 衰减 60dB 的时间）。短 = 闷音；长 = 余音绵长 |
+| `release` | 0.01 – 10 s | 松开（止音）后的衰减时间 |
+| `tone` | 200 – 20000 Hz | 最终低通：琴体/拾音的明暗。2000 暗；5000 常规；10000+ 很亮 |
+| `pluck_brightness` | 100 – 20000 Hz | 拨弦的亮度：指甲/拨片亮（5000+），指腹暗（1000-2000） |
+| `pluck_position` | 0.02 – 0.5 | 拨弦位置（离琴桥的比例）。0.05 靠近琴桥，薄而亮；0.5 在弦中间，圆而空 |
+| `buzz` | 0 – 1 | 弦打品丝的嗡声。0 干净；0.3+ 有击弦感（slap） |
+
+各乐器的预设取值：
+
+| instrument | `decay` | `release` | `tone` | `pluck_brightness` | `pluck_position` | `buzz` |
+|---|---|---|---|---|---|---|
+| `guitar.nylon` | 3 | 0.18 | 6500 | 2800 | 0.16 | 0 |
+| `guitar.steel` | 4.5 | 0.25 | 11000 | 6500 | 0.12 | 0 |
+
+### 调音示例
+
+- 更暗、更闷的指弹（靠近琴颈拨弦）
+
+  ```json
+  { "instrument": "guitar.nylon", "instrument_params": {"tone": 2500, "pluck_brightness": 1500, "pluck_position": 0.3} }
+  ```
+
+- 闷音（palm mute 感）
+
+  ```json
+  { "instrument": "guitar.steel", "instrument_params": {"decay": 0.3, "release": 0.05} }
+  ```
+
+
 ## 经验与常见错误
 
 - 物理建模拨弦：音符一开始就是拨弦，`length` 决定何时止音。分解和弦时让音符重叠更自然。

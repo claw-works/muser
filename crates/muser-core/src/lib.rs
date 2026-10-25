@@ -144,6 +144,11 @@ pub struct Track {
     /// 乐器的语义引用，例如 `"drums.808"`、`"synth.poly"`、`"fm"`。
     /// 由 muser-engine 的乐器注册表解析为具体 manguebyte 乐器。
     pub instrument: String,
+    /// 覆盖乐器音色的参数（可省略）。先用所选乐器/预设的音色打底，只改写到的项。
+    /// 键与取值范围见 `muser instruments <名称>`，例如
+    /// `{ "cutoff": 800, "release": 0.2 }`；鼓组按鼓件：`{ "kick": { "tune": -2 } }`。
+    #[serde(default, skip_serializing_if = "InstrumentParams::is_empty")]
+    pub instrument_params: InstrumentParams,
     /// 音轨增益（dB），默认 0。
     #[serde(default)]
     pub gain_db: f64,
@@ -166,6 +171,7 @@ impl Track {
         Self {
             name: name.into(),
             instrument: instrument.into(),
+            instrument_params: InstrumentParams::new(),
             gain_db: 0.0,
             pan: 0.0,
             muted: false,
@@ -174,6 +180,10 @@ impl Track {
         }
     }
 }
+
+/// 乐器参数：参数名 → 值（数字、字符串、布尔，鼓组为嵌套对象）。
+/// 具体含义由 muser-engine 的乐器参数表解释与校验。
+pub type InstrumentParams = serde_json::Map<String, serde_json::Value>;
 
 /// 一个片段：在时间线上的一段音符集合。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -209,6 +219,14 @@ pub struct Note {
     /// 力度，0.0-1.0，默认 0.8。
     #[serde(default = "default_velocity")]
     pub velocity: f32,
+    /// 重音（可省略，默认 false）。鼓组与 acid 贝斯等乐器会让重音更响、更亮；
+    /// 强度由乐器参数（如 acid 的 `accent`）决定。其它乐器忽略。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub accent: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 fn default_velocity() -> f32 {
@@ -222,6 +240,7 @@ impl Note {
             start: start.into(),
             length: length.into(),
             velocity: default_velocity(),
+            accent: false,
         }
     }
 }

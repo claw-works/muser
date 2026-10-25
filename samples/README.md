@@ -22,6 +22,20 @@ poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck
 
 完整列表用 `muser instruments` 查看（115 个）。
 
+## 调音色 A/B（instrument_params）
+
+同一段内容，一个用乐器预设原样，一个用 `instrument_params` 调过：
+
+| 对比 | 调了什么 | 听感 |
+|---|---|---|
+| `params-acid-preset` / `params-acid-tuned` | bass.acid：cutoff 220、resonance 0.92、env_mod 0.85、drive_db 8，并给部分音符加 `accent` | 调过的版本更"吱"、更脏，重音明显跳出来 |
+| `params-cello-preset` / `params-cello-tuned` | strings.cello：attack 0.6、vibrato_depth 45、release 1.5、tone 2500、pressure 0.85 | 调过的版本起音更慢、揉弦更深、更暗更有颗粒感 |
+
+## SFZ 音色库
+
+`sfz-piano.muser.json` 用内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴（和弦 + 旋律）。
+路径是本机路径 `/data/Music/SFZ-samples/freepats/...`，换机器需改成你自己的 .sfz 文件位置。
+
 ## 效果器 A/B 对比组
 
 同一段内容（lo-fi 鼓 + poly 和弦），**只有效果器不同**，用来直接听出各效果器的作用：
