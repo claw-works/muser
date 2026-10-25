@@ -16,3 +16,9 @@ muser-engine = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
+
+[features]
+default = []
+## 启用插件宿主（加载第三方 CLAP/VST3/LV2 效果器）。
+## 构建命令：cargo build -p muser-cli --features host
+host = ["muser-engine/host"]

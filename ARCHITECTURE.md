@@ -201,10 +201,12 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 10 种鼓组 + 复音合成器 + FM 合成器
 - 轨增益、等功率声像、主增益、结尾余响
 - 效果器链（reverb / delay / compressor），可挂到轨级或主总线
+- 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
+  （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor
 
 尚未实现（路线图）：
-- 插件宿主（manguebyte-host 已验证可编译，接入 muser-engine 即可加载第三方 VST3/CLAP/LV2）
-- 更多效果器类型（chorus / phaser / EQ / limiter，manguebyte 均自带）
+- 第三方插件作为**乐器**（需向插件喂音符事件，比作效果器更复杂）
+- 更多内置效果器类型（chorus / phaser / EQ / limiter，manguebyte 均自带）
 - MCP server（把 CLI 能力包成 agent tools，见 TOOLS.md）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 - 音频图编排（manguebyte-graph：运行时热重连的信号图，供更复杂的路由）

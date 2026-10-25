@@ -8,6 +8,12 @@ description = "muser 引擎适配层：把 core 模型编译成 manguebyte 的 S
 
 [dependencies]
 muser-core = { workspace = true }
-# 只需 manguebyte 的离线能力（dsp/formats/graph），不开 devices，保持纯离线。
+# 默认只用 manguebyte 的离线能力（dsp/formats/graph），不开 devices，保持纯离线。
 manguebyte = { workspace = true, default-features = false }
 thiserror = { workspace = true }
+
+[features]
+default = []
+## 插件宿主：加载第三方 CLAP/VST3/LV2 作为效果器。
+## 开启后需要相应格式的系统环境，编译也更重，故默认关闭。
+host = ["manguebyte/host", "manguebyte/clap", "manguebyte/vst3", "manguebyte/lv2"]

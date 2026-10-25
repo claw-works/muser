@@ -39,6 +39,8 @@ pub enum EngineError {
     Core(#[from] muser_core::CoreError),
     #[error(transparent)]
     Instrument(#[from] instrument::UnknownInstrument),
+    #[error(transparent)]
+    Effect(#[from] crate::effects::EffectError),
     #[error("写出 WAV 失败: {0}")]
     Wav(String),
 }
@@ -126,7 +128,7 @@ fn render_track(
 
     // 轨级效果链（在增益/声像之前施加）。
     if !track.effects.is_empty() {
-        let mut chain = crate::effects::build_chain(&track.effects, &spec);
+        let mut chain = crate::effects::build_chain(&track.effects, &spec)?;
         crate::effects::apply_chain(&mut chain, &mut track_buf, settings.block_size);
     }
 
@@ -170,7 +172,7 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
             max_block_size: settings.block_size,
             num_channels: 2,
         };
-        let mut chain = crate::effects::build_chain(&project.master_effects, &spec);
+        let mut chain = crate::effects::build_chain(&project.master_effects, &spec)?;
         crate::effects::apply_chain(&mut chain, &mut master, settings.block_size);
     }
 

@@ -3,25 +3,40 @@
 //!
 //! 所有效果器都实现 manguebyte 的 `Processor` trait（in-place `process`），
 //! 因此一条效果链就是一串 `Box<dyn Processor>`，依次对缓冲处理即可。
+//!
+//! 第三方插件（CLAP/VST3/LV2）作为效果器时，由 `manguebyte-host` 加载并
+//! `activate` 成一个 `Box<dyn Processor>`，天然融入同一条链。此能力在
+//! `host` 特性下启用。
 
 use muser_core::Effect;
 
 use manguebyte::prelude::{AudioBuffer, Compressor, Delay, ProcessSpec, Processor, Reverb};
 
-/// 把一组 [`Effect`] 构造成已就绪（prepare 过）的处理器链。
-pub fn build_chain(effects: &[Effect], spec: &ProcessSpec) -> Vec<Box<dyn Processor<f32>>> {
-    effects
-        .iter()
-        .map(|e| {
-            let mut p = build_one(e, spec);
-            p.prepare(spec);
-            p
-        })
-        .collect()
+/// 效果链构建错误。
+#[derive(Debug, thiserror::Error)]
+pub enum EffectError {
+    #[error("插件宿主未启用：请在构建 muser-engine 时开启 `host` 特性以使用 plugin 效果器")]
+    HostDisabled,
+    #[error("加载插件 '{path}' 失败: {detail}")]
+    PluginLoad { path: String, detail: String },
 }
 
-fn build_one(effect: &Effect, _spec: &ProcessSpec) -> Box<dyn Processor<f32>> {
-    match *effect {
+/// 把一组 [`Effect`] 构造成已就绪（prepare 过）的处理器链。
+pub fn build_chain(
+    effects: &[Effect],
+    spec: &ProcessSpec,
+) -> Result<Vec<Box<dyn Processor<f32>>>, EffectError> {
+    let mut chain = Vec::with_capacity(effects.len());
+    for e in effects {
+        let mut p = build_one(e, spec)?;
+        p.prepare(spec);
+        chain.push(p);
+    }
+    Ok(chain)
+}
+
+fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Box<dyn Processor<f32>>, EffectError> {
+    let boxed: Box<dyn Processor<f32>> = match effect {
         Effect::Reverb {
             mix,
             decay_seconds,
@@ -29,24 +44,23 @@ fn build_one(effect: &Effect, _spec: &ProcessSpec) -> Box<dyn Processor<f32>> {
             size,
         } => {
             let mut r = Reverb::<f32>::new()
-                .with_mix(mix)
-                .with_decay_seconds(decay_seconds)
-                .with_damping(damping);
-            r.set_size(size);
-            Box::new(r) as Box<dyn Processor<f32>>
+                .with_mix(*mix)
+                .with_decay_seconds(*decay_seconds)
+                .with_damping(*damping);
+            r.set_size(*size);
+            Box::new(r)
         }
         Effect::Delay {
             time_seconds,
             feedback,
             mix,
         } => {
-            // 最大延迟时间给足余量（至少 2s 或所需时间）。
             let max = time_seconds.max(2.0);
             let d = Delay::<f32>::new(max)
-                .with_time(time_seconds)
-                .with_feedback(feedback)
-                .with_mix(mix);
-            Box::new(d) as Box<dyn Processor<f32>>
+                .with_time(*time_seconds)
+                .with_feedback(*feedback)
+                .with_mix(*mix);
+            Box::new(d)
         }
         Effect::Compressor {
             threshold_db,
@@ -56,15 +70,111 @@ fn build_one(effect: &Effect, _spec: &ProcessSpec) -> Box<dyn Processor<f32>> {
             makeup_db,
         } => {
             let c = Compressor::<f32>::new()
-                .with_threshold_db(threshold_db)
-                .with_ratio(ratio)
-                .with_attack_ms(attack_ms)
-                .with_release_ms(release_ms)
-                .with_makeup_db(makeup_db);
-            Box::new(c) as Box<dyn Processor<f32>>
+                .with_threshold_db(*threshold_db)
+                .with_ratio(*ratio)
+                .with_attack_ms(*attack_ms)
+                .with_release_ms(*release_ms)
+                .with_makeup_db(*makeup_db);
+            Box::new(c)
         }
+        Effect::Plugin { path, id, params } => build_plugin(path, id.as_deref(), params, spec)?,
+    };
+    Ok(boxed)
+}
+
+/// 构建第三方插件效果器。仅在 `host` 特性下可用。
+#[cfg(feature = "host")]
+fn build_plugin(
+    path: &str,
+    id: Option<&str>,
+    params: &std::collections::BTreeMap<u32, f64>,
+    spec: &ProcessSpec,
+) -> Result<Box<dyn Processor<f32>>, EffectError> {
+    use manguebyte::host::any::Library;
+
+    // 加载插件库。调用方须保证插件路径可信——加载会执行第三方代码。
+    let library = unsafe { Library::load(path) }.map_err(|e| EffectError::PluginLoad {
+        path: path.to_string(),
+        detail: format!("{e:?}"),
+    })?;
+
+    // 选择插件 id：显式指定，否则取库中第一个。
+    let plugin_id = match id {
+        Some(s) => s.to_string(),
+        None => library
+            .plugins()
+            .first()
+            .map(|p| p.id.clone())
+            .ok_or_else(|| EffectError::PluginLoad {
+                path: path.to_string(),
+                detail: "库中没有任何插件".to_string(),
+            })?,
+    };
+
+    let mut plugin = library
+        .create(&plugin_id)
+        .map_err(|e| EffectError::PluginLoad {
+            path: path.to_string(),
+            detail: format!("create('{plugin_id}') 失败: {e:?}"),
+        })?;
+
+    // 设置参数（best-effort）。
+    for (&pid, &value) in params {
+        let _ = plugin.set_param(manguebyte::ParamId(pid), value);
+    }
+
+    // 激活，拿到音频处理半（它本身就是 Processor）。
+    let processor = plugin
+        .activate(spec.sample_rate, spec.max_block_size)
+        .map_err(|e| EffectError::PluginLoad {
+            path: path.to_string(),
+            detail: format!("activate 失败: {e:?}"),
+        })?;
+
+    // activate 返回 Box<dyn Processor + Send>；为了持有 plugin 控制半不被 drop，
+    // 这里把二者打包进一个包装器。
+    Ok(Box::new(HostedPlugin {
+        _plugin: plugin,
+        processor,
+    }))
+}
+
+#[cfg(not(feature = "host"))]
+fn build_plugin(
+    _path: &str,
+    _id: Option<&str>,
+    _params: &std::collections::BTreeMap<u32, f64>,
+    _spec: &ProcessSpec,
+) -> Result<Box<dyn Processor<f32>>, EffectError> {
+    Err(EffectError::HostDisabled)
+}
+
+/// 包装一个已激活的插件：控制半与音频半一起持有，音频处理委托给音频半。
+/// 控制半 drop 晚于音频半才安全，这里用字段顺序（Rust 按声明顺序逆序 drop，
+/// 即先 drop processor 再 drop _plugin）保证之。
+#[cfg(feature = "host")]
+struct HostedPlugin {
+    processor: Box<dyn Processor<f32> + Send>,
+    _plugin: manguebyte::host::any::Plugin,
+}
+
+#[cfg(feature = "host")]
+impl Processor<f32> for HostedPlugin {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        self.processor.prepare(spec);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        self.processor.process(buffer);
+    }
+    fn reset(&mut self) {
+        self.processor.reset();
+    }
+    fn latency_samples(&self) -> usize {
+        self.processor.latency_samples()
     }
 }
+
+/// 把整条效果链分块施加到 `buffer`（in-place）。
 pub fn apply_chain(
     chain: &mut [Box<dyn Processor<f32>>],
     buffer: &mut AudioBuffer<f32>,

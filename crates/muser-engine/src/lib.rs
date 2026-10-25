@@ -137,4 +137,40 @@ mod tests {
             "混响应在尾部注入明显能量: dry={dry_tail:.6}, wet={wet_tail:.6}"
         );
     }
+
+    /// 默认（未启用 host 特性）：plugin 效果器应报 HostDisabled。
+    #[cfg(not(feature = "host"))]
+    #[test]
+    fn plugin_without_host_feature_errors() {
+        use muser_core::Effect;
+        let mut p = demo_project();
+        p.master_effects.push(Effect::Plugin {
+            path: "/nonexistent/x.clap".to_string(),
+            id: None,
+            params: Default::default(),
+        });
+        let err = render(&p, RenderSettings::default()).unwrap_err();
+        match err {
+            EngineError::Effect(crate::effects::EffectError::HostDisabled) => {}
+            other => panic!("应报 HostDisabled，实际: {other:?}"),
+        }
+    }
+
+    /// 启用 host 特性但插件路径不存在：应报清晰的 PluginLoad 错误（而非 panic）。
+    #[cfg(feature = "host")]
+    #[test]
+    fn plugin_missing_path_errors() {
+        use muser_core::Effect;
+        let mut p = demo_project();
+        p.master_effects.push(Effect::Plugin {
+            path: "/definitely/not/here.clap".to_string(),
+            id: None,
+            params: Default::default(),
+        });
+        let err = render(&p, RenderSettings::default()).unwrap_err();
+        match err {
+            EngineError::Effect(crate::effects::EffectError::PluginLoad { .. }) => {}
+            other => panic!("应报 PluginLoad，实际: {other:?}"),
+        }
+    }
 }

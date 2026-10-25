@@ -64,6 +64,19 @@ pub enum Effect {
         #[serde(default)]
         makeup_db: f64,
     },
+    /// 第三方插件作为效果器（CLAP/VST3/LV2）。
+    ///
+    /// 需要在构建 muser-engine 时启用 `host` 特性，否则渲染会报错。
+    Plugin {
+        /// 插件文件/包路径（如 `.clap` / `.vst3` / `.lv2`）。
+        path: String,
+        /// 当一个文件内含多个插件时，指定插件 id；缺省用第一个。
+        #[serde(default)]
+        id: Option<String>,
+        /// 要设置的插件参数（参数 id → 值），可省略。
+        #[serde(default)]
+        params: std::collections::BTreeMap<u32, f64>,
+    },
 }
 
 // —— 各参数的默认值（选取音乐上常用、安全的起点）——
