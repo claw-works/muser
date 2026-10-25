@@ -1,5 +1,5 @@
 {
-  "name": "fx-demo-chorus",
+  "name": "effects/reverb",
   "tempo": 100.0,
   "master_gain_db": -3.0,
   "tracks": [
@@ -137,10 +137,11 @@
       ],
       "effects": [
         {
-          "type": "chorus",
-          "rate_hz": 0.9,
-          "depth_ms": 4.0,
-          "mix": 0.5
+          "type": "reverb",
+          "mix": 0.45,
+          "decay_seconds": 2.8,
+          "damping": 0.4,
+          "size": 0.8
         }
       ]
     }

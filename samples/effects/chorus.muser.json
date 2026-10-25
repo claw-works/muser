@@ -1,5 +1,5 @@
 {
-  "name": "fx-demo-flanger",
+  "name": "effects/chorus",
   "tempo": 100.0,
   "master_gain_db": -3.0,
   "tracks": [
@@ -137,10 +137,10 @@
       ],
       "effects": [
         {
-          "type": "flanger",
-          "rate_hz": 0.2,
-          "feedback": 0.7,
-          "mix": 0.6
+          "type": "chorus",
+          "rate_hz": 0.9,
+          "depth_ms": 4.0,
+          "mix": 0.5
         }
       ]
     }

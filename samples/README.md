@@ -1,109 +1,83 @@
-# muser 示范作品
+# muser 示范工程
 
-这些是用 muser 工程 JSON 直接编写、离线渲染出的示范曲，展示引擎当前的能力与不同风格的编曲手法。每首都是 8 拍（约一个 loop），三条音轨（鼓 + 贝斯 + 和声）。
+用 muser 工程 JSON 直接编写、离线渲染的示范，按用途分组：
 
-## 作品列表
+| 目录 | 内容 |
+|---|---|
+| [`songs/`](#songs) | 四种风格的完整 loop |
+| [`instruments/`](#instruments) | 内置音源巡礼、SFZ 音色库 |
+| [`params/`](#params) | 调音色（`instrument_params`）A/B 对比 |
+| [`effects/`](#effects) | 内置效果器 A/B 对比 |
+| [`automation/`](#automation) | 自动化：参数随时间变化 |
+| [`plugins/`](#plugins) | 外置 VST 效果器与 VSTi 音源（需 `host` 特性 + 本机插件） |
 
-| 工程文件 | 风格 | 速度 | 鼓组 | 编曲要点 |
-|---|---|---|---|---|
-| `lofi-dusk` | Lo-fi Hip-hop | 85 | `drums.lofi` | 慵懒摇摆鼓、FM 贝斯、poly 七和弦 pad（Am7→FM7→E…），力度有起伏 |
-| `techno-pulse` | Techno | 128 | `drums.techno` | four-on-the-floor 底鼓、off-beat 开镲、十六分闭镲、断奏 FM bassline、poly stab |
-| `house-groove` | House | 124 | `drums.house` | 四踩底鼓 + 二四拍手、律动贝斯、poly 和弦（C→Dm 走向） |
-| `dnb-roller` | Drum & Bass | 174 | `drums.dnb` | 断奏（breakbeat）鼓型、超低 sub-bass、长音 poly pad 铺底 |
+wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
 
-## 新音源巡礼
+```bash
+scripts/render_samples.sh            # 全部
+scripts/render_samples.sh effects    # 只渲染一个分组
+```
 
-`instrument-tour.muser.json`：每 2 秒换一种内置音源演奏同一个乐句，共 20 种，用来快速试听：
+依赖本机文件的工程（`plugins/`、`instruments/sfz-piano`）缺文件时会单独报错，不影响其它工程。
 
-guitar.nylon → guitar.steel → bass.finger → bass.acid → organ.jazz → mallet.marimba →
-mallet.vibraphone → mallet.kalimba → strings.cello → strings.ensemble → strings.violin_pizz →
-wind.flute → wind.sax → wind.trumpet → choir.aah → poly.moog_bass → poly.trance_supersaw →
-poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck
+## songs
 
-完整列表用 `muser instruments` 查看（115 个）。
+四种风格，各 8 拍，鼓 + 贝斯 + 和声三轨。
 
-## 调音色 A/B（instrument_params）
+| 工程 | 风格 | 速度 | 要点 |
+|---|---|---|---|
+| `lofi-dusk` | Lo-fi Hip-hop | 85 | 慵懒摇摆鼓、FM 贝斯、poly 七和弦 pad，keys 轨混响 + 主总线压缩 |
+| `techno-pulse` | Techno | 128 | 四踩底鼓、off-beat 开镲、十六分闭镲、断奏 bassline、和弦 stab |
+| `house-groove` | House | 124 | 四踩底鼓 + 二四拍手、律动贝斯、C→Dm 和弦 |
+| `dnb-roller` | Drum & Bass | 174 | breakbeat 鼓型、超低 sub-bass、长音 pad 铺底 |
 
-同一段内容，一个用乐器预设原样，一个用 `instrument_params` 调过：
+## instruments
+
+- `tour`：每 2 秒换一种内置音源演奏同一乐句，共 20 种：
+  guitar.nylon → guitar.steel → bass.finger → bass.acid → organ.jazz → mallet.marimba →
+  mallet.vibraphone → mallet.kalimba → strings.cello → strings.ensemble → strings.violin_pizz →
+  wind.flute → wind.sax → wind.trumpet → choir.aah → poly.moog_bass → poly.trance_supersaw →
+  poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck。完整列表用 `muser instruments` 查看（115 个）。
+- `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径是本机路径
+  `/data/Music/SFZ-samples/freepats/...`，换机器需改成你自己的 `.sfz` 文件。
+
+## params
+
+同一段内容，一个用乐器预设原样，一个用 `instrument_params` 调过。
 
 | 对比 | 调了什么 | 听感 |
 |---|---|---|
-| `params-acid-preset` / `params-acid-tuned` | bass.acid：cutoff 220、resonance 0.92、env_mod 0.85、drive_db 8，并给部分音符加 `accent` | 调过的版本更"吱"、更脏，重音明显跳出来 |
-| `params-cello-preset` / `params-cello-tuned` | strings.cello：attack 0.6、vibrato_depth 45、release 1.5、tone 2500、pressure 0.85 | 调过的版本起音更慢、揉弦更深、更暗更有颗粒感 |
+| `acid-preset` / `acid-tuned` | bass.acid：cutoff 220、resonance 0.92、env_mod 0.85、drive_db 8，部分音符 `accent` | 更"吱"、更脏，重音明显跳出来 |
+| `cello-preset` / `cello-tuned` | strings.cello：attack 0.6、vibrato_depth 45、release 1.5、tone 2500、pressure 0.85 | 起音更慢、揉弦更深、更暗更有颗粒感 |
 
-## SFZ 音色库
+## effects
 
-`sfz-piano.muser.json` 用内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴（和弦 + 旋律）。
-路径是本机路径 `/data/Music/SFZ-samples/freepats/...`，换机器需改成你自己的 .sfz 文件位置。
+同一段内容（lo-fi 鼓 + poly 和弦），只有效果器不同；`dry` 是对照组。
 
-## 效果器 A/B 对比组
-
-同一段内容（lo-fi 鼓 + poly 和弦），**只有效果器不同**，用来直接听出各效果器的作用：
-
-| 工程文件 | 效果 | 听感 |
+| 工程 | 效果 | 听感 |
 |---|---|---|
-| `fx-demo-dry` | 无（对照组） | 和弦干净短促，收得利落 |
-| `fx-demo-reverb` | keys: `reverb` (mix 0.45, decay 2.8s, size 0.8) | 和弦带明显空间感与尾音，更"湿"更远 |
-| `fx-demo-delay` | keys: `delay` (0.45s, feedback 0.45, mix 0.4) | 和弦后跟有节奏的回声，逐渐衰减 |
-| `fx-demo-chorus` | keys: `chorus` (rate 0.9Hz, depth 4ms, mix 0.5) | 和弦变厚、变宽，有轻微起伏 |
-| `fx-demo-eq` | keys: `eq` 高架+6dB@4k + 低切200Hz | 和弦更亮更清爽，低频被切 |
-| `fx-demo-limiter` | master: +6dB 增益 + `limiter` (ceiling -0.3dB) | 整体更响，峰值被收在 0dB 内不爆 |
-| `fx-demo-phaser` | keys: `phaser` (rate 0.5Hz, feedback 0.4, mix 0.6) | 和弦上有流动的"喷气式"扫频感 |
-| `fx-demo-flanger` | keys: `flanger` (rate 0.2Hz, feedback 0.7, mix 0.6) | 和弦带金属感的扫动、梳状着色 |
+| `dry` | 无 | 和弦干净短促 |
+| `reverb` | keys：mix 0.45、decay 2.8s、size 0.8 | 明显空间感与尾音 |
+| `delay` | keys：0.45s、feedback 0.45、mix 0.4 | 有节奏的回声，逐渐衰减 |
+| `chorus` | keys：rate 0.9Hz、depth 4ms、mix 0.5 | 变厚变宽、轻微起伏 |
+| `eq` | keys：高架 +6dB@4k + 低切 200Hz | 更亮更清爽，低频被切 |
+| `limiter` | master：+6dB 增益 + limiter（ceiling -0.3dB） | 更响，峰值收在 0dB 内 |
+| `phaser` | keys：rate 0.5Hz、feedback 0.4、mix 0.6 | 流动的"喷气式"扫频 |
+| `flanger` | keys：rate 0.2Hz、feedback 0.7、mix 0.6 | 金属感的扫动 |
 
-依次渲染这些工程并对比试听，即可体验 muser 的内置效果器链
-（reverb / delay / chorus / eq / limiter / phaser / flanger）。
+## automation
 
-## 外置 VST 效果器示例
+（P2 开发中）
 
-`plugin-fx-example.muser.json` 演示用 `plugin` 效果器加载**本机的第三方 VST3/CLAP**
-（示例里用的是 `Surge XT Effects.vst3`）。它的 `path` 是本机绝对路径，**换台机器需改成
-你自己的插件路径**。
+## plugins
 
-需要用 `host` 特性构建才能加载：
+需要 `cargo build -p muser-cli --features host` 构建的 muser，工程里的插件路径是本机绝对路径，换机器需修改。
 
-```bash
-muser render samples/plugin-fx-example.muser.json -o out.wav   # 需用 --features host 构建的 muser
-```
+- `vst-effect`：poly 和弦经过 `Surge XT Effects.vst3`（外置 VST 效果器，`{ "type": "plugin", "path": ... }`）。
+- `vsti-instrument`：`Surge XT.vst3` 合成器作为音源（`"instrument": "plugin:/path.vst3"`）。
 
-未启用 `host` 特性时渲染会报 `HostDisabled`；路径不存在会报 `PluginLoad`。
+未启用 `host` 特性时报 `HostDisabled`；路径不存在报 `PluginLoad`。
 
-## 外置 VSTi（虚拟乐器）作为音源
+---
 
-`vsti-example.muser.json` 演示把第三方 **VSTi/CLAP 乐器**当音源：音轨的
-`instrument` 用 `plugin:路径` 前缀（示例用 `Surge XT.vst3` 合成器）。音符通过
-事件喂给插件，由插件合成发声。
-
-```bash
-muser render samples/vsti-example.muser.json -o out.wav   # 需用 --features host 构建的 muser
-```
-
-- 语法：`"instrument": "plugin:/path/to/Instrument.vst3"`，可带 `#插件id`
-  指定文件内的具体插件：`"plugin:/path.vst3#id"`。
-- 同样需要 `host` 特性；`path` 是本机绝对路径，换机需改。
-- 采样器类插件（如 sfizz）需自带/加载音色文件才会发声。
-
-## 如何重新渲染
-
-```bash
-# 校验
-muser validate samples/lofi-dusk.muser.json
-# 渲染（产出同名 .wav）
-muser render samples/lofi-dusk.muser.json -o samples/lofi-dusk.wav
-```
-
-或用已编译的二进制：
-
-```bash
-target/debug/muser render samples/techno-pulse.muser.json -o samples/techno-pulse.wav
-```
-
-## 编曲约定速查
-
-- 时间单位是**拍 (beats)**，`1.0` = 四分音符，`0.5` = 八分，`0.25` = 十六分。
-- 鼓组音高用 **GM 鼓键**：36=底鼓, 38=军鼓, 39=拍手, 42=闭镲, 46=开镲。
-- 旋律乐器用**音阶音高**：60=中央C，低八度减 12。
-- `velocity`（力度，0-1）用来做强弱起伏，让节奏更有人味。
-- `gain_db` / `pan` 调音轨平衡与声像；`master_gain_db` 控总输出，留余量防爆音。
-
-完整格式见仓库根目录的 `SKILLS.md` 与 `ARCHITECTURE.md`。
+工程格式与编曲约定见仓库根目录的 [SKILLS.md](../SKILLS.md)。

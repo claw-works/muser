@@ -122,11 +122,11 @@ muser/
 │  ├─ muser-cli/      CLI 可执行文件 `muser`
 │  └─ muser-mcp/      MCP server（stdio）
 ├─ vendor/manguebyte/ 上游音频引擎（git submodule）
-├─ samples/           示范工程（lo-fi/techno/house/dnb）
+├─ samples/           示范工程（songs/instruments/params/effects/automation/plugins 分组）
 ├─ ARCHITECTURE.md    架构、分层、工程 JSON schema、路线图
 ├─ SKILLS.md          给 AI 的编曲操作手册（总入口）
 ├─ skills/            子 skill：每个乐器类别、每个效果器一页
-├─ scripts/           gen_skills.py：从代码描述表生成 skills/
+├─ scripts/           gen_skills.py 生成 skills/；render_samples.sh 批量渲染示范
 └─ TOOLS.md           CLI + MCP 工具清单
 ```
 
@@ -136,7 +136,7 @@ muser/
 - [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（总入口：工作流、速查、乐器与效果器索引）
 - [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误
 - [TOOLS.md](TOOLS.md) — CLI 命令与 MCP tools 清单
-- [samples/](samples/) — 四种风格的示范工程
+- [samples/](samples/) — 分组示范工程（风格曲、音源、调音、效果器、自动化、插件）
 
 ## 许可
 

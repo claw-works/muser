@@ -1,5 +1,5 @@
 {
-  "name": "instrument-tour",
+  "name": "instruments/tour",
   "tempo": 120.0,
   "master_gain_db": -2.0,
   "master_effects": [

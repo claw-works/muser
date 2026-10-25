@@ -1,7 +1,7 @@
 {
-  "name": "fx-demo-limiter",
+  "name": "effects/delay",
   "tempo": 100.0,
-  "master_gain_db": 6.0,
+  "master_gain_db": -3.0,
   "tracks": [
     {
       "name": "drums",
@@ -134,14 +134,15 @@
             }
           ]
         }
+      ],
+      "effects": [
+        {
+          "type": "delay",
+          "time_seconds": 0.45,
+          "feedback": 0.45,
+          "mix": 0.4
+        }
       ]
-    }
-  ],
-  "master_effects": [
-    {
-      "type": "limiter",
-      "ceiling_db": -0.3,
-      "release_ms": 50.0
     }
   ]
 }

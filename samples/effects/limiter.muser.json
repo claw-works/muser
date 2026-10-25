@@ -1,7 +1,7 @@
 {
-  "name": "fx-demo-phaser",
+  "name": "effects/limiter",
   "tempo": 100.0,
-  "master_gain_db": -3.0,
+  "master_gain_db": 6.0,
   "tracks": [
     {
       "name": "drums",
@@ -134,15 +134,14 @@
             }
           ]
         }
-      ],
-      "effects": [
-        {
-          "type": "phaser",
-          "rate_hz": 0.5,
-          "feedback": 0.4,
-          "mix": 0.6
-        }
       ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -0.3,
+      "release_ms": 50.0
     }
   ]
 }
