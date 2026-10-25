@@ -211,6 +211,8 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - MCP server（`muser-mcp`）：15 个 tools（工程生命周期 + 增量编辑 + 磁盘读写 + 渲染），stdio 运行
 
 尚未实现（路线图）：
+- CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、
+  可选 `--features host` 构建、`cargo fmt --check` / `clippy`）
 - 插件乐器/效果器的**参数调节**（包络、滤波等插件内部参数）
 - 更多内置效果器类型（phaser / flanger / waveshaper 等，manguebyte 均自带）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）

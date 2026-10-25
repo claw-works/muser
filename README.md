@@ -48,28 +48,31 @@ cargo build --release
 
 > 中国大陆网络访问 crates.io 较慢时，建议配置镜像（如 rsproxy.cn）加速。
 
+构建产物在 `target/release/muser`（CLI）和 `target/release/muser-mcp`（MCP server）。
+下文命令里的 `muser` 即指该二进制——把 `target/release` 加入 `PATH`，或用全路径调用。
+
 ### 3. 用 CLI 做第一首
 
 ```bash
 # 生成一个示例工程 JSON
-cargo run -p muser-cli -- new -o song.muser.json
+muser new -o song.muser.json
 
 # 校验
-cargo run -p muser-cli -- validate song.muser.json
+muser validate song.muser.json
 
 # 渲染为 WAV
-cargo run -p muser-cli -- render song.muser.json -o song.wav
+muser render song.muser.json -o song.wav
 
 # 查看可用乐器
-cargo run -p muser-cli -- instruments
+muser instruments
 ```
 
-发布构建后也可直接用二进制 `target/release/muser`。
+> 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。
 
 ### 4. 以 MCP server 运行（给 agent 用）
 
 ```bash
-cargo run -p muser-mcp          # stdio MCP server，暴露 15 个 tools
+muser-mcp          # stdio MCP server，暴露 15 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，

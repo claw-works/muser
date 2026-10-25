@@ -36,7 +36,7 @@
 需要用 `host` 特性构建才能加载：
 
 ```bash
-cargo run -p muser-cli --features host -- render samples/plugin-fx-example.muser.json -o out.wav
+muser render samples/plugin-fx-example.muser.json -o out.wav   # 需用 --features host 构建的 muser
 ```
 
 未启用 `host` 特性时渲染会报 `HostDisabled`；路径不存在会报 `PluginLoad`。
@@ -48,7 +48,7 @@ cargo run -p muser-cli --features host -- render samples/plugin-fx-example.muser
 事件喂给插件，由插件合成发声。
 
 ```bash
-cargo run -p muser-cli --features host -- render samples/vsti-example.muser.json -o out.wav
+muser render samples/vsti-example.muser.json -o out.wav   # 需用 --features host 构建的 muser
 ```
 
 - 语法：`"instrument": "plugin:/path/to/Instrument.vst3"`，可带 `#插件id`
@@ -60,9 +60,9 @@ cargo run -p muser-cli --features host -- render samples/vsti-example.muser.json
 
 ```bash
 # 校验
-cargo run -p muser-cli -- validate samples/lofi-dusk.muser.json
+muser validate samples/lofi-dusk.muser.json
 # 渲染（产出同名 .wav）
-cargo run -p muser-cli -- render samples/lofi-dusk.muser.json -o samples/lofi-dusk.wav
+muser render samples/lofi-dusk.muser.json -o samples/lofi-dusk.wav
 ```
 
 或用已编译的二进制：

@@ -46,7 +46,7 @@ crate `muser-mcp` 以 **stdio** 运行一个 MCP server，让 Claude/Cursor 这�
 ### 运行
 
 ```bash
-cargo run -p muser-mcp          # 以 stdio 启动 MCP server
+muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser-mcp）
 ```
 
 在 MCP 客户端（如 Claude Desktop）的配置里，把 `muser-mcp` 可执行文件作为一个
