@@ -10,7 +10,10 @@
 
 use muser_core::Effect;
 
-use manguebyte::prelude::{AudioBuffer, Compressor, Delay, ProcessSpec, Processor, Reverb};
+use manguebyte::prelude::{
+    AudioBuffer, Chorus, Compressor, Delay, Filter, FilterShape, Limiter, ProcessSpec, Processor,
+    Reverb,
+};
 
 /// 效果链构建错误。
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +22,8 @@ pub enum EffectError {
     HostDisabled,
     #[error("加载插件 '{path}' 失败: {detail}")]
     PluginLoad { path: String, detail: String },
+    #[error("未知的 EQ 滤波形状 '{0}'（可用: lowpass/highpass/bandpass/notch/allpass/peak/low_shelf/high_shelf）")]
+    UnknownEqShape(String),
 }
 
 /// 把一组 [`Effect`] 构造成已就绪（prepare 过）的处理器链。
@@ -77,9 +82,56 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Box<dyn Processor<f3
                 .with_makeup_db(*makeup_db);
             Box::new(c)
         }
+        Effect::Chorus {
+            rate_hz,
+            depth_ms,
+            mix,
+        } => {
+            let c = Chorus::<f32>::new()
+                .with_rate_hz(*rate_hz)
+                .with_depth_ms(*depth_ms)
+                .with_mix(*mix);
+            Box::new(c)
+        }
+        Effect::Eq {
+            shape,
+            frequency,
+            q,
+            gain_db,
+        } => {
+            let fshape = parse_filter_shape(shape, *gain_db)?;
+            Box::new(Filter::<f32>::new(fshape, *frequency, *q))
+        }
+        Effect::Limiter {
+            ceiling_db,
+            release_ms,
+        } => {
+            let l = Limiter::<f32>::new()
+                .with_ceiling_db(*ceiling_db)
+                .with_release_ms(*release_ms);
+            Box::new(l)
+        }
         Effect::Plugin { path, id, params } => build_plugin(path, id.as_deref(), params, spec)?,
     };
     Ok(boxed)
+}
+
+/// 把 EQ 的 shape 字符串解析为 manguebyte 的 FilterShape。
+fn parse_filter_shape(shape: &str, gain_db: f64) -> Result<FilterShape, EffectError> {
+    let s = shape.trim().to_ascii_lowercase();
+    Ok(match s.as_str() {
+        "lowpass" | "lp" => FilterShape::Lowpass,
+        "highpass" | "hp" => FilterShape::Highpass,
+        "bandpass" | "bp" => FilterShape::Bandpass,
+        "notch" => FilterShape::Notch,
+        "allpass" | "ap" => FilterShape::Allpass,
+        "peak" | "peaking" | "bell" => FilterShape::Peak { gain_db },
+        "low_shelf" | "lowshelf" | "lowshelf_eq" => FilterShape::LowShelf { gain_db },
+        "high_shelf" | "highshelf" => FilterShape::HighShelf { gain_db },
+        other => {
+            return Err(EffectError::UnknownEqShape(other.to_string()));
+        }
+    })
 }
 
 /// 构建第三方插件效果器。仅在 `host` 特性下可用。

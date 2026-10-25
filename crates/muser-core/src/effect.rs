@@ -77,6 +77,43 @@ pub enum Effect {
         #[serde(default)]
         params: std::collections::BTreeMap<u32, f64>,
     },
+    /// 合唱：加厚、加宽音色。
+    Chorus {
+        /// 调制速率（Hz）。
+        #[serde(default = "default_chorus_rate")]
+        rate_hz: f64,
+        /// 调制深度（毫秒）。
+        #[serde(default = "default_chorus_depth")]
+        depth_ms: f64,
+        /// 干湿比 0.0-1.0。
+        #[serde(default = "default_chorus_mix")]
+        mix: f64,
+    },
+    /// 均衡器：一个滤波/EQ 频段。
+    Eq {
+        /// 滤波形状：`lowpass` `highpass` `bandpass` `notch` `allpass`
+        /// `peak` `low_shelf` `high_shelf`。
+        #[serde(default = "default_eq_shape")]
+        shape: String,
+        /// 频率（Hz）。
+        #[serde(default = "default_eq_freq")]
+        frequency: f64,
+        /// Q 值（带宽/谐振）。
+        #[serde(default = "default_eq_q")]
+        q: f64,
+        /// 增益（dB），仅对 `peak` / `low_shelf` / `high_shelf` 有意义。
+        #[serde(default)]
+        gain_db: f64,
+    },
+    /// 限幅器：限制峰值，放在主总线末端防爆。
+    Limiter {
+        /// 输出上限（dB），一般 0 到 -1。
+        #[serde(default = "default_limiter_ceiling")]
+        ceiling_db: f64,
+        /// 释放时间（毫秒）。
+        #[serde(default = "default_limiter_release")]
+        release_ms: f64,
+    },
 }
 
 // —— 各参数的默认值（选取音乐上常用、安全的起点）——
@@ -112,6 +149,30 @@ fn default_comp_attack() -> f64 {
 }
 fn default_comp_release() -> f64 {
     120.0
+}
+fn default_chorus_rate() -> f64 {
+    0.8
+}
+fn default_chorus_depth() -> f64 {
+    3.0
+}
+fn default_chorus_mix() -> f64 {
+    0.4
+}
+fn default_eq_shape() -> String {
+    "peak".to_string()
+}
+fn default_eq_freq() -> f64 {
+    1000.0
+}
+fn default_eq_q() -> f64 {
+    0.707
+}
+fn default_limiter_ceiling() -> f64 {
+    -0.3
+}
+fn default_limiter_release() -> f64 {
+    50.0
 }
 
 #[cfg(test)]
@@ -153,6 +214,30 @@ mod tests {
                 assert_eq!(threshold_db, -18.0); // 默认
             }
             _ => panic!("应解析为 Compressor"),
+        }
+    }
+
+    #[test]
+    fn new_effects_minimal_json() {
+        let chorus: Effect = serde_json::from_str(r#"{ "type": "chorus" }"#).unwrap();
+        assert!(matches!(chorus, Effect::Chorus { .. }));
+
+        let eq: Effect =
+            serde_json::from_str(r#"{ "type": "eq", "shape": "high_shelf", "frequency": 8000, "gain_db": 3 }"#)
+                .unwrap();
+        match eq {
+            Effect::Eq { shape, frequency, gain_db, .. } => {
+                assert_eq!(shape, "high_shelf");
+                assert_eq!(frequency, 8000.0);
+                assert_eq!(gain_db, 3.0);
+            }
+            _ => panic!("应解析为 Eq"),
+        }
+
+        let lim: Effect = serde_json::from_str(r#"{ "type": "limiter" }"#).unwrap();
+        match lim {
+            Effect::Limiter { ceiling_db, .. } => assert_eq!(ceiling_db, -0.3),
+            _ => panic!("应解析为 Limiter"),
         }
     }
 }

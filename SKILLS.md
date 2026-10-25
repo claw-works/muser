@@ -79,7 +79,14 @@
 | `reverb` | 混响/空间感 | `mix`(0.25) `decay_seconds`(1.6) `damping`(0.5) `size`(0.5) |
 | `delay` | 延迟/回声 | `time_seconds`(0.3) `feedback`(0.35) `mix`(0.3) |
 | `compressor` | 压缩动态/做胶水 | `threshold_db`(-18) `ratio`(4) `attack_ms`(10) `release_ms`(120) `makeup_db`(0) |
+| `chorus` | 加厚/加宽音色 | `rate_hz`(0.8) `depth_ms`(3) `mix`(0.4) |
+| `eq` | 均衡/滤波一个频段 | `shape`(peak) `frequency`(1000) `q`(0.707) `gain_db`(0) |
+| `limiter` | 限峰防爆（放主总线末端） | `ceiling_db`(-0.3) `release_ms`(50) |
 | `plugin` | 第三方插件 (CLAP/VST3/LV2) | `path`(必填) `id`(可选) `params`(可选, {参数id: 值}) |
+
+> `eq` 的 `shape` 可取：`lowpass` `highpass` `bandpass` `notch` `allpass`
+> `peak` `low_shelf` `high_shelf`。`gain_db` 只对 `peak`/`low_shelf`/`high_shelf` 有效。
+> 例：`{ "type": "eq", "shape": "high_shelf", "frequency": 8000, "gain_db": 3 }` 提亮高频。
 
 > `plugin` 效果器需要构建时启用 `host` 特性（`cargo build -p muser-cli --features host`），
 > 否则渲染会报 `HostDisabled`。示例：

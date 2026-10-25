@@ -138,6 +138,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn new_builtin_effects_render() {
+        use muser_core::Effect;
+        let mut p = demo_project();
+        // 轨级 chorus + EQ
+        p.tracks[0].effects.push(Effect::Chorus {
+            rate_hz: 0.8,
+            depth_ms: 3.0,
+            mix: 0.4,
+        });
+        p.tracks[0].effects.push(Effect::Eq {
+            shape: "high_shelf".to_string(),
+            frequency: 6000.0,
+            q: 0.707,
+            gain_db: 3.0,
+        });
+        // 主总线 limiter
+        p.master_effects.push(Effect::Limiter {
+            ceiling_db: -0.3,
+            release_ms: 50.0,
+        });
+        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
+            .expect("chorus/eq/limiter 渲染应成功");
+        assert!(audio.peak() > 0.0, "应发声");
+        // limiter 上限 -0.3 dBFS，峰值不应超过它（给一点点数值裕度）。
+        let peak_db = manguebyte::prelude::decibels::gain_to_db(f64::from(audio.peak()));
+        assert!(peak_db <= 0.0, "limiter 应把峰值压在 0dB 内, 实际 {peak_db:.2} dBFS");
+    }
+
+    #[test]
+    fn eq_unknown_shape_errors() {
+        use muser_core::Effect;
+        let mut p = demo_project();
+        p.master_effects.push(Effect::Eq {
+            shape: "bogus".to_string(),
+            frequency: 1000.0,
+            q: 0.7,
+            gain_db: 0.0,
+        });
+        let err = render(&p, RenderSettings::default()).unwrap_err();
+        assert!(matches!(
+            err,
+            EngineError::Effect(crate::effects::EffectError::UnknownEqShape(_))
+        ));
+    }
+
     /// 默认（未启用 host 特性）：plugin 效果器应报 HostDisabled。
     #[cfg(not(feature = "host"))]
     #[test]
