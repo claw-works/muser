@@ -31,6 +31,7 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `techno-pulse` | Techno | 128 | 四踩底鼓、off-beat 开镲、十六分闭镲、断奏 bassline、和弦 stab |
 | `house-groove` | House | 124 | 四踩底鼓 + 二四拍手、律动贝斯、C→Dm 和弦 |
 | `dnb-roller` | Drum & Bass | 174 | breakbeat 鼓型、超低 sub-bass、长音 pad 铺底 |
+| `dnb-liquid-skyline` | Liquid Drum & Bass（约 2 分钟完整曲） | 174 | F 小调 Fm7–Dbmaj7–Abmaj7–Eb7；Intro（pad 滤波渐开、高通鼓）→ Build（电钢、sub 第 25 小节进、军鼓滚奏）→ Drop 1（reese 滤波 LFO + 侧链泵感）→ Breakdown（弦乐、主旋律 hook、ride 预示）→ Drop 2（新 reese 节奏、16 分镲、ride、hook 回归）→ Outro；riser / downlifter / impact 过渡，军鼓段尾甩混响 |
 
 ## instruments
 
