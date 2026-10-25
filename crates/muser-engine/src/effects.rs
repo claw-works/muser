@@ -318,13 +318,6 @@ impl Processor<f32> for HostedPlugin {
     }
 }
 
-/// 让压缩器改由外部键信号触发（分轨分解时：用全信号作键，各分轨得到与成品相同的增益衰减）。
-pub fn key_from_sidechain(fx: &mut Fx) {
-    if let Fx::Compressor(c) = fx {
-        c.set_key_source(manguebyte::prelude::KeySource::Sidechain);
-    }
-}
-
 /// 整条效果链的延迟（帧）：各效果器上报的延迟之和（如 limiter 的前瞻）。
 pub fn chain_latency(chain: &[Fx]) -> usize {
     chain

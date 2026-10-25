@@ -1,152 +1,67 @@
-//! `muser view`：给人看的界面。
+//! `muser view`：给人听、调音量的页面，由本地服务与引擎联动。
 //!
-//! - 静态模式：渲染成品与分轨，把音频与工程摘要嵌进一个单文件 HTML，浏览器打开即可播放、调分轨音量。
-//! - 联动模式（`--serve`）：在 127.0.0.1 起本地 HTTP 服务。页面上的改动（音量、静音）交给引擎重新渲染，
-//!   可保存回工程文件；工程文件被别人（AI）改了，服务自动重新渲染，页面自动刷新。
+//! - 服务只监听 127.0.0.1。页面不下载整首音频：按播放进度向服务分段取已经混好的立体声（16-bit PCM），
+//!   内存只占几秒钟，曲子多长都行。
+//! - 页面上改音量、静音、独奏，服务用引擎重新渲染（乐器输出有缓存，只重跑效果、总线与主总线），
+//!   新版本就绪后从当前播放位置无缝换上。独奏只用于试听，不写进工程。
+//! - 「保存」只把改过的 `gain_db` / `muted` 写回工程文件；工程文件被别人（AI）改了会自动重新渲染、页面刷新。
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use muser_core::Project;
-use muser_engine::{RenderSettings, Rendered, render_with_stems};
+use muser_core::routing::{self, Node};
+use muser_engine::{AudioBuffer, RenderCache, RenderSettings, render_cached};
 use serde_json::{Value, json};
 
-const TEMPLATE: &str = include_str!("view.html");
-const PLACEHOLDER: &str = "/*MUSER_DATA*/null";
+const PAGE: &str = include_str!("view.html");
+/// 页面上的波形条数。
+const PEAKS: usize = 2000;
 
-/// 立体声 f32 → 16-bit PCM WAV 字节。
-pub fn wav_bytes(audio: &muser_engine::AudioBuffer<f32>, sample_rate: u32) -> Vec<u8> {
-    let frames = audio.num_frames();
-    let data_len = (frames * 4) as u32;
-    let mut out = Vec::with_capacity(44 + data_len as usize);
-    out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&(36 + data_len).to_le_bytes());
-    out.extend_from_slice(b"WAVEfmt ");
-    out.extend_from_slice(&16u32.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    out.extend_from_slice(&2u16.to_le_bytes()); // 声道
-    out.extend_from_slice(&sample_rate.to_le_bytes());
-    out.extend_from_slice(&(sample_rate * 4).to_le_bytes());
-    out.extend_from_slice(&4u16.to_le_bytes());
-    out.extend_from_slice(&16u16.to_le_bytes());
-    out.extend_from_slice(b"data");
-    out.extend_from_slice(&data_len.to_le_bytes());
+/// 立体声 f32 → 交错的 16-bit PCM（小端）。
+fn pcm16(audio: &AudioBuffer<f32>) -> Vec<u8> {
     let (l, r) = (audio.channel(0), audio.channel(1));
-    for f in 0..frames {
+    let mut out = Vec::with_capacity(l.len() * 4);
+    for f in 0..l.len() {
         for s in [l[f], r[f]] {
-            let v = (s.clamp(-1.0, 1.0) * 32767.0).round() as i16;
-            out.extend_from_slice(&v.to_le_bytes());
+            out.extend_from_slice(&((s.clamp(-1.0, 1.0) * 32767.0).round() as i16).to_le_bytes());
         }
     }
     out
 }
 
-/// 标准 base64（带填充）。
-fn base64(bytes: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for c in bytes.chunks(3) {
-        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
-        out.push(T[(n >> 18) as usize & 63] as char);
-        out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
-    }
-    out
+fn peaks(audio: &AudioBuffer<f32>) -> Vec<f32> {
+    let n = audio.num_frames().max(1);
+    let per = n.div_ceil(PEAKS).max(1);
+    (0..PEAKS)
+        .map(|i| {
+            let (a, b) = ((i * per).min(n), ((i + 1) * per).min(n));
+            (a..b).step_by(4).map(|f| audio.channel(0)[f].abs().max(audio.channel(1)[f].abs())).fold(0f32, f32::max)
+        })
+        .map(|p| (p * 1000.0).round() / 1000.0)
+        .collect()
 }
-
-/// 页面需要的工程摘要。`urls` 给出成品与各分轨的音频地址。
-fn payload(project: &Project, rendered: &Rendered, settings: RenderSettings, mix_url: String, stem_urls: Vec<String>) -> Value {
-    let fx = |list: &[muser_core::Effect]| list.iter().map(|e| e.type_name()).collect::<Vec<_>>();
-    let mut nodes = Vec::new();
-    for (i, t) in project.tracks.iter().enumerate() {
-        let id = format!("tracks[{i}]");
-        let clips: Vec<Value> = t
-            .clips
-            .iter()
-            .map(|c| {
-                let notes: Vec<Value> = c.notes.iter().map(|n| json!([n.start.0, n.length.0, n.pitch, n.velocity])).collect();
-                json!({ "start": c.start.0, "length": c.length.0, "notes": notes })
-            })
-            .collect();
-        nodes.push(json!({
-            "id": id, "kind": "track",
-            "name": if t.name.is_empty() { id.clone() } else { t.name.clone() },
-            "instrument": t.instrument, "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
-            "gain_db": t.gain_db, "muted": t.muted, "effects": fx(&t.effects), "clips": clips,
-        }));
-    }
-    for (i, b) in project.buses.iter().enumerate() {
-        let id = format!("buses[{i}]");
-        nodes.push(json!({
-            "id": id, "kind": "bus", "name": b.name, "output": b.output.as_deref().unwrap_or("master"), "sends": b.sends,
-            "gain_db": b.gain_db, "muted": b.muted, "effects": fx(&b.effects), "clips": [],
-        }));
-    }
-    let stems: Vec<Value> = rendered
-        .stems
-        .iter()
-        .zip(stem_urls)
-        .map(|(s, url)| json!({
-            "track": format!("tracks[{}]", s.track),
-            "path": s.path.iter().map(|b| format!("buses[{b}]")).collect::<Vec<_>>(),
-            "label": s.label, "url": url,
-        }))
-        .collect();
-    json!({
-        "name": project.name,
-        "tempo": project.tempo,
-        "beats_per_bar": project.time_signature.numerator,
-        "time_signature": format!("{}/{}", project.time_signature.numerator, project.time_signature.denominator),
-        "duration_beats": project.duration_beats().0,
-        "seconds": rendered.mix.num_frames() as f64 / f64::from(settings.sample_rate),
-        "master_gain_db": project.master_gain_db,
-        "master_effects": fx(&project.master_effects),
-        "nodes": nodes, "stems": stems, "mix": mix_url,
-        "version": 0, "error": Value::Null, "dirty": false, "project_path": Value::Null,
-    })
-}
-
-fn page(data: Option<&Value>) -> String {
-    let embedded = match data {
-        // `</` 转义，防止音轨名等内容提前结束 <script>。
-        Some(v) => v.to_string().replace("</", "<\\/"),
-        None => "null".to_string(),
-    };
-    TEMPLATE.replacen(PLACEHOLDER, &embedded, 1)
-}
-
-/// 静态模式：生成单文件 HTML。返回 (文件字节数, 分轨数)。
-pub fn write_static(project: &Project, settings: RenderSettings, out: &str) -> Result<(usize, usize)> {
-    let r = render_with_stems(project, settings).context("渲染失败")?;
-    let url = |a: &muser_engine::AudioBuffer<f32>| format!("data:audio/wav;base64,{}", base64(&wav_bytes(a, settings.sample_rate)));
-    let stem_urls = r.stems.iter().map(|s| url(&s.audio)).collect();
-    let data = payload(project, &r, settings, url(&r.mix), stem_urls);
-    let html = page(Some(&data));
-    std::fs::write(out, &html).with_context(|| format!("写出失败: {out}"))?;
-    Ok((html.len(), r.stems.len()))
-}
-
-// ---------------------------------------------------------------- 联动模式
 
 /// 页面提交的一项改动。
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 struct Change {
     node: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     gain_db: Option<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     muted: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
-struct ApplyBody {
-    changes: Vec<Change>,
+struct MixBody {
     #[serde(default)]
-    save: bool,
+    changes: Vec<Change>,
+    /// 给出时整体替换独奏集合（节点 id）。
+    #[serde(default)]
+    solo: Option<Vec<String>>,
 }
 
 /// 解析 `tracks[i]` / `buses[i]`。
@@ -156,14 +71,25 @@ fn parse_node(id: &str) -> Option<(&str, usize)> {
     matches!(kind, "tracks" | "buses").then_some((kind, i))
 }
 
+fn node_id(n: Node) -> String {
+    match n {
+        Node::Track(i) => format!("tracks[{i}]"),
+        Node::Bus(i) => format!("buses[{i}]"),
+    }
+}
+
+fn fields<'a>(p: &'a mut Project, id: &str) -> Result<(&'a mut f64, &'a mut bool), String> {
+    let (kind, i) = parse_node(id).ok_or_else(|| format!("无效的 node '{id}'"))?;
+    match kind {
+        "tracks" => p.tracks.get_mut(i).map(|t| (&mut t.gain_db, &mut t.muted)),
+        _ => p.buses.get_mut(i).map(|b| (&mut b.gain_db, &mut b.muted)),
+    }
+    .ok_or_else(|| format!("{id} 不存在"))
+}
+
 fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
     for c in changes {
-        let (kind, i) = parse_node(&c.node).ok_or_else(|| format!("无效的 node '{}'", c.node))?;
-        let (gain, muted) = match kind {
-            "tracks" => p.tracks.get_mut(i).map(|t| (&mut t.gain_db, &mut t.muted)),
-            _ => p.buses.get_mut(i).map(|b| (&mut b.gain_db, &mut b.muted)),
-        }
-        .ok_or_else(|| format!("{} 不存在", c.node))?;
+        let (gain, muted) = fields(p, &c.node)?;
         if let Some(g) = c.gain_db {
             if !(-80.0..=24.0).contains(&g) {
                 return Err(format!("{}.gain_db = {g} 超出范围 [-80, 24]", c.node));
@@ -196,23 +122,127 @@ fn apply_to_json(v: &mut Value, changes: &[Change]) -> Result<()> {
     Ok(())
 }
 
-struct Inner {
-    version: u64,
-    project: Option<Project>,
-    payload: Value,
-    audio: HashMap<String, Arc<Vec<u8>>>,
-    error: Option<String>,
+/// 工作副本相对文件的改动（只列出确实不同的字段）。
+fn diff(file: &Project, working: &Project) -> Vec<Change> {
+    let mut out = Vec::new();
+    let mut push = |node: String, g0: f64, g1: f64, m0: bool, m1: bool| {
+        let c = Change { node, gain_db: (g0 != g1).then_some(g1), muted: (m0 != m1).then_some(m1) };
+        if c.gain_db.is_some() || c.muted.is_some() {
+            out.push(c);
+        }
+    };
+    for (i, (a, b)) in file.tracks.iter().zip(&working.tracks).enumerate() {
+        push(format!("tracks[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted);
+    }
+    for (i, (a, b)) in file.buses.iter().zip(&working.buses).enumerate() {
+        push(format!("buses[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted);
+    }
+    out
+}
+
+/// 独奏：只留下独奏的音轨、以及经过（直接或间接送进）独奏总线的音轨。总线本身不静音。
+fn with_solo(p: &Project, solo: &BTreeSet<String>) -> Project {
+    let mut q = p.clone();
+    if solo.is_empty() {
+        return q;
+    }
+    let Ok(plan) = routing::plan(p) else { return q };
+    let mut down: HashMap<Node, Vec<Node>> = HashMap::new();
+    for e in &plan.edges {
+        if let Some(b) = e.to {
+            down.entry(e.from).or_default().push(Node::Bus(b));
+        }
+    }
+    let reaches_solo = |start: Node| {
+        let mut stack = vec![start];
+        let mut seen = BTreeSet::new();
+        while let Some(n) = stack.pop() {
+            let id = node_id(n);
+            if solo.contains(&id) {
+                return true;
+            }
+            if seen.insert(id) {
+                stack.extend(down.get(&n).into_iter().flatten().copied());
+            }
+        }
+        false
+    };
+    for i in 0..q.tracks.len() {
+        if !reaches_solo(Node::Track(i)) {
+            q.tracks[i].muted = true;
+        }
+    }
+    q
+}
+
+/// 页面需要的工程摘要（不含音频）。
+fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
+    let fx = |list: &[muser_core::Effect]| list.iter().map(|e| e.type_name()).collect::<Vec<_>>();
+    let mut nodes = Vec::new();
+    for (i, t) in working.tracks.iter().enumerate() {
+        let id = format!("tracks[{i}]");
+        let clips: Vec<Value> = t
+            .clips
+            .iter()
+            .map(|c| {
+                let notes: Vec<Value> = c.notes.iter().map(|n| json!([n.start.0, n.length.0, n.pitch])).collect();
+                json!({ "start": c.start.0, "length": c.length.0, "notes": notes })
+            })
+            .collect();
+        nodes.push(json!({
+            "id": id, "kind": "track", "name": if t.name.is_empty() { id.clone() } else { t.name.clone() },
+            "instrument": t.instrument, "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
+            "gain_db": t.gain_db, "muted": t.muted, "solo": solo.contains(&id), "effects": fx(&t.effects), "clips": clips,
+        }));
+    }
+    for (i, b) in working.buses.iter().enumerate() {
+        let id = format!("buses[{i}]");
+        nodes.push(json!({
+            "id": id, "kind": "bus", "name": b.name, "output": b.output.as_deref().unwrap_or("master"), "sends": b.sends,
+            "gain_db": b.gain_db, "muted": b.muted, "solo": solo.contains(&id), "effects": fx(&b.effects), "clips": [],
+        }));
+    }
+    json!({
+        "name": working.name, "tempo": working.tempo,
+        "beats_per_bar": working.time_signature.numerator,
+        "time_signature": format!("{}/{}", working.time_signature.numerator, working.time_signature.denominator),
+        "duration_beats": working.duration_beats().0,
+        "master_gain_db": working.master_gain_db, "master_effects": fx(&working.master_effects),
+        "nodes": nodes,
+    })
+}
+
+/// 一个渲染好的版本。
+struct Version {
+    pcm: Arc<Vec<u8>>,
+    frames: usize,
+    peaks: Vec<f32>,
+    summary: Value,
+    seconds_to_render: f64,
+}
+
+struct State {
+    /// 文件里的工程（最近一次成功读取）。
+    file: Option<Project>,
+    /// 工作副本 = 文件 + 页面改动。
+    working: Option<Project>,
+    solo: BTreeSet<String>,
+    /// 有新的渲染请求（渲染线程处理后清除）。
+    requested: bool,
     rendering: bool,
-    /// 已应用到内存、尚未写回文件的改动。
-    pending: Vec<Change>,
+    version: u64,
+    current: Option<Arc<Version>>,
+    /// 上一版，供正在拉取的旧分段读完。
+    previous: Option<(u64, Arc<Version>)>,
+    error: Option<String>,
     file_mtime: Option<SystemTime>,
 }
 
 struct Shared {
     path: PathBuf,
     settings: RenderSettings,
-    inner: Mutex<Inner>,
-    render_lock: Mutex<()>,
+    state: Mutex<State>,
+    wake: Condvar,
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
@@ -220,104 +250,191 @@ fn mtime(p: &Path) -> Option<SystemTime> {
 }
 
 impl Shared {
-    /// 渲染 `project` 并换上新版本。失败时保留上一版音频，记录错误。
-    fn rerender(&self, project: Project) -> Result<(), String> {
-        let _g = self.render_lock.lock().unwrap();
-        self.inner.lock().unwrap().rendering = true;
-        let t0 = std::time::Instant::now();
-        let result = render_with_stems(&project, self.settings);
-        let mut inner = self.inner.lock().unwrap();
-        inner.rendering = false;
-        match result {
-            Ok(r) => {
-                let v = inner.version + 1;
-                let mut audio = HashMap::new();
-                audio.insert(format!("/audio/{v}/mix.wav"), Arc::new(wav_bytes(&r.mix, self.settings.sample_rate)));
-                let mut urls = Vec::new();
-                for (i, s) in r.stems.iter().enumerate() {
-                    let u = format!("/audio/{v}/stem-{i}.wav");
-                    audio.insert(u.clone(), Arc::new(wav_bytes(&s.audio, self.settings.sample_rate)));
-                    urls.push(u);
-                }
-                inner.payload = payload(&project, &r, self.settings, format!("/audio/{v}/mix.wav"), urls);
-                inner.audio = audio;
-                inner.version = v;
-                inner.project = Some(project);
-                inner.error = None;
-                eprintln!("[view] 版本 {v}：渲染完成（{:.1}s）", t0.elapsed().as_secs_f64());
-                Ok(())
-            }
-            Err(e) => {
-                let msg = format!("{e:#}");
-                eprintln!("[view] 渲染失败：{msg}");
-                inner.error = Some(msg.clone());
-                Err(msg)
-            }
-        }
+    fn request_render(&self, st: &mut State) {
+        st.requested = true;
+        self.wake.notify_all();
     }
 
-    /// 从磁盘读工程并渲染（启动时、文件变化时）。
+    /// 从磁盘读工程（启动时、文件变化时）。页面上未保存的改动丢弃。
     fn reload(&self) {
         let m = mtime(&self.path);
         let loaded = std::fs::read_to_string(&self.path)
             .map_err(|e| format!("读取失败: {e}"))
             .and_then(|t| Project::from_json(&t).map_err(|e| format!("解析失败: {e}")));
-        {
-            let mut inner = self.inner.lock().unwrap();
-            inner.file_mtime = m;
-            if !inner.pending.is_empty() {
-                eprintln!("[view] 工程文件已变化，丢弃未保存的页面改动");
-                inner.pending.clear();
-            }
-        }
+        let mut st = self.state.lock().unwrap();
+        st.file_mtime = m;
         match loaded {
             Ok(p) => {
-                let _ = self.rerender(p);
+                let had_changes = match (&st.file, &st.working) {
+                    (Some(f), Some(w)) => !diff(f, w).is_empty(),
+                    _ => false,
+                };
+                if had_changes {
+                    eprintln!("[view] 工程文件已变化，丢弃页面上未保存的改动");
+                }
+                // 结构变了（音轨/总线增删）时，独奏可能指向别的节点：清空。
+                let same_shape = st.file.as_ref().is_some_and(|f| f.tracks.len() == p.tracks.len() && f.buses.len() == p.buses.len());
+                if !same_shape {
+                    st.solo.clear();
+                }
+                st.working = Some(p.clone());
+                st.file = Some(p);
+                self.request_render(&mut st);
             }
             Err(e) => {
                 eprintln!("[view] {e}");
-                self.inner.lock().unwrap().error = Some(e);
+                st.error = Some(e);
             }
         }
     }
 
-    fn apply(&self, body: ApplyBody) -> Result<u64, String> {
-        let mut project = self.inner.lock().unwrap().project.clone().ok_or("工程尚未成功加载")?;
-        if !body.changes.is_empty() {
-            apply_to_project(&mut project, &body.changes)?;
-            self.rerender(project)?;
-        }
-        let mut inner = self.inner.lock().unwrap();
-        inner.pending.extend(body.changes);
-        if body.save {
-            let pending = std::mem::take(&mut inner.pending);
-            let write = || -> Result<()> {
-                let text = std::fs::read_to_string(&self.path)?;
-                let mut v: Value = serde_json::from_str(&text)?;
-                apply_to_json(&mut v, &pending)?;
-                std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
-                Ok(())
+    /// 渲染线程：合并请求，总是渲染最新的工作副本。
+    fn render_loop(&self) {
+        let mut cache = RenderCache::new();
+        loop {
+            let project = {
+                let mut st = self.state.lock().unwrap();
+                while !st.requested {
+                    st = self.wake.wait(st).unwrap();
+                }
+                st.requested = false;
+                st.rendering = true;
+                st.working.as_ref().map(|w| (with_solo(w, &st.solo), summary(w, &st.solo)))
             };
-            if let Err(e) = write() {
-                inner.pending = pending;
-                return Err(format!("保存失败: {e:#}"));
+            let Some((project, summary)) = project else {
+                self.state.lock().unwrap().rendering = false;
+                continue;
+            };
+            let t0 = std::time::Instant::now();
+            let result = render_cached(&project, self.settings, &mut cache);
+            let secs = t0.elapsed().as_secs_f64();
+            let mut st = self.state.lock().unwrap();
+            st.rendering = st.requested;
+            match result {
+                Ok(audio) => {
+                    let v = Arc::new(Version {
+                        pcm: Arc::new(pcm16(&audio)),
+                        frames: audio.num_frames(),
+                        peaks: peaks(&audio),
+                        summary,
+                        seconds_to_render: secs,
+                    });
+                    if let Some(cur) = st.current.take() {
+                        st.previous = Some((st.version, cur));
+                    }
+                    st.version += 1;
+                    st.current = Some(v);
+                    st.error = None;
+                    eprintln!("[view] 版本 {}：渲染 {secs:.1}s（乐器缓存 {} 条，{:.0} MB）", st.version, cache.len(), cache.bytes() as f64 / 1e6);
+                }
+                Err(e) => {
+                    let msg = format!("{e:#}");
+                    eprintln!("[view] 渲染失败：{msg}");
+                    st.error = Some(msg);
+                }
             }
-            // 自己写的文件不触发重新加载。
-            inner.file_mtime = mtime(&self.path);
-            eprintln!("[view] 已保存到 {}", self.path.display());
         }
-        Ok(inner.version)
     }
 
-    fn state(&self) -> Value {
-        let inner = self.inner.lock().unwrap();
-        let mut p = inner.payload.clone();
-        p["version"] = json!(inner.version);
-        p["error"] = json!(inner.error);
-        p["dirty"] = json!(!inner.pending.is_empty());
-        p["rendering"] = json!(inner.rendering);
-        p["project_path"] = json!(self.path.display().to_string());
-        p
+    fn mix(&self, body: MixBody) -> Result<(), String> {
+        let mut st = self.state.lock().unwrap();
+        let working = st.working.as_mut().ok_or("工程尚未成功加载")?;
+        let mut next = working.clone();
+        apply_to_project(&mut next, &body.changes)?;
+        *working = next;
+        if let Some(solo) = body.solo {
+            for id in &solo {
+                parse_node(id).ok_or_else(|| format!("无效的 node '{id}'"))?;
+            }
+            st.solo = solo.into_iter().collect();
+        }
+        self.request_render(&mut st);
+        Ok(())
+    }
+
+    fn save(&self) -> Result<usize, String> {
+        let mut st = self.state.lock().unwrap();
+        let (Some(file), Some(working)) = (&st.file, &st.working) else { return Err("工程尚未成功加载".into()) };
+        let changes = diff(file, working);
+        if changes.is_empty() {
+            return Ok(0);
+        }
+        let write = || -> Result<()> {
+            let text = std::fs::read_to_string(&self.path)?;
+            let mut v: Value = serde_json::from_str(&text)?;
+            apply_to_json(&mut v, &changes)?;
+            std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
+            Ok(())
+        };
+        write().map_err(|e| format!("保存失败: {e:#}"))?;
+        st.file = st.working.clone();
+        // 自己写的文件不触发重新加载。
+        st.file_mtime = mtime(&self.path);
+        eprintln!("[view] 已保存 {} 项改动到 {}", changes.len(), self.path.display());
+        Ok(changes.len())
+    }
+
+    fn reset(&self) {
+        let mut st = self.state.lock().unwrap();
+        st.working = st.file.clone();
+        st.solo.clear();
+        self.request_render(&mut st);
+    }
+
+    fn status(&self) -> Value {
+        let st = self.state.lock().unwrap();
+        json!({ "version": st.version, "rendering": st.rendering || st.requested, "error": st.error })
+    }
+
+    fn state_json(&self) -> Value {
+        let st = self.state.lock().unwrap();
+        let changes = match (&st.file, &st.working) {
+            (Some(f), Some(w)) => diff(f, w),
+            _ => Vec::new(),
+        };
+        let mut out = match &st.current {
+            Some(v) => {
+                let mut s = v.summary.clone();
+                s["frames"] = json!(v.frames);
+                s["peaks"] = json!(v.peaks);
+                s["render_seconds"] = json!((v.seconds_to_render * 10.0).round() / 10.0);
+                s
+            }
+            None => json!({}),
+        };
+        out["ready"] = json!(st.current.is_some());
+        out["sample_rate"] = json!(self.settings.sample_rate);
+        out["version"] = json!(st.version);
+        out["rendering"] = json!(st.rendering || st.requested);
+        out["error"] = json!(st.error);
+        if let Some(f) = &st.file {
+            let mut fv = serde_json::Map::new();
+            for (i, t) in f.tracks.iter().enumerate() {
+                fv.insert(format!("tracks[{i}]"), json!(t.gain_db));
+            }
+            for (i, b) in f.buses.iter().enumerate() {
+                fv.insert(format!("buses[{i}]"), json!(b.gain_db));
+            }
+            out["file_values"] = Value::Object(fv);
+        }
+        out["changes"] = json!(changes);
+        out["solo"] = json!(st.solo);
+        out["project_path"] = json!(self.path.display().to_string());
+        out
+    }
+
+    /// 某版本的一段 PCM。版本不在了返回 None（页面会重新取状态）。
+    fn pcm(&self, version: u64, from: usize, frames: usize) -> Option<(Vec<u8>, usize)> {
+        let st = self.state.lock().unwrap();
+        let v = match (&st.current, &st.previous) {
+            (Some(c), _) if st.version == version => c.clone(),
+            (_, Some((pv, p))) if *pv == version => p.clone(),
+            _ => return None,
+        };
+        drop(st);
+        let from = from.min(v.frames);
+        let to = (from + frames.min(48_000 * 10)).min(v.frames);
+        Some((v.pcm[from * 4..to * 4].to_vec(), v.frames))
     }
 }
 
@@ -342,16 +459,32 @@ fn host_allowed(req: &tiny_http::Request, port: u16) -> bool {
     host_ok && origin_ok
 }
 
+fn query(url: &str) -> BTreeMap<String, String> {
+    url.split_once('?')
+        .map(|(_, q)| q.split('&').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect())
+        .unwrap_or_default()
+}
+
+fn read_body<T: serde::de::DeserializeOwned>(req: &mut tiny_http::Request) -> Result<T, String> {
+    let mut body = String::new();
+    std::io::Read::read_to_string(&mut req.as_reader(), &mut body).map_err(|_| "读取请求失败".to_string())?;
+    if body.trim().is_empty() {
+        body = "{}".into();
+    }
+    serde_json::from_str(&body).map_err(|e| format!("请求格式错误: {e}"))
+}
+
 fn handle(shared: &Shared, mut req: tiny_http::Request, port: u16) {
     use tiny_http::Method;
     if !host_allowed(&req, port) {
         respond_json(req, 403, &json!({ "error": "只接受来自本机页面的请求" }));
         return;
     }
-    let url = req.url().split('?').next().unwrap_or("").to_string();
-    match (req.method(), url.as_str()) {
+    let url = req.url().to_string();
+    let path = url.split('?').next().unwrap_or("").to_string();
+    match (req.method(), path.as_str()) {
         (Method::Get, "/") => {
-            let r = tiny_http::Response::from_string(page(None))
+            let r = tiny_http::Response::from_string(PAGE)
                 .with_header(header("Content-Type", "text/html; charset=utf-8"))
                 .with_header(header("Cache-Control", "no-store"));
             let _ = req.respond(r);
@@ -359,46 +492,43 @@ fn handle(shared: &Shared, mut req: tiny_http::Request, port: u16) {
         (Method::Get, "/favicon.ico") => {
             let _ = req.respond(tiny_http::Response::empty(204));
         }
-        (Method::Get, "/api/state") => respond_json(req, 200, &shared.state()),
-        (Method::Get, "/api/version") => {
-            let inner = shared.inner.lock().unwrap();
-            let v = json!({ "version": inner.version, "rendering": inner.rendering, "error": inner.error });
-            drop(inner);
-            respond_json(req, 200, &v);
-        }
-        (Method::Post, "/api/apply") => {
-            let mut body = String::new();
-            if std::io::Read::read_to_string(&mut req.as_reader(), &mut body).is_err() {
-                respond_json(req, 400, &json!({ "error": "读取请求失败" }));
-                return;
-            }
-            let parsed: ApplyBody = match serde_json::from_str(&body) {
-                Ok(b) => b,
-                Err(e) => return respond_json(req, 400, &json!({ "error": format!("请求格式错误: {e}") })),
+        (Method::Get, "/api/state") => respond_json(req, 200, &shared.state_json()),
+        (Method::Get, "/api/status") => respond_json(req, 200, &shared.status()),
+        (Method::Get, "/api/pcm") => {
+            let q = query(&url);
+            let num = |k: &str| q.get(k).and_then(|v| v.parse::<u64>().ok());
+            let (Some(v), Some(from), Some(frames)) = (num("v"), num("from"), num("frames")) else {
+                return respond_json(req, 400, &json!({ "error": "需要 v / from / frames" }));
             };
-            match shared.apply(parsed) {
-                Ok(v) => respond_json(req, 200, &json!({ "ok": true, "version": v })),
-                Err(e) => respond_json(req, 400, &json!({ "error": e })),
-            }
-        }
-        (Method::Get, u) if u.starts_with("/audio/") => {
-            let data = shared.inner.lock().unwrap().audio.get(u).cloned();
-            match data {
-                Some(bytes) => {
-                    let r = tiny_http::Response::from_data(bytes.as_slice().to_vec())
-                        .with_header(header("Content-Type", "audio/wav"))
+            match shared.pcm(v, from as usize, frames as usize) {
+                Some((bytes, total)) => {
+                    let r = tiny_http::Response::from_data(bytes)
+                        .with_header(header("Content-Type", "application/octet-stream"))
+                        .with_header(header("X-Total-Frames", &total.to_string()))
                         .with_header(header("Cache-Control", "no-store"));
                     let _ = req.respond(r);
                 }
-                None => respond_json(req, 404, &json!({ "error": "音频已过期" })),
+                None => respond_json(req, 410, &json!({ "error": "版本已过期" })),
             }
+        }
+        (Method::Post, "/api/mix") => match read_body::<MixBody>(&mut req).and_then(|b| shared.mix(b)) {
+            Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
+            Err(e) => respond_json(req, 400, &json!({ "error": e })),
+        },
+        (Method::Post, "/api/save") => match shared.save() {
+            Ok(n) => respond_json(req, 200, &json!({ "ok": true, "saved": n })),
+            Err(e) => respond_json(req, 400, &json!({ "error": e })),
+        },
+        (Method::Post, "/api/reset") => {
+            shared.reset();
+            respond_json(req, 200, &json!({ "ok": true }));
         }
         _ => respond_json(req, 404, &json!({ "error": "not found" })),
     }
 }
 
-/// 联动模式：阻塞运行直到进程被中断。
-pub fn serve(path: &str, settings: RenderSettings, port: u16) -> Result<()> {
+/// 启动联动服务，阻塞运行直到进程被中断。`open` 时用系统浏览器打开页面。
+pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool) -> Result<()> {
     let path = PathBuf::from(path);
     if !path.is_file() {
         bail!("找不到工程文件: {}", path.display());
@@ -406,37 +536,50 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16) -> Result<()> {
     let shared = Arc::new(Shared {
         path,
         settings,
-        inner: Mutex::new(Inner {
-            version: 0,
-            project: None,
-            payload: Value::Null,
-            audio: HashMap::new(),
-            error: None,
+        state: Mutex::new(State {
+            file: None,
+            working: None,
+            solo: BTreeSet::new(),
+            requested: false,
             rendering: false,
-            pending: Vec::new(),
+            version: 0,
+            current: None,
+            previous: None,
+            error: None,
             file_mtime: None,
         }),
-        render_lock: Mutex::new(()),
+        wake: Condvar::new(),
     });
     // 只绑定本机回环地址。
     let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow!("无法监听 127.0.0.1:{port}: {e}"))?;
-    eprintln!("[view] 渲染 {} …", shared.path.display());
+    let url = format!("http://127.0.0.1:{port}/");
+    {
+        let s = Arc::clone(&shared);
+        std::thread::spawn(move || s.render_loop());
+    }
     shared.reload();
-    println!("muser view 已启动：http://127.0.0.1:{port}/  （只监听本机，无鉴权；Ctrl+C 退出）");
-    println!("工程文件变化会自动重新渲染；页面上的改动可「应用」或「保存到工程文件」。");
-
-    let watcher = Arc::clone(&shared);
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(Duration::from_millis(500));
-            let now = mtime(&watcher.path);
-            let changed = now.is_some() && now != watcher.inner.lock().unwrap().file_mtime;
-            if changed {
-                eprintln!("[view] 工程文件已变化，重新渲染");
-                watcher.reload();
-            }
+    println!("muser view 已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
+    println!("工程文件变化会自动重新渲染；页面上的改动点「保存」写回工程文件。");
+    if open {
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        if let Err(e) = std::process::Command::new(opener).arg(&url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+            eprintln!("[view] 无法打开浏览器（{opener}: {e}），请手动打开 {url}");
         }
-    });
+    }
+    {
+        let watcher = Arc::clone(&shared);
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_millis(500));
+                let now = mtime(&watcher.path);
+                let changed = now.is_some() && now != watcher.state.lock().unwrap().file_mtime;
+                if changed {
+                    eprintln!("[view] 工程文件已变化，重新渲染");
+                    watcher.reload();
+                }
+            }
+        });
+    }
     for req in server.incoming_requests() {
         let s = Arc::clone(&shared);
         std::thread::spawn(move || handle(&s, req, port));
@@ -448,28 +591,30 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16) -> Result<()> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn base64_matches_rfc4648() {
-        for (i, o) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foobar", "Zm9vYmFy")] {
-            assert_eq!(base64(i.as_bytes()), o);
-        }
+    fn project() -> Project {
+        Project::from_json(
+            r#"{ "tempo": 120, "buses": [{ "name": "v" }, { "name": "w", "output": "v" }],
+                 "tracks": [{ "name": "a", "instrument": "synth.poly", "output": "w", "clips": [] },
+                            { "name": "b", "instrument": "synth.poly", "clips": [] },
+                            { "name": "c", "instrument": "synth.poly", "sends": { "v": -6 }, "clips": [] }] }"#,
+        )
+        .unwrap()
     }
 
     #[test]
     fn apply_changes_to_project_and_json() {
-        let text = r#"{ "tempo": 120, "buses": [{ "name": "v" }], "tracks": [{ "name": "a", "instrument": "synth.poly", "clips": [] }] }"#;
-        let mut p = Project::from_json(text).unwrap();
+        let mut p = project();
         let ch = vec![
             Change { node: "tracks[0]".into(), gain_db: Some(-4.5), muted: None },
             Change { node: "buses[0]".into(), gain_db: None, muted: Some(true) },
         ];
         apply_to_project(&mut p, &ch).unwrap();
         assert_eq!((p.tracks[0].gain_db, p.buses[0].muted), (-4.5, true));
-        let mut v: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(diff(&project(), &p), ch);
+        let mut v: Value = serde_json::to_value(project()).unwrap();
         apply_to_json(&mut v, &ch).unwrap();
         assert_eq!(v["tracks"][0]["gain_db"], json!(-4.5));
         assert_eq!(v["buses"][0]["muted"], json!(true));
-        assert!(v["tracks"][0].get("muted").is_none(), "没改的字段不写入");
         let bad = vec![Change { node: "tracks[9]".into(), gain_db: Some(0.0), muted: None }];
         assert!(apply_to_project(&mut p, &bad).is_err());
         let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None }];
@@ -477,8 +622,27 @@ mod tests {
     }
 
     #[test]
-    fn page_escapes_script_end() {
-        let html = page(Some(&json!({ "name": "</script><b>x" })));
-        assert!(!html.contains("</script><b>"));
+    fn solo_follows_routing() {
+        let p = project();
+        let muted = |solo: &[&str]| {
+            let q = with_solo(&p, &solo.iter().map(|s| s.to_string()).collect());
+            q.tracks.iter().map(|t| t.muted).collect::<Vec<_>>()
+        };
+        assert_eq!(muted(&[]), [false, false, false]);
+        assert_eq!(muted(&["tracks[1]"]), [true, false, true]);
+        // 独奏总线 v：a 经 w 进 v，c 发送到 v。
+        assert_eq!(muted(&["buses[0]"]), [false, true, false]);
+        assert_eq!(muted(&["buses[1]", "tracks[1]"]), [false, false, true]);
+    }
+
+    #[test]
+    fn pcm_and_peaks() {
+        let mut a = AudioBuffer::<f32>::new(2, 3);
+        a.channel_mut(0).copy_from_slice(&[1.0, -1.0, 0.5]);
+        let b = pcm16(&a);
+        assert_eq!(b.len(), 12);
+        assert_eq!(i16::from_le_bytes([b[0], b[1]]), 32767);
+        assert_eq!(i16::from_le_bytes([b[4], b[5]]), -32767);
+        assert_eq!(peaks(&a).len(), PEAKS);
     }
 }

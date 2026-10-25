@@ -114,20 +114,17 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// 生成给人看的播放页：时间线、成品/分轨播放、分轨音量与静音。
-    /// 默认输出单文件静态 HTML；--serve 起本地服务，与引擎联动（改动重新渲染、保存回工程、文件变化自动刷新）。
+    /// 给人听的播放页：起本地服务（只监听 127.0.0.1），浏览器里播放、看时间线，调音量/静音/独奏，
+    /// 改动由引擎重新渲染；「保存」写回工程。工程文件被改了会自动重新渲染、页面刷新。
     View {
         /// 工程文件路径。
         project: String,
-        /// 输出 HTML 路径（默认与工程同名 .html）。
-        #[arg(short, long)]
-        output: Option<String>,
-        /// 起本地联动服务（只监听 127.0.0.1）。
-        #[arg(long)]
-        serve: bool,
-        /// --serve 的端口。
+        /// 端口。
         #[arg(long, default_value_t = 8737)]
         port: u16,
+        /// 启动后用系统浏览器打开页面。
+        #[arg(long)]
+        open: bool,
         /// 采样率。
         #[arg(long, default_value_t = 48_000)]
         sample_rate: u32,
@@ -135,6 +132,7 @@ enum Command {
         #[arg(long, default_value_t = 2.0)]
         tail: f64,
     },
+
     /// 打印工程的信号流：每条音轨/总线送到哪里、发送量、侧链、处理顺序。
     Routing {
         /// 工程文件路径。
@@ -277,20 +275,9 @@ fn main() -> Result<()> {
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::Routing { project } => cmd_routing(&project),
-        Command::View { project, output, serve, port, sample_rate, tail } => {
+        Command::View { project, port, open, sample_rate, tail } => {
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
-            if serve {
-                view::serve(&project, settings, port)
-            } else {
-                let out = output.unwrap_or_else(|| {
-                    let base = project.strip_suffix(".json").unwrap_or(&project);
-                    format!("{}.html", base.strip_suffix(".muser").unwrap_or(base))
-                });
-                let p = load_project(&project)?;
-                let (bytes, stems) = view::write_static(&p, settings, &out)?;
-                println!("已生成 {out}（{:.1} MB，成品 + {stems} 条分轨），用浏览器打开即可", bytes as f64 / 1e6);
-                Ok(())
-            }
+            view::serve(&project, settings, port, open)
         }
         Command::Plugin { command } => cmd_plugin(command),
         Command::Audition { instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json } => {

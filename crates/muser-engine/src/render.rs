@@ -11,6 +11,7 @@
 //! 有延迟的效果器（limiter 前瞻、插件）处理后把信号前移相应帧数，各路信号保持对齐。
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use muser_core::routing::{self, Node, Plan};
 use muser_core::{Effect, Project};
@@ -175,72 +176,6 @@ fn advance(buf: &mut AudioBuffer<f32>, latency: usize) {
     }
 }
 
-fn copy_buf(b: &AudioBuffer<f32>) -> AudioBuffer<f32> {
-    let mut out = AudioBuffer::<f32>::new(2, b.num_frames());
-    for ch in 0..2 {
-        out.channel_mut(ch).copy_from_slice(b.channel(ch));
-    }
-    out
-}
-
-/// 分轨分解中的一份信号：来自哪条音轨、经过了哪些总线。
-struct Part {
-    track: usize,
-    path: Vec<usize>,
-    audio: AudioBuffer<f32>,
-}
-
-fn add_part(list: &mut Vec<Part>, track: usize, path: Vec<usize>, src: &AudioBuffer<f32>, cx: &Ctx, level_db: f64, lanes: Option<&Vec<automate::Lane>>) {
-    match list.iter_mut().find(|p| p.track == track && p.path == path) {
-        Some(p) => mix_into(&mut p.audio, src, cx, level_db, lanes),
-        None => {
-            let mut audio = AudioBuffer::<f32>::new(2, src.num_frames());
-            mix_into(&mut audio, src, cx, level_db, lanes);
-            list.push(Part { track, path, audio });
-        }
-    }
-}
-
-/// 同一条效果链同时处理全信号与各分轨。每个分轨有自己的效果器实例（线性效果器分解精确）；
-/// 压缩器以全信号（或它的侧链键）为键，各分轨得到与成品相同的增益衰减，分轨之和仍等于成品。
-/// limiter 与插件对各分轨单独处理，属近似。
-fn run_chain_parts(
-    fx: &[Effect],
-    full: &mut AudioBuffer<f32>,
-    parts: &mut [Part],
-    cx: &Ctx,
-    lanes: &mut [Vec<automate::Lane>],
-    keys: &[Option<&AudioBuffer<f32>>],
-) -> Result<(), EngineError> {
-    if parts.is_empty() || fx.is_empty() {
-        return run_chain(fx, full, cx, lanes, keys);
-    }
-    let beat_at = |f: usize| cx.beat_at(f);
-    let bs = cx.settings.block_size;
-    let mut chain = effects::build_chain(fx, &cx.spec)?;
-    let mut part_chains = parts.iter().map(|_| effects::build_chain(fx, &cx.spec)).collect::<Result<Vec<_>, _>>()?;
-    let mut part_lanes: Vec<Vec<Vec<automate::Lane>>> = parts.iter().map(|_| lanes.to_vec()).collect();
-    for k in 0..fx.len() {
-        let side = keys.get(k).copied().flatten();
-        let own_key = matches!(fx[k], Effect::Compressor { sidechain: None, .. });
-        let snapshot = own_key.then(|| copy_buf(full));
-        effects::apply_chain(&mut chain[k..=k], full, bs, &mut lanes[k..=k], &beat_at, &[side]);
-        let key = if own_key { snapshot.as_ref() } else { side };
-        for ((p, c), l) in parts.iter_mut().zip(part_chains.iter_mut()).zip(part_lanes.iter_mut()) {
-            if own_key {
-                effects::key_from_sidechain(&mut c[k]);
-            }
-            effects::apply_chain(&mut c[k..=k], &mut p.audio, bs, &mut l[k..=k], &beat_at, &[key]);
-        }
-    }
-    let latency = effects::chain_latency(&chain);
-    advance(full, latency);
-    for p in parts.iter_mut() {
-        advance(&mut p.audio, latency);
-    }
-    Ok(())
-}
-
 /// 等功率声像（音轨）：居中时两声道各 -3 dB。
 fn pan_gains(gain_db: f64, pan: f64) -> (f32, f32) {
     let gain = decibels::db_to_gain(gain_db);
@@ -291,37 +226,99 @@ fn mix_into(dst: &mut AudioBuffer<f32>, src: &AudioBuffer<f32>, cx: &Ctx, level_
     }
 }
 
-/// 分轨（stem）：一条音轨沿一条路径（经过的总线，按顺序）送进主总线的信号，在主总线效果与主增益之前。
+/// 乐器输出缓存：同一条音轨的乐器部分（音符、乐器参数与乐器自动化都没变）不必重新渲染。
 ///
-/// 每条音轨（含静音的）、每条路径一份，供界面实时静音/独奏任意音轨与总线：
-/// 未静音音轨、经未静音总线的分轨之和 = 主总线效果链的输入（总线上有 limiter/插件时为近似）。
-pub struct Stem {
-    pub track: usize,
-    /// 经过的总线下标（从音轨往主总线方向）。空 = 直接进主总线。
-    pub path: Vec<usize>,
-    /// 显示名，如 `snare → echo → space`。
-    pub label: String,
-    pub audio: AudioBuffer<f32>,
+/// 渲染里最耗时的是乐器；改音量、静音、效果、路由时只需重跑效果链与总线。`muser view` 的联动服务
+/// 用它把改动后的重新渲染从几十秒降到一两秒。缓存只保留最近一次渲染用到的条目（含静音音轨，取消静音不必重算）。
+#[derive(Default)]
+pub struct RenderCache {
+    map: HashMap<u64, Arc<Cached>>,
 }
 
-/// 成品混音 + 分轨。
-pub struct Rendered {
-    pub mix: AudioBuffer<f32>,
-    pub stems: Vec<Stem>,
+/// 裁掉首尾静音后的乐器输出。
+struct Cached {
+    offset: usize,
+    audio: AudioBuffer<f32>,
+}
+
+impl RenderCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// 条目数。
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+    /// 缓存占用的内存（字节，近似）。
+    pub fn bytes(&self) -> usize {
+        self.map.values().map(|c| c.audio.num_frames() * 2 * 4).sum()
+    }
+}
+
+impl Cached {
+    fn new(full: AudioBuffer<f32>) -> Cached {
+        let n = full.num_frames();
+        let live = |f: usize| full.channel(0)[f] != 0.0 || full.channel(1)[f] != 0.0;
+        let first = (0..n).find(|&f| live(f));
+        let Some(first) = first else {
+            return Cached { offset: 0, audio: AudioBuffer::<f32>::new(2, 0) };
+        };
+        let last = (first..n).rev().find(|&f| live(f)).unwrap_or(first);
+        let mut audio = AudioBuffer::<f32>::new(2, last + 1 - first);
+        for ch in 0..2 {
+            audio.channel_mut(ch).copy_from_slice(&full.channel(ch)[first..=last]);
+        }
+        Cached { offset: first, audio }
+    }
+
+    fn expand(&self, total_frames: usize) -> AudioBuffer<f32> {
+        let mut out = AudioBuffer::<f32>::new(2, total_frames);
+        let n = self.audio.num_frames().min(total_frames.saturating_sub(self.offset));
+        for ch in 0..2 {
+            out.channel_mut(ch)[self.offset..self.offset + n].copy_from_slice(&self.audio.channel(ch)[..n]);
+        }
+        out
+    }
+}
+
+/// 一条音轨乐器输出的缓存键：只含影响乐器声音的内容。
+fn instrument_key(project: &Project, ti: usize, cx: &Ctx) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let t = &project.tracks[ti];
+    // 乐器自动化：随机形状的默认种子与音轨下标、自动化序号有关，一并计入。
+    let autos: Vec<(usize, &muser_core::Automation)> =
+        t.automation.iter().enumerate().filter(|(_, a)| a.target.trim() == "instrument").collect();
+    // 状态文件内容可能变化：计入修改时间。
+    let state_mtime = t
+        .instrument_params
+        .get("@state")
+        .and_then(|v| v.as_str())
+        .and_then(|p| std::fs::metadata(&*crate::plugin::expand_home(p)).and_then(|m| m.modified()).ok())
+        .map(|m| format!("{m:?}"));
+    let ts = project.time_signature;
+    let key = serde_json::json!({
+        "i": t.instrument, "p": t.instrument_params, "c": t.clips, "a": autos.iter().map(|(i, a)| serde_json::json!([i, a])).collect::<Vec<_>>(),
+        "ti": ti, "seed": project.seed, "tempo": project.tempo, "ts": [ts.numerator, ts.denominator],
+        "sr": cx.settings.sample_rate, "bs": cx.settings.block_size, "n": cx.total_frames, "st": state_mtime,
+    });
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    key.to_string().hash(&mut h);
+    h.finish()
 }
 
 /// 把工程渲染成一块立体声音频缓冲。
 pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer<f32>, EngineError> {
-    Ok(render_graph(project, settings, false)?.mix)
+    render_cached(project, settings, &mut RenderCache::new())
 }
 
-/// 渲染成品混音，同时给出各分轨（见 [`Stem`]）。
-pub fn render_with_stems(project: &Project, settings: RenderSettings) -> Result<Rendered, EngineError> {
-    render_graph(project, settings, true)
-}
-
-fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> Result<Rendered, EngineError> {
+/// 同 [`render`]，复用 `cache` 里的乐器输出，并把本次的乐器输出存回。
+pub fn render_cached(project: &Project, settings: RenderSettings, cache: &mut RenderCache) -> Result<AudioBuffer<f32>, EngineError> {
     crate::validate(project)?;
+    // 近乎静音的尾巴会产生非规格化浮点数，让滤波、混响慢几十倍；渲染期间把它们当作 0。
+    let _quiet = manguebyte::NoDenormals::new();
     let ts = project.time_signature;
     let _transport = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
     let plan: Plan = routing::plan(project).map_err(invalid)?;
@@ -352,84 +349,154 @@ fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> R
         master_keys.push(k);
     }
 
+    // 乐器部分：缺的先渲染（内置乐器多线程并行；插件乐器在当前线程依次渲染）。
+    let track_keys: Vec<u64> = (0..project.tracks.len()).map(|i| instrument_key(project, i, &cx)).collect();
+    let needed: Vec<usize> = (0..project.tracks.len())
+        .filter(|&i| !project.tracks[i].muted || key_nodes.contains(&Node::Track(i)))
+        .filter(|&i| !cache.map.contains_key(&track_keys[i]))
+        .collect();
+    let render_one = |i: usize| -> Result<(usize, Cached), EngineError> {
+        let _t = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
+        let _quiet = manguebyte::NoDenormals::new();
+        let mut lanes = automate::compile_track(project, i, beats).map_err(invalid)?;
+        Ok((i, Cached::new(render_instrument(&project.tracks[i], &cx, &mut lanes)?)))
+    };
+    let is_plugin = |i: &usize| project.tracks[*i].instrument.trim().starts_with("plugin:");
+    let (plugins, builtin): (Vec<usize>, Vec<usize>) = needed.into_iter().partition(is_plugin);
+    let mut done: Vec<Result<(usize, Cached), EngineError>> = Vec::new();
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(builtin.len().max(1));
+    let queue = std::sync::Mutex::new(builtin.iter().copied());
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut out = Vec::new();
+                    loop {
+                        // 先取出下标再释放锁，渲染期间不持锁。
+                        let next = queue.lock().unwrap().next();
+                        let Some(i) = next else { break };
+                        out.push(render_one(i));
+                    }
+                    out
+                })
+            })
+            .collect();
+        for i in &plugins {
+            done.push(render_one(*i));
+        }
+        for h in handles {
+            done.extend(h.join().expect("渲染线程崩溃"));
+        }
+    });
+    for r in done {
+        let (i, c) = r?;
+        cache.map.insert(track_keys[i], Arc::new(c));
+    }
+    cache.map.retain(|k, _| track_keys.contains(k));
+
     let mut master = AudioBuffer::<f32>::new(2, total_frames);
     let mut bus_in: HashMap<usize, AudioBuffer<f32>> = HashMap::new();
     let mut keys: HashMap<Node, AudioBuffer<f32>> = HashMap::new();
-    let mut stems: Vec<Part> = Vec::new();
-    let mut parts_in: HashMap<usize, Vec<Part>> = HashMap::new();
 
+    // 按依赖分层：同一层的节点互不依赖（输入都来自更早的层），可以并行处理；
+    // 分发（送进总线/主总线、保留侧链键）仍按计划顺序依次做，结果与串行一致。
+    let mut level: HashMap<Node, usize> = HashMap::new();
     for &node in &plan.order {
-        let (muted, effects_list, gain_db, pan, mut lanes, law): (bool, &[Effect], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) =
-            match node {
+        let mut l = 0;
+        for e in plan.edges.iter().filter(|e| e.to.map(Node::Bus) == Some(node)) {
+            l = l.max(level.get(&e.from).map_or(0, |x| x + 1));
+        }
+        for sc in plan.sidechains.iter().filter(|s| s.node == node) {
+            l = l.max(level.get(&sc.key).map_or(0, |x| x + 1));
+        }
+        level.insert(node, l);
+    }
+    let depth = level.values().copied().max().map_or(0, |d| d + 1);
+    let node_info = |node: Node| -> (bool, &[Effect]) {
+        match node {
+            Node::Track(i) => (project.tracks[i].muted, &project.tracks[i].effects[..]),
+            Node::Bus(i) => (project.buses[i].muted, &project.buses[i].effects[..]),
+        }
+    };
+    let workers = std::thread::available_parallelism().map_or(4, |n| n.get());
+
+    for l in 0..depth {
+        // 本层要处理的节点（静音且不作为侧链键的跳过，其输入丢弃）。
+        let mut jobs: Vec<(Node, Option<AudioBuffer<f32>>)> = Vec::new();
+        for &node in plan.order.iter().filter(|n| level[n] == l) {
+            let (muted, _) = node_info(node);
+            let input = match node {
+                Node::Bus(i) => Some(bus_in.remove(&i).unwrap_or_else(|| AudioBuffer::<f32>::new(2, total_frames))),
+                Node::Track(_) => None,
+            };
+            if muted && !key_nodes.contains(&node) {
+                continue;
+            }
+            jobs.push((node, input));
+        }
+        let process = |node: Node, input: Option<AudioBuffer<f32>>| -> Result<(AudioBuffer<f32>, TrackLanes), EngineError> {
+            let _t = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
+            let _quiet = manguebyte::NoDenormals::new();
+            let (_, effects_list) = node_info(node);
+            let (gain_db, pan, mut lanes, law): (f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) = match node {
                 Node::Track(i) => {
                     let t = &project.tracks[i];
-                    (t.muted, &t.effects, t.gain_db, t.pan, automate::compile_track(project, i, beats).map_err(invalid)?, pan_gains)
+                    (t.gain_db, t.pan, automate::compile_track(project, i, beats).map_err(invalid)?, pan_gains)
                 }
                 Node::Bus(i) => {
                     let b = &project.buses[i];
-                    (b.muted, &b.effects, b.gain_db, b.pan, automate::compile_bus(project, i, beats).map_err(invalid)?, balance_gains)
+                    (b.gain_db, b.pan, automate::compile_bus(project, i, beats).map_err(invalid)?, balance_gains)
                 }
             };
-        // 静音且不作为侧链键的节点：完全跳过（静音节点的输入照常丢弃）。
-        // 出分轨时照常处理，只是不把全信号送出去——界面上可以取消静音试听。
-        if muted && !key_nodes.contains(&node) && !capture {
-            if let Node::Bus(i) = node {
-                bus_in.remove(&i);
-            }
-            continue;
-        }
-        let mut buf = match node {
-            Node::Track(i) => render_instrument(&project.tracks[i], &cx, &mut lanes)?,
-            Node::Bus(i) => bus_in.remove(&i).unwrap_or_else(|| AudioBuffer::<f32>::new(2, total_frames)),
+            let mut buf = match (node, input) {
+                (_, Some(b)) => b,
+                (Node::Track(i), None) => cache.map[&track_keys[i]].expand(total_frames),
+                (Node::Bus(_), None) => AudioBuffer::<f32>::new(2, total_frames),
+            };
+            let chain_keys: Vec<Option<&AudioBuffer<f32>>> = (0..effects_list.len())
+                .map(|ei| plan.sidechains.iter().find(|s| s.node == node && s.effect == ei).and_then(|s| keys.get(&s.key)))
+                .collect();
+            run_chain(effects_list, &mut buf, &cx, &mut lanes.effects, &chain_keys)?;
+            fader(&mut buf, &cx, gain_db, pan, &lanes, law);
+            Ok((buf, lanes))
         };
-        let chain_keys: Vec<Option<&AudioBuffer<f32>>> = (0..effects_list.len())
-            .map(|ei| {
-                plan.sidechains
-                    .iter()
-                    .find(|s| s.node == node && s.effect == ei)
-                    .and_then(|s| keys.get(&s.key))
-            })
-            .collect();
-        let mut parts: Vec<Part> = match node {
-            Node::Bus(i) if capture => parts_in.remove(&i).unwrap_or_default(),
-            _ => Vec::new(),
-        };
-        run_chain_parts(effects_list, &mut buf, &mut parts, &cx, &mut lanes.effects, &chain_keys)?;
-        drop(chain_keys);
-        fader(&mut buf, &cx, gain_db, pan, &lanes, law);
-        for p in parts.iter_mut() {
-            fader(&mut p.audio, &cx, gain_db, pan, &lanes, law);
+        // 插件效果器在当前线程处理；其余分批并行（每批不超过线程数，限制同时占用的内存）。
+        let has_plugin = |node: Node| node_info(node).1.iter().any(|e| matches!(e, Effect::Plugin { .. }));
+        let mut results: Vec<(Node, Result<(AudioBuffer<f32>, TrackLanes), EngineError>)> = Vec::new();
+        let (serial, parallel): (Vec<_>, Vec<_>) = jobs.into_iter().partition(|(n, _)| has_plugin(*n));
+        let mut parallel = parallel.into_iter().peekable();
+        while parallel.peek().is_some() {
+            let batch: Vec<_> = parallel.by_ref().take(workers).collect();
+            let done: Vec<_> = std::thread::scope(|sc| {
+                let hs: Vec<_> = batch.into_iter().map(|(n, input)| (n, sc.spawn(move || process(n, input)))).collect();
+                hs.into_iter().map(|(n, h)| (n, h.join().expect("渲染线程崩溃"))).collect()
+            });
+            results.extend(done);
         }
-
-        for e in plan.edges.iter().filter(|e| e.from == node) {
-            let send_lanes = e.send.as_ref().and_then(|s| lanes.sends.get(s));
+        for (n, input) in serial {
+            results.push((n, process(n, input)));
+        }
+        // 按计划顺序分发。
+        let mut by_node: HashMap<Node, (AudioBuffer<f32>, TrackLanes)> = HashMap::new();
+        for (n, r) in results {
+            by_node.insert(n, r?);
+        }
+        for &node in plan.order.iter().filter(|n| level[n] == l) {
+            let Some((buf, lanes)) = by_node.remove(&node) else { continue };
+            let (muted, _) = node_info(node);
             if !muted {
-                let dst = match e.to {
-                    None => &mut master,
-                    Some(b) => bus_in.entry(b).or_insert_with(|| AudioBuffer::<f32>::new(2, total_frames)),
-                };
-                mix_into(dst, &buf, &cx, e.level_db, send_lanes);
-            }
-            if capture {
-                let sources: Vec<(usize, &[usize], &AudioBuffer<f32>)> = match node {
-                    Node::Track(i) => vec![(i, &[][..], &buf)],
-                    Node::Bus(_) => parts.iter().map(|p| (p.track, p.path.as_slice(), &p.audio)).collect(),
-                };
-                for (track, path, audio) in sources {
-                    let mut path = path.to_vec();
-                    let list = match e.to {
-                        None => &mut stems,
-                        Some(b) => {
-                            path.push(b);
-                            parts_in.entry(b).or_default()
-                        }
+                for e in plan.edges.iter().filter(|e| e.from == node) {
+                    let send_lanes = e.send.as_ref().and_then(|s| lanes.sends.get(s));
+                    let dst = match e.to {
+                        None => &mut master,
+                        Some(b) => bus_in.entry(b).or_insert_with(|| AudioBuffer::<f32>::new(2, total_frames)),
                     };
-                    add_part(list, track, path, audio, &cx, e.level_db, send_lanes);
+                    mix_into(dst, &buf, &cx, e.level_db, send_lanes);
                 }
             }
-        }
-        if key_nodes.contains(&node) {
-            keys.insert(node, buf);
+            if key_nodes.contains(&node) {
+                keys.insert(node, buf);
+            }
         }
     }
 
@@ -456,22 +523,7 @@ fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> R
             }
         }
     }
-    let track_name = |i: usize| {
-        let t = &project.tracks[i];
-        if t.name.is_empty() { format!("tracks[{i}]") } else { t.name.clone() }
-    };
-    let stems = stems
-        .into_iter()
-        .map(|p| {
-            let mut label = track_name(p.track);
-            for b in &p.path {
-                label.push_str(" → ");
-                label.push_str(&project.buses[*b].name);
-            }
-            Stem { track: p.track, path: p.path, label, audio: p.audio }
-        })
-        .collect();
-    Ok(Rendered { mix: master, stems })
+    Ok(master)
 }
 
 fn invalid(m: String) -> EngineError {

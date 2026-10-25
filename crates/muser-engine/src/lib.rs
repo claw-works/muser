@@ -49,7 +49,7 @@ pub use instrument::{
 pub use params::Automatable;
 /// 渲染结果用的立体声缓冲（来自 manguebyte）。
 pub use manguebyte::prelude::AudioBuffer;
-pub use render::{render, render_to_wav, render_with_stems, EngineError, Rendered, RenderSettings, Stem};
+pub use render::{render, render_cached, render_to_wav, EngineError, RenderCache, RenderSettings};
 
 /// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
 /// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。
@@ -974,37 +974,30 @@ mod tests {
     }
 
     #[test]
-    fn stems_sum_to_master_input() {
-        // 无主总线效果、主增益 0：未静音分轨之和应等于成品；总线压缩以全信号为键，分解仍精确。
+    fn render_cache_reuses_instruments() {
         let p = proj(serde_json::json!({ "tempo": 120,
-            "buses": [
-                { "name": "verb", "effects": [{ "type": "reverb", "mix": 1.0 }, { "type": "compressor", "threshold_db": -30, "ratio": 8, "sidechain": "b" }] },
-                { "name": "grp", "gain_db": -3, "sends": { "verb": -10 }, "effects": [{ "type": "compressor", "threshold_db": -30, "ratio": 6, "attack_ms": 2 }, { "type": "delay", "mix": 0.3 }] },
-                { "name": "off", "muted": true } ],
+            "buses": [{ "name": "verb", "effects": [{ "type": "reverb", "mix": 1.0 }] }],
             "tracks": [
-                { "name": "a", "instrument": "synth.poly", "sends": { "verb": -6 }, "output": "grp", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 1 }] }] },
-                { "name": "b", "instrument": "drums.909", "output": "grp", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 36, "start": 0, "length": 0.2 }, { "pitch": 36, "start": 1, "length": 0.2 }] }] },
-                { "name": "c", "instrument": "synth.poly", "muted": true, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 64, "start": 0, "length": 1 }] }] },
-                { "name": "d", "instrument": "synth.poly", "output": "off", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 67, "start": 0, "length": 1 }] }] } ] }));
-        let r = render_with_stems(&p, quiet()).unwrap();
-        let labels: Vec<_> = r.stems.iter().map(|s| s.label.as_str()).collect();
-        for want in ["a → verb", "a → grp", "a → grp → verb", "b → grp", "b → grp → verb", "c", "d → off"] {
-            assert!(labels.contains(&want), "缺少分轨 {want}: {labels:?}");
-        }
-        let audible = |s: &&Stem| !p.tracks[s.track].muted && s.path.iter().all(|b| !p.buses[*b].muted);
-        let peak = r.mix.peak();
-        for ch in 0..2 {
-            for f in (0..r.mix.num_frames()).step_by(31) {
-                let sum: f32 = r.stems.iter().filter(audible).map(|s| s.audio.channel(ch)[f]).sum();
-                assert!((sum - r.mix.channel(ch)[f]).abs() < peak * 1e-4, "帧 {f}: {sum} vs {}", r.mix.channel(ch)[f]);
-            }
-        }
-        // 静音的音轨与总线也有声音（供界面取消静音试听）。
-        for name in ["c", "d → off"] {
-            let s = r.stems.iter().find(|s| s.label == name).unwrap();
-            assert!(s.audio.peak() > 0.01, "{name} 应有声音");
-        }
-        assert_eq!(render(&p, quiet()).unwrap().channel(0), r.mix.channel(0));
+                { "name": "a", "instrument": "synth.poly", "sends": { "verb": -6 }, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0.5, "length": 1 }] }] },
+                { "name": "b", "instrument": "drums.909", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 36, "start": 0, "length": 0.2 }] }] },
+                { "name": "c", "instrument": "synth.poly", "muted": true, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 64, "start": 0, "length": 1 }] }] } ] }));
+        let mut cache = RenderCache::new();
+        let first = render_cached(&p, quiet(), &mut cache).unwrap();
+        assert_eq!(first.channel(0), render(&p, quiet()).unwrap().channel(0), "缓存与直接渲染一致");
+        assert_eq!(cache.len(), 2, "静音且未缓存的音轨不渲染");
+        // 改音量：结果与全新渲染一致。
+        let mut q = p.clone();
+        q.tracks[0].gain_db = -6.0;
+        q.tracks[2].muted = false;
+        let cached = render_cached(&q, quiet(), &mut cache).unwrap();
+        assert_eq!(cached.channel(1), render(&q, quiet()).unwrap().channel(1));
+        assert_eq!(cache.len(), 3);
+        // 改音符：只有这条轨的缓存换掉。
+        let mut r = q.clone();
+        r.tracks[1].clips[0].notes[0].pitch = 38;
+        let changed = render_cached(&r, quiet(), &mut cache).unwrap();
+        assert_eq!(changed.channel(0), render(&r, quiet()).unwrap().channel(0));
+        assert_eq!(cache.len(), 3);
     }
 
     #[cfg(feature = "host")]

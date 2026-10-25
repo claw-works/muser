@@ -193,7 +193,8 @@ mod imp {
     /// 一个已创建（未激活）的插件。
     pub struct Opened {
         pub library: Library,
-        pub plugin: Plugin,
+        /// 释放时不立即销毁，交给 [`defer_release`]。
+        pub plugin: std::mem::ManuallyDrop<Plugin>,
         pub params: Vec<Param>,
         pub path: String,
         /// 已应用的参数（id, 值），激活后会经音频队列重发一次。
@@ -314,6 +315,41 @@ mod imp {
         Ok(library)
     }
 
+    /// 延迟释放的插件实例：有的插件创建后会在后台线程里做事（如 JUCE 插件联网检查更新），
+    /// 实例一释放、线程还在跑就会崩溃。实例先留在创建它的线程里，约一分钟后、该线程下次释放插件时再销毁；
+    /// 长时间运行的渲染线程（`muser view`）反复渲染也不会崩，内存也不会无限增长。
+    /// 线程结束时剩下的实例不再销毁（进程退出时由系统回收）。插件实例不能跨线程，所以按线程保存。
+    fn defer_release(plugin: Plugin) {
+        use std::cell::RefCell;
+        use std::time::{Duration, Instant};
+        const KEEP: Duration = Duration::from_secs(60);
+        struct Grave(Vec<(Instant, Plugin)>);
+        impl Drop for Grave {
+            fn drop(&mut self) {
+                std::mem::forget(std::mem::take(&mut self.0));
+            }
+        }
+        thread_local! {
+            static GRAVE: RefCell<Grave> = const { RefCell::new(Grave(Vec::new())) };
+        }
+        let expired: Vec<(Instant, Plugin)> = GRAVE.with(|g| {
+            let mut g = g.borrow_mut();
+            g.0.push((Instant::now(), plugin));
+            let now = Instant::now();
+            let keep = g.0.iter().position(|(t, _)| now.duration_since(*t) < KEEP).unwrap_or(g.0.len());
+            g.0.drain(..keep).collect()
+        });
+        drop(expired);
+    }
+
+    impl Drop for Opened {
+        fn drop(&mut self) {
+            // SAFETY: drop 只调用一次，之后不再访问 self.plugin。
+            let plugin = unsafe { std::mem::ManuallyDrop::take(&mut self.plugin) };
+            defer_release(plugin);
+        }
+    }
+
     impl Opened {
         /// 加载并创建插件。`id` 省略时用文件里的第一个插件。
         pub fn open(path: &str, id: Option<&str>) -> Result<Opened, String> {
@@ -350,7 +386,7 @@ mod imp {
                     );
                 }
             }
-            Ok(Opened { library, plugin, params, path: path.to_string(), applied: Vec::new(), profile, state_loaded: false })
+            Ok(Opened { library, plugin: std::mem::ManuallyDrop::new(plugin), params, path: path.to_string(), applied: Vec::new(), profile, state_loaded: false })
         }
 
         pub fn open_spec(spec: &str) -> Result<Opened, String> {

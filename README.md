@@ -25,7 +25,7 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 - 插件画像：把插件使用经验（别名、预设、试听结论）存成可分享的数据文件；插件音色可存为状态文件
 - 内置开源插件的画像与英文 skill：Surge XT / Surge XT Effects、Vital（波表合成器，可设波表与调制矩阵）、
   Airwindows Consolidated（约 470 个效果，按名称选择）、Plasma（失真）——装好插件即可按名称、别名、预设使用
-- 离线渲染为 WAV；`muser view` 生成给人看的播放页（时间线、分轨音量/静音），`--serve` 与引擎联动
+- 离线渲染为 WAV（内置乐器多线程并行）；`muser view` 本地播放页：流式播放，调音量/静音/独奏由引擎准确重渲染（有缓存，约 1–2 秒），可保存回工程
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 
 ## 快速上手
@@ -79,10 +79,8 @@ muser effects reverb
 # 查看信号流（总线、发送、侧链）
 muser routing song.muser.json
 
-# 给人听：生成播放页（时间线 + 分轨音量/静音），浏览器打开
-muser view song.muser.json -o song.html
-# 或与引擎联动：页面上调音量 → 重新渲染 → 保存回工程；AI 改了工程，页面自动刷新
-muser view song.muser.json --serve      # http://127.0.0.1:8737/
+# 给人听：本地播放页（时间线、音量/静音/独奏，改动由引擎重新渲染，可保存回工程；AI 改了工程页面自动刷新）
+muser view song.muser.json --open      # http://127.0.0.1:8737/
 ```
 
 > 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。
