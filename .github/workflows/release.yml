@@ -1,0 +1,99 @@
+name: Release
+
+# 推送 v* 标签（如 v0.1.0）时构建三平台二进制并发布到 GitHub Release；
+# 手动运行（workflow_dispatch）只构建、上传为 Actions 产物，不发布。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, archive: tar.gz }
+          - { os: macos-14, target: aarch64-apple-darwin, archive: tar.gz }
+          - { os: macos-14, target: x86_64-apple-darwin, archive: tar.gz }
+          - { os: windows-2022, target: x86_64-pc-windows-msvc, archive: zip }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: >
+          cargo build --release --locked --target ${{ matrix.target }}
+          -p muser-cli -p muser-mcp --features muser-cli/host,muser-mcp/host
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          [[ "$version" == v* ]] || version="dev-${GITHUB_SHA::7}"
+          name="muser-${version}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          ext=""; [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
+          cp "target/${{ matrix.target }}/release/muser$ext" "target/${{ matrix.target }}/release/muser-mcp$ext" "dist/$name/"
+          # 给 AI 用的文档一起打包（插件画像已编译进二进制）。
+          cp -r README.md SKILLS.md TOOLS.md ARCHITECTURE.md skills "dist/$name/"
+          cd dist
+          if [[ "${{ matrix.archive }}" == zip ]]; then
+            7z a -tzip "$name.zip" "$name" > /dev/null
+            echo "file=dist/$name.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar czf "$name.tar.gz" "$name"
+            echo "file=dist/$name.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Smoke test
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/muser"
+          "$bin" new -o smoke.muser.json
+          "$bin" render smoke.muser.json -o smoke.wav
+          test -s smoke.wav
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: muser-${{ matrix.target }}
+          path: ${{ steps.package.outputs.file }}
+
+  release:
+    name: publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

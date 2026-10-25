@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --workspace --locked
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      # 插件宿主（CLAP/VST3/LV2）。CI 机器上没有装插件，依赖真实插件的测试会自动跳过。
+      - name: Build with plugin host
+        run: cargo build --workspace --locked --features muser-cli/host,muser-mcp/host
+
+      - name: Test with plugin host
+        run: cargo test -p muser-engine --locked --features host
+
+      - name: Smoke test CLI
+        shell: bash
+        run: |
+          cargo run -q --locked -p muser-cli -- new -o smoke.muser.json
+          cargo run -q --locked -p muser-cli -- validate smoke.muser.json
+          cargo run -q --locked -p muser-cli -- render smoke.muser.json -o smoke.wav
+          test -s smoke.wav

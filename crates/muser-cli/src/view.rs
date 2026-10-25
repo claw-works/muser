@@ -660,8 +660,16 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool) -> Res
     println!("muser view 已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
     println!("工程文件变化会自动重新渲染；页面上的改动点「保存」写回工程文件。");
     if open {
-        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-        if let Err(e) = std::process::Command::new(opener).arg(&url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+        let (opener, mut cmd) = if cfg!(target_os = "macos") {
+            ("open", std::process::Command::new("open"))
+        } else if cfg!(windows) {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/C", "start", ""]);
+            ("start", c)
+        } else {
+            ("xdg-open", std::process::Command::new("xdg-open"))
+        };
+        if let Err(e) = cmd.arg(&url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
             eprintln!("[view] 无法打开浏览器（{opener}: {e}），请手动打开 {url}");
         }
     }

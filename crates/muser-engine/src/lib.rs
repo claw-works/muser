@@ -685,7 +685,7 @@ mod tests {
     const SURGE_FX: &str = "/usr/lib/clap/Surge XT Effects.clap";
     #[cfg(feature = "host")]
     fn have(path: &str) -> bool {
-        let ok = std::path::Path::new(path).exists();
+        let ok = std::path::Path::new(&*crate::plugin::expand_home(path)).exists();
         if !ok {
             eprintln!("跳过：未安装 {path}");
         }
@@ -1059,11 +1059,11 @@ mod tests {
     }
 
     #[cfg(feature = "host")]
-    const AIRWINDOWS: &str = concat!(env!("HOME"), "/.clap/Airwindows Consolidated.clap");
+    const AIRWINDOWS: &str = "~/.clap/Airwindows Consolidated.clap";
     #[cfg(feature = "host")]
     const VITAL: &str = "/usr/lib/vst3/Vital.vst3";
     #[cfg(feature = "host")]
-    const PLASMA: &str = concat!(env!("HOME"), "/.vst3/Plasma.vst3");
+    const PLASMA: &str = "~/.vst3/Plasma.vst3";
 
     #[cfg(feature = "host")]
     #[test]

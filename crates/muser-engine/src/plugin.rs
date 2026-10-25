@@ -122,10 +122,16 @@ pub fn read_state_file(path: &std::path::Path) -> Result<(StateHeader, Vec<u8>),
     Ok((header, rest[nl + 1..].to_vec()))
 }
 
+/// 用户主目录：`HOME`，Windows 上为 `USERPROFILE`。
+pub fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).filter(|h| !h.is_empty()).map(std::path::PathBuf::from)
+}
+
 /// 展开路径开头的 `~/`（用户主目录），让工程与画像里的插件路径可以跨机器通用。
 pub fn expand_home(path: &str) -> std::borrow::Cow<'_, str> {
-    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
-        (Some(rest), Some(home)) => std::borrow::Cow::Owned(format!("{}/{rest}", home.to_string_lossy().trim_end_matches('/'))),
+    let rest = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"));
+    match (rest, home_dir()) {
+        (Some(rest), Some(home)) => std::borrow::Cow::Owned(home.join(rest).to_string_lossy().into_owned()),
         _ => std::borrow::Cow::Borrowed(path),
     }
 }
@@ -1183,9 +1189,11 @@ mod imp {
     }
 
     fn cache_path() -> std::path::PathBuf {
+        // Linux: $XDG_CACHE_HOME 或 ~/.cache；macOS: ~/Library/Caches；Windows: %LOCALAPPDATA%。
         let base = std::env::var_os("XDG_CACHE_HOME")
             .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
+            .or_else(|| if cfg!(windows) { std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) } else { None })
+            .or_else(|| super::home_dir().map(|h| if cfg!(target_os = "macos") { h.join("Library").join("Caches") } else { h.join(".cache") }))
             .unwrap_or_else(std::env::temp_dir);
         base.join("muser").join("plugins.cache")
     }

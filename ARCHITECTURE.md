@@ -266,11 +266,11 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 渲染并行：内置乐器多线程渲染；节点按依赖分层并行处理效果链与推子（含插件效果器的节点在当前线程），分发保持原顺序，
   结果与串行逐样本一致；渲染期间关闭非规格化浮点（`NoDenormals`），近乎静音的尾巴不再拖慢滤波与混响
 - 插件实例延迟约一分钟释放（同一线程内），避免插件后台线程（如 JUCE 联网检查更新）访问已释放对象
+- CI / 发布：GitHub Actions 在 Linux、macOS、Windows 上构建与测试（默认与插件宿主特性）；推送 `v*` 标签时构建
+  Linux x86_64、macOS arm64 / x86_64、Windows x86_64 的 `muser` + `muser-mcp`（含插件宿主），附文档与 SHA256，发布到 GitHub Release
 - MCP server（`muser-mcp`）：34 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
 
 尚未实现（路线图）：
-- CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、
-  可选 `--features host` 构建、`cargo fmt --check` / `clippy`）
 - 更多内置效果器类型（waveshaper / 多段 EQ 等，manguebyte 均自带）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 ```

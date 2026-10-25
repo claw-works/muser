@@ -396,11 +396,12 @@ const BUNDLED: &[(&str, &str)] = &[
     ("vital.json", include_str!("../../../profiles/vital.json")),
 ];
 
-/// 用户画像目录：`$XDG_CONFIG_HOME/muser/plugins` 或 `~/.config/muser/plugins`。
+/// 用户画像目录：`$XDG_CONFIG_HOME/muser/plugins` 或 `~/.config/muser/plugins`（Windows：`%APPDATA%\muser\plugins`）。
 pub fn user_dir() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .or_else(|| if cfg!(windows) { std::env::var_os("APPDATA").map(PathBuf::from) } else { None })
+        .or_else(|| crate::plugin::home_dir().map(|h| h.join(".config")))
         .unwrap_or_else(std::env::temp_dir)
         .join("muser")
         .join("plugins")
