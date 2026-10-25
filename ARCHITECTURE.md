@@ -134,6 +134,9 @@ samples = seconds × sample_rate
     "denominator": 4
   },
   "master_gain_db": 0.0,        // 主输出增益 dB（可省略，默认 0）
+  "master_effects": [           // 主总线效果链（可省略，默认空；在主增益前施加）
+    { "type": "compressor", "threshold_db": -16, "ratio": 3 }
+  ],
   "tracks": [                   // 音轨数组
     {
       "name": "drums",          // 轨名（可省略）
@@ -141,6 +144,9 @@ samples = seconds × sample_rate
       "gain_db": 0.0,           // 轨增益 dB（可省略，默认 0）
       "pan": 0.0,               // 声像 -1(左)~1(右)（可省略，默认 0）
       "muted": false,           // 是否静音（可省略，默认 false）
+      "effects": [              // 轨级效果链（可省略，默认空；在增益/声像前施加）
+        { "type": "reverb", "mix": 0.3 }
+      ],
       "clips": [                // 片段数组
         {
           "start": 0.0,         // 必填，片段起点（beats，从工程开头算）
@@ -194,10 +200,11 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 多轨、多 clip、多音符的离线渲染
 - 10 种鼓组 + 复音合成器 + FM 合成器
 - 轨增益、等功率声像、主增益、结尾余响
+- 效果器链（reverb / delay / compressor），可挂到轨级或主总线
 
 尚未实现（路线图）：
 - 插件宿主（manguebyte-host 已验证可编译，接入 muser-engine 即可加载第三方 VST3/CLAP/LV2）
-- 效果器链（manguebyte 自带 reverb/delay/compressor 等，可挂到 track/master）
+- 更多效果器类型（chorus / phaser / EQ / limiter，manguebyte 均自带）
 - MCP server（把 CLI 能力包成 agent tools，见 TOOLS.md）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 - 音频图编排（manguebyte-graph：运行时热重连的信号图，供更复杂的路由）

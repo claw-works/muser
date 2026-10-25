@@ -67,6 +67,46 @@
 `synth.poly`（复音合成器，适合和弦/pad/lead）
 `synth.fm`（FM 合成器，适合贝斯/电子音色）
 
+## 效果器 (effects)
+
+可以给**音轨**加 `effects`（轨级，在该轨增益/声像之前），也可以给**工程**加
+`master_effects`（主总线，在主增益之前）。两者都是效果数组，按顺序串联。
+每个效果用 `type` 区分，其余字段是参数，**全部有合理默认值**——写
+`{ "type": "reverb" }` 就能得到一个像样的混响。
+
+| type | 用途 | 关键参数（含默认值） |
+|---|---|---|
+| `reverb` | 混响/空间感 | `mix`(0.25) `decay_seconds`(1.6) `damping`(0.5) `size`(0.5) |
+| `delay` | 延迟/回声 | `time_seconds`(0.3) `feedback`(0.35) `mix`(0.3) |
+| `compressor` | 压缩动态/做胶水 | `threshold_db`(-18) `ratio`(4) `attack_ms`(10) `release_ms`(120) `makeup_db`(0) |
+
+示例——给 keys 轨加混响，给主总线加压缩：
+
+```json
+{
+  "tempo": 85.0,
+  "master_effects": [
+    { "type": "compressor", "threshold_db": -16, "ratio": 3, "makeup_db": 1.5 }
+  ],
+  "tracks": [
+    {
+      "name": "keys",
+      "instrument": "synth.poly",
+      "effects": [
+        { "type": "reverb", "mix": 0.3, "decay_seconds": 2.2, "size": 0.7 }
+      ],
+      "clips": [ /* ... */ ]
+    }
+  ]
+}
+```
+
+经验：
+- **混响**放在旋律/pad 轨能加空间感；别给贝斯和底鼓加太多，会浑浊。
+- **延迟**适合 lead/人声做空间回声；`feedback` 别超过 0.6 否则会堆积。
+- **压缩器**放主总线（`master_effects`）做"胶水"，让整体更紧实；`ratio` 3-4、
+  `makeup_db` 补回音量。
+
 ## 工作流示例
 
 **用户**："做一个 90bpm 的 lo-fi 鼓点，4 小节，再加一条贝斯线。"

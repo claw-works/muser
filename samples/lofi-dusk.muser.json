@@ -4,6 +4,9 @@
   "tempo": 85.0,
   "time_signature": { "numerator": 4, "denominator": 4 },
   "master_gain_db": -1.0,
+  "master_effects": [
+    { "type": "compressor", "threshold_db": -16.0, "ratio": 3.0, "attack_ms": 15.0, "release_ms": 150.0, "makeup_db": 1.5 }
+  ],
   "tracks": [
     {
       "name": "drums",
@@ -68,6 +71,9 @@
       "instrument": "synth.poly",
       "gain_db": -6.0,
       "pan": -0.2,
+      "effects": [
+        { "type": "reverb", "mix": 0.3, "decay_seconds": 2.2, "damping": 0.6, "size": 0.7 }
+      ],
       "clips": [
         {
           "start": 0.0,

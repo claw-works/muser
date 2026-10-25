@@ -12,8 +12,10 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod effect;
 pub mod time;
 
+pub use effect::Effect;
 pub use time::{Beats, TimeSignature};
 
 /// 一个完整的编曲工程。AI 的顶层产出物，也是工程文件（`.muser.json`）的根。
@@ -33,6 +35,9 @@ pub struct Project {
     /// 主输出增益（dB），默认 0。
     #[serde(default)]
     pub master_gain_db: f64,
+    /// 主总线效果器链（按顺序串联），默认空。在主增益之前施加。
+    #[serde(default)]
+    pub master_effects: Vec<Effect>,
     /// 所有音轨。
     #[serde(default)]
     pub tracks: Vec<Track>,
@@ -51,6 +56,7 @@ impl Project {
             tempo,
             time_signature: TimeSignature::default(),
             master_gain_db: 0.0,
+            master_effects: Vec::new(),
             tracks: Vec::new(),
         }
     }
@@ -120,6 +126,9 @@ pub struct Track {
     /// 是否静音。
     #[serde(default)]
     pub muted: bool,
+    /// 轨级效果器链（按顺序串联），默认空。在增益/声像之前施加。
+    #[serde(default)]
+    pub effects: Vec<Effect>,
     /// 该音轨上的所有 clip。
     #[serde(default)]
     pub clips: Vec<Clip>,
@@ -133,6 +142,7 @@ impl Track {
             gain_db: 0.0,
             pan: 0.0,
             muted: false,
+            effects: Vec::new(),
             clips: Vec::new(),
         }
     }

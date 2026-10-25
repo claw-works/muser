@@ -124,6 +124,12 @@ fn render_track(
         frame = end;
     }
 
+    // 轨级效果链（在增益/声像之前施加）。
+    if !track.effects.is_empty() {
+        let mut chain = crate::effects::build_chain(&track.effects, &spec);
+        crate::effects::apply_chain(&mut chain, &mut track_buf, settings.block_size);
+    }
+
     // 增益 + 等功率声像，混入 master。
     let gain = decibels::db_to_gain(track.gain_db) as f32;
     let pan = track.pan.clamp(-1.0, 1.0);
@@ -155,6 +161,17 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
             continue;
         }
         render_track(track, project.tempo, settings, total_frames, &mut master)?;
+    }
+
+    // 主总线效果链（在主增益之前施加）。
+    if !project.master_effects.is_empty() {
+        let spec = ProcessSpec {
+            sample_rate: sr,
+            max_block_size: settings.block_size,
+            num_channels: 2,
+        };
+        let mut chain = crate::effects::build_chain(&project.master_effects, &spec);
+        crate::effects::apply_chain(&mut chain, &mut master, settings.block_size);
     }
 
     // 主增益。
