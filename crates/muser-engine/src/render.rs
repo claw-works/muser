@@ -314,8 +314,45 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
     render_cached(project, settings, &mut RenderCache::new())
 }
 
+/// 电平表的窗口长度（帧）。
+pub const METER_WINDOW: usize = 2048;
+
+/// 一个节点（音轨/总线）推子后输出的电平：每 [`METER_WINDOW`] 帧一组 `[左峰值, 右峰值]`（线性）。
+/// 静音的节点没有电平。
+pub struct Meter {
+    pub node: Node,
+    pub peaks: Vec<[f32; 2]>,
+}
+
+fn meter_of(buf: &AudioBuffer<f32>) -> Vec<[f32; 2]> {
+    let n = buf.num_frames();
+    (0..n.div_ceil(METER_WINDOW))
+        .map(|w| {
+            let r = w * METER_WINDOW..((w + 1) * METER_WINDOW).min(n);
+            let pk = |ch: usize| buf.channel(ch)[r.clone()].iter().fold(0f32, |m, s| m.max(s.abs()));
+            [pk(0), pk(1)]
+        })
+        .collect()
+}
+
 /// 同 [`render`]，复用 `cache` 里的乐器输出，并把本次的乐器输出存回。
 pub fn render_cached(project: &Project, settings: RenderSettings, cache: &mut RenderCache) -> Result<AudioBuffer<f32>, EngineError> {
+    render_inner(project, settings, cache, None)
+}
+
+/// 同 [`render_cached`]，同时给出每个节点的电平（供播放界面的电平表）。
+pub fn render_metered(project: &Project, settings: RenderSettings, cache: &mut RenderCache) -> Result<(AudioBuffer<f32>, Vec<Meter>), EngineError> {
+    let mut meters = Vec::new();
+    let audio = render_inner(project, settings, cache, Some(&mut meters))?;
+    Ok((audio, meters))
+}
+
+fn render_inner(
+    project: &Project,
+    settings: RenderSettings,
+    cache: &mut RenderCache,
+    mut meters: Option<&mut Vec<Meter>>,
+) -> Result<AudioBuffer<f32>, EngineError> {
     crate::validate(project)?;
     // 近乎静音的尾巴会产生非规格化浮点数，让滤波、混响慢几十倍；渲染期间把它们当作 0。
     let _quiet = manguebyte::NoDenormals::new();
@@ -484,6 +521,9 @@ pub fn render_cached(project: &Project, settings: RenderSettings, cache: &mut Re
         for &node in plan.order.iter().filter(|n| level[n] == l) {
             let Some((buf, lanes)) = by_node.remove(&node) else { continue };
             let (muted, _) = node_info(node);
+            if let (Some(m), false) = (meters.as_deref_mut(), muted) {
+                m.push(Meter { node, peaks: meter_of(&buf) });
+            }
             if !muted {
                 for e in plan.edges.iter().filter(|e| e.from == node) {
                     let send_lanes = e.send.as_ref().and_then(|s| lanes.sends.get(s));

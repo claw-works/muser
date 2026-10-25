@@ -49,7 +49,7 @@ pub use instrument::{
 pub use params::Automatable;
 /// 渲染结果用的立体声缓冲（来自 manguebyte）。
 pub use manguebyte::prelude::AudioBuffer;
-pub use render::{render, render_cached, render_to_wav, EngineError, RenderCache, RenderSettings};
+pub use render::{render, render_cached, render_metered, render_to_wav, EngineError, Meter, RenderCache, RenderSettings, METER_WINDOW};
 
 /// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
 /// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。

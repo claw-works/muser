@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime};
 use anyhow::{Result, anyhow, bail};
 use muser_core::Project;
 use muser_core::routing::{self, Node};
-use muser_engine::{AudioBuffer, RenderCache, RenderSettings, render_cached};
+use muser_engine::{AudioBuffer, METER_WINDOW, RenderCache, RenderSettings, render_metered};
 use serde_json::{Value, json};
 
 const PAGE: &str = include_str!("view.html");
@@ -42,6 +42,60 @@ fn peaks(audio: &AudioBuffer<f32>) -> Vec<f32> {
             (a..b).step_by(4).map(|f| audio.channel(0)[f].abs().max(audio.channel(1)[f].abs())).fold(0f32, f32::max)
         })
         .map(|p| (p * 1000.0).round() / 1000.0)
+        .collect()
+}
+
+/// 标准 base64。
+fn base64(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+/// 电平：线性峰值 → 0..=255（-60 dBFS..=0 dBFS 线性映射到 dB 刻度），交错 L/R，base64。
+fn encode_meter(peaks: &[[f32; 2]]) -> String {
+    let q = |p: f32| {
+        let db = 20.0 * f64::from(p.max(1e-9)).log10();
+        (((db + 60.0) / 60.0).clamp(0.0, 1.0) * 255.0).round() as u8
+    };
+    base64(&peaks.iter().flat_map(|[l, r]| [q(*l), q(*r)]).collect::<Vec<u8>>())
+}
+
+fn meter_of(audio: &AudioBuffer<f32>) -> Vec<[f32; 2]> {
+    let n = audio.num_frames();
+    (0..n.div_ceil(METER_WINDOW))
+        .map(|w| {
+            let r = w * METER_WINDOW..((w + 1) * METER_WINDOW).min(n);
+            let pk = |ch: usize| audio.channel(ch)[r.clone()].iter().fold(0f32, |m, s| m.max(s.abs()));
+            [pk(0), pk(1)]
+        })
+        .collect()
+}
+
+/// 效果器在信号流图里的显示：类型、简短标签、侧链键。
+fn chain(list: &[muser_core::Effect]) -> Vec<Value> {
+    use muser_core::Effect;
+    list.iter()
+        .map(|e| {
+            let (label, sidechain) = match e {
+                Effect::Plugin { path, params, .. } => {
+                    let stem = Path::new(path).file_stem().map_or_else(|| path.clone(), |s| s.to_string_lossy().to_string());
+                    let pick = ["effect", "@preset", "type", "FX Type"].iter().find_map(|k| params.get(*k).and_then(Value::as_str));
+                    (pick.map_or(stem.clone(), |p| format!("{stem}: {p}")), None)
+                }
+                Effect::Compressor { sidechain, .. } => ("compressor".to_string(), sidechain.clone()),
+                Effect::Eq { shape, .. } => (format!("eq {shape}"), None),
+                e => (e.type_name().to_string(), None),
+            };
+            json!({ "type": e.type_name(), "label": label, "sidechain": sidechain })
+        })
         .collect()
 }
 
@@ -227,7 +281,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
             "id": id, "kind": "track", "name": if t.name.is_empty() { id.clone() } else { t.name.clone() },
             "instrument": t.instrument, "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
             "gain_db": t.gain_db, "muted": t.muted, "solo": solo.contains(&id), "effects": fx(&t.effects), "clips": clips,
-            "gain_auto": has_gain_automation(&t.automation),
+            "gain_auto": has_gain_automation(&t.automation), "chain": chain(&t.effects),
         }));
     }
     for (i, b) in working.buses.iter().enumerate() {
@@ -235,7 +289,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
         nodes.push(json!({
             "id": id, "kind": "bus", "name": b.name, "output": b.output.as_deref().unwrap_or("master"), "sends": b.sends,
             "gain_db": b.gain_db, "muted": b.muted, "solo": solo.contains(&id), "effects": fx(&b.effects), "clips": [],
-            "gain_auto": has_gain_automation(&b.automation),
+            "gain_auto": has_gain_automation(&b.automation), "chain": chain(&b.effects),
         }));
     }
     json!({
@@ -244,6 +298,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
         "time_signature": format!("{}/{}", working.time_signature.numerator, working.time_signature.denominator),
         "duration_beats": working.duration_beats().0,
         "master_gain_db": working.master_gain_db, "master_effects": fx(&working.master_effects),
+        "master_chain": chain(&working.master_effects),
         "nodes": nodes,
     })
 }
@@ -255,6 +310,8 @@ struct Version {
     peaks: Vec<f32>,
     summary: Value,
     seconds_to_render: f64,
+    /// 节点 id（或 "master"）→ 编码后的电平。
+    meters: BTreeMap<String, String>,
 }
 
 struct State {
@@ -342,13 +399,17 @@ impl Shared {
                 continue;
             };
             let t0 = std::time::Instant::now();
-            let result = render_cached(&project, self.settings, &mut cache);
+            let result = render_metered(&project, self.settings, &mut cache);
             let secs = t0.elapsed().as_secs_f64();
             let mut st = self.state.lock().unwrap();
             st.rendering = st.requested;
             match result {
-                Ok(audio) => {
+                Ok((audio, node_meters)) => {
+                    let mut meters: BTreeMap<String, String> =
+                        node_meters.iter().map(|m| (node_id(m.node), encode_meter(&m.peaks))).collect();
+                    meters.insert("master".into(), encode_meter(&meter_of(&audio)));
                     let v = Arc::new(Version {
+                        meters,
                         pcm: Arc::new(pcm16(&audio)),
                         frames: audio.num_frames(),
                         peaks: peaks(&audio),
@@ -434,6 +495,8 @@ impl Shared {
                 s["frames"] = json!(v.frames);
                 s["peaks"] = json!(v.peaks);
                 s["render_seconds"] = json!((v.seconds_to_render * 10.0).round() / 10.0);
+                s["meters"] = json!(v.meters);
+                s["meter_window"] = json!(METER_WINDOW);
                 s
             }
             None => json!({}),
