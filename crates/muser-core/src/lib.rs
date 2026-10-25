@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub mod effect;
 pub mod time;
 
-pub use effect::Effect;
+pub use effect::{effect_spec, ChoiceSpec, Effect, EffectSpec, ParamSpec, EFFECT_SPECS};
 pub use time::{Beats, TimeSignature};
 
 /// 一个完整的编曲工程。AI 的顶层产出物，也是工程文件（`.muser.json`）的根。
@@ -88,7 +88,21 @@ impl Project {
                 self.tempo
             )));
         }
+        for (i, e) in self.master_effects.iter().enumerate() {
+            e.validate()
+                .map_err(|m| CoreError::Invalid(format!("master_effects[{i}]: {m}")))?;
+        }
         for (ti, track) in self.tracks.iter().enumerate() {
+            if !(-1.0..=1.0).contains(&track.pan) {
+                return Err(CoreError::Invalid(format!(
+                    "tracks[{ti}].pan = {} 超出范围 [-1, 1]",
+                    track.pan
+                )));
+            }
+            for (i, e) in track.effects.iter().enumerate() {
+                e.validate()
+                    .map_err(|m| CoreError::Invalid(format!("tracks[{ti}].effects[{i}]: {m}")))?;
+            }
             for (ci, clip) in track.clips.iter().enumerate() {
                 if clip.start.0 < 0.0 {
                     return Err(CoreError::Invalid(format!(
@@ -101,6 +115,19 @@ impl Project {
                         "track[{ti}].clip[{ci}] length 必须为正: {}",
                         clip.length.0
                     )));
+                }
+                for (ni, note) in clip.notes.iter().enumerate() {
+                    if note.pitch > 127 || note.start.0 < 0.0 || note.length.0 <= 0.0 {
+                        return Err(CoreError::Invalid(format!(
+                            "track[{ti}].clip[{ci}].note[{ni}] 无效: pitch 0-127、start ≥ 0、length > 0"
+                        )));
+                    }
+                    if !(0.0..=1.0).contains(&note.velocity) {
+                        return Err(CoreError::Invalid(format!(
+                            "track[{ti}].clip[{ci}].note[{ni}].velocity = {} 超出范围 [0, 1]",
+                            note.velocity
+                        )));
+                    }
                 }
             }
         }

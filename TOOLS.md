@@ -26,11 +26,20 @@ muser render beat.muser.json -o beat.wav
 ```
 
 ### `muser validate <project>`
-校验工程 JSON 是否合法（tempo/clip/乐器名等）。
+校验工程 JSON：tempo、clip、音符、声像、乐器名，以及每个效果器参数是否在允许范围内。
+错误信息给出具体位置，如 `tracks[0].effects[0]: reverb.mix = 1.8 超出范围 [0, 1]`。
 - **输出**：`OK: '<name>' 合法 — tempo <t>, <n> 轨, 时长 <d> 拍`，或非零退出码 + 错误。
 
-### `muser instruments`
-列出所有可用乐器语义名。
+### `muser instruments [name] [--family <F>] [--json]`
+- 无参数：按类别列出全部 115 个内置乐器及说明。
+- `--family`：只列某类（drums / synth / poly / guitar / bass / organ / mallet / strings / wind / choir）。
+- `<name>`：显示该乐器的类别、音高约定（GM 鼓键 / 音阶音高）、推荐音域、复音数、说明。
+- `--json`：机器可读输出。
+
+### `muser effects [name] [--json]`
+- 无参数：列出全部效果器及一句话说明。
+- `<name>`：显示该效果器的放置建议、每个参数的默认值/范围/单位/听感说明，以及 JSON 示例。
+- `--json`：机器可读输出（即代码中的效果器描述表）。
 
 ### `muser new [-o <path>]`
 生成一个示例工程 JSON（AI 可用来参考标准格式）。缺省打印到 stdout。
@@ -53,7 +62,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（15 个）
+### 已实现的 Tools（18 个）
 
 | tool | 作用 |
 |---|---|
@@ -71,7 +80,10 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `add_notes` | 向片段加入一批音符 |
 | `clear_clip` | 清空片段内所有音符 |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
-| `list_instruments` | 列出可用乐器 |
+| `list_instruments` | 列出乐器（可按 `family` 过滤），返回名称/类别/音高约定/音域/复音数/说明 |
+| `describe_instrument` | 查看某个乐器的详情 |
+| `list_effects` | 列出所有效果器及说明 |
+| `describe_effect` | 查看某个效果器的参数（范围/默认/单位/听感）、放置建议与 JSON 示例 |
 
 工程以**内存会话**（`project_id → Project`）管理。agent 的标准用法是**顺序**调用
 （等每个工具返回后再发下一个），这与真实 MCP 客户端行为一致。

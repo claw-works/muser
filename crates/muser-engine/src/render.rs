@@ -149,7 +149,7 @@ fn render_track(
 
 /// 把工程渲染成一块立体声音频缓冲。
 pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer<f32>, EngineError> {
-    project.validate()?;
+    crate::validate(project)?;
 
     let sr = f64::from(settings.sample_rate);
     let duration = project.duration_beats().to_seconds(project.tempo);

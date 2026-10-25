@@ -148,6 +148,19 @@ struct ClearClipParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct NameParams {
+    /// 名称，如 "reverb" / "guitar.nylon" / "poly.moog_bass"。
+    name: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListInstrumentsParams {
+    /// 只列某个类别（可选）：drums / synth / guitar / bass / organ / mallet / strings / wind / choir / poly。
+    #[serde(default)]
+    family: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct LoadProjectParams {
     /// 磁盘上的工程 JSON 路径。
     path: String,
@@ -233,8 +246,8 @@ impl Muser {
             Ok(proj) => proj,
             Err(e) => return Ok(user_err(format!("工程 JSON 解析失败: {e}"))),
         };
-        if let Err(e) = project.validate() {
-            return Ok(user_err(format!("工程校验失败: {e}")));
+        if let Err(e) = muser_engine::validate(&project) {
+            return Ok(user_err(e.to_string()));
         }
         let mut sessions = self.sessions.lock().unwrap();
         if !sessions.contains_key(&p.project_id) {
@@ -251,14 +264,14 @@ impl Muser {
     ) -> Result<CallToolResult, McpError> {
         let sessions = self.sessions.lock().unwrap();
         match sessions.get(&p.project_id) {
-            Some(proj) => match proj.validate() {
+            Some(proj) => match muser_engine::validate(proj) {
                 Ok(()) => Ok(ok_text(format!(
                     "OK: tempo {}, {} 轨, 时长 {:.2} 拍",
                     proj.tempo,
                     proj.tracks.len(),
                     proj.duration_beats().0
                 ))),
-                Err(e) => Ok(user_err(format!("校验失败: {e}"))),
+                Err(e) => Ok(user_err(e.to_string())),
             },
             None => Ok(user_err(format!("找不到工程 '{}'", p.project_id))),
         }
@@ -448,8 +461,8 @@ impl Muser {
             Ok(proj) => proj,
             Err(e) => return Ok(user_err(format!("解析工程 JSON 失败: {e}"))),
         };
-        if let Err(e) = project.validate() {
-            return Ok(user_err(format!("工程校验失败: {e}")));
+        if let Err(e) = muser_engine::validate(&project) {
+            return Ok(user_err(e.to_string()));
         }
         let id = self.alloc_id();
         self.sessions.lock().unwrap().insert(id.clone(), project);
@@ -476,10 +489,64 @@ impl Muser {
         }
     }
 
-    #[tool(description = "列出所有可用的乐器语义名。")]
-    fn list_instruments(&self) -> Result<CallToolResult, McpError> {
-        let list = muser_engine::available_instruments().join("\n");
-        Ok(ok_text(list))
+    #[tool(description = "列出可用乐器（名称、类别、音高约定、推荐音域、说明）。可按 family 过滤：drums / synth / guitar / bass / organ / mallet / strings / wind / choir / poly。另可用 plugin:/path/to.vst3 加载第三方 VSTi。")]
+    fn list_instruments(
+        &self,
+        Parameters(p): Parameters<ListInstrumentsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let list: Vec<_> = muser_engine::instrument_catalog()
+            .into_iter()
+            .filter(|i| match &p.family {
+                Some(f) => i.family == *f || i.family.starts_with(&format!("{f}/")),
+                None => true,
+            })
+            .collect();
+        json_result(&list)
+    }
+
+    #[tool(description = "查看某个乐器的详情：类别、音高约定(gm_drums 用 GM 鼓键 / pitched 用 MIDI 音高)、推荐音域、复音数、音色说明。")]
+    fn describe_instrument(
+        &self,
+        Parameters(p): Parameters<NameParams>,
+    ) -> Result<CallToolResult, McpError> {
+        match muser_engine::describe_instrument(&p.name) {
+            Some(info) => json_result(&info),
+            None => Ok(user_err(format!(
+                "未知乐器 '{}'，用 list_instruments 查看全部",
+                p.name
+            ))),
+        }
+    }
+
+    #[tool(description = "列出所有效果器及一句话说明。效果器用于 track.effects（轨级）或 master_effects（主总线），按数组顺序串联。")]
+    fn list_effects(&self) -> Result<CallToolResult, McpError> {
+        let list: Vec<_> = muser_core::EFFECT_SPECS
+            .iter()
+            .map(|s| serde_json::json!({ "name": s.name, "summary": s.summary }))
+            .collect();
+        json_result(&list)
+    }
+
+    #[tool(description = "查看某个效果器的完整说明：放置位置、每个参数的范围/默认值/单位/听感、可直接使用的 JSON 示例。")]
+    fn describe_effect(
+        &self,
+        Parameters(p): Parameters<NameParams>,
+    ) -> Result<CallToolResult, McpError> {
+        match muser_core::effect_spec(&p.name) {
+            Some(spec) => json_result(spec),
+            None => Ok(user_err(format!(
+                "未知效果器 '{}'，用 list_effects 查看全部",
+                p.name
+            ))),
+        }
+    }
+}
+
+/// 把任意可序列化的值作为 JSON 文本返回。
+fn json_result<T: serde::Serialize + ?Sized>(value: &T) -> Result<CallToolResult, McpError> {
+    match serde_json::to_string_pretty(value) {
+        Ok(s) => Ok(ok_text(s)),
+        Err(e) => Ok(user_err(format!("序列化失败: {e}"))),
     }
 }
 
@@ -488,8 +555,10 @@ impl Muser {
     version = "0.1.0",
     instructions = "muser：面向 AI 的无头编曲引擎。用 create_project 建工程得到 project_id，\
 再用 add_track / add_clip / add_notes 增量编排（或 set_project 一次性提交完整 JSON），\
-最后用 render 离线渲染为 WAV。时间单位是拍(beats)：1.0=四分音符。乐器语义名见 list_instruments，\
-鼓组音高用 GM 鼓键(36=底鼓,38=军鼓,42=闭镲)。"
+最后用 render 离线渲染为 WAV。时间单位是拍(beats)：1.0=四分音符。\
+选乐器前先用 list_instruments / describe_instrument 查看（drums.* 用 GM 鼓键：36=底鼓,38=军鼓,42=闭镲；\
+其余用 MIDI 音高：60=中央C）。加效果器前用 list_effects / describe_effect 查看参数范围与示例。\
+validate_project 会指出越界参数与未知乐器的具体位置。"
 )]
 impl ServerHandler for Muser {}
 

@@ -1,0 +1,992 @@
+{
+  "name": "instrument-tour",
+  "tempo": 120.0,
+  "master_gain_db": -2.0,
+  "master_effects": [
+    {
+      "type": "reverb",
+      "mix": 0.15,
+      "decay_seconds": 1.2,
+      "size": 0.4
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1.0
+    }
+  ],
+  "tracks": [
+    {
+      "name": "guitar.nylon",
+      "instrument": "guitar.nylon",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "guitar.steel",
+      "instrument": "guitar.steel",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 4.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bass.finger",
+      "instrument": "bass.finger",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 8.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 40,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 43,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 48,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 43,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 40,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bass.acid",
+      "instrument": "bass.acid",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 12.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0,
+              "length": 0.6
+            },
+            {
+              "pitch": 48,
+              "start": 0.5,
+              "length": 0.6
+            },
+            {
+              "pitch": 39,
+              "start": 1,
+              "length": 0.6
+            },
+            {
+              "pitch": 36,
+              "start": 1.5,
+              "length": 0.6
+            },
+            {
+              "pitch": 43,
+              "start": 2,
+              "length": 0.6
+            },
+            {
+              "pitch": 46,
+              "start": 2.5,
+              "length": 0.6
+            },
+            {
+              "pitch": 36,
+              "start": 3,
+              "length": 0.6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "organ.jazz",
+      "instrument": "organ.jazz",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 16.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mallet.marimba",
+      "instrument": "mallet.marimba",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 20.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mallet.vibraphone",
+      "instrument": "mallet.vibraphone",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 24.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mallet.kalimba",
+      "instrument": "mallet.kalimba",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 28.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "strings.cello",
+      "instrument": "strings.cello",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 32.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 40,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 43,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 48,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 43,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 40,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "strings.ensemble",
+      "instrument": "strings.ensemble",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 36.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "strings.violin_pizz",
+      "instrument": "strings.violin_pizz",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 40.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wind.flute",
+      "instrument": "wind.flute",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 44.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wind.sax",
+      "instrument": "wind.sax",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 48.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wind.trumpet",
+      "instrument": "wind.trumpet",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 52.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "choir.aah",
+      "instrument": "choir.aah",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 56.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.moog_bass",
+      "instrument": "poly.moog_bass",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 60.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 40,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 43,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 48,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 43,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 40,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.trance_supersaw",
+      "instrument": "poly.trance_supersaw",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 64.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.warm_analog_pad",
+      "instrument": "poly.warm_analog_pad",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 68.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.juno_keys",
+      "instrument": "poly.juno_keys",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 72.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 0,
+              "length": 3.5,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.bell_pluck",
+      "instrument": "poly.bell_pluck",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 76.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 0.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 1.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 72,
+              "start": 1.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 67,
+              "start": 2.0,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 64,
+              "start": 2.5,
+              "length": 0.5,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 60,
+              "start": 3.0,
+              "length": 0.5,
+              "velocity": 0.8
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

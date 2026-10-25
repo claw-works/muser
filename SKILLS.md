@@ -1,203 +1,175 @@
 # muser Skill：如何用 muser 编曲
 
-> 这份文档是写给 **AI agent** 读的操作手册。它教你如何把用户的音乐意图
-> 翻译成 muser 的工程 JSON，并通过 CLI/工具渲染成音频。
+> 写给 **AI agent** 的操作手册：把用户的音乐意图翻译成 muser 工程 JSON，再渲染成音频。
+> 这里是总入口；每个乐器类别、每个效果器的细节在 [`skills/`](skills/) 下的子 skill 里，按需查阅。
 
 ## 你的角色
 
-用户用自然语言描述想要的音乐（"做一个 90bpm 的 lo-fi 节拍，钢琴+鼓"）。
-你的工作是：
-1. 把意图翻译成一个 **Project JSON**（格式见下）。
-2. 调用工具渲染成 WAV（见 TOOLS.md）。
-3. 听取用户反馈，**增量编辑** JSON，重新渲染。
+用户用自然语言描述想要的音乐（"做一个 90bpm 的 lo-fi 节拍，钢琴+鼓"）。你的工作：
 
-你**不需要**理解底层音频 DSP。你只在 Project JSON 这一层工作。
+1. 选乐器、写音符、配效果器，产出一个 **Project JSON**。
+2. 先 `validate`，再渲染成 WAV。
+3. 根据反馈**增量修改** JSON，重新渲染。
+
+你只在 Project JSON 这一层工作，不需要懂底层 DSP。
+
+## 先查再写：可发现性
+
+不要凭记忆写乐器名和效果器参数，先查：
+
+| 想知道 | CLI | MCP tool |
+|---|---|---|
+| 有哪些乐器 | `muser instruments [--family F]` | `list_instruments` |
+| 某乐器的音高约定、音域、复音数 | `muser instruments <名称>` | `describe_instrument` |
+| 有哪些效果器 | `muser effects` | `list_effects` |
+| 某效果器的参数、范围、默认值、示例 | `muser effects <名称>` | `describe_effect` |
+| 工程是否合法、错在哪 | `muser validate <file>` | `validate_project` |
+
+加 `--json` 得到机器可读输出。`validate` 会指出越界参数和未知乐器的具体位置，例如
+`tracks[0].effects[0]: reverb.mix = 1.8 超出范围 [0, 1]`。
 
 ## 核心心智模型
 
-- 一个 **Project** 有一个 `tempo`（速度）和若干 **Track**（音轨）。
-- 每个 Track 用一件 **乐器**（`instrument`，语义名），上面放若干 **Clip**（片段）。
-- 每个 Clip 在时间线上有 `start` 和 `length`，里面是若干 **Note**（音符）。
-- **时间单位是「拍 (beats)」**，不是秒。`1.0` = 一个四分音符。与 tempo 无关。
+- **Project**：一个 `tempo`（速度）+ 若干 **Track**（音轨）+ 可选的 `master_effects`。
+- **Track**：一件 `instrument`（乐器）+ 可选的 `effects` + 若干 **Clip**（片段）。
+- **Clip**：在时间线上有 `start` 和 `length`，里面是若干 **Note**（音符）。
+- **时间单位是拍 (beats)**，`1.0` = 一个四分音符，与 tempo 无关。
+- Clip 的 `start` 从**工程开头**算；Note 的 `start` 从**所在 clip 的开头**算。
 
 ## 时间速查（4/4 拍）
 
-| 音符 | beats |
-|---|---|
-| 全音符 | 4.0 |
-| 二分音符 | 2.0 |
-| 四分音符 | 1.0 |
-| 八分音符 | 0.5 |
-| 十六分音符 | 0.25 |
-| 一小节 | 4.0 |
+| 音符 | 全音符 | 二分 | 四分 | 八分 | 十六分 | 一小节 |
+|---|---|---|---|---|---|---|
+| beats | 4.0 | 2.0 | 1.0 | 0.5 | 0.25 | 4.0 |
 
-- Clip 的 `start` 从**工程开头**算（第 2 小节起 = `start: 4.0`）。
-- Note 的 `start` 从**所在 clip 的开头**算。
+## 音高速查
 
-## 音高速查 (MIDI pitch)
+- 旋律乐器用 **MIDI 音高**：`60` = 中央 C (C4)，+12 升八度，+1 升半音。
+  `C4=60 D4=62 E4=64 F4=65 G4=67 A4=69 B4=71 C5=72`；贝斯常用 `C2=36`、`E1=28`。
+- 鼓组（`drums.*`）用 **GM 鼓键**：36=底鼓, 38=军鼓, 39=拍手, 42=闭镲, 46=开镲, 49=吊镲, 51=叮叮镲。
+  完整键位与每套鼓支持的键见 [skills/instruments/drums.md](skills/instruments/drums.md)。
+- `velocity`（力度）0-1，默认 0.8。
 
-- `60` = 中央 C (C4)。每 +12 升一个八度，每 +1 升半音。
-- `C4=60, D4=62, E4=64, F4=65, G4=67, A4=69, B4=71, C5=72`
-- 贝斯常用低音区：`C2=36, C1=24`。
+## 乐器索引（共 115 个内置 + 外置 VSTi）
 
-### 鼓组音高用 GM 鼓键（不是音阶音高！）
-
-| 鼓件 | pitch |
-|---|---|
-| 底鼓 Kick | 36 |
-| 军鼓 Snare | 38 |
-| 闭镲 Closed Hat | 42 |
-| 开镲 Open Hat | 46 |
-| 踩镲 Pedal Hat | 44 |
-| 拍手 Clap | 39 |
-| 吊镲 Crash | 49 |
-| 叮叮镲 Ride | 51 |
-| 高音桶鼓 Hi Tom | 50 |
-| 低音桶鼓 Low Tom | 45 |
-
-## 可用乐器 (`instrument` 字段)
-
-运行 `muser instruments` 获取权威列表。当前：
-
-**鼓组**（音符用 GM 鼓键）：
-`drums.808` `drums.909` `drums.606` `drums.cr78` `drums.acoustic`
-`drums.trap` `drums.techno` `drums.house` `drums.dnb` `drums.lofi`
-
-**旋律乐器**（音符用音阶音高）：
-`synth.poly`（复音合成器，适合和弦/pad/lead）
-`synth.fm`（FM 合成器，适合贝斯/电子音色）
-
-**外置 VSTi 乐器**（第三方 VST3/CLAP 虚拟乐器，需 `host` 特性）：
-用 `plugin:路径` 作为 `instrument`，音符会喂给插件合成发声。例：
-`"instrument": "plugin:/usr/lib/vst3/Surge XT.vst3"`，可带 `#插件id` 指定文件内具体插件。
-构建需 `cargo build --features host`；路径为本机绝对路径。
-
-## 效果器 (effects)
-
-可以给**音轨**加 `effects`（轨级，在该轨增益/声像之前），也可以给**工程**加
-`master_effects`（主总线，在主增益之前）。两者都是效果数组，按顺序串联。
-每个效果用 `type` 区分，其余字段是参数，**全部有合理默认值**——写
-`{ "type": "reverb" }` 就能得到一个像样的混响。
-
-| type | 用途 | 关键参数（含默认值） |
+| 类别 | 子 skill | 代表 |
 |---|---|---|
-| `reverb` | 混响/空间感 | `mix`(0.25) `decay_seconds`(1.6) `damping`(0.5) `size`(0.5) |
-| `delay` | 延迟/回声 | `time_seconds`(0.3) `feedback`(0.35) `mix`(0.3) |
-| `compressor` | 压缩动态/做胶水 | `threshold_db`(-18) `ratio`(4) `attack_ms`(10) `release_ms`(120) `makeup_db`(0) |
-| `chorus` | 加厚/加宽音色 | `rate_hz`(0.8) `depth_ms`(3) `mix`(0.4) |
-| `eq` | 均衡/滤波一个频段 | `shape`(peak) `frequency`(1000) `q`(0.707) `gain_db`(0) |
-| `limiter` | 限峰防爆（放主总线末端） | `ceiling_db`(-0.3) `release_ms`(50) |
-| `phaser` | 扫频梳状滤波，流动感 | `rate_hz`(0.5) `feedback`(0.3) `mix`(0.5) |
-| `flanger` | 短延迟调制，金属扫动 | `rate_hz`(0.2) `feedback`(0.7) `mix`(0.5) |
-| `plugin` | 第三方插件 (CLAP/VST3/LV2) | `path`(必填) `id`(可选) `params`(可选, {参数id: 值}) |
+| 鼓组 | [drums.md](skills/instruments/drums.md) | `drums.808` `drums.909` `drums.acoustic` `drums.trap` `drums.lofi` … 10 套 |
+| 合成器预设 | [poly.md](skills/instruments/poly.md) | 68 个：`poly.moog_bass` `poly.trance_supersaw` `poly.warm_analog_pad` `poly.juno_keys` … |
+| 通用合成器 | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
+| 吉他 | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` |
+| 贝斯 | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
+| 风琴 | [organ.md](skills/instruments/organ.md) | `organ.jazz` `organ.gospel` `organ.full` `organ.ballad` |
+| 打击旋律 | [mallet.md](skills/instruments/mallet.md) | `mallet.marimba` `mallet.vibraphone` `mallet.kalimba` … |
+| 弦乐 | [strings.md](skills/instruments/strings.md) | `strings.violin` `strings.cello` `strings.ensemble` `*_pizz` … |
+| 管乐 | [wind.md](skills/instruments/wind.md) | `wind.flute` `wind.sax` `wind.trumpet` … |
+| 人声 | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
+| 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 
-> `eq` 的 `shape` 可取：`lowpass` `highpass` `bandpass` `notch` `allpass`
-> `peak` `low_shelf` `high_shelf`。`gain_db` 只对 `peak`/`low_shelf`/`high_shelf` 有效。
-> 例：`{ "type": "eq", "shape": "high_shelf", "frequency": 8000, "gain_db": 3 }` 提亮高频。
+所有内置音源都由 manguebyte 实时合成（物理建模、模态合成、FM、减法合成等），不依赖系统 MIDI 音源。
 
-> `plugin` 效果器需要构建时启用 `host` 特性（`cargo build -p muser-cli --features host`），
-> 否则渲染会报 `HostDisabled`。示例：
-> `{ "type": "plugin", "path": "/path/to/MyReverb.vst3" }`
+## 效果器索引
 
-示例——给 keys 轨加混响，给主总线加压缩：
+效果器写在 `track.effects`（轨级，在该轨增益/声像之前）或 `master_effects`（主总线，在主增益之前），
+按数组顺序串联。每个参数都可省略，`{ "type": "reverb" }` 就是一个可用的混响。
 
-```json
-{
-  "tempo": 85.0,
-  "master_effects": [
-    { "type": "compressor", "threshold_db": -16, "ratio": 3, "makeup_db": 1.5 }
-  ],
-  "tracks": [
-    {
-      "name": "keys",
-      "instrument": "synth.poly",
-      "effects": [
-        { "type": "reverb", "mix": 0.3, "decay_seconds": 2.2, "size": 0.7 }
-      ],
-      "clips": [ /* ... */ ]
-    }
-  ]
-}
-```
+| type | 作用 | 子 skill |
+|---|---|---|
+| `eq` | 均衡/滤波一个频段 | [eq.md](skills/effects/eq.md) |
+| `compressor` | 压缩动态 | [compressor.md](skills/effects/compressor.md) |
+| `chorus` | 加厚、加宽 | [chorus.md](skills/effects/chorus.md) |
+| `phaser` | 扫频流动感 | [phaser.md](skills/effects/phaser.md) |
+| `flanger` | 金属感扫动 | [flanger.md](skills/effects/flanger.md) |
+| `delay` | 回声 | [delay.md](skills/effects/delay.md) |
+| `reverb` | 空间感 | [reverb.md](skills/effects/reverb.md) |
+| `limiter` | 限峰防爆（主总线最后） | [limiter.md](skills/effects/limiter.md) |
+| `plugin` | 第三方 VST3/CLAP/LV2 | [plugin.md](skills/effects/plugin.md) |
 
-经验：
-- **混响**放在旋律/pad 轨能加空间感；别给贝斯和底鼓加太多，会浑浊。
-- **延迟**适合 lead/人声做空间回声；`feedback` 别超过 0.6 否则会堆积。
-- **压缩器**放主总线（`master_effects`）做"胶水"，让整体更紧实；`ratio` 3-4、
-  `makeup_db` 补回音量。
+### 推荐串联顺序
+
+- 单条轨：`eq → compressor → chorus/phaser/flanger → delay → reverb`（用不到的跳过）。
+- 主总线：`eq → compressor → limiter`，limiter 永远在最后。
+- 贝斯、底鼓一般不加 reverb / chorus；其它轨用 `eq` highpass 150Hz 左右给它们让出低频。
 
 ## 工作流示例
 
-**用户**："做一个 90bpm 的 lo-fi 鼓点，4 小节，再加一条贝斯线。"
+**用户**："做一个 90bpm 的 lo-fi 节拍，4 拍循环，鼓 + 贝斯 + 电钢和弦。"
 
-**你的步骤**：
-
-1. 先用 `muser new` 看一眼标准格式（或直接按下面模板写）。
-
-2. 写出 Project JSON：
+1. 查乐器：`muser instruments --family drums`、`muser instruments --family poly`，
+   选 `drums.lofi`、`bass.finger`、`poly.wurly`。
+2. 查效果器：`muser effects reverb`，给电钢加一点混响。
+3. 写工程：
 
 ```json
 {
   "tempo": 90.0,
+  "master_effects": [
+    { "type": "compressor", "threshold_db": -14, "ratio": 2, "makeup_db": 2 },
+    { "type": "limiter", "ceiling_db": -1.0 }
+  ],
   "tracks": [
     {
       "name": "drums",
       "instrument": "drums.lofi",
-      "clips": [
-        {
-          "start": 0.0,
-          "length": 4.0,
-          "notes": [
-            { "pitch": 36, "start": 0.0, "length": 0.25 },
-            { "pitch": 38, "start": 1.0, "length": 0.25 },
-            { "pitch": 36, "start": 2.0, "length": 0.25 },
-            { "pitch": 38, "start": 3.0, "length": 0.25 },
-            { "pitch": 42, "start": 0.0, "length": 0.1 },
-            { "pitch": 42, "start": 0.5, "length": 0.1 },
-            { "pitch": 42, "start": 1.0, "length": 0.1 },
-            { "pitch": 42, "start": 1.5, "length": 0.1 }
-          ]
-        }
-      ]
+      "clips": [{ "start": 0.0, "length": 4.0, "notes": [
+        { "pitch": 36, "start": 0.0, "length": 0.25, "velocity": 0.9 },
+        { "pitch": 38, "start": 1.0, "length": 0.25 },
+        { "pitch": 36, "start": 2.5, "length": 0.25, "velocity": 0.7 },
+        { "pitch": 38, "start": 3.0, "length": 0.25 },
+        { "pitch": 42, "start": 0.0, "length": 0.1, "velocity": 0.5 },
+        { "pitch": 42, "start": 0.5, "length": 0.1, "velocity": 0.35 },
+        { "pitch": 42, "start": 1.0, "length": 0.1, "velocity": 0.5 },
+        { "pitch": 42, "start": 1.5, "length": 0.1, "velocity": 0.35 },
+        { "pitch": 42, "start": 2.0, "length": 0.1, "velocity": 0.5 },
+        { "pitch": 42, "start": 2.5, "length": 0.1, "velocity": 0.35 },
+        { "pitch": 42, "start": 3.0, "length": 0.1, "velocity": 0.5 },
+        { "pitch": 42, "start": 3.5, "length": 0.1, "velocity": 0.35 }
+      ]}]
     },
     {
       "name": "bass",
-      "instrument": "synth.fm",
-      "gain_db": -3.0,
-      "clips": [
-        {
-          "start": 0.0,
-          "length": 4.0,
-          "notes": [
-            { "pitch": 36, "start": 0.0, "length": 1.0 },
-            { "pitch": 36, "start": 1.0, "length": 1.0 },
-            { "pitch": 31, "start": 2.0, "length": 1.0 },
-            { "pitch": 33, "start": 3.0, "length": 1.0 }
-          ]
-        }
-      ]
+      "instrument": "bass.finger",
+      "gain_db": -2.0,
+      "clips": [{ "start": 0.0, "length": 4.0, "notes": [
+        { "pitch": 33, "start": 0.0, "length": 1.5 },
+        { "pitch": 29, "start": 2.0, "length": 1.5 }
+      ]}]
+    },
+    {
+      "name": "keys",
+      "instrument": "poly.wurly",
+      "gain_db": -6.0,
+      "effects": [
+        { "type": "eq", "shape": "highpass", "frequency": 150 },
+        { "type": "reverb", "mix": 0.3, "decay_seconds": 2.0, "size": 0.6 }
+      ],
+      "clips": [{ "start": 0.0, "length": 4.0, "notes": [
+        { "pitch": 57, "start": 0.0, "length": 2.0, "velocity": 0.6 },
+        { "pitch": 60, "start": 0.0, "length": 2.0, "velocity": 0.6 },
+        { "pitch": 64, "start": 0.0, "length": 2.0, "velocity": 0.6 },
+        { "pitch": 53, "start": 2.0, "length": 2.0, "velocity": 0.6 },
+        { "pitch": 57, "start": 2.0, "length": 2.0, "velocity": 0.6 },
+        { "pitch": 60, "start": 2.0, "length": 2.0, "velocity": 0.6 }
+      ]}]
     }
   ]
 }
 ```
 
-3. 保存为 `beat.muser.json`，然后 `muser validate beat.muser.json`，再
-   `muser render beat.muser.json -o beat.wav`。
+4. `muser validate beat.muser.json` → `muser render beat.muser.json -o beat.wav`。
+5. 把 wav 路径、时长、峰值告诉用户，按反馈增量修改。
 
-4. 告诉用户产出的 wav 路径、时长、峰值。根据反馈增量改 JSON。
+## 编曲常见套路
 
-## 常见套路（给你的创作提示）
+- **重复多小节**：复制 clip 并把 `start` 后移 4 拍（第 2 小节 `start: 4.0`），或在一个长 clip 里铺满。
+- **和弦**：多个音符 `start` 相同、`pitch` 不同。C 大三 = 60/64/67，A 小三 = 57/60/64。
+- **层次**：不同角色放不同 track（鼓 / 贝斯 / 和弦 / 旋律），用 `gain_db` 平衡，用 `pan`（-1 左 ~ 1 右）分开。
+- **音量**：几条轨叠加后容易过载；各轨 `gain_db` 设 -3 到 -8，主总线最后放 `limiter`。
 
-- **4/4 鼓点骨架**：kick(36) 在 0.0、2.0；snare(38) 在 1.0、3.0；闭镲(42)走八分（0.0,0.5,1.0,...）。
-- **重复多小节**：复制 clip 并把 `start` 往后移（第 2 小节 clip 的 `start: 4.0`），
-  或直接在一个长 clip 里铺更多音符。
-- **和弦**：在 `synth.poly` 上让多个音符 `start` 相同、`pitch` 不同（如 60/64/67 = C 大三和弦）。
-- **贝斯线**：`synth.fm`，低音区（24-48），每拍一个根音。
-- **编曲层次**：不同乐器放不同 track，用 `gain_db` 调平衡，用 `pan` 分左右。
+## 排错
 
-## 校验与排错
-
-- 渲染前**务必** `validate`。常见错误：`tempo <= 0`、clip `length <= 0`、
-  未知乐器名（用 `muser instruments` 核对）。
-- 鼓组用了音阶音高（如 60）会"没声音或不对"——鼓组必须用 GM 鼓键（36/38/42…）。
-- 听起来太满/爆音 → 调低 `master_gain_db` 或各 track `gain_db`。
+- 渲染前**务必** `validate`；它会给出出错的具体字段与可选值。
+- 鼓组没声音或声音不对 → 用了音阶音高，或用了该套鼓不支持的键（见 drums.md）。
+- 拉奏弦乐/管乐短音听起来很弱 → 音符太短，弦乐短音改用 `*_pizz`。
+- 混响尾音被截断 → 渲染时加大 `--tail`（默认 2 秒）。
+- 整体发闷/发浑 → 非贝斯轨加 `eq` highpass，减少多条轨上的 reverb。

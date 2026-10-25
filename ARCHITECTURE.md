@@ -13,7 +13,7 @@ muser 是一个**面向 AI 的无头（headless）编曲引擎**。它没有 GUI
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  3. 接口层 (muser-cli + muser-mcp)                            │
-│     - CLI 子命令：render / validate / instruments / new       │
+│     - CLI 子命令：render / validate / instruments / effects / new │
 │     - MCP server (muser-mcp)：把能力作为 tools 暴露给 agent    │
 │     - skill 文档：告诉 AI 如何表达音乐意图 (SKILLS.md)         │
 ├─────────────────────────────────────────────────────────────┤
@@ -199,7 +199,9 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 
 已实现：
 - 多轨、多 clip、多音符的离线渲染
-- 10 种鼓组 + 复音合成器 + FM 合成器
+- 115 个内置音源：10 套鼓组、68 个 poly 合成器预设、吉他/贝斯/风琴/打击旋律/弦乐/管乐/合唱
+- 乐器与效果器描述表（名称、参数、范围、默认值、说明）只在代码里写一份：
+  core `EFFECT_SPECS`、engine `instrument::catalog()`；CLI、MCP、`validate` 与 `skills/` 文档都由它派生
 - 轨增益、等功率声像、主增益、结尾余响
 - 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter / phaser / flanger，可挂到轨级或主总线
 - 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
@@ -208,7 +210,7 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 第三方插件作为**乐器**（`host` 特性）：音轨 `instrument` 用 `plugin:路径[#id]`，
   音符经 `process_with`+`ProcessContext` 喂给插件。已用真实 VSTi 验证：
   `Surge XT.vst3` 有音符时 RMS 895、无音符时 RMS 0（完全静音），证明响应音符发声。
-- MCP server（`muser-mcp`）：15 个 tools（工程生命周期 + 增量编辑 + 磁盘读写 + 渲染），stdio 运行
+- MCP server（`muser-mcp`）：18 个 tools（工程生命周期 + 增量编辑 + 磁盘读写 + 渲染 + 乐器/效果器查询），stdio 运行
 
 尚未实现（路线图）：
 - CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、

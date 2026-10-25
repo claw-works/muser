@@ -11,6 +11,17 @@
 | `house-groove` | House | 124 | `drums.house` | 四踩底鼓 + 二四拍手、律动贝斯、poly 和弦（C→Dm 走向） |
 | `dnb-roller` | Drum & Bass | 174 | `drums.dnb` | 断奏（breakbeat）鼓型、超低 sub-bass、长音 poly pad 铺底 |
 
+## 新音源巡礼
+
+`instrument-tour.muser.json`：每 2 秒换一种内置音源演奏同一个乐句，共 20 种，用来快速试听：
+
+guitar.nylon → guitar.steel → bass.finger → bass.acid → organ.jazz → mallet.marimba →
+mallet.vibraphone → mallet.kalimba → strings.cello → strings.ensemble → strings.violin_pizz →
+wind.flute → wind.sax → wind.trumpet → choir.aah → poly.moog_bass → poly.trance_supersaw →
+poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck
+
+完整列表用 `muser instruments` 查看（115 个）。
+
 ## 效果器 A/B 对比组
 
 同一段内容（lo-fi 鼓 + poly 和弦），**只有效果器不同**，用来直接听出各效果器的作用：

@@ -11,6 +11,7 @@ muser-core = { workspace = true }
 # 默认只用 manguebyte 的离线能力（dsp/formats/graph），不开 devices，保持纯离线。
 manguebyte = { workspace = true, default-features = false }
 thiserror = { workspace = true }
+serde = { workspace = true }
 
 [features]
 default = []

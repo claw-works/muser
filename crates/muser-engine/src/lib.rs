@@ -7,8 +7,25 @@ pub mod effects;
 pub mod instrument;
 pub mod render;
 
-pub use instrument::{available as available_instruments, TrackInstrument};
+pub use instrument::{
+    available as available_instruments, catalog as instrument_catalog, check_name as check_instrument,
+    describe as describe_instrument, InstrumentInfo, NoteConvention, TrackInstrument,
+};
 pub use render::{render, render_to_wav, EngineError, RenderSettings};
+
+/// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
+/// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。
+pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
+    project.validate()?;
+    for (i, track) in project.tracks.iter().enumerate() {
+        instrument::check_name(&track.instrument).map_err(|e| {
+            EngineError::Core(muser_core::CoreError::Invalid(format!(
+                "tracks[{i}].instrument: {e}"
+            )))
+        })?;
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -49,7 +66,8 @@ mod tests {
         let mut p = Project::new("x", 120.0);
         p.tracks.push(Track::new("t", "does.not.exist"));
         let err = render(&p, RenderSettings::default()).unwrap_err();
-        assert!(matches!(err, EngineError::Instrument(_)));
+        let msg = err.to_string();
+        assert!(msg.contains("tracks[0].instrument") && msg.contains("does.not.exist"), "{msg}");
     }
 
     #[cfg(not(feature = "host"))]
@@ -209,10 +227,38 @@ mod tests {
             gain_db: 0.0,
         });
         let err = render(&p, RenderSettings::default()).unwrap_err();
-        assert!(matches!(
-            err,
-            EngineError::Effect(crate::effects::EffectError::UnknownEqShape(_))
-        ));
+        // 工程校验阶段（core 描述表）就会拦截，错误信息指明位置与可选值。
+        let msg = err.to_string();
+        assert!(matches!(err, EngineError::Core(_)), "{msg}");
+        assert!(msg.contains("master_effects[0]") && msg.contains("eq.shape"), "{msg}");
+    }
+
+    #[test]
+    fn catalog_instruments_make_sound() {
+        // 抽查各类别的代表乐器都能真实发声。
+        for name in [
+            "guitar.nylon",
+            "bass.finger",
+            "bass.acid",
+            "organ.jazz",
+            "mallet.marimba",
+            "strings.cello",
+            "wind.flute",
+            "choir.aah",
+            "poly.moog_bass",
+            "poly.warm_analog_pad",
+        ] {
+            let mut p = Project::new(name, 120.0);
+            let mut t = Track::new("t", name);
+            let mut c = Clip::new(0.0, 2.0);
+            c.notes.push(Note::new(48, 0.0, 1.0));
+            c.notes.push(Note::new(55, 0.0, 1.0));
+            t.clips.push(c);
+            p.tracks.push(t);
+            let audio = render(&p, RenderSettings { tail_seconds: 0.5, ..Default::default() })
+                .unwrap_or_else(|e| panic!("{name} 渲染失败: {e}"));
+            assert!(audio.peak() > 1e-4, "{name} 应发声，峰值 {}", audio.peak());
+        }
     }
 
     /// 默认（未启用 host 特性）：plugin 效果器应报 HostDisabled。

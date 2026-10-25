@@ -588,6 +588,7 @@ version = "0.1.0"
 dependencies = [
  "manguebyte",
  "muser-core",
+ "serde",
  "thiserror",
 ]
 

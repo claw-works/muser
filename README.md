@@ -15,7 +15,7 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 ## 能做什么
 
 - 多轨编曲：鼓组 + 合成器 + 贝斯，多 clip、多音符
-- 10 种鼓组（808/909/606/CR-78/acoustic/trap/techno/house/dnb/lofi）+ 复音合成器 + FM 合成器
+- 115 个内置音源：10 套鼓组、68 个合成器预设，以及吉他、贝斯、风琴、马林巴等打击旋律乐器、弦乐、管乐、合唱（全部由 manguebyte 实时合成，不依赖系统 MIDI 音源）
 - 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级或主总线
 - 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)（`host` 特性）
 - 离线渲染为 WAV
@@ -63,8 +63,11 @@ muser validate song.muser.json
 # 渲染为 WAV
 muser render song.muser.json -o song.wav
 
-# 查看可用乐器
+# 查看可用乐器与效果器（加名称看详情，加 --json 给 AI 解析）
 muser instruments
+muser instruments guitar.nylon
+muser effects
+muser effects reverb
 ```
 
 > 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。
@@ -72,7 +75,7 @@ muser instruments
 ### 4. 以 MCP server 运行（给 agent 用）
 
 ```bash
-muser-mcp          # stdio MCP server，暴露 15 个 tools
+muser-mcp          # stdio MCP server，暴露 18 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，
@@ -120,14 +123,17 @@ muser/
 ├─ vendor/manguebyte/ 上游音频引擎（git submodule）
 ├─ samples/           示范工程（lo-fi/techno/house/dnb）
 ├─ ARCHITECTURE.md    架构、分层、工程 JSON schema、路线图
-├─ SKILLS.md          给 AI 的编曲操作手册
+├─ SKILLS.md          给 AI 的编曲操作手册（总入口）
+├─ skills/            子 skill：每个乐器类别、每个效果器一页
+├─ scripts/           gen_skills.py：从代码描述表生成 skills/
 └─ TOOLS.md           CLI + MCP 工具清单
 ```
 
 ## 深入阅读
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — 三层架构、数据流、工程文件格式、vendored 策略、路线图
-- [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（时间/音高/乐器/效果速查、工作流、排错）
+- [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（总入口：工作流、速查、乐器与效果器索引）
+- [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误
 - [TOOLS.md](TOOLS.md) — CLI 命令与 MCP tools 清单
 - [samples/](samples/) — 四种风格的示范工程
 
