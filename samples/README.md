@@ -41,6 +41,21 @@ cargo run -p muser-cli --features host -- render samples/plugin-fx-example.muser
 
 未启用 `host` 特性时渲染会报 `HostDisabled`；路径不存在会报 `PluginLoad`。
 
+## 外置 VSTi（虚拟乐器）作为音源
+
+`vsti-example.muser.json` 演示把第三方 **VSTi/CLAP 乐器**当音源：音轨的
+`instrument` 用 `plugin:路径` 前缀（示例用 `Surge XT.vst3` 合成器）。音符通过
+事件喂给插件，由插件合成发声。
+
+```bash
+cargo run -p muser-cli --features host -- render samples/vsti-example.muser.json -o out.wav
+```
+
+- 语法：`"instrument": "plugin:/path/to/Instrument.vst3"`，可带 `#插件id`
+  指定文件内的具体插件：`"plugin:/path.vst3#id"`。
+- 同样需要 `host` 特性；`path` 是本机绝对路径，换机需改。
+- 采样器类插件（如 sfizz）需自带/加载音色文件才会发声。
+
 ## 如何重新渲染
 
 ```bash

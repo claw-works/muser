@@ -67,6 +67,11 @@
 `synth.poly`（复音合成器，适合和弦/pad/lead）
 `synth.fm`（FM 合成器，适合贝斯/电子音色）
 
+**外置 VSTi 乐器**（第三方 VST3/CLAP 虚拟乐器，需 `host` 特性）：
+用 `plugin:路径` 作为 `instrument`，音符会喂给插件合成发声。例：
+`"instrument": "plugin:/usr/lib/vst3/Surge XT.vst3"`，可带 `#插件id` 指定文件内具体插件。
+构建需 `cargo build --features host`；路径为本机绝对路径。
+
 ## 效果器 (effects)
 
 可以给**音轨**加 `effects`（轨级，在该轨增益/声像之前），也可以给**工程**加

@@ -205,10 +205,13 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
   （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor。
   已用真实插件验证：加载本机 `Surge XT Effects.vst3`，输出与无插件对照显著不同。
+- 第三方插件作为**乐器**（`host` 特性）：音轨 `instrument` 用 `plugin:路径[#id]`，
+  音符经 `process_with`+`ProcessContext` 喂给插件。已用真实 VSTi 验证：
+  `Surge XT.vst3` 有音符时 RMS 895、无音符时 RMS 0（完全静音），证明响应音符发声。
 - MCP server（`muser-mcp`）：15 个 tools（工程生命周期 + 增量编辑 + 磁盘读写 + 渲染），stdio 运行
 
 尚未实现（路线图）：
-- 第三方插件作为**乐器**（需向插件喂音符事件，比作效果器更复杂）
+- 插件乐器/效果器的**参数调节**（包络、滤波等插件内部参数）
 - 更多内置效果器类型（phaser / flanger / waveshaper 等，manguebyte 均自带）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 - 音频图编排（manguebyte-graph：运行时热重连的信号图，供更复杂的路由）

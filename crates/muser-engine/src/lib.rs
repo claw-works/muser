@@ -52,6 +52,18 @@ mod tests {
         assert!(matches!(err, EngineError::Instrument(_)));
     }
 
+    #[cfg(not(feature = "host"))]
+    #[test]
+    fn plugin_instrument_without_host_errors() {
+        let mut p = Project::new("x", 120.0);
+        p.tracks.push(Track::new("t", "plugin:/some/inst.vst3"));
+        let err = render(&p, RenderSettings::default()).unwrap_err();
+        match err {
+            EngineError::Instrument(crate::instrument::InstrumentError::HostDisabled) => {}
+            other => panic!("应报 HostDisabled，实际: {other:?}"),
+        }
+    }
+
     #[test]
     fn muted_track_is_silent() {
         let mut p = demo_project();
