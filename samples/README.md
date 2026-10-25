@@ -13,15 +13,19 @@
 
 ## 效果器 A/B 对比组
 
-同一段内容（lo-fi 鼓 + poly 和弦），**只有 keys 轨的效果器不同**，用来直接听出效果器的作用：
+同一段内容（lo-fi 鼓 + poly 和弦），**只有效果器不同**，用来直接听出各效果器的作用：
 
-| 工程文件 | keys 轨效果 | 听感 |
+| 工程文件 | 效果 | 听感 |
 |---|---|---|
-| `fx-demo-dry` | 无 | 和弦干净短促，收得利落（对照组） |
-| `fx-demo-reverb` | `reverb` (mix 0.45, decay 2.8s, size 0.8) | 和弦带明显空间感与尾音，整体更"湿"更远 |
-| `fx-demo-delay` | `delay` (0.45s, feedback 0.45, mix 0.4) | 和弦后跟有节奏的回声，逐渐衰减 |
+| `fx-demo-dry` | 无（对照组） | 和弦干净短促，收得利落 |
+| `fx-demo-reverb` | keys: `reverb` (mix 0.45, decay 2.8s, size 0.8) | 和弦带明显空间感与尾音，更"湿"更远 |
+| `fx-demo-delay` | keys: `delay` (0.45s, feedback 0.45, mix 0.4) | 和弦后跟有节奏的回声，逐渐衰减 |
+| `fx-demo-chorus` | keys: `chorus` (rate 0.9Hz, depth 4ms, mix 0.5) | 和弦变厚、变宽，有轻微起伏 |
+| `fx-demo-eq` | keys: `eq` 高架+6dB@4k + 低切200Hz | 和弦更亮更清爽，低频被切 |
+| `fx-demo-limiter` | master: +6dB 增益 + `limiter` (ceiling -0.3dB) | 整体更响，峰值被收在 0dB 内不爆 |
 
-依次渲染这三个工程并对比试听，即可体验 muser 的效果器链（reverb / delay）。
+依次渲染这些工程并对比试听，即可体验 muser 的内置效果器链
+（reverb / delay / chorus / eq / limiter）。
 
 ## 如何重新渲染
 
