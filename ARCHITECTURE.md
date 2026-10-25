@@ -138,6 +138,10 @@ samples = seconds × sample_rate
   "master_effects": [           // 主总线效果链（可省略，默认空；在主增益前施加）
     { "type": "compressor", "threshold_db": -16, "ratio": 3 }
   ],
+  "seed": 0,                    // 随机种子（可省略）：决定没写 seed 的 random 自动化
+  "automation": [               // 主总线自动化（可省略）：目标 master_gain_db / master_effects[i]
+    { "target": "master_effects[0]", "param": "ratio", "shape": "points", "points": [[0, 2], [16, 4]] }
+  ],
   "tracks": [                   // 音轨数组
     {
       "name": "drums",          // 轨名（可省略）
@@ -150,6 +154,9 @@ samples = seconds × sample_rate
       "muted": false,           // 是否静音（可省略，默认 false）
       "effects": [              // 轨级效果链（可省略，默认空；在增益/声像前施加）
         { "type": "reverb", "mix": 0.3 }
+      ],
+      "automation": [           // 轨自动化（可省略）：目标 instrument / effects[i] / gain_db / pan
+        { "target": "pan", "shape": "lfo", "period_beats": 8, "min": -0.5, "max": 0.5 }
       ],
       "clips": [                // 片段数组
         {
@@ -209,6 +216,8 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 内置乐器参数 `instrument_params`：每类乐器开放常用参数（统一命名、真实单位），在预设上覆盖；
   鼓组按鼓件设置；渲染时检测数值发散并报错
 - `sfz:` 内置 SFZ 采样器（manguebyte-sampler）：直接加载 .sfz 音色库，无需外部插件
+- 自动化：points / lfo / random（带种子）三种形状，目标覆盖内置乐器参数、效果器参数、
+  轨增益与声像、主增益与主总线效果器；乐器/效果器每 64 帧更新，增益与声像逐帧更新
 - 轨增益、等功率声像、主增益、结尾余响
 - 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter / phaser / flanger，可挂到轨级或主总线
 - 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
@@ -217,13 +226,12 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 第三方插件作为**乐器**（`host` 特性）：音轨 `instrument` 用 `plugin:路径[#id]`，
   音符经 `process_with`+`ProcessContext` 喂给插件。已用真实 VSTi 验证：
   `Surge XT.vst3` 有音符时 RMS 895、无音符时 RMS 0（完全静音），证明响应音符发声。
-- MCP server（`muser-mcp`）：18 个 tools（工程生命周期 + 增量编辑 + 磁盘读写 + 渲染 + 乐器/效果器查询），stdio 运行
+- MCP server（`muser-mcp`）：20 个 tools（工程生命周期 + 增量编辑 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询），stdio 运行
 
 尚未实现（路线图）：
 - CI：GitHub Actions 工作流（拉取 submodule、构建、跑 `cargo test --workspace`、
   可选 `--features host` 构建、`cargo fmt --check` / `clippy`）
-- 自动化：点曲线 / LFO / 带种子的随机游走，目标覆盖内置乐器参数、效果器参数与插件参数
-- 外置插件通用层：`muser plugin scan/info/params/audition`，按参数名 + 文本值设置插件参数
+- 外置插件通用层：`muser plugin scan/info/params/audition`，按参数名 + 文本值设置插件参数，插件参数接入自动化
 - 插件画像（profile）：自动草稿 + 试听结论回写，按插件 id+版本匹配，可分享（为社区做准备）
 - 更多内置效果器类型（waveshaper / 多段 EQ 等，manguebyte 均自带）
 - 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）

@@ -1,0 +1,173 @@
+{
+  "tempo": 70,
+  "master_effects": [
+    {
+      "type": "reverb",
+      "mix": 0.3,
+      "decay_seconds": 3.0,
+      "size": 0.8
+    }
+  ],
+  "tracks": [
+    {
+      "name": "choir",
+      "instrument": "choir.aah",
+      "gain_db": 2,
+      "automation": [
+        {
+          "target": "instrument",
+          "param": "vowel",
+          "shape": "points",
+          "points": [
+            [
+              0,
+              "a"
+            ],
+            [
+              4,
+              "e"
+            ],
+            [
+              8,
+              "o"
+            ],
+            [
+              12,
+              "u"
+            ],
+            [
+              16,
+              "a"
+            ]
+          ],
+          "curve": "smooth"
+        },
+        {
+          "target": "instrument",
+          "param": "brightness",
+          "shape": "points",
+          "points": [
+            [
+              0,
+              2000
+            ],
+            [
+              8,
+              6000
+            ],
+            [
+              16,
+              2500
+            ]
+          ],
+          "curve": "exp"
+        }
+      ],
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 57,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 53,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 57,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 65,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 48,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 52,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 59,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 62,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "automation/choir-vowels"
+}

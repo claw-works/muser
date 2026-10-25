@@ -1,0 +1,267 @@
+{
+  "tempo": 124,
+  "master_effects": [
+    {
+      "type": "reverb",
+      "mix": 0.2,
+      "decay_seconds": 2.5,
+      "size": 0.7
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "pad",
+      "instrument": "poly.warm_analog_pad",
+      "gain_db": -4,
+      "automation": [
+        {
+          "target": "gain_db",
+          "shape": "points",
+          "points": [
+            [
+              0,
+              -50
+            ],
+            [
+              8,
+              -4
+            ]
+          ],
+          "curve": "smooth",
+          "end": 16
+        },
+        {
+          "target": "gain_db",
+          "shape": "lfo",
+          "wave": "square",
+          "period_beats": 0.5,
+          "min": -30,
+          "max": -4,
+          "start": 16
+        },
+        {
+          "target": "pan",
+          "shape": "lfo",
+          "wave": "sine",
+          "period_beats": 8,
+          "min": -0.7,
+          "max": 0.7
+        },
+        {
+          "target": "instrument",
+          "param": "cutoff",
+          "shape": "lfo",
+          "wave": "triangle",
+          "period_beats": 16,
+          "min": 600,
+          "max": 5000
+        }
+      ],
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "notes": [
+            {
+              "pitch": 57,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 53,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 57,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 65,
+              "start": 4,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 48,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 52,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 8,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 59,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 62,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 12,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 57,
+              "start": 16,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 16,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 64,
+              "start": 16,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 69,
+              "start": 16,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 53,
+              "start": 20,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 57,
+              "start": 20,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 20,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 65,
+              "start": 20,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 48,
+              "start": 24,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 52,
+              "start": 24,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 24,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 60,
+              "start": 24,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 55,
+              "start": 28,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 59,
+              "start": 28,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 62,
+              "start": 28,
+              "length": 4,
+              "velocity": 0.7
+            },
+            {
+              "pitch": 67,
+              "start": 28,
+              "length": 4,
+              "velocity": 0.7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "automation/pad-motion"
+}

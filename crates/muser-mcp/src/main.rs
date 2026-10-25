@@ -161,6 +161,31 @@ struct ClearClipParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SetAutomationParams {
+    project_id: String,
+    /// 音轨下标；省略表示主总线（工程级 automation，目标 master_gain_db / master_effects[i]）。
+    #[serde(default)]
+    track_index: Option<usize>,
+    /// 自动化列表。每条：{"target": "instrument" | "effects[i]" | "gain_db" | "pan" | "master_gain_db" | "master_effects[i]",
+    /// "param": 参数名（gain_db/pan/master_gain_db 省略；鼓组用 "kick.tune"），"shape": "points" | "lfo" | "random", ...}。
+    /// points: {"points": [[拍, 值], ...], "curve": "linear"|"exp"|"smooth"|"step"}；
+    /// lfo: {"wave": "sine"|"triangle"|"saw"|"square", "period_beats", "min", "max", "phase"?}；
+    /// random: {"style": "jump"|"glide"|"walk", "step_beats", "min", "max", "max_step"?, "seed"?}；
+    /// 可选 "start" / "end"（拍）限定生效区间。
+    automation: Vec<serde_json::Value>,
+    /// true 追加到现有自动化；默认 false 整体替换（传空列表即清空）。
+    #[serde(default)]
+    append: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SetSeedParams {
+    project_id: String,
+    /// 新的工程随机种子。没写 seed 的 random 自动化都由它推导；换种子 = 换一种随机变化。
+    seed: u64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct NameParams {
     /// 名称，如 "reverb" / "guitar.nylon" / "poly.moog_bass"。
     name: String,
@@ -562,6 +587,52 @@ impl Muser {
         }
     }
 
+    #[tool(description = "设置自动化：让乐器参数、效果器参数、增益、声像随时间变化。track_index 省略时作用于主总线。默认整体替换（空列表=清空），append=true 追加。会立即校验参数名与取值范围。")]
+    fn set_automation(
+        &self,
+        Parameters(p): Parameters<SetAutomationParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let list: Vec<muser_core::Automation> = match serde_json::from_value(serde_json::Value::Array(p.automation)) {
+            Ok(l) => l,
+            Err(e) => return Ok(user_err(format!("automation 解析失败: {e}"))),
+        };
+        let id = p.project_id.clone();
+        self.with_project(&id, |proj| {
+            let mut candidate = proj.clone();
+            let slot = match p.track_index {
+                Some(ti) => &mut candidate
+                    .tracks
+                    .get_mut(ti)
+                    .ok_or_else(|| user_err(format!("track_index {ti} 越界")))?
+                    .automation,
+                None => &mut candidate.automation,
+            };
+            if p.append {
+                slot.extend(list);
+            } else {
+                *slot = list;
+            }
+            let count = slot.len();
+            if let Err(e) = muser_engine::validate(&candidate) {
+                return Err(user_err(e.to_string()));
+            }
+            *proj = candidate;
+            Ok(ok_text(format!(
+                "{} 现有 {count} 条自动化",
+                p.track_index.map_or("主总线".to_string(), |t| format!("音轨 {t}"))
+            )))
+        })
+    }
+
+    #[tool(description = "设置工程随机种子。没写 seed 的 random 自动化都由它推导：同一种子渲染结果完全相同，换种子听另一种随机变化。")]
+    fn set_seed(&self, Parameters(p): Parameters<SetSeedParams>) -> Result<CallToolResult, McpError> {
+        let id = p.project_id.clone();
+        self.with_project(&id, |proj| {
+            proj.seed = p.seed;
+            Ok(ok_text(format!("seed = {}", p.seed)))
+        })
+    }
+
     #[tool(description = "列出所有效果器及一句话说明。效果器用于 track.effects（轨级）或 master_effects（主总线），按数组顺序串联。")]
     fn list_effects(&self) -> Result<CallToolResult, McpError> {
         let list: Vec<_> = muser_core::EFFECT_SPECS
@@ -603,6 +674,8 @@ fn json_result<T: serde::Serialize + ?Sized>(value: &T) -> Result<CallToolResult
 选乐器前先用 list_instruments / describe_instrument 查看（drums.* 用 GM 鼓键：36=底鼓,38=军鼓,42=闭镲；\
 其余用 MIDI 音高：60=中央C）。加效果器前用 list_effects / describe_effect 查看参数范围与示例。\
 调音色用 instrument_params（键与范围见 describe_instrument，只覆盖给出的项）；sfz:/path.sfz 可加载 SFZ 音色库。\
+要让声音随时间变化（滤波扫频、淡入淡出、声像摆动、随机游走）用 set_automation；describe_instrument 标出了哪些参数可自动化。\
+random 自动化由工程 seed 决定，set_seed 换种子即换一种变化。\
 validate_project 会指出越界参数与未知乐器的具体位置。"
 )]
 impl ServerHandler for Muser {}

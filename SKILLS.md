@@ -31,7 +31,7 @@
 ## 核心心智模型
 
 - **Project**：一个 `tempo`（速度）+ 若干 **Track**（音轨）+ 可选的 `master_effects`。
-- **Track**：一件 `instrument`（乐器）+ 可选的 `instrument_params`（调音色）+ 可选的 `effects` + 若干 **Clip**（片段）。
+- **Track**：一件 `instrument`（乐器）+ 可选的 `instrument_params`（调音色）+ 可选的 `effects` + 可选的 `automation`（随时间变化）+ 若干 **Clip**（片段）。
 - **Clip**：在时间线上有 `start` 和 `length`，里面是若干 **Note**（音符）。
 - **时间单位是拍 (beats)**，`1.0` = 一个四分音符，与 tempo 无关。
 - Clip 的 `start` 从**工程开头**算；Note 的 `start` 从**所在 clip 的开头**算。
@@ -89,6 +89,24 @@
 - 写错参数名、越界、类型不对，`validate` 都会指出，例如
   `instrument_params 无效: cutoff: 99999 超出范围 [30, 8000] Hz`。
 - 各类参数表与调音示例见对应的乐器子 skill。外置 VSTi 的参数调节尚未支持（计划中）。
+
+## 让声音动起来：automation
+
+参数可以随时间变化：滤波扫频、淡入淡出、声像摆动、带种子的随机游走。写在音轨或工程的 `automation` 里：
+
+```json
+"automation": [
+  { "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 200], [32, 4000]], "curve": "exp" },
+  { "target": "pan", "shape": "lfo", "wave": "sine", "period_beats": 8, "min": -0.6, "max": 0.6 },
+  { "target": "effects[0]", "param": "mix", "shape": "random", "style": "walk", "step_beats": 1, "min": 0.1, "max": 0.5 }
+]
+```
+
+- `target`：音轨上 `instrument` / `effects[i]` / `gain_db` / `pan`；工程上 `master_gain_db` / `master_effects[i]`。
+- `shape`：`points`（时间点曲线）、`lfo`（周期摆动）、`random`（随机）。时间单位都是拍。
+- `random` 由工程 `seed` 决定：同一 seed 每次渲染一样，换 seed 换一种变化——可以多渲染几版挑一个。
+- 哪些参数能自动化：`muser instruments <名称>` 里标了 `[可自动化]` / `[可自动化·下个音生效]`。
+- 完整说明与示例：[skills/automation.md](skills/automation.md)。
 
 ## 效果器索引
 

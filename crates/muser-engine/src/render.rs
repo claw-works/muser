@@ -11,6 +11,7 @@ use muser_core::Project;
 
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, WavFormat, decibels, wav};
 
+use crate::automate::{self, MasterLanes, TrackLanes};
 use crate::instrument;
 
 /// 渲染参数。
@@ -60,6 +61,7 @@ fn render_track(
     tempo: f64,
     settings: RenderSettings,
     total_frames: usize,
+    mut lanes: TrackLanes,
     master: &mut AudioBuffer<f32>,
 ) -> Result<(), EngineError> {
     let spec = ProcessSpec {
@@ -74,6 +76,7 @@ fn render_track(
 
     // 收集全轨事件（样本帧, 动作），并按时间排序；同帧先 Off 后 On。
     let sr = f64::from(settings.sample_rate);
+    let beat_at = |frame: usize| frame as f64 / sr * tempo / 60.0;
     let mut acts: Vec<(usize, Act)> = Vec::new();
     for clip in &track.clips {
         let clip_start = clip.start.to_seconds(tempo) * sr;
@@ -114,9 +117,17 @@ fn render_track(
             }
             next += 1;
         }
+        // 乐器自动化：在块开始处写入当前值。
+        for lane in lanes.instrument.iter_mut() {
+            if let Some(v) = lane.poll(beat_at(frame)) {
+                inst.set_param(&lane.param, v);
+            }
+        }
         // 这一块推进到：下一个事件帧 或 块大小 或 总长，三者取最小（但至少前进 1 帧）。
+        // 有乐器自动化时块不超过 automate::BLOCK 帧。
+        let step = if lanes.instrument.is_empty() { settings.block_size } else { settings.block_size.min(automate::BLOCK) };
         let until = acts.get(next).map_or(total_frames, |&(at, _)| at.min(total_frames));
-        let end = (frame + settings.block_size)
+        let end = (frame + step)
             .min(until)
             .max(frame + 1)
             .min(total_frames);
@@ -139,18 +150,26 @@ fn render_track(
     // 轨级效果链（在增益/声像之前施加）。
     if !track.effects.is_empty() {
         let mut chain = crate::effects::build_chain(&track.effects, &spec)?;
-        crate::effects::apply_chain(&mut chain, &mut track_buf, settings.block_size);
+        crate::effects::apply_chain(&mut chain, &mut track_buf, settings.block_size, &mut lanes.effects, &beat_at);
     }
 
-    // 增益 + 等功率声像，混入 master。
-    let gain = decibels::db_to_gain(track.gain_db) as f32;
-    let pan = track.pan.clamp(-1.0, 1.0);
-    // 等功率声像：angle 从 0(左) 到 π/2(右)。
-    let angle = (pan + 1.0) * 0.5 * std::f64::consts::FRAC_PI_2;
-    let gl = (angle.cos() as f32) * gain;
-    let gr = (angle.sin() as f32) * gain;
-
+    // 增益 + 等功率声像，混入 master。有自动化时逐帧计算。
+    let gains = |gain_db: f64, pan: f64| {
+        let gain = decibels::db_to_gain(gain_db);
+        // 等功率声像：angle 从 0(左) 到 π/2(右)。
+        let angle = (pan.clamp(-1.0, 1.0) + 1.0) * 0.5 * std::f64::consts::FRAC_PI_2;
+        ((angle.cos() * gain) as f32, (angle.sin() * gain) as f32)
+    };
+    let fixed = lanes.gain.is_empty() && lanes.pan.is_empty();
+    let (mut gl, mut gr) = gains(track.gain_db, track.pan);
     for frame in 0..total_frames {
+        if !fixed {
+            let beat = beat_at(frame);
+            (gl, gr) = gains(
+                automate::scalar(&lanes.gain, beat, track.gain_db),
+                automate::scalar(&lanes.pan, beat, track.pan),
+            );
+        }
         master.channel_mut(0)[frame] += track_buf.channel(0)[frame] * gl;
         master.channel_mut(1)[frame] += track_buf.channel(1)[frame] * gr;
     }
@@ -167,13 +186,18 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
         ((duration + settings.tail_seconds) * sr).ceil() as usize + 1;
 
     let mut master = AudioBuffer::<f32>::new(2, total_frames);
+    let beats = automate::total_beats(project, settings.tail_seconds);
+    let beat_at = |frame: usize| frame as f64 / sr * project.tempo / 60.0;
 
-    for track in &project.tracks {
+    for (ti, track) in project.tracks.iter().enumerate() {
         if track.muted {
             continue;
         }
-        render_track(track, project.tempo, settings, total_frames, &mut master)?;
+        let lanes = automate::compile_track(project, ti, beats).map_err(invalid)?;
+        render_track(track, project.tempo, settings, total_frames, lanes, &mut master)?;
     }
+    let MasterLanes { effects: mut master_fx_lanes, gain: master_gain_lanes } =
+        automate::compile_master(project, beats).map_err(invalid)?;
 
     // 主总线效果链（在主增益之前施加）。
     if !project.master_effects.is_empty() {
@@ -183,15 +207,29 @@ pub fn render(project: &Project, settings: RenderSettings) -> Result<AudioBuffer
             num_channels: 2,
         };
         let mut chain = crate::effects::build_chain(&project.master_effects, &spec)?;
-        crate::effects::apply_chain(&mut chain, &mut master, settings.block_size);
+        crate::effects::apply_chain(&mut chain, &mut master, settings.block_size, &mut master_fx_lanes, &beat_at);
     }
 
-    // 主增益。
-    let mg = decibels::db_to_gain(project.master_gain_db) as f32;
-    if (mg - 1.0).abs() > f32::EPSILON {
-        master.apply_gain(mg);
+    // 主增益（有自动化时逐帧）。
+    if master_gain_lanes.is_empty() {
+        let mg = decibels::db_to_gain(project.master_gain_db) as f32;
+        if (mg - 1.0).abs() > f32::EPSILON {
+            master.apply_gain(mg);
+        }
+    } else {
+        for frame in 0..total_frames {
+            let db = automate::scalar(&master_gain_lanes, beat_at(frame), project.master_gain_db);
+            let g = decibels::db_to_gain(db) as f32;
+            for ch in 0..2 {
+                master.channel_mut(ch)[frame] *= g;
+            }
+        }
     }
     Ok(master)
+}
+
+fn invalid(m: String) -> EngineError {
+    EngineError::Core(muser_core::CoreError::Invalid(m))
 }
 
 /// 渲染工程并写出 WAV 文件。返回 (时长秒, 峰值 dBFS)。

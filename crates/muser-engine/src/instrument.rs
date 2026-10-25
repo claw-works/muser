@@ -33,6 +33,8 @@ trait Playable {
     fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool);
     fn note_off(&mut self, note: NoteRef, velocity: f32);
     fn process(&mut self, buffer: &mut AudioBuffer<f32>);
+    /// 自动化：运行中改一个参数（名称与 `instrument_params` 相同，鼓组为 `鼓件.参数`）。
+    fn set_param(&mut self, _name: &str, _value: f64) {}
 }
 
 impl<V: Voice<f32>> Playable for Synth<V, f32> {
@@ -76,6 +78,78 @@ impl TrackInstrument {
     }
     pub fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         self.inner.process(buffer);
+    }
+    pub fn set_param(&mut self, name: &str, value: f64) {
+        self.inner.set_param(name, value);
+    }
+}
+
+/// 可运行中调参的乐器：持有当前音色参数，改参数后推给每个 voice。
+struct Tunable<V: Voice<f32>, P: Copy + 'static> {
+    synth: Synth<V, f32>,
+    params: P,
+    defs: &'static [params::ParamDef<P>],
+    push: fn(&mut V, P),
+}
+
+impl<V: Voice<f32>, P: Copy + 'static> Playable for Tunable<V, P> {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        Processor::prepare(&mut self.synth, spec);
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        self.synth.note_on_accented(note, velocity, accent);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        self.synth.note_off(note, velocity);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        Processor::process(&mut self.synth, buffer);
+    }
+    fn set_param(&mut self, name: &str, value: f64) {
+        if params::set_number(self.defs, &mut self.params, name, value) {
+            let (push, p) = (self.push, self.params);
+            self.synth.voices_mut().for_each(|v| push(v, p));
+        }
+    }
+}
+
+fn tunable<V: Voice<f32> + 'static, P: Copy + 'static>(
+    synth: Synth<V, f32>,
+    params: P,
+    defs: &'static [params::ParamDef<P>],
+    push: fn(&mut V, P),
+) -> TrackInstrument {
+    TrackInstrument::new(Tunable { synth, params, defs, push }, 0)
+}
+
+/// 鼓组：参数名为 `鼓件.参数`，如 `kick.tune`；改动从下一次击打生效。
+struct DrumsTunable {
+    synth: Synth<DrumKitVoice, f32>,
+    kit: DrumKit,
+}
+
+impl Playable for DrumsTunable {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        Processor::prepare(&mut self.synth, spec);
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        self.synth.note_on_accented(note, velocity, accent);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        self.synth.note_off(note, velocity);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        Processor::process(&mut self.synth, buffer);
+    }
+    fn set_param(&mut self, name: &str, value: f64) {
+        let Some((piece, field)) = name.split_once('.') else { return };
+        let Some(key) = params::piece_key(piece) else { return };
+        let Some(mut p) = self.kit.piece(key).copied() else { return };
+        if params::set_number(params::PIECE, &mut p, field, value) {
+            self.kit.set(key, Some(p));
+            let kit = self.kit;
+            self.synth.voices_mut().for_each(|v| v.set_params(kit));
+        }
     }
 }
 
@@ -174,20 +248,20 @@ impl Patch {
     /// 参数规格 + 当前值。
     fn param_info(&self) -> (Vec<ParamInfo>, String) {
         match self {
-            Patch::Poly(p) => (params::describe(params::POLY, p), String::new()),
-            Patch::Fm(p) => (params::describe(params::FM, p), String::new()),
-            Patch::String(p, _) => (params::describe(params::STRING, p), String::new()),
+            Patch::Poly(p) => (params::describe(params::POLY, p, &[]), String::new()),
+            Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
+            Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
             Patch::Acid(p) => (
-                params::describe(params::ACID, p),
+                params::describe(params::ACID, p, &[]),
                 "单音乐器：前一个音还没结束就开始下一个音，会按 slide 时间滑过去".into(),
             ),
-            Patch::Organ(p) => (params::describe(params::ORGAN, p), String::new()),
-            Patch::Mallet(p, _) => (params::describe(params::MALLET, p), String::new()),
-            Patch::Bowed(p, _) => (params::describe(params::BOWED, p), String::new()),
-            Patch::Wind(p, _) => (params::describe(params::WIND, p), String::new()),
-            Patch::Choir(p, _) => (params::describe(params::CHOIR, p), String::new()),
+            Patch::Organ(p) => (params::describe(params::ORGAN, p, &[]), String::new()),
+            Patch::Mallet(p, _) => (params::describe(params::MALLET, p, params::NEXT_MALLET), String::new()),
+            Patch::Bowed(p, _) => (params::describe(params::BOWED, p, params::NEXT_BOWED), String::new()),
+            Patch::Wind(p, _) => (params::describe(params::WIND, p, &[]), String::new()),
+            Patch::Choir(p, _) => (params::describe(params::CHOIR, p, &[]), String::new()),
             Patch::Drums(kit) => (
-                params::specs(params::PIECE),
+                params::specs(params::PIECE, params::NEXT_PIECE),
                 format!(
                     "按鼓件设置：{{ \"kick\": {{ \"tune\": -2, \"decay\": 1.5 }}, \"38\": {{ \"snap\": 0.8 }} }}。\
                      键可用 GM 鼓键数字或别名（kick snare clap closed_hat open_hat crash ride tom_low tom_mid tom_high …）。\
@@ -202,20 +276,23 @@ impl Patch {
     /// 生成可演奏的乐器。
     fn instantiate(self) -> Result<TrackInstrument, String> {
         Ok(match self {
-            Patch::Drums(kit) => TrackInstrument::new(Synth::new(DrumKitVoice::voices(24, kit)), 9),
-            Patch::Poly(p) => pitched(16, move || PolySynthVoice::new(p)),
-            Patch::Fm(p) => pitched(16, move || FmVoice::new(p)),
-            Patch::String(p, n) => pitched(n, move || PluckedString::new(p)),
+            Patch::Drums(kit) => TrackInstrument::new(
+                DrumsTunable { synth: Synth::new(DrumKitVoice::voices(24, kit)), kit },
+                9,
+            ),
+            Patch::Poly(p) => tunable(Synth::with_voices(16, move || PolySynthVoice::new(p)), p, params::POLY, |v, p| v.set_params(p)),
+            Patch::Fm(p) => tunable(Synth::with_voices(16, move || FmVoice::new(p)), p, params::FM, |v, p| v.set_params(p)),
+            Patch::String(p, n) => tunable(Synth::with_voices(n, move || PluckedString::new(p)), p, params::STRING, |v, p| v.set_params(p)),
             Patch::Acid(p) => {
                 let mut s = Synth::with_voices(1, move || AcidVoice::new(p));
                 s.set_legato(true);
-                TrackInstrument::new(s, 0)
+                tunable(s, p, params::ACID, |v, p| v.set_params(p))
             }
-            Patch::Organ(p) => TrackInstrument::new(Synth::new(OrganVoice::voices(16, p)), 0),
-            Patch::Mallet(p, n) => pitched(n, move || MalletVoice::new(p)),
-            Patch::Bowed(p, n) => pitched(n, move || BowedString::new(p)),
-            Patch::Wind(p, n) => pitched(n, move || WindVoice::new(p)),
-            Patch::Choir(p, n) => pitched(n, move || ChoirVoice::new(p)),
+            Patch::Organ(p) => tunable(Synth::new(OrganVoice::voices(16, p)), p, params::ORGAN, |v, p| v.set_params(p)),
+            Patch::Mallet(p, n) => tunable(Synth::with_voices(n, move || MalletVoice::new(p)), p, params::MALLET, |v, p| v.set_params(p)),
+            Patch::Bowed(p, n) => tunable(Synth::with_voices(n, move || BowedString::new(p)), p, params::BOWED, |v, p| v.set_params(p)),
+            Patch::Wind(p, n) => tunable(Synth::with_voices(n, move || WindVoice::new(p)), p, params::WIND, |v, p| v.set_params(p)),
+            Patch::Choir(p, n) => tunable(Synth::with_voices(n, move || ChoirVoice::new(p)), p, params::CHOIR, |v, p| v.set_params(p)),
             Patch::Sfz(path) => sfz_instrument(&path)?,
         })
     }
@@ -458,6 +535,68 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
         }
     }
     patch.apply(params).map_err(|detail| InstrumentError::Param { detail })
+}
+
+/// 自动化目标参数的规格、行为与静态值（已应用 `instrument_params`）。
+pub(crate) fn automation_param(
+    name: &str,
+    instrument_params: &InstrumentParams,
+    param: &str,
+) -> Result<(params::InstParamSpec, params::Automatable, f64), String> {
+    let trimmed = name.trim();
+    if trimmed.starts_with("plugin:") || trimmed.starts_with("sfz:") {
+        return Err("插件与 sfz 乐器的参数自动化尚未支持".into());
+    }
+    let (_, mut patch) = lookup(trimmed).ok_or_else(|| format!("未知乐器 '{name}'"))?;
+    patch.apply(instrument_params)?;
+
+    fn find<P>(
+        defs: &[params::ParamDef<P>],
+        p: &P,
+        param: &str,
+        next: &[&str],
+    ) -> Result<(params::InstParamSpec, params::Automatable, f64), String> {
+        let list = || {
+            defs.iter()
+                .filter(|d| params::automatable(&d.spec, next) != params::Automatable::No)
+                .map(|d| d.spec.name)
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let d = defs
+            .iter()
+            .find(|d| d.spec.name == param)
+            .ok_or_else(|| format!("未知参数 '{param}'，可自动化: {}", list()))?;
+        let a = params::automatable(&d.spec, next);
+        if a == params::Automatable::No {
+            return Err(format!("参数 '{param}' 不能自动化（开关、选项、整数类），可自动化: {}", list()));
+        }
+        let base = (d.get)(p)
+            .as_f64()
+            .ok_or_else(|| format!("参数 '{param}' 对该音色无效（没有启用滤波器）"))?;
+        Ok((d.spec, a, base))
+    }
+
+    match &patch {
+        Patch::Poly(p) => find(params::POLY, p, param, &[]),
+        Patch::Fm(p) => find(params::FM, p, param, params::NEXT_FM),
+        Patch::String(p, _) => find(params::STRING, p, param, params::NEXT_STRING),
+        Patch::Acid(p) => find(params::ACID, p, param, &[]),
+        Patch::Organ(p) => find(params::ORGAN, p, param, &[]),
+        Patch::Mallet(p, _) => find(params::MALLET, p, param, params::NEXT_MALLET),
+        Patch::Bowed(p, _) => find(params::BOWED, p, param, params::NEXT_BOWED),
+        Patch::Wind(p, _) => find(params::WIND, p, param, &[]),
+        Patch::Choir(p, _) => find(params::CHOIR, p, param, &[]),
+        Patch::Drums(kit) => {
+            let (piece, field) = param
+                .split_once('.')
+                .ok_or_else(|| format!("鼓组参数写成 `鼓件.参数`，如 \"kick.tune\"，实际 '{param}'"))?;
+            let key = params::piece_key(piece).ok_or_else(|| format!("未知鼓件 '{piece}'"))?;
+            let p = kit.piece(key).ok_or_else(|| format!("这套鼓没有鼓键 {key}（{piece}）"))?;
+            find(params::PIECE, p, field, params::NEXT_PIECE)
+        }
+        Patch::Sfz(_) => Err("sfz 乐器的参数自动化尚未支持".into()),
+    }
 }
 
 /// 兼容旧接口：只检查名称。

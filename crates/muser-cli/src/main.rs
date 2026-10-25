@@ -165,7 +165,12 @@ fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Resu
                         _ => String::new(),
                     };
                     let current = if p.current.is_null() { String::new() } else { format!("  当前 {}", p.current) };
-                    println!("    {:<16} {range}{current}", p.spec.name);
+                    let auto = match p.automation {
+                        muser_engine::Automatable::Live => "  [可自动化]",
+                        muser_engine::Automatable::NextNote => "  [可自动化·下个音生效]",
+                        muser_engine::Automatable::No => "",
+                    };
+                    println!("    {:<16} {range}{current}{auto}", p.spec.name);
                     println!("    {:<16} {}", "", p.spec.description);
                 }
             }

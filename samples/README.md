@@ -67,7 +67,15 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 
 ## automation
 
-（P2 开发中）
+参数随时间变化（格式见 [skills/automation.md](../skills/automation.md)）。
+
+| 工程 | 自动化了什么 | 听感 |
+|---|---|---|
+| `acid-sweep` | 303 cutoff 8 小节 200→3000 Hz（exp），后半段 resonance 加大，delay mix 渐增 | 经典 acid 扫频，越来越亮、越来越"吱" |
+| `random-walk-seed1` / `random-walk-seed2` | 同一工程只换 `seed`：cutoff 随机游走、decay 随机滑动、声像随机漂移 | 两版走向不同，每版重复渲染结果一样 |
+| `pad-motion` | 前 2 小节淡入；声像正弦摆动；cutoff 三角 LFO；第 5 小节起方波 gate | 慢慢浮现、左右流动，后半段变成 trance gate |
+| `choir-vowels` | 合唱元音 a→e→o→u→a，亮度先升后降 | 和弦在元音间平滑变化 |
+| `build-up` | 主总线混响 mix 0.05→0.45；stab 的 lowpass 400→16000 Hz；军鼓调音逐步升高 | 典型的电子乐 build-up：越来越亮、越来越湿、越来越紧 |
 
 ## plugins
 

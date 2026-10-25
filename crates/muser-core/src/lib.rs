@@ -12,9 +12,11 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod automation;
 pub mod effect;
 pub mod time;
 
+pub use automation::{Automation, CompiledCurve, Curve, LfoWave, RandomStyle, Shape, Target};
 pub use effect::{effect_spec, ChoiceSpec, Effect, EffectSpec, ParamSpec, EFFECT_SPECS};
 pub use time::{Beats, TimeSignature};
 
@@ -38,6 +40,12 @@ pub struct Project {
     /// 主总线效果器链（按顺序串联），默认空。在主增益之前施加。
     #[serde(default)]
     pub master_effects: Vec<Effect>,
+    /// 主总线自动化（目标 `master_gain_db` / `master_effects[i]`），默认空。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub automation: Vec<Automation>,
+    /// 随机种子：没有写 `seed` 的 random 自动化由它推导。换一个就换一种随机变化。默认 0。
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub seed: u64,
     /// 所有音轨。
     #[serde(default)]
     pub tracks: Vec<Track>,
@@ -57,6 +65,8 @@ impl Project {
             time_signature: TimeSignature::default(),
             master_gain_db: 0.0,
             master_effects: Vec::new(),
+            automation: Vec::new(),
+            seed: 0,
             tracks: Vec::new(),
         }
     }
@@ -88,6 +98,9 @@ impl Project {
                 self.tempo
             )));
         }
+        for (i, a) in self.automation.iter().enumerate() {
+            check_automation(a, true, self.master_effects.len(), &format!("automation[{i}]"))?;
+        }
         for (i, e) in self.master_effects.iter().enumerate() {
             e.validate()
                 .map_err(|m| CoreError::Invalid(format!("master_effects[{i}]: {m}")))?;
@@ -98,6 +111,9 @@ impl Project {
                     "tracks[{ti}].pan = {} 超出范围 [-1, 1]",
                     track.pan
                 )));
+            }
+            for (i, a) in track.automation.iter().enumerate() {
+                check_automation(a, false, track.effects.len(), &format!("tracks[{ti}].automation[{i}]"))?;
             }
             for (i, e) in track.effects.iter().enumerate() {
                 e.validate()
@@ -135,6 +151,38 @@ impl Project {
     }
 }
 
+/// 自动化的结构检查：目标是否属于这一层、效果器下标是否存在、是否缺 param、形状是否合法。
+/// 参数名与取值范围由 muser-engine 按参数表检查。
+fn check_automation(a: &Automation, master: bool, effects: usize, at: &str) -> Result<(), CoreError> {
+    let err = |m: String| CoreError::Invalid(format!("{at}: {m}"));
+    let target = Target::parse(&a.target).ok_or_else(|| {
+        err(format!(
+            "target '{}' 无效，可选: {}",
+            a.target,
+            if master { "master_gain_db / master_effects[i]" } else { "instrument / effects[i] / gain_db / pan" }
+        ))
+    })?;
+    if target.is_master() != master {
+        return Err(err(format!(
+            "target '{}' 不能写在{}",
+            a.target,
+            if master { "工程级 automation（只能 master_gain_db / master_effects[i]）" } else { "音轨上（主总线目标写在工程级 automation）" }
+        )));
+    }
+    if let Target::Effect(i) | Target::MasterEffect(i) = target {
+        if i >= effects {
+            return Err(err(format!("target '{}' 越界：这里只有 {effects} 个效果器", a.target)));
+        }
+    }
+    if target.is_scalar() && !a.param.is_empty() {
+        return Err(err(format!("target '{}' 不需要 param", a.target)));
+    }
+    if !target.is_scalar() && a.param.is_empty() {
+        return Err(err("缺少 param（要自动化的参数名）".into()));
+    }
+    a.check_shape().map_err(err)
+}
+
 /// 一条音轨：一件乐器 + 一串 clip。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Track {
@@ -161,6 +209,9 @@ pub struct Track {
     /// 轨级效果器链（按顺序串联），默认空。在增益/声像之前施加。
     #[serde(default)]
     pub effects: Vec<Effect>,
+    /// 音轨自动化（目标 `instrument` / `effects[i]` / `gain_db` / `pan`），默认空。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub automation: Vec<Automation>,
     /// 该音轨上的所有 clip。
     #[serde(default)]
     pub clips: Vec<Clip>,
@@ -176,6 +227,7 @@ impl Track {
             pan: 0.0,
             muted: false,
             effects: Vec::new(),
+            automation: Vec::new(),
             clips: Vec::new(),
         }
     }
@@ -223,6 +275,10 @@ pub struct Note {
     /// 强度由乐器参数（如 acid 的 `accent`）决定。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub accent: bool,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 fn is_false(b: &bool) -> bool {

@@ -34,7 +34,7 @@ muser render beat.muser.json -o beat.wav
 - 无参数：按类别列出全部 115 个内置乐器及说明。
 - `--family`：只列某类（drums / synth / poly / guitar / bass / organ / mallet / strings / wind / choir）。
 - `<name>`：显示该乐器的类别、音高约定（GM 鼓键 / 音阶音高）、推荐音域、复音数、说明，
-  以及可调参数（`instrument_params` 的键、范围、单位、说明、该预设当前值）。
+  以及可调参数（`instrument_params` 的键、范围、单位、说明、该预设当前值、能否自动化）。
 - `--json`：机器可读输出。
 
 ### `muser effects [name] [--json]`
@@ -63,7 +63,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（18 个）
+### 已实现的 Tools（20 个）
 
 | tool | 作用 |
 |---|---|
@@ -80,6 +80,8 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `add_clip` | 新增片段，返回 `clip_index` |
 | `add_notes` | 向片段加入一批音符（支持 `velocity`、`accent`） |
 | `clear_clip` | 清空片段内所有音符 |
+| `set_automation` | 设置某音轨或主总线的自动化（替换或追加），立即校验 |
+| `set_seed` | 设置工程随机种子（决定 random 自动化） |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
 | `list_instruments` | 列出乐器（可按 `family` 过滤），返回名称/类别/音高约定/音域/复音数/说明 |
 | `describe_instrument` | 查看某个乐器的详情与可调参数（含该预设当前值） |

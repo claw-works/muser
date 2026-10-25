@@ -44,6 +44,18 @@ pub struct InstParamSpec {
     pub description: &'static str,
 }
 
+/// 参数能否被自动化、以及变化何时被听到。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Automatable {
+    /// 正在发声的音符也会立即跟随。
+    Live,
+    /// 只影响之后开始的音符（如弓弦的揉弦、鼓件的调音）。
+    NextNote,
+    /// 不能自动化（开关、选项、整数、拉杆串）。
+    No,
+}
+
 /// 规格 + 该乐器当前（预设）的取值，用于展示。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ParamInfo {
@@ -51,7 +63,24 @@ pub struct ParamInfo {
     pub spec: InstParamSpec,
     /// 该乐器/预设当前的取值；鼓组按鼓件设置时为 null。
     pub current: Value,
+    /// 自动化时的行为。
+    pub automation: Automatable,
 }
+
+pub(crate) fn automatable(spec: &InstParamSpec, next_note: &[&str]) -> Automatable {
+    match spec.kind {
+        ParamKind::Number { integer: false, .. } if next_note.contains(&spec.name) => Automatable::NextNote,
+        ParamKind::Number { integer: false, .. } => Automatable::Live,
+        _ => Automatable::No,
+    }
+}
+
+// 各类乐器中"只影响下一个音"的参数（依据 manguebyte 各 Voice::set_params 的文档）。
+pub(crate) const NEXT_FM: &[&str] = &["attack", "release"];
+pub(crate) const NEXT_STRING: &[&str] = &["decay", "release", "pluck_brightness", "pluck_position", "buzz"];
+pub(crate) const NEXT_MALLET: &[&str] = &["decay", "release", "softness", "strike_position"];
+pub(crate) const NEXT_BOWED: &[&str] = &["attack", "release", "vibrato_rate", "vibrato_depth", "vibrato_delay"];
+pub(crate) const NEXT_PIECE: &[&str] = &["tune", "decay", "level", "tone", "snap", "texture", "pan"];
 
 type Set<P> = fn(&mut P, f64) -> Result<(), String>;
 type SetText<P> = fn(&mut P, &str) -> Result<(), String>;
@@ -331,7 +360,7 @@ pub(crate) fn piece_key(name: &str) -> Option<u8> {
 // 通用逻辑
 // ---------------------------------------------------------------------------
 
-fn to_number(spec: &InstParamSpec, v: &Value) -> Result<f64, String> {
+pub(crate) fn to_number(spec: &InstParamSpec, v: &Value) -> Result<f64, String> {
     match spec.kind {
         ParamKind::Number { min, max, unit, integer, names } => {
             let x = if let Some(s) = v.as_str() {
@@ -400,15 +429,29 @@ pub(crate) fn apply<P>(
 }
 
 /// 参数规格 + 当前值。
-pub(crate) fn describe<P>(defs: &[ParamDef<P>], p: &P) -> Vec<ParamInfo> {
+pub(crate) fn describe<P>(defs: &[ParamDef<P>], p: &P, next_note: &[&str]) -> Vec<ParamInfo> {
     defs.iter()
-        .map(|d| ParamInfo { spec: d.spec, current: (d.get)(p) })
+        .map(|d| ParamInfo { spec: d.spec, current: (d.get)(p), automation: automatable(&d.spec, next_note) })
         .collect()
 }
 
 /// 只要规格（不带当前值）。
-pub(crate) fn specs<P>(defs: &[ParamDef<P>]) -> Vec<ParamInfo> {
+pub(crate) fn specs<P>(defs: &[ParamDef<P>], next_note: &[&str]) -> Vec<ParamInfo> {
     defs.iter()
-        .map(|d| ParamInfo { spec: d.spec, current: Value::Null })
+        .map(|d| ParamInfo { spec: d.spec, current: Value::Null, automation: automatable(&d.spec, next_note) })
         .collect()
 }
+
+/// 自动化：按名字写一个数值（已校验过范围；这里再夹一次，防御性）。
+pub(crate) fn set_number<P>(defs: &[ParamDef<P>], p: &mut P, name: &str, v: f64) -> bool {
+    let Some(def) = defs.iter().find(|d| d.spec.name == name) else { return false };
+    let v = match def.spec.kind {
+        ParamKind::Number { min, max, .. } => v.clamp(min, max),
+        _ => return false,
+    };
+    match def.set {
+        Setter::Num(f) => f(p, v).is_ok(),
+        Setter::Text(_) => false,
+    }
+}
+

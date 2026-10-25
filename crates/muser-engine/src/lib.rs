@@ -3,6 +3,7 @@
 //! 把 [`muser_core::Project`] 编译成 manguebyte 的乐器/合成器并离线渲染为音频/WAV。
 //! 这是「领域模型 → 声音」的翻译层，是三层架构的中间层。
 
+pub mod automate;
 pub mod effects;
 pub mod instrument;
 pub mod params;
@@ -12,6 +13,7 @@ pub use instrument::{
     available as available_instruments, catalog as instrument_catalog, check as check_instrument_with, check_name as check_instrument,
     describe as describe_instrument, InstrumentInfo, NoteConvention, TrackInstrument,
 };
+pub use params::Automatable;
 pub use render::{render, render_to_wav, EngineError, RenderSettings};
 
 /// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
@@ -25,6 +27,7 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
             )))
         })?;
     }
+    automate::check(project).map_err(|m| EngineError::Core(muser_core::CoreError::Invalid(m)))?;
     Ok(())
 }
 
@@ -437,5 +440,141 @@ mod tests {
         }
         let audio = render_one(&format!("sfz:{path}"), serde_json::json!({}), &[(60, 0.0, 1.0), (64, 0.0, 1.0)]).unwrap();
         assert!(audio.peak() > 1e-3, "sfz 应发声，峰值 {}", audio.peak());
+    }
+
+    fn auto_project(instrument: &str, notes: &[(u8, f64, f64)], automation: serde_json::Value) -> Project {
+        let mut p = Project::new("auto", 120.0);
+        let mut t = Track::new("t", instrument);
+        let mut c = Clip::new(0.0, 8.0);
+        for &(pitch, start, len) in notes {
+            c.notes.push(Note::new(pitch, start, len));
+        }
+        t.clips.push(c);
+        t.automation = serde_json::from_value(automation).unwrap();
+        p.tracks.push(t);
+        p
+    }
+
+    fn seg_brightness(a: &AudioBuffer<f32>, from: usize, to: usize) -> f64 {
+        let x = &a.channel(0)[from..to];
+        let diff: f64 = x.windows(2).map(|w| f64::from(w[1] - w[0]).powi(2)).sum();
+        diff / x.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>().max(1e-12)
+    }
+    fn seg_energy(a: &AudioBuffer<f32>, ch: usize, from: usize, to: usize) -> f64 {
+        a.channel(ch)[from..to].iter().map(|s| f64::from(*s).powi(2)).sum()
+    }
+    const SEC: usize = 48_000;
+    fn quiet() -> RenderSettings {
+        RenderSettings { tail_seconds: 0.5, ..Default::default() }
+    }
+
+    #[test]
+    fn automation_cutoff_sweep_brightens() {
+        // 一个 4 秒长音，cutoff 从 200 扫到 6000（exp）。
+        let p = auto_project("poly.moog_bass", &[(36, 0.0, 8.0)], serde_json::json!([
+            { "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 200], [8, 6000]], "curve": "exp" }
+        ]));
+        let a = render(&p, quiet()).unwrap();
+        let early = seg_brightness(&a, SEC / 2, SEC);
+        let late = seg_brightness(&a, 3 * SEC, 7 * SEC / 2);
+        assert!(late > early * 3.0, "扫频后应明显变亮: {early} → {late}");
+    }
+
+    #[test]
+    fn automation_gain_fade_in() {
+        let p = auto_project("synth.poly", &[(60, 0.0, 8.0)], serde_json::json!([
+            { "target": "gain_db", "shape": "points", "points": [[0, -60], [8, 0]] }
+        ]));
+        let a = render(&p, quiet()).unwrap();
+        assert!(seg_energy(&a, 0, 3 * SEC, 4 * SEC) > seg_energy(&a, 0, SEC / 4, SEC) * 100.0);
+    }
+
+    #[test]
+    fn automation_pan_lfo_alternates() {
+        // 声像 LFO 方波，周期 4 拍（2 秒）：前 1 秒在右（max），后 1 秒在左。
+        let p = auto_project("synth.poly", &[(60, 0.0, 8.0)], serde_json::json!([
+            { "target": "pan", "shape": "lfo", "wave": "square", "period_beats": 4, "min": -1, "max": 1 }
+        ]));
+        let a = render(&p, quiet()).unwrap();
+        let (l1, r1) = (seg_energy(&a, 0, SEC / 4, SEC * 3 / 4), seg_energy(&a, 1, SEC / 4, SEC * 3 / 4));
+        let (l2, r2) = (seg_energy(&a, 0, SEC * 5 / 4, SEC * 7 / 4), seg_energy(&a, 1, SEC * 5 / 4, SEC * 7 / 4));
+        assert!(r1 > l1 * 100.0 && l2 > r2 * 100.0, "应左右交替: ({l1},{r1}) ({l2},{r2})");
+    }
+
+    #[test]
+    fn automation_effect_param() {
+        // eq lowpass 的 frequency 从 300 扫到 12000：后段更亮。
+        let mut p = auto_project("synth.poly", &[(60, 0.0, 8.0), (64, 0.0, 8.0)], serde_json::json!([
+            { "target": "effects[0]", "param": "frequency", "shape": "points", "points": [[0, 300], [8, 12000]], "curve": "exp" }
+        ]));
+        p.tracks[0].effects.push(muser_core::Effect::Eq { shape: "lowpass".into(), frequency: 300.0, q: 0.707, gain_db: 0.0 });
+        let a = render(&p, quiet()).unwrap();
+        assert!(seg_brightness(&a, 3 * SEC, 7 * SEC / 2) > seg_brightness(&a, SEC / 2, SEC) * 3.0);
+    }
+
+    #[test]
+    fn automation_master_effect_and_gain() {
+        let mut p = auto_project("synth.poly", &[(60, 0.0, 2.0)], serde_json::json!([]));
+        p.master_effects.push(muser_core::Effect::Reverb { mix: 0.0, decay_seconds: 2.0, damping: 0.5, size: 0.6 });
+        p.automation = serde_json::from_value(serde_json::json!([
+            { "target": "master_effects[0]", "param": "mix", "shape": "points", "points": [[0, 0], [2, 0.8]] },
+            { "target": "master_gain_db", "shape": "points", "points": [[0, 0], [8, -6]] }
+        ])).unwrap();
+        render(&p, quiet()).unwrap();
+    }
+
+    #[test]
+    fn automation_random_seed_reproducible() {
+        let mk = |seed: u64, explicit: Option<u64>| {
+            let mut auto = serde_json::json!({ "target": "instrument", "param": "cutoff", "shape": "random",
+                "style": "walk", "step_beats": 0.5, "min": 200, "max": 4000 });
+            if let Some(s) = explicit {
+                auto["seed"] = serde_json::json!(s);
+            }
+            let mut p = auto_project("poly.moog_bass", &[(36, 0.0, 8.0)], serde_json::json!([auto]));
+            p.seed = seed;
+            render(&p, quiet()).unwrap()
+        };
+        let same = |a: &AudioBuffer<f32>, b: &AudioBuffer<f32>| a.channel(0) == b.channel(0);
+        assert!(same(&mk(1, None), &mk(1, None)), "同一工程种子应完全相同");
+        assert!(!same(&mk(1, None), &mk(2, None)), "工程种子不同应不同");
+        assert!(same(&mk(1, Some(7)), &mk(2, Some(7))), "显式 seed 不受工程种子影响");
+    }
+
+    #[test]
+    fn automation_drum_piece_next_hit() {
+        // 每拍一个底鼓，kick.tune 从 0 跳到 +12：后段音高更高（过零率更高）。
+        let hits: Vec<(u8, f64, f64)> = (0..8).map(|b| (36u8, b as f64, 0.25)).collect();
+        let p = auto_project("drums.808", &hits, serde_json::json!([
+            { "target": "instrument", "param": "kick.tune", "shape": "points", "points": [[0, 0], [3.9, 0], [4, 12]], "curve": "step" }
+        ]));
+        let a = render(&p, quiet()).unwrap();
+        let zc = |from: usize, to: usize| a.channel(0)[from..to].windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+        assert!(zc(SEC / 2 * 4, SEC / 2 * 4 + 8000) > zc(0, 8000), "调高后过零应更多");
+    }
+
+    #[test]
+    fn automation_validation_errors() {
+        let err = |instrument: &str, auto: serde_json::Value| {
+            crate::validate(&auto_project(instrument, &[], serde_json::json!([auto]))).unwrap_err().to_string()
+        };
+        let e = err("poly.moog_bass", serde_json::json!({ "target": "instrument", "param": "cutof", "shape": "points", "points": [[0, 1]] }));
+        assert!(e.contains("automation[0]") && e.contains("cutoff"), "{e}");
+        let e = err("poly.moog_bass", serde_json::json!({ "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 10], [4, 99999]] }));
+        assert!(e.contains("points[0]") && e.contains("超出范围"), "{e}");
+        let e = err("strings.cello", serde_json::json!({ "target": "instrument", "param": "players", "shape": "lfo", "period_beats": 4, "min": 1, "max": 3 }));
+        assert!(e.contains("不能自动化"), "{e}");
+        let e = err("synth.poly", serde_json::json!({ "target": "effects[0]", "param": "mix", "shape": "points", "points": [[0, 0]] }));
+        assert!(e.contains("越界"), "{e}");
+        let e = err("synth.poly", serde_json::json!({ "target": "master_gain_db", "shape": "points", "points": [[0, 0]] }));
+        assert!(e.contains("工程级"), "{e}");
+        let e = err("synth.poly", serde_json::json!({ "target": "pan", "shape": "points", "points": [[0, -1], [4, 1]], "curve": "exp" }));
+        assert!(e.contains("exp"), "{e}");
+        let e = err("poly.bell_pluck", serde_json::json!({ "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 500]] }));
+        assert!(e.contains("滤波器"), "{e}");
+        // 元音可用名字
+        crate::validate(&auto_project("choir.aah", &[], serde_json::json!([
+            { "target": "instrument", "param": "vowel", "shape": "points", "points": [[0, "a"], [4, "o"], [8, "u"]] }
+        ]))).unwrap();
     }
 }
