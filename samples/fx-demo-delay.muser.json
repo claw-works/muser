@@ -1,0 +1,148 @@
+{
+  "name": "fx-demo-delay",
+  "tempo": 100.0,
+  "master_gain_db": -3.0,
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "drums.lofi",
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0.0,
+              "length": 0.25,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 38,
+              "start": 1.0,
+              "length": 0.25,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 36,
+              "start": 2.0,
+              "length": 0.25,
+              "velocity": 0.9
+            },
+            {
+              "pitch": 38,
+              "start": 3.0,
+              "length": 0.25,
+              "velocity": 0.8
+            },
+            {
+              "pitch": 42,
+              "start": 0.0,
+              "length": 0.1,
+              "velocity": 0.4
+            },
+            {
+              "pitch": 42,
+              "start": 0.5,
+              "length": 0.1,
+              "velocity": 0.3
+            },
+            {
+              "pitch": 42,
+              "start": 1.0,
+              "length": 0.1,
+              "velocity": 0.4
+            },
+            {
+              "pitch": 42,
+              "start": 1.5,
+              "length": 0.1,
+              "velocity": 0.3
+            },
+            {
+              "pitch": 42,
+              "start": 2.0,
+              "length": 0.1,
+              "velocity": 0.4
+            },
+            {
+              "pitch": 42,
+              "start": 2.5,
+              "length": 0.1,
+              "velocity": 0.3
+            },
+            {
+              "pitch": 42,
+              "start": 3.0,
+              "length": 0.1,
+              "velocity": 0.4
+            },
+            {
+              "pitch": 42,
+              "start": 3.5,
+              "length": 0.1,
+              "velocity": 0.3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "keys",
+      "instrument": "synth.poly",
+      "gain_db": -4.0,
+      "clips": [
+        {
+          "start": 0.0,
+          "length": 4.0,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 1.0,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 64,
+              "start": 0.0,
+              "length": 1.0,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 67,
+              "start": 0.0,
+              "length": 1.0,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 62,
+              "start": 2.0,
+              "length": 1.0,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 65,
+              "start": 2.0,
+              "length": 1.0,
+              "velocity": 0.6
+            },
+            {
+              "pitch": 69,
+              "start": 2.0,
+              "length": 1.0,
+              "velocity": 0.6
+            }
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "type": "delay",
+          "time_seconds": 0.45,
+          "feedback": 0.45,
+          "mix": 0.4
+        }
+      ]
+    }
+  ]
+}

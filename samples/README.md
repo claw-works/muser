@@ -11,6 +11,18 @@
 | `house-groove` | House | 124 | `drums.house` | 四踩底鼓 + 二四拍手、律动贝斯、poly 和弦（C→Dm 走向） |
 | `dnb-roller` | Drum & Bass | 174 | `drums.dnb` | 断奏（breakbeat）鼓型、超低 sub-bass、长音 poly pad 铺底 |
 
+## 效果器 A/B 对比组
+
+同一段内容（lo-fi 鼓 + poly 和弦），**只有 keys 轨的效果器不同**，用来直接听出效果器的作用：
+
+| 工程文件 | keys 轨效果 | 听感 |
+|---|---|---|
+| `fx-demo-dry` | 无 | 和弦干净短促，收得利落（对照组） |
+| `fx-demo-reverb` | `reverb` (mix 0.45, decay 2.8s, size 0.8) | 和弦带明显空间感与尾音，整体更"湿"更远 |
+| `fx-demo-delay` | `delay` (0.45s, feedback 0.45, mix 0.4) | 和弦后跟有节奏的回声，逐渐衰减 |
+
+依次渲染这三个工程并对比试听，即可体验 muser 的效果器链（reverb / delay）。
+
 ## 如何重新渲染
 
 ```bash
