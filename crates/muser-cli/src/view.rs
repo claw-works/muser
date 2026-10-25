@@ -11,7 +11,6 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, anyhow, bail};
 use muser_core::Project;
-use muser_core::routing::Node;
 use muser_engine::{RenderSettings, Rendered, render_with_stems};
 use serde_json::{Value, json};
 
@@ -59,16 +58,8 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
-fn node_id(n: Node) -> String {
-    match n {
-        Node::Track(i) => format!("tracks[{i}]"),
-        Node::Bus(i) => format!("buses[{i}]"),
-    }
-}
-
 /// 页面需要的工程摘要。`urls` 给出成品与各分轨的音频地址。
 fn payload(project: &Project, rendered: &Rendered, settings: RenderSettings, mix_url: String, stem_urls: Vec<String>) -> Value {
-    let stem_of = |id: &str| rendered.stems.iter().position(|s| node_id(s.node) == id);
     let fx = |list: &[muser_core::Effect]| list.iter().map(|e| e.type_name()).collect::<Vec<_>>();
     let mut nodes = Vec::new();
     for (i, t) in project.tracks.iter().enumerate() {
@@ -85,21 +76,25 @@ fn payload(project: &Project, rendered: &Rendered, settings: RenderSettings, mix
             "id": id, "kind": "track",
             "name": if t.name.is_empty() { id.clone() } else { t.name.clone() },
             "instrument": t.instrument, "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
-            "gain_db": t.gain_db, "muted": t.muted, "effects": fx(&t.effects), "stem": stem_of(&id), "clips": clips,
+            "gain_db": t.gain_db, "muted": t.muted, "effects": fx(&t.effects), "clips": clips,
         }));
     }
     for (i, b) in project.buses.iter().enumerate() {
         let id = format!("buses[{i}]");
         nodes.push(json!({
             "id": id, "kind": "bus", "name": b.name, "output": b.output.as_deref().unwrap_or("master"), "sends": b.sends,
-            "gain_db": b.gain_db, "muted": b.muted, "effects": fx(&b.effects), "stem": stem_of(&id), "clips": [],
+            "gain_db": b.gain_db, "muted": b.muted, "effects": fx(&b.effects), "clips": [],
         }));
     }
     let stems: Vec<Value> = rendered
         .stems
         .iter()
         .zip(stem_urls)
-        .map(|(s, url)| json!({ "node": node_id(s.node), "label": s.label, "url": url }))
+        .map(|(s, url)| json!({
+            "track": format!("tracks[{}]", s.track),
+            "path": s.path.iter().map(|b| format!("buses[{b}]")).collect::<Vec<_>>(),
+            "label": s.label, "url": url,
+        }))
         .collect();
     json!({
         "name": project.name,

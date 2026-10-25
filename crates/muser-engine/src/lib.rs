@@ -945,21 +945,34 @@ mod tests {
 
     #[test]
     fn stems_sum_to_master_input() {
-        // 无主总线效果、主增益 0：stem 之和应等于成品。
+        // 无主总线效果、主增益 0：未静音分轨之和应等于成品；总线压缩以全信号为键，分解仍精确。
         let p = proj(serde_json::json!({ "tempo": 120,
-            "buses": [{ "name": "verb", "effects": [{ "type": "reverb", "mix": 1.0 }] }, { "name": "grp", "gain_db": -3 }],
+            "buses": [
+                { "name": "verb", "effects": [{ "type": "reverb", "mix": 1.0 }, { "type": "compressor", "threshold_db": -30, "ratio": 8, "sidechain": "b" }] },
+                { "name": "grp", "gain_db": -3, "sends": { "verb": -10 }, "effects": [{ "type": "compressor", "threshold_db": -30, "ratio": 6, "attack_ms": 2 }, { "type": "delay", "mix": 0.3 }] },
+                { "name": "off", "muted": true } ],
             "tracks": [
-                { "name": "a", "instrument": "synth.poly", "sends": { "verb": -6 }, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 1 }] }] },
-                { "name": "b", "instrument": "drums.909", "output": "grp", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 36, "start": 0, "length": 0.2 }] }] },
-                { "name": "c", "instrument": "synth.poly", "muted": true, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 64, "start": 0, "length": 1 }] }] } ] }));
+                { "name": "a", "instrument": "synth.poly", "sends": { "verb": -6 }, "output": "grp", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 1 }] }] },
+                { "name": "b", "instrument": "drums.909", "output": "grp", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 36, "start": 0, "length": 0.2 }, { "pitch": 36, "start": 1, "length": 0.2 }] }] },
+                { "name": "c", "instrument": "synth.poly", "muted": true, "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 64, "start": 0, "length": 1 }] }] },
+                { "name": "d", "instrument": "synth.poly", "output": "off", "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 67, "start": 0, "length": 1 }] }] } ] }));
         let r = render_with_stems(&p, quiet()).unwrap();
         let labels: Vec<_> = r.stems.iter().map(|s| s.label.as_str()).collect();
-        assert_eq!(labels, ["a", "verb", "grp"], "b 经 grp、c 静音，不单独成 stem");
+        for want in ["a → verb", "a → grp", "a → grp → verb", "b → grp", "b → grp → verb", "c", "d → off"] {
+            assert!(labels.contains(&want), "缺少分轨 {want}: {labels:?}");
+        }
+        let audible = |s: &&Stem| !p.tracks[s.track].muted && s.path.iter().all(|b| !p.buses[*b].muted);
+        let peak = r.mix.peak();
         for ch in 0..2 {
-            for f in (0..r.mix.num_frames()).step_by(97) {
-                let sum: f32 = r.stems.iter().map(|s| s.audio.channel(ch)[f]).sum();
-                assert!((sum - r.mix.channel(ch)[f]).abs() < 1e-5);
+            for f in (0..r.mix.num_frames()).step_by(31) {
+                let sum: f32 = r.stems.iter().filter(audible).map(|s| s.audio.channel(ch)[f]).sum();
+                assert!((sum - r.mix.channel(ch)[f]).abs() < peak * 1e-4, "帧 {f}: {sum} vs {}", r.mix.channel(ch)[f]);
             }
+        }
+        // 静音的音轨与总线也有声音（供界面取消静音试听）。
+        for name in ["c", "d → off"] {
+            let s = r.stems.iter().find(|s| s.label == name).unwrap();
+            assert!(s.audio.peak() > 0.01, "{name} 应有声音");
         }
         assert_eq!(render(&p, quiet()).unwrap().channel(0), r.mix.channel(0));
     }

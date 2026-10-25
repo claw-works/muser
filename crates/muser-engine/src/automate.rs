@@ -18,6 +18,7 @@ pub const BLOCK: usize = 64;
 const GAIN_RANGE: (f64, f64) = (-80.0, 24.0);
 
 /// 一条编译好的自动化。
+#[derive(Clone)]
 pub struct Lane {
     /// 目标参数名（`gain_db` / `pan` 等标量目标时为空）。
     pub param: String,

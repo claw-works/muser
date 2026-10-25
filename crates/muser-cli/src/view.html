@@ -155,7 +155,7 @@ async function load(payload) {
 function duration() { return mixBuf ? mixBuf.duration : 0; }
 function position() {
   if (!playing) return pausedAt;
-  let p = ctx.currentTime - startAt;
+  let p = Math.max(0, ctx.currentTime - startAt);
   if ($("loop").checked) p = p % duration();
   return Math.min(p, duration());
 }
@@ -229,21 +229,26 @@ function setEdit(n, key, value) {
   const e = edits[n.id] || (edits[n.id] = {});
   if (value === n[key]) delete e[key]; else e[key] = value;
   if (Object.keys(e).length === 0) delete edits[n.id];
-  // 分轨上的改动即时可听：自动切到分轨预览。
-  if (n.stem !== null && mode === "mix" && Object.keys(edits).length) setMode("stems");
+  // 改动即时可听：自动切到分轨预览。
+  if (mode === "mix" && Object.keys(edits).length) setMode("stems");
   updateStemGains(); renderChanges();
   const row = document.querySelector(`tr[data-id="${CSS.escape(n.id)}"]`);
   if (row) row.classList.toggle("changed", !!edits[n.id]);
 }
 function updateStemGains() {
   if (!stemGains.length) return;
+  // 每份分轨 = 一条音轨沿一条总线路径的信号：增益为音轨与路径上各总线的推子改变量之积；
+  // 音轨或路径上任一总线静音则无声。独奏：只听独奏的音轨，或经过独奏总线的信号。
   data.stems.forEach((s, i) => {
-    const n = nodeById(s.node);
-    const c = current(n);
-    const delta = c.gain_db - n.gain_db;
-    // 工程里已静音的节点没有分轨，这里的 n 都是渲染时在发声的。
-    let g = c.muted ? 0 : dbToGain(delta);
-    if (solo.size && !solo.has(n.id)) g = 0;
+    const ids = [s.track, ...s.path];
+    let db = 0, muted = false;
+    for (const id of ids) {
+      const n = nodeById(id), c = current(n);
+      db += c.gain_db - n.gain_db;
+      muted = muted || c.muted;
+    }
+    let g = muted ? 0 : dbToGain(db);
+    if (solo.size && !ids.some((id) => solo.has(id))) g = 0;
     stemGains[i].gain.setTargetAtTime(g, ctx.currentTime, 0.01);
   });
 }
@@ -267,8 +272,6 @@ function renderMixer() {
     const tr = document.createElement("tr");
     tr.dataset.id = n.id;
     if (n.kind === "bus") tr.classList.add("bus");
-    const live = n.stem !== null;            // 有分轨：推子即时可听
-    const editable = live || SERVE;
     const c = current(n);
     const sub = n.kind === "track"
       ? `${n.instrument} → ${n.output}${Object.keys(n.sends).length ? " · 发送 " + Object.keys(n.sends).join(", ") : ""}`
@@ -279,17 +282,15 @@ function renderMixer() {
     nameTd.textContent = n.kind === "bus" ? `[${n.name}]` : n.name;
     const small = document.createElement("small"); small.textContent = sub; nameTd.appendChild(small);
     const range = tr.querySelector("input"), dbTd = tr.querySelector(".db");
-    range.value = c.gain_db; range.disabled = !editable;
+    range.value = c.gain_db;
     range.setAttribute("aria-label", `${n.name} 音量`);
-    if (!editable) range.title = "经过总线的音轨没有单独分轨，静态页里不能即时调；用 muser view --serve 可以";
     dbTd.textContent = fmtDb(c.gain_db);
     range.addEventListener("input", () => { dbTd.textContent = fmtDb(+range.value); setEdit(n, "gain_db", +range.value); });
     range.addEventListener("dblclick", () => { range.value = n.gain_db; range.dispatchEvent(new Event("input")); });
     const mb = tr.querySelector(".m"), sb = tr.querySelector(".s");
-    mb.classList.toggle("on", c.muted); mb.disabled = !editable;
+    mb.classList.toggle("on", c.muted);
     mb.addEventListener("click", () => { const v = !current(n).muted; mb.classList.toggle("on", v); setEdit(n, "muted", v); });
-    sb.disabled = !live;
-    sb.title = live ? "只听这一路（预览用，不写入工程）" : "只有直接进主总线的音轨/总线能独奏";
+    sb.title = "只听这一路（预览用，不写入工程）";
     sb.addEventListener("click", () => {
       if (solo.has(n.id)) solo.delete(n.id); else solo.add(n.id);
       sb.classList.toggle("on", solo.has(n.id));
@@ -306,12 +307,11 @@ function renderMixerHint() {
   if (mode === "stems") {
     notes.push("分轨预览：各分轨在浏览器里相加，推子即时生效。");
     if (data.master_effects.length) notes.push(`不含主总线效果（${data.master_effects.join(" → ")}），响度与成品会有差别，以成品为准。`);
-    notes.push("推子只改音量，不改变侧链被压的深度。");
+    notes.push("推子只改音量，不改变压缩器（含侧链）被压的深度。");
+    if (SERVE) notes.push("点「应用并重新渲染」得到引擎的准确结果。");
   } else {
-    notes.push("成品：引擎渲染的完整混音。拖动有分轨的推子会自动切到分轨预览。");
+    notes.push("成品：引擎渲染的完整混音。动任何推子、M、S 会自动切到分轨预览。");
   }
-  if (data.nodes.some((n) => n.stem === null))
-    notes.push(SERVE ? "经过总线的音轨：改完点「应用并重新渲染」后生效。" : "经过总线的音轨在静态页里不能即时调（用 --serve 模式）。");
   $("mixer-hint").textContent = notes.join(" ");
 }
 

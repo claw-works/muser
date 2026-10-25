@@ -157,15 +157,86 @@ fn run_chain(
     let mut chain: Vec<Fx> = effects::build_chain(fx, &cx.spec)?;
     let beat_at = |f: usize| cx.beat_at(f);
     effects::apply_chain(&mut chain, buf, cx.settings.block_size, lanes, &beat_at, keys);
-    let latency = effects::chain_latency(&chain);
-    if latency > 0 {
-        let n = buf.num_frames();
-        for ch in 0..2 {
-            let c = buf.channel_mut(ch);
-            let l = latency.min(n);
-            c.copy_within(l.., 0);
-            c[n - l..].fill(0.0);
+    advance(buf, effects::chain_latency(&chain));
+    Ok(())
+}
+
+/// 延迟补偿：把信号前移 `latency` 帧。
+fn advance(buf: &mut AudioBuffer<f32>, latency: usize) {
+    if latency == 0 {
+        return;
+    }
+    let n = buf.num_frames();
+    let l = latency.min(n);
+    for ch in 0..2 {
+        let c = buf.channel_mut(ch);
+        c.copy_within(l.., 0);
+        c[n - l..].fill(0.0);
+    }
+}
+
+fn copy_buf(b: &AudioBuffer<f32>) -> AudioBuffer<f32> {
+    let mut out = AudioBuffer::<f32>::new(2, b.num_frames());
+    for ch in 0..2 {
+        out.channel_mut(ch).copy_from_slice(b.channel(ch));
+    }
+    out
+}
+
+/// 分轨分解中的一份信号：来自哪条音轨、经过了哪些总线。
+struct Part {
+    track: usize,
+    path: Vec<usize>,
+    audio: AudioBuffer<f32>,
+}
+
+fn add_part(list: &mut Vec<Part>, track: usize, path: Vec<usize>, src: &AudioBuffer<f32>, cx: &Ctx, level_db: f64, lanes: Option<&Vec<automate::Lane>>) {
+    match list.iter_mut().find(|p| p.track == track && p.path == path) {
+        Some(p) => mix_into(&mut p.audio, src, cx, level_db, lanes),
+        None => {
+            let mut audio = AudioBuffer::<f32>::new(2, src.num_frames());
+            mix_into(&mut audio, src, cx, level_db, lanes);
+            list.push(Part { track, path, audio });
         }
+    }
+}
+
+/// 同一条效果链同时处理全信号与各分轨。每个分轨有自己的效果器实例（线性效果器分解精确）；
+/// 压缩器以全信号（或它的侧链键）为键，各分轨得到与成品相同的增益衰减，分轨之和仍等于成品。
+/// limiter 与插件对各分轨单独处理，属近似。
+fn run_chain_parts(
+    fx: &[Effect],
+    full: &mut AudioBuffer<f32>,
+    parts: &mut [Part],
+    cx: &Ctx,
+    lanes: &mut [Vec<automate::Lane>],
+    keys: &[Option<&AudioBuffer<f32>>],
+) -> Result<(), EngineError> {
+    if parts.is_empty() || fx.is_empty() {
+        return run_chain(fx, full, cx, lanes, keys);
+    }
+    let beat_at = |f: usize| cx.beat_at(f);
+    let bs = cx.settings.block_size;
+    let mut chain = effects::build_chain(fx, &cx.spec)?;
+    let mut part_chains = parts.iter().map(|_| effects::build_chain(fx, &cx.spec)).collect::<Result<Vec<_>, _>>()?;
+    let mut part_lanes: Vec<Vec<Vec<automate::Lane>>> = parts.iter().map(|_| lanes.to_vec()).collect();
+    for k in 0..fx.len() {
+        let side = keys.get(k).copied().flatten();
+        let own_key = matches!(fx[k], Effect::Compressor { sidechain: None, .. });
+        let snapshot = own_key.then(|| copy_buf(full));
+        effects::apply_chain(&mut chain[k..=k], full, bs, &mut lanes[k..=k], &beat_at, &[side]);
+        let key = if own_key { snapshot.as_ref() } else { side };
+        for ((p, c), l) in parts.iter_mut().zip(part_chains.iter_mut()).zip(part_lanes.iter_mut()) {
+            if own_key {
+                effects::key_from_sidechain(&mut c[k]);
+            }
+            effects::apply_chain(&mut c[k..=k], &mut p.audio, bs, &mut l[k..=k], &beat_at, &[key]);
+        }
+    }
+    let latency = effects::chain_latency(&chain);
+    advance(full, latency);
+    for p in parts.iter_mut() {
+        advance(&mut p.audio, latency);
     }
     Ok(())
 }
@@ -220,11 +291,15 @@ fn mix_into(dst: &mut AudioBuffer<f32>, src: &AudioBuffer<f32>, cx: &Ctx, level_
     }
 }
 
-/// 分轨（stem）：一个直接进主总线的音轨或总线，在主总线效果与主增益之前送进主总线的信号。
-/// 所有 stem 相加 = 主总线效果链的输入。
+/// 分轨（stem）：一条音轨沿一条路径（经过的总线，按顺序）送进主总线的信号，在主总线效果与主增益之前。
+///
+/// 每条音轨（含静音的）、每条路径一份，供界面实时静音/独奏任意音轨与总线：
+/// 未静音音轨、经未静音总线的分轨之和 = 主总线效果链的输入（总线上有 limiter/插件时为近似）。
 pub struct Stem {
-    pub node: Node,
-    /// 显示名：音轨名（空名时 `tracks[i]`）或总线名。
+    pub track: usize,
+    /// 经过的总线下标（从音轨往主总线方向）。空 = 直接进主总线。
+    pub path: Vec<usize>,
+    /// 显示名，如 `snare → echo → space`。
     pub label: String,
     pub audio: AudioBuffer<f32>,
 }
@@ -278,7 +353,8 @@ fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> R
     let mut master = AudioBuffer::<f32>::new(2, total_frames);
     let mut bus_in: HashMap<usize, AudioBuffer<f32>> = HashMap::new();
     let mut keys: HashMap<Node, AudioBuffer<f32>> = HashMap::new();
-    let mut stems: Vec<Stem> = Vec::new();
+    let mut stems: Vec<Part> = Vec::new();
+    let mut parts_in: HashMap<usize, Vec<Part>> = HashMap::new();
 
     for &node in &plan.order {
         let (muted, effects_list, gain_db, pan, mut lanes, law): (bool, &[Effect], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) =
@@ -293,7 +369,8 @@ fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> R
                 }
             };
         // 静音且不作为侧链键的节点：完全跳过（静音节点的输入照常丢弃）。
-        if muted && !key_nodes.contains(&node) {
+        // 出分轨时照常处理，只是不把全信号送出去——界面上可以取消静音试听。
+        if muted && !key_nodes.contains(&node) && !capture {
             if let Node::Bus(i) = node {
                 bus_in.remove(&i);
             }
@@ -311,27 +388,41 @@ fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> R
                     .and_then(|s| keys.get(&s.key))
             })
             .collect();
-        run_chain(effects_list, &mut buf, &cx, &mut lanes.effects, &chain_keys)?;
+        let mut parts: Vec<Part> = match node {
+            Node::Bus(i) if capture => parts_in.remove(&i).unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        run_chain_parts(effects_list, &mut buf, &mut parts, &cx, &mut lanes.effects, &chain_keys)?;
         drop(chain_keys);
         fader(&mut buf, &cx, gain_db, pan, &lanes, law);
+        for p in parts.iter_mut() {
+            fader(&mut p.audio, &cx, gain_db, pan, &lanes, law);
+        }
 
-        if !muted {
-            for e in plan.edges.iter().filter(|e| e.from == node) {
+        for e in plan.edges.iter().filter(|e| e.from == node) {
+            let send_lanes = e.send.as_ref().and_then(|s| lanes.sends.get(s));
+            if !muted {
                 let dst = match e.to {
                     None => &mut master,
                     Some(b) => bus_in.entry(b).or_insert_with(|| AudioBuffer::<f32>::new(2, total_frames)),
                 };
-                let send_lanes = e.send.as_ref().and_then(|s| lanes.sends.get(s));
                 mix_into(dst, &buf, &cx, e.level_db, send_lanes);
-                if capture && e.to.is_none() {
-                    let mut audio = AudioBuffer::<f32>::new(2, total_frames);
-                    mix_into(&mut audio, &buf, &cx, e.level_db, send_lanes);
-                    let label = match node {
-                        Node::Track(i) if project.tracks[i].name.is_empty() => format!("tracks[{i}]"),
-                        Node::Track(i) => project.tracks[i].name.clone(),
-                        Node::Bus(i) => project.buses[i].name.clone(),
+            }
+            if capture {
+                let sources: Vec<(usize, &[usize], &AudioBuffer<f32>)> = match node {
+                    Node::Track(i) => vec![(i, &[][..], &buf)],
+                    Node::Bus(_) => parts.iter().map(|p| (p.track, p.path.as_slice(), &p.audio)).collect(),
+                };
+                for (track, path, audio) in sources {
+                    let mut path = path.to_vec();
+                    let list = match e.to {
+                        None => &mut stems,
+                        Some(b) => {
+                            path.push(b);
+                            parts_in.entry(b).or_default()
+                        }
                     };
-                    stems.push(Stem { node, label, audio });
+                    add_part(list, track, path, audio, &cx, e.level_db, send_lanes);
                 }
             }
         }
@@ -363,6 +454,21 @@ fn render_graph(project: &Project, settings: RenderSettings, capture: bool) -> R
             }
         }
     }
+    let track_name = |i: usize| {
+        let t = &project.tracks[i];
+        if t.name.is_empty() { format!("tracks[{i}]") } else { t.name.clone() }
+    };
+    let stems = stems
+        .into_iter()
+        .map(|p| {
+            let mut label = track_name(p.track);
+            for b in &p.path {
+                label.push_str(" → ");
+                label.push_str(&project.buses[*b].name);
+            }
+            Stem { track: p.track, path: p.path, label, audio: p.audio }
+        })
+        .collect();
     Ok(Rendered { mix: master, stems })
 }
 

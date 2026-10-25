@@ -252,7 +252,8 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 第三方插件作为**乐器**（`host` 特性）：音轨 `instrument` 用 `plugin:路径[#id]`，
   音符经 `process_with`+`ProcessContext` 喂给插件。已用真实 VSTi 验证：
   `Surge XT.vst3` 有音符时 RMS 895、无音符时 RMS 0（完全静音），证明响应音符发声。
-- 播放页 `muser view`：引擎渲染成品 + 分轨（直接进主总线的音轨/总线，主总线效果前），嵌入单文件 HTML，
+- 播放页 `muser view`：引擎渲染成品 + 分轨（每条音轨沿每条总线路径一份，主总线效果前；总线效果器对每份分轨
+  各用一个实例，压缩器以全信号为键，分解精确），嵌入单文件 HTML，
   浏览器 Web Audio 播放与分轨音量预览；`--serve` 本地服务（tiny_http，只绑 127.0.0.1，校验 Host/Origin）
   把页面改动交给引擎重渲染、写回工程 JSON（只改动过的字段），轮询文件变化自动重渲染、页面轮询版本自动刷新
 - MCP server（`muser-mcp`）：33 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
