@@ -15,13 +15,15 @@ env:
 
 jobs:
   build:
-    name: build (${{ matrix.target }})
+    name: build (${{ matrix.target }}${{ matrix.variant }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, archive: tar.gz }
+          # 不带声卡播放（--device），不依赖 libasound.so.2：给服务器、Docker 等没有 ALSA 的环境。
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, archive: tar.gz, variant: -headless, flags: --no-default-features }
           - { os: macos-14, target: aarch64-apple-darwin, archive: tar.gz }
           - { os: macos-14, target: x86_64-apple-darwin, archive: tar.gz }
           - { os: windows-2022, target: x86_64-pc-windows-msvc, archive: zip }
@@ -41,12 +43,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}${{ matrix.variant }}
 
       - name: Build
         run: >
           cargo build --release --locked --target ${{ matrix.target }}
-          -p muser-cli -p muser-mcp --features muser-cli/host,muser-mcp/host
+          -p muser-cli -p muser-mcp --features muser-cli/host,muser-mcp/host ${{ matrix.flags }}
 
       - name: Package
         id: package
@@ -55,7 +57,7 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME}"
           [[ "$version" == v* ]] || version="dev-${GITHUB_SHA::7}"
-          name="muser-${version}-${{ matrix.target }}"
+          name="muser-${version}-${{ matrix.target }}${{ matrix.variant }}"
           mkdir -p "dist/$name"
           ext=""; [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
           cp "target/${{ matrix.target }}/release/muser$ext" "target/${{ matrix.target }}/release/muser-mcp$ext" "dist/$name/"
@@ -78,10 +80,13 @@ jobs:
           "$bin" new -o smoke.muser.json
           "$bin" render smoke.muser.json -o smoke.wav
           test -s smoke.wav
+          if [[ "${{ matrix.variant }}" == -headless ]] && ldd "$bin" | grep -q libasound; then
+            echo "headless 版不应链接 libasound" >&2; exit 1
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
-          name: muser-${{ matrix.target }}
+          name: muser-${{ matrix.target }}${{ matrix.variant }}
           path: ${{ steps.package.outputs.file }}
 
   release:

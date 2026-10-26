@@ -37,7 +37,8 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 ### 0. 直接下载（可选）
 
 [Releases](https://github.com/claw-works/muser/releases) 提供 Linux x86_64、macOS（Apple Silicon / Intel）、Windows x86_64 的预编译版本
-（`muser` 与 `muser-mcp`，已启用插件宿主），解压即用。想从源码构建，继续往下。
+（`muser` 与 `muser-mcp`，已启用插件宿主），解压即用。Linux 版的声卡播放（`muser view --device`）需要 `libasound2`（桌面系统都有）；
+没有 ALSA 的服务器、Docker 用 `-headless` 版。想从源码构建，继续往下。
 
 ### 1. 克隆（含 submodule）
 

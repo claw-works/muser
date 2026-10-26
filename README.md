@@ -36,7 +36,8 @@ vendored as a git submodule.
 ### 0. Download (optional)
 
 [Releases](https://github.com/claw-works/muser/releases) has prebuilt binaries for Linux x86_64, macOS (Apple Silicon / Intel) and Windows x86_64
-(`muser` and `muser-mcp`, with the plugin host enabled). Unpack and run. To build from source, read on.
+(`muser` and `muser-mcp`, with the plugin host enabled). Unpack and run. The Linux build needs `libasound2` (present on desktop systems) for `muser view --device`;
+for servers or Docker without ALSA, use the `-headless` Linux build. To build from source, read on.
 
 ### 1. Clone (with submodules)
 
