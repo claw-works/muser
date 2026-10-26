@@ -35,6 +35,33 @@ pub fn controls(sfz: &Sfz) -> BTreeMap<u8, (String, u8)> {
     out
 }
 
+/// `sfz:` 后的路径 → 实际文件。绝对路径或相对当前目录已存在的原样使用；否则在 `$MUSER_SFZ_PATH`
+/// （路径分隔符分隔的音色库根目录）里找：`根/路径`，以及根下两层以内的子目录 `根/a/路径`、`根/a/b/路径`，
+/// 这样同一份工程在音色库目录层级不同的机器上也能用。都找不到时原样返回（由调用方报"找不到"）。
+pub fn resolve(raw: &str) -> std::path::PathBuf {
+    let path = std::path::PathBuf::from(raw);
+    if path.is_absolute() || path.is_file() {
+        return path;
+    }
+    let roots = std::env::var_os("MUSER_SFZ_PATH").map(|v| std::env::split_paths(&v).collect::<Vec<_>>()).unwrap_or_default();
+    let mut level: Vec<std::path::PathBuf> = roots.into_iter().filter(|r| !r.as_os_str().is_empty()).collect();
+    for depth in 0..3 {
+        if let Some(found) = level.iter().map(|d| d.join(&path)).find(|p| p.is_file()) {
+            return found;
+        }
+        if depth < 2 {
+            let mut subdirs: Vec<_> = level
+                .iter()
+                .filter_map(|d| std::fs::read_dir(d).ok())
+                .flat_map(|it| it.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect::<Vec<_>>())
+                .collect();
+            subdirs.sort(); // 多处命中时结果确定
+            level = subdirs;
+        }
+    }
+    path
+}
+
 fn parse(path: &Path) -> Result<(Sfz, FileSource), String> {
     let text = std::fs::read(path).map_err(|e| format!("读取 SFZ '{}' 失败: {e}", path.display()))?;
     let mut source = FileSource::new(path.parent().unwrap_or(Path::new("")));
@@ -125,6 +152,39 @@ pub fn parse_params(params: &serde_json::Map<String, serde_json::Value>) -> Resu
 
 fn cc_num(name: &str, prefix: &str) -> Option<u8> {
     name.strip_prefix(prefix).and_then(|n| n.parse::<u8>().ok()).filter(|n| *n < 128)
+}
+
+/// 加载好的音色（采样数据在里面，克隆只复制引用）。
+pub struct Loaded {
+    pub instrument: Instrument,
+    /// 按控制器去掉的区域数。
+    pub dropped: usize,
+    /// 剩下的不支持 opcode 提示数。
+    pub warnings: usize,
+}
+
+type Slot = std::sync::Arc<std::sync::Mutex<std::sync::Weak<Loaded>>>;
+static POOL: std::sync::Mutex<BTreeMap<String, Slot>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// 同 [`load`]，但同一份音色（同一 .sfz、文件没改、同样的控制器与奏法）在进程里只加载一次：
+/// 声卡播放、后台渲染、跳转重建都共用同一份采样数据。只要还有人拿着返回的 `Arc` 就一直留着，都放下后释放。
+/// 多处同时要同一份时，只有一处在加载，其余等它。
+pub fn load_shared(path: &Path, opts: &Options) -> Result<std::sync::Arc<Loaded>, String> {
+    let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let key = format!("{}|{mtime:?}|{:?}|{:?}", path.display(), opts.cc, opts.keyswitch);
+    let slot = {
+        let mut pool = POOL.lock().unwrap();
+        pool.retain(|_, s| std::sync::Arc::strong_count(s) > 1 || s.lock().is_ok_and(|w| w.strong_count() > 0));
+        std::sync::Arc::clone(pool.entry(key).or_default())
+    };
+    let mut held = slot.lock().unwrap();
+    if let Some(l) = held.upgrade() {
+        return Ok(l);
+    }
+    let (instrument, dropped, warnings) = load(path, opts)?;
+    let l = std::sync::Arc::new(Loaded { instrument, dropped, warnings });
+    *held = std::sync::Arc::downgrade(&l);
+    Ok(l)
 }
 
 /// 按控制器值展开后加载乐器。返回 (乐器, 去掉的区域数, 剩下的不支持 opcode 提示数)。
@@ -303,6 +363,39 @@ mod tests {
         assert_eq!(note_number("c4"), Some(60));
         assert_eq!(note_number("C#-1"), Some(1));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn shared_load_reuses_samples() {
+        let dir = std::env::temp_dir().join(format!("muser-sfzpool-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.sfz");
+        std::fs::write(&path, "<region> sample=*sine lokey=0 hikey=127").unwrap();
+        let a = load_shared(&path, &Options::default()).unwrap();
+        let b = load_shared(&path, &Options::default()).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&a, &b), "同一份音色只加载一次");
+        let c = load_shared(&path, &Options { cc: BTreeMap::from([(1, 64)]), keyswitch: None }).unwrap();
+        assert!(!std::sync::Arc::ptr_eq(&a, &c), "控制器不同是另一份");
+        drop((a, b));
+        let d = load_shared(&path, &Options::default()).unwrap();
+        assert_eq!(d.instrument.num_regions(), 1, "都放下后重新加载");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn resolve_searches_library_roots() {
+        let root = std::env::temp_dir().join(format!("muser-sfzroot-{}", std::process::id()));
+        let deep = root.join("vendor/pack/Lib");
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(deep.join("p.sfz"), "<region> sample=*sine").unwrap();
+        // 只有这个测试读写 MUSER_SFZ_PATH。
+        std::env::set_var("MUSER_SFZ_PATH", std::env::join_paths(["/nonexistent".into(), root.clone()]).unwrap());
+        assert_eq!(resolve("Lib/p.sfz"), deep.join("p.sfz"), "根下两层子目录");
+        assert_eq!(resolve("pack/Lib/p.sfz"), deep.join("p.sfz"), "根下一层子目录");
+        assert_eq!(resolve("missing/p.sfz"), std::path::PathBuf::from("missing/p.sfz"), "找不到时原样返回");
+        assert_eq!(resolve("/abs/p.sfz"), std::path::PathBuf::from("/abs/p.sfz"));
+        std::env::remove_var("MUSER_SFZ_PATH");
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

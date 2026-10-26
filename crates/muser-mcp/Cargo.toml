@@ -2,6 +2,7 @@
 name = "muser-mcp"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "muser MCP server：把引擎能力暴露为 AI agent 可调用的 tools"
@@ -24,3 +25,6 @@ anyhow = { workspace = true }
 default = []
 ## 插件宿主：外置 VST3/CLAP/LV2 乐器与效果器、插件扫描与参数工具。
 host = ["muser-engine/host"]
+
+[lints]
+workspace = true

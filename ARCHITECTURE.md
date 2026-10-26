@@ -1,7 +1,7 @@
 # muser 架构
 
 muser 是一个**面向 AI 的无头（headless）编曲引擎**。它没有 GUI，只提供
-结构化数据格式 + CLI + （规划中的）MCP server，让 AI agent 能够以「表达音乐意图」
+结构化数据格式 + CLI + MCP server，让 AI agent 能够以「表达音乐意图」
 的方式驱动一个确定性的音频引擎，产出可听的音频。
 
 设计信条：**引擎负责确定性的"音频真相"，AI 负责"意图翻译"，接口层是两者的契约。**
@@ -13,13 +13,14 @@ muser 是一个**面向 AI 的无头（headless）编曲引擎**。它没有 GUI
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  3. 接口层 (muser-cli + muser-mcp)                            │
-│     - CLI 子命令：render / validate / instruments / effects / new │
+│     - CLI 子命令：render / validate / instruments / effects /     │
+│       plugin / audition / view / routing / new               │
 │     - MCP server (muser-mcp)：把能力作为 tools 暴露给 agent    │
 │     - skill 文档：告诉 AI 如何表达音乐意图 (SKILLS.md)         │
 ├─────────────────────────────────────────────────────────────┤
 │  2. 引擎适配层 (muser-engine)                                 │
 │     - instrument：语义乐器名 → manguebyte 乐器                 │
-│     - render：Project → 样本精确调度 → 离线渲染 → WAV          │
+│     - render：Project → 流式 Renderer → WAV / 播放页 / 声卡    │
 ├─────────────────────────────────────────────────────────────┤
 │  1. 领域模型层 (muser-core)                                   │
 │     - Project / Track / Clip / Note / Beats / TimeSignature   │
@@ -41,19 +42,19 @@ AI 只需理解**第 1 层的 JSON 格式**和**第 3 层的命令**；第 0、2
 | crate | 层 | 职责 | 关键依赖 |
 |---|---|---|---|
 | `muser-core` | 1 | 领域模型 + 序列化。无音频依赖，编译极快。 | serde |
-| `muser-engine` | 2 | 把 core 模型编译成 manguebyte 乐器并离线渲染。 | muser-core, manguebyte |
+| `muser-engine` | 2 | 把 core 模型编译成 manguebyte 乐器，流式渲染（离线 WAV、边渲染边播、本机声卡）。 | muser-core, manguebyte |
 | `muser-cli` | 3 | CLI 可执行文件 `muser`。 | muser-core, muser-engine, clap |
 | `muser-mcp` | 3 | MCP server（stdio），把能力暴露为 agent tools。 | muser-core, muser-engine, rmcp |
 | `vendor/manguebyte` | 0 | 上游音频引擎（vendored）。 | — |
 
-### 为什么 vendored 而非 git submodule / crates.io 依赖
+### 为什么 vendored（git submodule）而非 crates.io 依赖
 
-- **可控**：源码在仓库内，上游若断更可无缝接管维护（许可为 MIT/Apache，允许 fork）。
+- **可控**：以 git submodule 固定在仓库内的某个提交，上游若断更可切到自己的 fork 接管维护（许可为 MIT/Apache，允许 fork）。
 - **隔离**：`vendor/manguebyte` 是它自己的 Cargo workspace；muser 顶层 workspace 用
   `exclude = ["vendor"]` 排除它，再以 `path` 依赖指向 `vendor/manguebyte/crates/manguebyte`。
   （Cargo 不允许 workspace 嵌套，这是唯一正确的接法。）
-- **纯离线**：依赖时 `default-features = false`，不拉 `devices`（ALSA/CoreAudio 等），
-  只用离线渲染所需的 dsp/formats/graph。将来要做实时预览再开 `devices` 特性。
+- **按需开设备**：依赖时 `default-features = false`，只用渲染所需的部分；本机声卡播放（`muser view --device`）
+  通过 muser-engine 的 `devices` 特性打开 manguebyte 的 `devices`（CoreAudio / WASAPI / ALSA，Linux 需 libasound2-dev）。
 
 ### 同步上游
 
@@ -77,26 +78,30 @@ cd vendor/manguebyte && git pull
 Project JSON  ──Project::from_json──►  muser_core::Project
                                            │  Project::validate()
                                            ▼
-                                    muser_engine::render()
+                                 muser_engine::Renderer（流式）
                                            │
                  ┌─────────────────────────┼─────────────────────────┐
                  ▼                          ▼                          ▼
           每条 Track                 instrument::resolve        逐 clip/note
        instrument 语义名  ──►   manguebyte 乐器(Synth<V>)   ──► 换算成样本精确事件
                                                                  (note_on/note_off)
-                                           │
+                                           │  内置乐器各在一个演奏线程里领先一段先算
                                            ▼
-                              分块处理：到点触发事件 → synth.process()
+             每次 process() 往前推进一段：按路由计划依次处理每个节点
+             （乐器 → 效果链 → 推子 → 送进总线 / 发送 / 侧链键 → 主总线效果链 → 主增益）
                                            │
-                                           ▼
-                          按 track 增益/等功率声像 混入 master 缓冲
-                                           │
-                                           ▼
-                              主增益 → wav::write_file (16bit stereo)
-                                           │
-                                           ▼
-                                        out.wav
+             ┌─────────────────────────────┼─────────────────────────────┐
+             ▼                             ▼                             ▼
+   render()：从头推进到结尾       muser view：边渲染边播放       muser view --device：
+   → wav::write_file              （分段送给浏览器）             无锁队列 → 本机声卡
 ```
+
+离线渲染就是从头到尾调用流式渲染器，两者逐样本一致（测试 `streaming_matches_offline` 用任意块长对比）。
+效果链按从工程开头算起、固定步长的块处理，流式推进的每一段都对齐到这些块的公倍数，所以分块方式与一次处理整首相同；
+有延迟的效果器（limiter 前瞻、插件）让节点的输出取效果链输出往后 latency 帧的样本，上游相应多算这么多。
+声卡播放时推子、静音、独奏在播放线程里从下一段起生效（`Renderer::set_mix`），听到的延迟约等于队列长度（几十毫秒）；
+跳转像 DAW 一样直接从目标位置开始（`Renderer::new_at`）：那时还按着的音与踏板补发（chase），效果器从空状态开始，
+音轨乐器已在缓存里时用缓存的输出；SFZ 音色在进程里只加载一次（`sfz::load_shared`），重建不用重新读采样。
 
 ### 时间模型
 
@@ -264,8 +269,8 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 播放页 `muser view`：本地服务（tiny_http，只绑 127.0.0.1，校验 Host/Origin）。后台渲染线程合并请求、复用
   `RenderCache`（各音轨乐器输出按"影响声音的内容"做键缓存，裁掉首尾静音），改音量/静音/独奏只重跑效果链、总线与主总线；
   页面按播放进度分段拉取 16-bit PCM，用 Web Audio 排期播放，新版本从当前位置无缝换上；保存只写回改过的字段；轮询文件变化
-- 渲染并行：内置乐器多线程渲染；节点按依赖分层并行处理效果链与推子（含插件效果器的节点在当前线程），分发保持原顺序，
-  结果与串行逐样本一致；渲染期间关闭非规格化浮点（`NoDenormals`），近乎静音的尾巴不再拖慢滤波与混响
+- 流式渲染：离线 WAV、边渲染边播、本机声卡共用 `Renderer`，结果逐样本一致；内置乐器各在一个演奏线程里并行演奏
+  （插件乐器与效果器在渲染线程），渲染期间关闭非规格化浮点（`NoDenormals`），近乎静音的尾巴不再拖慢滤波与混响
 - 插件实例延迟约一分钟释放（同一线程内），避免插件后台线程（如 JUCE 联网检查更新）访问已释放对象
 - CI / 发布：GitHub Actions 在 Linux、macOS、Windows 上构建与测试（默认与插件宿主特性）；推送 `v*` 标签时构建
   Linux x86_64、macOS arm64 / x86_64、Windows x86_64 的 `muser` + `muser-mcp`（含插件宿主），附文档与 SHA256，发布到 GitHub Release
@@ -273,5 +278,4 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 
 尚未实现（路线图）：
 - 更多内置效果器类型（waveshaper / 多段 EQ 等，manguebyte 均自带）
-- 实时音频预览（需开启 manguebyte 的 `devices` 特性 + libasound2-dev）
 ```

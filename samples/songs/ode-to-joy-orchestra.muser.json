@@ -47,7 +47,7 @@
  "tracks": [
   {
    "name": "celli_leg",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Celli Legato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Celli Legato.sfz",
    "output": "strings",
    "gain_db": 0,
    "pan": 0.35,
@@ -461,7 +461,7 @@
   },
   {
    "name": "basses_leg",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Basses Legato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Basses Legato.sfz",
    "output": "strings",
    "gain_db": 0,
    "pan": 0.5,
@@ -875,7 +875,7 @@
   },
   {
    "name": "violas_leg",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Violas Legato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Violas Legato.sfz",
    "output": "strings",
    "gain_db": 0,
    "pan": 0.1,
@@ -1296,7 +1296,7 @@
   },
   {
    "name": "violins_leg",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/1st Violins Legato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/1st Violins Legato.sfz",
    "output": "strings",
    "gain_db": 0,
    "pan": -0.45,
@@ -2117,7 +2117,7 @@
   },
   {
    "name": "flutes_leg",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Woodwinds - Performance/Flutes Legato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Woodwinds - Performance/Flutes Legato.sfz",
    "output": "winds",
    "gain_db": 0,
    "pan": -0.15,
@@ -2531,7 +2531,7 @@
   },
   {
    "name": "oboes_leg",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Woodwinds - Performance/Oboes Legato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Woodwinds - Performance/Oboes Legato.sfz",
    "output": "winds",
    "gain_db": 0,
    "pan": 0.1,
@@ -2952,7 +2952,7 @@
   },
   {
    "name": "violins_coda",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/1st Violins Marcato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/1st Violins Marcato.sfz",
    "output": "strings",
    "gain_db": 0,
    "pan": -0.45,
@@ -2996,7 +2996,7 @@
   },
   {
    "name": "flutes_coda",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Woodwinds - Performance/Flutes Marcato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Woodwinds - Performance/Flutes Marcato.sfz",
    "output": "winds",
    "gain_db": 0,
    "pan": -0.15,
@@ -3040,7 +3040,7 @@
   },
   {
    "name": "oboes_coda",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Woodwinds - Performance/Oboes Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Woodwinds - Performance/Oboes Sustain.sfz",
    "output": "winds",
    "gain_db": 0,
    "pan": 0.1,
@@ -3084,7 +3084,7 @@
   },
   {
    "name": "violas_mar",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Violas Marcato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Violas Marcato.sfz",
    "output": "strings",
    "gain_db": -3,
    "pan": 0.1,
@@ -3536,7 +3536,7 @@
   },
   {
    "name": "celli_mar",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Celli Marcato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Celli Marcato.sfz",
    "output": "strings",
    "gain_db": 0,
    "pan": 0.35,
@@ -3964,7 +3964,7 @@
   },
   {
    "name": "basses_mar",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Basses Marcato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Basses Marcato.sfz",
    "output": "strings",
    "gain_db": 0,
    "pan": 0.5,
@@ -4392,7 +4392,7 @@
   },
   {
    "name": "violas_sus",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Violas Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Violas Sustain.sfz",
    "output": "strings",
    "gain_db": -6,
    "pan": 0.1,
@@ -4832,7 +4832,7 @@
   },
   {
    "name": "celli_sus",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Celli Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Celli Sustain.sfz",
    "output": "strings",
    "gain_db": -6,
    "pan": 0.35,
@@ -5062,7 +5062,7 @@
   },
   {
    "name": "basses_pizz",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Strings - Performance/Basses Pizzicato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Strings - Performance/Basses Pizzicato.sfz",
    "output": "strings",
    "gain_db": -4,
    "pan": 0.5,
@@ -5845,7 +5845,7 @@
   },
   {
    "name": "clarinets",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Woodwinds - Performance/Clarinets Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Woodwinds - Performance/Clarinets Sustain.sfz",
    "output": "winds",
    "gain_db": -3,
    "pan": -0.05,
@@ -6681,7 +6681,7 @@
   },
   {
    "name": "bassoons",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Woodwinds - Performance/Bassoons Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Woodwinds - Performance/Bassoons Sustain.sfz",
    "output": "winds",
    "gain_db": -3,
    "pan": 0.15,
@@ -7493,7 +7493,7 @@
   },
   {
    "name": "horns",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Brass - Performance/Horns Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Brass - Performance/Horns Sustain.sfz",
    "output": "brass",
    "gain_db": -7,
    "pan": -0.3,
@@ -8215,7 +8215,7 @@
   },
   {
    "name": "trumpets",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Brass - Performance/Trumpets Marcato.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Brass - Performance/Trumpets Marcato.sfz",
    "output": "brass",
    "gain_db": 0,
    "pan": 0.2,
@@ -8667,7 +8667,7 @@
   },
   {
    "name": "trombones",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Brass - Performance/Trombones Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Brass - Performance/Trombones Sustain.sfz",
    "output": "brass",
    "gain_db": -8,
    "pan": 0.35,
@@ -9155,7 +9155,7 @@
   },
   {
    "name": "tuba",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Brass - Performance/Tuba Sustain.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Brass - Performance/Tuba Sustain.sfz",
    "output": "brass",
    "gain_db": -6,
    "pan": 0.45,
@@ -9391,7 +9391,7 @@
   },
   {
    "name": "timpani",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Percussion/Timpani.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Percussion/Timpani.sfz",
    "output": "perc",
    "gain_db": -3,
    "pan": 0,
@@ -9616,7 +9616,7 @@
   },
   {
    "name": "timpani_roll",
-   "instrument": "sfz:/data/Music/SFZ-samples/sso-4.0/Sonatina Symphonic Orchestra/Percussion/Timpani.sfz",
+   "instrument": "sfz:Sonatina Symphonic Orchestra/Percussion/Timpani.sfz",
    "output": "perc",
    "gain_db": -4,
    "pan": 0,

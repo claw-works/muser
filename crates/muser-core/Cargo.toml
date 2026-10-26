@@ -2,6 +2,7 @@
 name = "muser-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "muser 领域模型层：Project/Track/Clip/Note 的结构化表示与序列化"
@@ -10,3 +11,6 @@ description = "muser 领域模型层：Project/Track/Clip/Note 的结构化表�
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -2002,7 +2002,7 @@
     }
    ],
    "gain_db": 5.0,
-   "instrument": "sfz:/data/Music/SFZ-samples/freepats/SalamanderGrandPiano/SalamanderGrandPiano-SFZ+FLAC-V3+20200602/SalamanderGrandPiano-V3+20200602.sfz",
+   "instrument": "sfz:SalamanderGrandPiano-SFZ+FLAC-V3+20200602/SalamanderGrandPiano-V3+20200602.sfz",
    "name": "piano",
    "sends": {
     "hall": -9

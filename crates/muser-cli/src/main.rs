@@ -17,7 +17,7 @@ use std::fs;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use muser_core::{Clip, Note, Project, Track};
-use muser_engine::{render_to_wav, RenderSettings};
+use muser_engine::{render_to_wav_with_progress, RenderSettings};
 
 #[derive(Parser)]
 #[command(name = "muser", version, about = "面向 AI 的无头编曲引擎 CLI")]
@@ -116,6 +116,8 @@ enum Command {
     },
     /// 给人听的播放页：起本地服务（只监听 127.0.0.1），浏览器里播放、看时间线，调音量/静音/独奏，
     /// 改动由引擎重新渲染；「保存」写回工程。工程文件被改了会自动重新渲染、页面刷新。
+    /// 在本机听时加 --device：声音直接从这台机器的声卡出，调音量/静音/独奏即时生效（页面只做遥控）；
+    /// 远程（经 SSH 端口转发）用默认的浏览器播放。
     View {
         /// 工程文件路径。
         project: String,
@@ -131,6 +133,9 @@ enum Command {
         /// 结尾余响秒数。
         #[arg(long, default_value_t = 2.0)]
         tail: f64,
+        /// 用本机声卡播放（声音从运行 muser 的这台机器出）。
+        #[arg(long)]
+        device: bool,
     },
 
     /// 打印工程的信号流：每条音轨/总线送到哪里、发送量、侧链、处理顺序。
@@ -275,9 +280,9 @@ fn main() -> Result<()> {
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::Routing { project } => cmd_routing(&project),
-        Command::View { project, port, open, sample_rate, tail } => {
+        Command::View { project, port, open, sample_rate, tail, device } => {
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
-            view::serve(&project, settings, port, open)
+            view::serve(&project, settings, port, open, device)
         }
         Command::Plugin { command } => cmd_plugin(command),
         Command::Audition { instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json } => {
@@ -299,8 +304,22 @@ fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64) -> 
         tail_seconds: tail,
         ..RenderSettings::default()
     };
-    let (seconds, peak_db) = render_to_wav(&project, output, settings)
-        .with_context(|| format!("渲染失败: {project_path}"))?;
+    // 在终端里原地显示进度（大工程、调试构建可能要渲染很久）；输出被管道/AI 捕获时不打印。
+    let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let (sr, t0) = (f64::from(sample_rate), std::time::Instant::now());
+    let mut last = std::time::Instant::now();
+    let mut progress = |done: usize, total: usize| {
+        if tty && (last.elapsed().as_millis() >= 200 || done == total) {
+            last = std::time::Instant::now();
+            eprint!("\r渲染中 {:3.0}%（{:.1}s / {:.1}s，用时 {:.1}s）", done as f64 * 100.0 / total.max(1) as f64, done as f64 / sr, total as f64 / sr, t0.elapsed().as_secs_f64());
+        }
+    };
+    let result = render_to_wav_with_progress(&project, output, settings, &mut progress);
+    if tty {
+        // 用空格覆盖进度行（老式 Windows 控制台不认 ANSI 清行）。
+        eprint!("\r{:80}\r", "");
+    }
+    let (seconds, peak_db) = result.with_context(|| format!("渲染失败: {project_path}"))?;
     println!(
         "已渲染 '{}' → {output}: {:.2}s, 峰值 {:.1} dBFS",
         project.name, seconds, peak_db

@@ -8,6 +8,8 @@ pub mod automate;
 pub mod effects;
 pub mod instrument;
 pub mod params;
+#[cfg(feature = "devices")]
+pub mod playback;
 pub mod plugin;
 pub mod profile;
 pub mod vital;
@@ -50,7 +52,7 @@ pub use instrument::{
 pub use params::Automatable;
 /// 渲染结果用的立体声缓冲（来自 manguebyte）。
 pub use manguebyte::prelude::AudioBuffer;
-pub use render::{render, render_cached, render_metered, render_to_wav, EngineError, Meter, RenderCache, RenderSettings, METER_WINDOW};
+pub use render::{render, render_cached, render_metered, render_to_wav, render_to_wav_with_progress, EngineError, Meter, RenderCache, RenderSettings, Renderer, METER_WINDOW};
 
 /// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
 /// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。
@@ -487,15 +489,15 @@ mod tests {
         assert!(e.contains("找不到 SFZ 文件"), "{e}");
     }
 
-    /// 用本机的 freepats 音色库做真实测试；不存在则跳过。
+    /// 用本机的 freepats 音色库（MUSER_SFZ_PATH）做真实测试；不存在则跳过。
     #[test]
     fn sfz_real_library_makes_sound() {
-        let path = "/data/Music/SFZ-samples/freepats/FM-Piano1/FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz";
-        if !std::path::Path::new(path).is_file() {
-            eprintln!("跳过：未找到 {path}");
+        let path = crate::sfz::resolve("FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz");
+        if !path.is_file() {
+            eprintln!("跳过：未找到 {}（设 MUSER_SFZ_PATH）", path.display());
             return;
         }
-        let audio = render_one(&format!("sfz:{path}"), serde_json::json!({}), &[(60, 0.0, 1.0), (64, 0.0, 1.0)]).unwrap();
+        let audio = render_one(&format!("sfz:{}", path.display()), serde_json::json!({}), &[(60, 0.0, 1.0), (64, 0.0, 1.0)]).unwrap();
         assert!(audio.peak() > 1e-3, "sfz 应发声，峰值 {}", audio.peak());
     }
 
@@ -1159,12 +1161,12 @@ mod tests {
 
     #[test]
     fn sfz_sustain_pedal() {
-        let sfz = "/data/Music/SFZ-samples/freepats/FM-Piano1/FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz";
-        if !std::path::Path::new(sfz).exists() {
+        let sfz = crate::sfz::resolve("FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz");
+        if !sfz.is_file() {
             return;
         }
         let run = |pedal: serde_json::Value| {
-            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("sfz:{sfz}"),
+            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("sfz:{}", sfz.display()),
                 "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.2 }] }] }] })), quiet()).unwrap()
         };
         let (dry, held) = (run(serde_json::json!([])), run(serde_json::json!([[0, 4]])));

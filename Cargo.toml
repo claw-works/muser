@@ -25,8 +25,16 @@ exclude = ["vendor"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 authors = ["muser contributors"]
+
+[workspace.lints.clippy]
+# `!(x > 0.0)` 是有意的写法：NaN 也会被拒绝，改成 `x <= 0.0` 会放过 NaN。
+neg_cmp_op_on_partial_ord = "allow"
+# 乐器/效果器枚举每轨只建一次，变体大小差异不影响性能；复杂类型多为局部闭包表，拆别名反而难读。
+large_enum_variant = "allow"
+type_complexity = "allow"
 
 [workspace.dependencies]
 # 本地 crate
@@ -42,3 +50,12 @@ serde_json = "1"
 anyhow = "1"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
+
+# 调试构建里也优化音频相关代码：不优化时 DSP 慢几十倍，`muser view --device` 跟不上实时。
+# manguebyte 的 DSP 多是泛型，在实例化它的 muser-engine 里编译，所以 muser-engine 也要优化。
+# 接口层（muser-core / cli / mcp）仍不优化，便于调试。
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.muser-engine]
+opt-level = 3

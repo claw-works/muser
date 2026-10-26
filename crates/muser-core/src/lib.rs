@@ -201,12 +201,12 @@ fn check_automation(a: &Automation, layer: Layer, effects: usize, sends: &[&str]
         Layer::Bus => "effects[i] / gain_db / pan / sends.<总线>",
     };
     let target = Target::parse(&a.target).ok_or_else(|| err(format!("target '{}' 无效，可选: {allowed}", a.target)))?;
-    let ok = match (&target, layer) {
-        (Target::MasterGain | Target::MasterEffect(_), Layer::Master) => true,
-        (Target::Instrument, Layer::Track) => true,
-        (Target::Effect(_) | Target::Gain | Target::Pan | Target::Send(_), Layer::Track | Layer::Bus) => true,
-        _ => false,
-    };
+    let ok = matches!(
+        (&target, layer),
+        (Target::MasterGain | Target::MasterEffect(_), Layer::Master)
+            | (Target::Instrument, Layer::Track)
+            | (Target::Effect(_) | Target::Gain | Target::Pan | Target::Send(_), Layer::Track | Layer::Bus)
+    );
     if !ok {
         let hint = match target {
             Target::MasterGain | Target::MasterEffect(_) => "；主总线目标写在工程级 automation",

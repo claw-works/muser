@@ -1,10 +1,14 @@
 //! `muser view`：给人听、调音量的页面，由本地服务与引擎联动。
 //!
 //! - 服务只监听 127.0.0.1。页面不下载整首音频：按播放进度向服务分段取已经混好的立体声（16-bit PCM），
-//!   内存只占几秒钟，曲子多长都行。
+//!   页面内存只占几秒钟，曲子多长都行。
+//! - 边渲染边播放：引擎流式渲染，开头一小段好了就能播（乐器边演奏边出声，同时录进缓存），
+//!   波形与电平随渲染进度补齐。
 //! - 页面上改音量、静音、独奏，服务用引擎重新渲染（乐器输出有缓存，只重跑效果、总线与主总线），
-//!   新版本就绪后从当前播放位置无缝换上。独奏只用于试听，不写进工程。
+//!   新版本渲染过当前播放位置后从这里无缝换上。独奏只用于试听，不写进工程。
 //! - 「保存」只把改过的 `gain_db` / `muted` 写回工程文件；工程文件被别人（AI）改了会自动重新渲染、页面刷新。
+//! - `--device`：声音从本机声卡出（`muser_engine::playback::Player`），页面只做遥控；改推子、静音、独奏
+//!   在播放中即时生效，不等重新渲染。浏览器模式的渲染照常进行（波形、电平，并填充跳转用的乐器缓存）。
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -14,35 +18,47 @@ use std::time::{Duration, SystemTime};
 use anyhow::{Result, anyhow, bail};
 use muser_core::Project;
 use muser_core::routing::{self, Node};
-use muser_engine::{AudioBuffer, METER_WINDOW, RenderCache, RenderSettings, render_metered};
+use muser_engine::{AudioBuffer, METER_WINDOW, RenderCache, RenderSettings, Renderer};
 use serde_json::{Value, json};
 
 const PAGE: &str = include_str!("view.html");
 /// 页面上的波形条数。
 const PEAKS: usize = 2000;
 
-/// 立体声 f32 → 交错的 16-bit PCM（小端）。
-fn pcm16(audio: &AudioBuffer<f32>) -> Vec<u8> {
+/// 立体声 f32 的前 `n` 帧 → 交错的 16-bit PCM（小端），追加到 `out`。
+fn pcm16(audio: &AudioBuffer<f32>, n: usize, out: &mut Vec<u8>) {
     let (l, r) = (audio.channel(0), audio.channel(1));
-    let mut out = Vec::with_capacity(l.len() * 4);
-    for f in 0..l.len() {
+    out.reserve(n * 4);
+    for f in 0..n {
         for s in [l[f], r[f]] {
             out.extend_from_slice(&((s.clamp(-1.0, 1.0) * 32767.0).round() as i16).to_le_bytes());
         }
     }
-    out
 }
 
-fn peaks(audio: &AudioBuffer<f32>) -> Vec<f32> {
-    let n = audio.num_frames().max(1);
-    let per = n.div_ceil(PEAKS).max(1);
-    (0..PEAKS)
-        .map(|i| {
-            let (a, b) = ((i * per).min(n), ((i + 1) * per).min(n));
-            (a..b).step_by(4).map(|f| audio.channel(0)[f].abs().max(audio.channel(1)[f].abs())).fold(0f32, f32::max)
-        })
-        .map(|p| (p * 1000.0).round() / 1000.0)
-        .collect()
+/// 波形：整首分成 [`PEAKS`] 段，每段每 4 帧取一个样本的峰值。`audio` 的前 `n` 帧是整首的第 `at` 帧起。
+fn add_peaks(peaks: &mut [f32], total: usize, audio: &AudioBuffer<f32>, at: usize, n: usize) {
+    let per = total.max(1).div_ceil(PEAKS).max(1);
+    for i in 0..n {
+        let f = at + i;
+        if (f % per) % 4 == 0 {
+            let p = &mut peaks[(f / per).min(PEAKS - 1)];
+            *p = p.max(audio.channel(0)[i].abs().max(audio.channel(1)[i].abs()));
+        }
+    }
+}
+
+/// 电平：每 [`METER_WINDOW`] 帧一组 `[左峰值, 右峰值]`。`audio` 的前 `n` 帧是整首的第 `at` 帧起。
+fn add_meter(meter: &mut Vec<[f32; 2]>, audio: &AudioBuffer<f32>, at: usize, n: usize) {
+    for i in 0..n {
+        let w = (at + i) / METER_WINDOW;
+        if meter.len() <= w {
+            meter.push([0.0; 2]);
+        }
+        for (c, m) in meter[w].iter_mut().enumerate() {
+            *m = m.max(audio.channel(c)[i].abs());
+        }
+    }
 }
 
 /// 标准 base64。
@@ -66,17 +82,6 @@ fn encode_meter(peaks: &[[f32; 2]]) -> String {
         (((db + 60.0) / 60.0).clamp(0.0, 1.0) * 255.0).round() as u8
     };
     base64(&peaks.iter().flat_map(|[l, r]| [q(*l), q(*r)]).collect::<Vec<u8>>())
-}
-
-fn meter_of(audio: &AudioBuffer<f32>) -> Vec<[f32; 2]> {
-    let n = audio.num_frames();
-    (0..n.div_ceil(METER_WINDOW))
-        .map(|w| {
-            let r = w * METER_WINDOW..((w + 1) * METER_WINDOW).min(n);
-            let pk = |ch: usize| audio.channel(ch)[r.clone()].iter().fold(0f32, |m, s| m.max(s.abs()));
-            [pk(0), pk(1)]
-        })
-        .collect()
 }
 
 /// 效果器在信号流图里的显示：类型、简短标签、侧链键。
@@ -303,15 +308,26 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
     })
 }
 
-/// 一个渲染好的版本。
+/// 一个版本：边渲染边往里写，读的一方按已渲染的部分取。
 struct Version {
-    pcm: Arc<Vec<u8>>,
+    /// 整首的帧数。
     frames: usize,
-    peaks: Vec<f32>,
     summary: Value,
+    progress: Mutex<Progress>,
+    grown: Condvar,
+}
+
+#[derive(Default)]
+struct Progress {
+    pcm: Vec<u8>,
+    /// 已渲染的帧数。
+    rendered: usize,
+    peaks: Vec<f32>,
+    /// 节点 id（或 "master"）→ 电平。
+    meters: BTreeMap<String, Vec<[f32; 2]>>,
+    /// 渲染到结尾（或失败、被新请求取代）后不再增长。
+    done: bool,
     seconds_to_render: f64,
-    /// 节点 id（或 "master"）→ 编码后的电平。
-    meters: BTreeMap<String, String>,
 }
 
 struct State {
@@ -329,6 +345,11 @@ struct State {
     previous: Option<(u64, Arc<Version>)>,
     error: Option<String>,
     file_mtime: Option<SystemTime>,
+    /// 页面最近取音频的位置（帧），新版本渲染过这里才换上。
+    fetching_at: usize,
+    /// 声卡播放器当前载入的工程（去掉推子、静音后的 JSON；变了要重新载入）。
+    #[cfg(feature = "device")]
+    player_shape: Option<String>,
 }
 
 struct Shared {
@@ -336,6 +357,10 @@ struct Shared {
     settings: RenderSettings,
     state: Mutex<State>,
     wake: Condvar,
+    /// 乐器输出缓存：渲染线程填充，声卡播放跳转时复用。
+    cache: Arc<Mutex<RenderCache>>,
+    #[cfg(feature = "device")]
+    player: Option<muser_engine::playback::Player>,
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
@@ -346,6 +371,28 @@ impl Shared {
     fn request_render(&self, st: &mut State) {
         st.requested = true;
         self.wake.notify_all();
+        #[cfg(feature = "device")]
+        if let (Some(player), Some(w)) = (&self.player, &st.working) {
+            let p = with_solo(w, &st.solo);
+            // 只改了推子、静音时即时生效；别的变了（文件被改）重新载入。
+            let mut shape = p.clone();
+            for t in &mut shape.tracks {
+                (t.gain_db, t.muted) = (0.0, false);
+                t.automation.retain(|a| a.target.trim() != "gain_db");
+            }
+            for b in &mut shape.buses {
+                (b.gain_db, b.muted) = (0.0, false);
+                b.automation.retain(|a| a.target.trim() != "gain_db");
+            }
+            shape.master_gain_db = 0.0;
+            let shape = serde_json::to_string(&shape).unwrap_or_default();
+            if st.player_shape.as_deref() == Some(shape.as_str()) {
+                player.set_mix(p);
+            } else {
+                st.player_shape = Some(shape);
+                player.load(p);
+            }
+        }
     }
 
     /// 从磁盘读工程（启动时、文件变化时）。页面上未保存的改动丢弃。
@@ -381,9 +428,8 @@ impl Shared {
         }
     }
 
-    /// 渲染线程：合并请求，总是渲染最新的工作副本。
+    /// 渲染线程：总是渲染最新的工作副本。渲染中来了新请求就放下当前这版，从头渲染新的。
     fn render_loop(&self) {
-        let mut cache = RenderCache::new();
         loop {
             let project = {
                 let mut st = self.state.lock().unwrap();
@@ -399,38 +445,112 @@ impl Shared {
                 continue;
             };
             let t0 = std::time::Instant::now();
-            let result = render_metered(&project, self.settings, &mut cache);
-            let secs = t0.elapsed().as_secs_f64();
-            let mut st = self.state.lock().unwrap();
-            st.rendering = st.requested;
-            match result {
-                Ok((audio, node_meters)) => {
-                    let mut meters: BTreeMap<String, String> =
-                        node_meters.iter().map(|m| (node_id(m.node), encode_meter(&m.peaks))).collect();
-                    meters.insert("master".into(), encode_meter(&meter_of(&audio)));
-                    let v = Arc::new(Version {
-                        meters,
-                        pcm: Arc::new(pcm16(&audio)),
-                        frames: audio.num_frames(),
-                        peaks: peaks(&audio),
-                        summary,
-                        seconds_to_render: secs,
-                    });
-                    if let Some(cur) = st.current.take() {
-                        st.previous = Some((st.version, cur));
-                    }
-                    st.version += 1;
-                    st.current = Some(v);
-                    st.error = None;
-                    eprintln!("[view] 版本 {}：渲染 {secs:.1}s（乐器缓存 {} 条，{:.0} MB）", st.version, cache.len(), cache.bytes() as f64 / 1e6);
-                }
+            let renderer = Renderer::new(&project, self.settings, Some(&self.cache.lock().unwrap()), false).map(|r| r.with_meters().recording());
+            let mut r = match renderer {
+                Ok(r) => r,
                 Err(e) => {
-                    let msg = format!("{e:#}");
-                    eprintln!("[view] 渲染失败：{msg}");
-                    st.error = Some(msg);
+                    self.fail(format!("{e:#}"));
+                    continue;
                 }
+            };
+            let total = r.total_frames();
+            let v = Arc::new(Version {
+                frames: total,
+                summary,
+                progress: Mutex::new(Progress { peaks: vec![0.0; PEAKS], ..Default::default() }),
+                grown: Condvar::new(),
+            });
+            // 还没有可播的版本时立即换上，否则等渲染过页面的播放位置。
+            let mut published = false;
+            if self.state.lock().unwrap().current.is_none() {
+                self.publish(&v);
+                published = true;
+            }
+            let mut block = AudioBuffer::<f32>::new(2, 8192);
+            let outcome = loop {
+                let n = match r.process(&mut block) {
+                    Ok(0) => break Ok(true),
+                    Ok(n) => n,
+                    Err(e) => break Err(format!("{e:#}")),
+                };
+                {
+                    let mut pr = v.progress.lock().unwrap();
+                    let at = pr.rendered;
+                    pcm16(&block, n, &mut pr.pcm);
+                    add_peaks(&mut pr.peaks, total, &block, at, n);
+                    add_meter(pr.meters.entry("master".into()).or_default(), &block, at, n);
+                    pr.rendered = at + n;
+                    // 节点电平每秒更新一次（复制有代价）。
+                    if pr.rendered / 48_000 != at / 48_000 {
+                        for m in r.meters() {
+                            pr.meters.insert(node_id(m.node), m.peaks);
+                        }
+                    }
+                    pr.seconds_to_render = t0.elapsed().as_secs_f64();
+                }
+                v.grown.notify_all();
+                let st = self.state.lock().unwrap();
+                let past_playhead = v.progress.lock().unwrap().rendered >= st.fetching_at + self.settings.sample_rate as usize;
+                let superseded = st.requested;
+                drop(st);
+                if !published && past_playhead {
+                    self.publish(&v);
+                    published = true;
+                }
+                if superseded {
+                    break Ok(false);
+                }
+            };
+            {
+                let mut pr = v.progress.lock().unwrap();
+                if matches!(outcome, Ok(true)) {
+                    for m in r.meters() {
+                        pr.meters.insert(node_id(m.node), m.peaks);
+                    }
+                }
+                pr.done = true;
+                pr.seconds_to_render = t0.elapsed().as_secs_f64();
+            }
+            v.grown.notify_all();
+            match outcome {
+                Ok(true) => {
+                    if !published {
+                        self.publish(&v);
+                    }
+                    let mut cache = self.cache.lock().unwrap();
+                    r.store_instruments(&mut cache);
+                    let mut st = self.state.lock().unwrap();
+                    st.rendering = st.requested;
+                    st.error = None;
+                    eprintln!(
+                        "[view] 版本 {}：渲染 {:.1}s（乐器缓存 {} 条，{:.0} MB）",
+                        st.version,
+                        t0.elapsed().as_secs_f64(),
+                        cache.len(),
+                        cache.bytes() as f64 / 1e6
+                    );
+                }
+                Ok(false) => {}
+                Err(e) => self.fail(e),
             }
         }
+    }
+
+    /// 换上新版本（上一版留着，让正在取的分段读完）。
+    fn publish(&self, v: &Arc<Version>) {
+        let mut st = self.state.lock().unwrap();
+        if let Some(cur) = st.current.take() {
+            st.previous = Some((st.version, cur));
+        }
+        st.version += 1;
+        st.current = Some(Arc::clone(v));
+    }
+
+    fn fail(&self, msg: String) {
+        eprintln!("[view] 渲染失败：{msg}");
+        let mut st = self.state.lock().unwrap();
+        st.rendering = st.requested;
+        st.error = Some(msg);
     }
 
     fn mix(&self, body: MixBody) -> Result<(), String> {
@@ -480,7 +600,11 @@ impl Shared {
 
     fn status(&self) -> Value {
         let st = self.state.lock().unwrap();
-        json!({ "version": st.version, "rendering": st.rendering || st.requested, "error": st.error })
+        let progress = st.current.as_ref().map_or(0.0, |v| {
+            let pr = v.progress.lock().unwrap();
+            if pr.done { 1.0 } else { pr.rendered as f64 / v.frames.max(1) as f64 }
+        });
+        json!({ "version": st.version, "rendering": st.rendering || st.requested, "progress": progress, "error": st.error, "device": self.device_status() })
     }
 
     fn state_json(&self) -> Value {
@@ -491,17 +615,20 @@ impl Shared {
         };
         let mut out = match &st.current {
             Some(v) => {
+                let pr = v.progress.lock().unwrap();
                 let mut s = v.summary.clone();
                 s["frames"] = json!(v.frames);
-                s["peaks"] = json!(v.peaks);
-                s["render_seconds"] = json!((v.seconds_to_render * 10.0).round() / 10.0);
-                s["meters"] = json!(v.meters);
+                s["rendered"] = json!(pr.rendered);
+                s["peaks"] = json!(pr.peaks.iter().map(|p| (p * 1000.0).round() / 1000.0).collect::<Vec<_>>());
+                s["render_seconds"] = json!((pr.seconds_to_render * 10.0).round() / 10.0);
+                s["meters"] = json!(pr.meters.iter().map(|(k, m)| (k.clone(), encode_meter(m))).collect::<BTreeMap<_, _>>());
                 s["meter_window"] = json!(METER_WINDOW);
                 s
             }
             None => json!({}),
         };
         out["ready"] = json!(st.current.is_some());
+        out["device_mode"] = json!(!self.device_status().is_null());
         out["sample_rate"] = json!(self.settings.sample_rate);
         out["version"] = json!(st.version);
         out["rendering"] = json!(st.rendering || st.requested);
@@ -522,18 +649,50 @@ impl Shared {
         out
     }
 
-    /// 某版本的一段 PCM。版本不在了返回 None（页面会重新取状态）。
+    fn device_status(&self) -> Value {
+        #[cfg(feature = "device")]
+        if let Some(p) = &self.player {
+            return json!(p.status());
+        }
+        Value::Null
+    }
+
+    /// 声卡播放的走带：`play` / `pause` / `seek`（`seconds`）/ `monitor`（`db`）。
+    fn transport(&self, body: &Value) -> Result<(), String> {
+        #[cfg(feature = "device")]
+        if let Some(p) = &self.player {
+            let num = |k: &str| body.get(k).and_then(Value::as_f64).ok_or_else(|| format!("需要 {k}"));
+            match body.get("action").and_then(Value::as_str) {
+                Some("play") => p.play(),
+                Some("pause") => p.pause(),
+                Some("seek") => p.seek(num("seconds")?),
+                Some("monitor") => p.set_monitor_db(num("db")?),
+                _ => return Err("action 应为 play / pause / seek / monitor".into()),
+            }
+            return Ok(());
+        }
+        let _ = body;
+        Err("没有用 --device 启动，声音在浏览器里播放".into())
+    }
+
+    /// 某版本的一段 PCM。还没渲染到的部分最多等 2 秒，返回已有的（可能为空）。
+    /// 版本不在了返回 None（页面会重新取状态）。
     fn pcm(&self, version: u64, from: usize, frames: usize) -> Option<(Vec<u8>, usize)> {
-        let st = self.state.lock().unwrap();
+        let mut st = self.state.lock().unwrap();
         let v = match (&st.current, &st.previous) {
             (Some(c), _) if st.version == version => c.clone(),
             (_, Some((pv, p))) if *pv == version => p.clone(),
             _ => return None,
         };
+        st.fetching_at = from;
         drop(st);
         let from = from.min(v.frames);
-        let to = (from + frames.min(48_000 * 10)).min(v.frames);
-        Some((v.pcm[from * 4..to * 4].to_vec(), v.frames))
+        let (pr, _) = v
+            .grown
+            .wait_timeout_while(v.progress.lock().unwrap(), Duration::from_secs(2), |pr| pr.rendered <= from && !pr.done)
+            .unwrap();
+        let to = (from + frames.min(48_000 * 10)).min(pr.rendered).max(from);
+        Some((pr.pcm[from * 4..to * 4].to_vec(), v.frames))
     }
 }
 
@@ -618,6 +777,10 @@ fn handle(shared: &Shared, mut req: tiny_http::Request, port: u16) {
             Ok(n) => respond_json(req, 200, &json!({ "ok": true, "saved": n })),
             Err(e) => respond_json(req, 400, &json!({ "error": e })),
         },
+        (Method::Post, "/api/transport") => match read_body::<Value>(&mut req).and_then(|b| shared.transport(&b)) {
+            Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
+            Err(e) => respond_json(req, 400, &json!({ "error": e })),
+        },
         (Method::Post, "/api/reset") => {
             shared.reset();
             respond_json(req, 200, &json!({ "ok": true }));
@@ -627,12 +790,25 @@ fn handle(shared: &Shared, mut req: tiny_http::Request, port: u16) {
 }
 
 /// 启动联动服务，阻塞运行直到进程被中断。`open` 时用系统浏览器打开页面。
-pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool) -> Result<()> {
+pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device: bool) -> Result<()> {
     let path = PathBuf::from(path);
     if !path.is_file() {
         bail!("找不到工程文件: {}", path.display());
     }
+    let cache = Arc::new(Mutex::new(RenderCache::new()));
+    #[cfg(feature = "device")]
+    let player = match device {
+        true => Some(muser_engine::playback::Player::start(settings, Arc::clone(&cache)).map_err(|e| anyhow!(e))?),
+        false => None,
+    };
+    #[cfg(not(feature = "device"))]
+    if device {
+        bail!("这个 muser 构建时没有启用 device 特性，不能用声卡播放");
+    }
     let shared = Arc::new(Shared {
+        cache,
+        #[cfg(feature = "device")]
+        player,
         path,
         settings,
         state: Mutex::new(State {
@@ -646,6 +822,9 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool) -> Res
             previous: None,
             error: None,
             file_mtime: None,
+            fetching_at: 0,
+            #[cfg(feature = "device")]
+            player_shape: None,
         }),
         wake: Condvar::new(),
     });
@@ -658,6 +837,11 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool) -> Res
     }
     shared.reload();
     println!("muser view 已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
+    #[cfg(feature = "device")]
+    if let Some(p) = &shared.player {
+        let s = p.status();
+        println!("声卡播放：{}（{} Hz）。页面上的播放、推子都作用于本机声卡。", s.device, s.sample_rate);
+    }
     println!("工程文件变化会自动重新渲染；页面上的改动点「保存」写回工程文件。");
     if open {
         let (opener, mut cmd) = if cfg!(target_os = "macos") {
@@ -775,10 +959,33 @@ mod tests {
     fn pcm_and_peaks() {
         let mut a = AudioBuffer::<f32>::new(2, 3);
         a.channel_mut(0).copy_from_slice(&[1.0, -1.0, 0.5]);
-        let b = pcm16(&a);
+        let mut b = Vec::new();
+        pcm16(&a, 3, &mut b);
         assert_eq!(b.len(), 12);
         assert_eq!(i16::from_le_bytes([b[0], b[1]]), 32767);
         assert_eq!(i16::from_le_bytes([b[4], b[5]]), -32767);
-        assert_eq!(peaks(&a).len(), PEAKS);
+        // 分两次加与一次加相同。
+        let total = 3 * PEAKS * 4;
+        let mut long = AudioBuffer::<f32>::new(2, total);
+        for (i, s) in long.channel_mut(0).iter_mut().enumerate() {
+            *s = (i as f32 * 0.37).sin();
+        }
+        let mut once = vec![0.0; PEAKS];
+        add_peaks(&mut once, total, &long, 0, total);
+        let mut twice = vec![0.0; PEAKS];
+        let half = total / 2 + 3;
+        let mut tail = AudioBuffer::<f32>::new(2, total - half);
+        for c in 0..2 {
+            tail.channel_mut(c).copy_from_slice(&long.channel(c)[half..]);
+        }
+        add_peaks(&mut twice, total, &long, 0, half);
+        add_peaks(&mut twice, total, &tail, half, total - half);
+        assert_eq!(once, twice);
+        let (mut m1, mut m2) = (Vec::new(), Vec::new());
+        add_meter(&mut m1, &long, 0, total);
+        add_meter(&mut m2, &long, 0, half);
+        add_meter(&mut m2, &tail, half, total - half);
+        assert_eq!(m1, m2);
+        assert_eq!(m1.len(), total.div_ceil(METER_WINDOW));
     }
 }

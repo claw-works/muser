@@ -909,7 +909,7 @@ mod imp {
         for i in 0..n {
             let x = p.min + (p.max - p.min) * i as f64 / (n - 1) as f64;
             if let Some(t) = o.plugin.param_to_text(p.id, x) {
-                if out.last().map_or(true, |(_, last)| *last != t) {
+                if out.last().is_none_or(|(_, last)| *last != t) {
                     out.push((x, t));
                 }
             }
@@ -988,10 +988,8 @@ mod imp {
             for kw in words.iter() {
                 let kw = words_of(kw);
                 for q in &visible {
-                    if hit(&words_of(&q.name), &kw) && !picked.iter().any(|(_, x)| x.id == q.id) {
-                        if best.map_or(true, |b| score(q) < score(b)) {
-                            best = Some(q);
-                        }
+                    if hit(&words_of(&q.name), &kw) && !picked.iter().any(|(_, x)| x.id == q.id) && best.is_none_or(|b| score(q) < score(b)) {
+                        best = Some(q);
                     }
                 }
                 if best.is_some() {
@@ -1057,7 +1055,7 @@ mod imp {
             }
         }
         let user = std::env::var("USER").unwrap_or_default();
-        Ok(Profile {
+        Profile {
             schema_version: SCHEMA_VERSION,
             plugin: ProfilePlugin { name: e.name.clone(), vendor: e.vendor.clone(), ids: vec![e.id.clone()] },
             source: ProfileSource {
@@ -1074,7 +1072,7 @@ mod imp {
             selector: None,
             state_format: String::new(),
         }
-        .sanitized()?)
+        .sanitized()
     }
 
     /// 把试听结果转成画像里的观察记录（文字取值由插件给出）。

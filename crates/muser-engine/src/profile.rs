@@ -11,7 +11,7 @@
 //! 画像只含数据，不能执行任何东西；文字字段有长度限制并去掉控制字符。画像里的文字是用户或第三方
 //! 写的说明，展示给 AI 时会标明来源，只作参考。
 //!
-//! 查找顺序（先找到的优先）：`$MUSER_PROFILE_PATH`（冒号分隔的目录）→ 用户目录
+//! 查找顺序（先找到的优先）：`$MUSER_PROFILE_PATH`（冒号分隔的目录，Windows 用分号）→ 用户目录
 //! `~/.config/muser/plugins/` → muser 内置画像。
 
 use std::path::{Path, PathBuf};
@@ -408,8 +408,8 @@ pub fn user_dir() -> PathBuf {
 }
 
 fn search_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var("MUSER_PROFILE_PATH")
-        .map(|v| v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from).collect())
+    let mut dirs: Vec<PathBuf> = std::env::var_os("MUSER_PROFILE_PATH")
+        .map(|v| std::env::split_paths(&v).filter(|p| !p.as_os_str().is_empty()).collect())
         .unwrap_or_default();
     dirs.push(user_dir());
     dirs

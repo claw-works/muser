@@ -667,7 +667,7 @@
   },
   {
    "name": "bass",
-   "instrument": "sfz:/data/Music/SFZ-samples/Black_And_Blue_Basses/Programs/01-darkblack_keysw.sfz",
+   "instrument": "sfz:Black_And_Blue_Basses/Programs/01-darkblack_keysw.sfz",
    "instrument_params": {
     "keyswitch": "Pluck",
     "cc": {

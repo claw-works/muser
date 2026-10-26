@@ -1,138 +1,147 @@
 # muser
 
-**面向 AI 的无头（headless）编曲引擎。**
+English | [简体中文](README.zh-CN.md)
 
-muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数据格式 + CLI + MCP server**，
-让 AI agent 以"表达音乐意图"的方式创作：AI 产出/编辑一份工程 JSON，引擎把它离线渲染成音频。
+**A headless music-arrangement engine built for AI.**
 
-设计信条：**引擎负责确定性的"音频真相"，AI 负责"意图翻译"，接口层是两者的契约。**
+muser has no GUI. It wraps a deterministic audio engine in **a structured data format + a CLI + an MCP server**,
+so an AI agent composes by expressing musical intent: the AI writes or edits a project JSON, and the engine renders it to audio.
 
-底层音频由 [manguebyte](https://github.com/alessonqueirozdev-hub/manguebyte)（一个 Rust 音频框架）
-提供，以 git submodule 的形式 vendored 引入。
+Design principle: **the engine owns the deterministic "audio truth", the AI owns "intent translation", and the interface layer is the contract between them.**
+
+Audio is powered by [manguebyte](https://github.com/alessonqueirozdev-hub/manguebyte) (a Rust audio framework),
+vendored as a git submodule.
 
 ---
 
-## 能做什么
+## Features
 
-- 多轨编曲：鼓组 + 合成器 + 贝斯，多 clip、多音符
-- 115 个内置音源：10 套鼓组、68 个合成器预设，以及吉他、贝斯、风琴、马林巴等打击旋律乐器、弦乐、管乐、合唱（全部由 manguebyte 实时合成，不依赖系统 MIDI 音源），每个都可用 `instrument_params` 调音色
-- 内置 SFZ 采样器：`sfz:/path/to.sfz` 直接加载 SFZ 音色库
-- 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级、总线或主总线
-- 混音路由：总线编组、发送到共用混响/延迟、总线套总线、压缩器侧链（底鼓压贝斯的泵感），自动延迟补偿
-- 自动化：乐器参数、效果器参数、增益、声像、发送量随时间变化（时间点曲线 / LFO / 带种子的随机游走）
-- 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)，扫描本机插件、按参数名 + 文字设置参数、参数自动化（`host` 特性）
-- 试听：`muser audition` 按参数取值逐个渲染，报告响度、亮度、起音、余音，帮 AI 摸清陌生参数
-- 插件画像：把插件使用经验（别名、预设、试听结论）存成可分享的数据文件；插件音色可存为状态文件
-- 内置开源插件的画像与英文 skill：Surge XT / Surge XT Effects、Vital（波表合成器，可设波表与调制矩阵）、
-  Airwindows Consolidated（约 470 个效果，按名称选择）、Plasma（失真）——装好插件即可按名称、别名、预设使用
-- 离线渲染为 WAV（内置乐器多线程并行）；`muser view` 本地播放页：流式播放，调音量/静音/独奏由引擎准确重渲染（有缓存，约 1–2 秒），可保存回工程
-- 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
+- Multi-track arrangement: drums + synths + bass, multiple clips and notes
+- 115 built-in instruments: 10 drum kits, 68 synth presets, plus guitars, basses, organs, mallets (marimba etc.), strings, winds and choirs — all synthesized by manguebyte in real time, no system MIDI synth needed; each one is tweakable via `instrument_params`
+- Built-in SFZ sampler: `sfz:/path/to.sfz` (or a path relative to a sound-library folder on `MUSER_SFZ_PATH`) loads SFZ libraries directly
+- Effect chains (reverb / delay / compressor / chorus / eq / limiter / phaser / flanger) on tracks, buses or the master bus
+- Mix routing: bus groups, sends to shared reverbs/delays, nested buses, compressor sidechains (kick pumping the bass), automatic latency compensation
+- Automation: instrument parameters, effect parameters, gain, pan and send levels over time (point curves / LFO / seeded random walk)
+- Third-party CLAP/VST3/LV2 plugins as effects (VST) or instruments (VSTi): scan installed plugins, set parameters by name and display text, automate them (`host` feature)
+- Audition: `muser audition` renders a parameter at several values and reports loudness, brightness, attack and tail, so the AI can learn unfamiliar parameters
+- Plugin profiles: store plugin know-how (aliases, presets, audition findings) as shareable data files; plugin sounds can be saved as state files
+- Built-in profiles and English skills for open-source plugins: Surge XT / Surge XT Effects, Vital (wavetable synth, with wavetables and mod matrix), Airwindows Consolidated (~470 effects, picked by name), Plasma (distortion) — install the plugin and use it by name, alias or preset
+- Streaming render engine: walks the whole routing graph block by block; offline WAV rendering and render-while-playing share the same code and are sample-identical (instruments of different tracks play in parallel)
+- `muser view` player page: playback starts as soon as the first bit is rendered; after changing volume/mute/solo the new version swaps in seamlessly at the current position; changes can be saved back to the project.
+  Add `--device` to play through this machine's sound card, with volume/mute/solo taking effect instantly (when working remotely over an SSH port forward, use the default in-browser playback)
+- Two AI interfaces: **CLI** (shell calls) and **MCP server** (direct tool calls from the agent)
 
-## 快速上手
+## Quick start
 
-### 0. 直接下载（可选）
+### 0. Download (optional)
 
-[Releases](https://github.com/claw-works/muser/releases) 提供 Linux x86_64、macOS（Apple Silicon / Intel）、Windows x86_64 的预编译版本
-（`muser` 与 `muser-mcp`，已启用插件宿主），解压即用。想从源码构建，继续往下。
+[Releases](https://github.com/claw-works/muser/releases) has prebuilt binaries for Linux x86_64, macOS (Apple Silicon / Intel) and Windows x86_64
+(`muser` and `muser-mcp`, with the plugin host enabled). Unpack and run. To build from source, read on.
 
-### 1. 克隆（含 submodule）
+### 1. Clone (with submodules)
 
-muser 依赖 vendored 的 manguebyte 子模块，务必递归克隆：
+muser depends on the vendored manguebyte submodule, so clone recursively:
 
 ```bash
 git clone --recurse-submodules git@github.com:claw-works/muser.git
 cd muser
 ```
 
-若已普通克隆，补拉子模块：
+If you already cloned without it, fetch the submodule:
 
 ```bash
 git submodule update --init --recursive
 ```
 
-### 2. 构建
+### 2. Build
 
-需要 Rust 1.85+（edition 2024）。
+Requires Rust 1.85+ (edition 2024).
 
 ```bash
 cargo build --release
 ```
 
-> 中国大陆网络访问 crates.io 较慢时，建议配置镜像（如 rsproxy.cn）加速。
+On Linux, sound-card playback (`muser view --device`, enabled by default) needs the ALSA development package: `sudo apt install libasound2-dev`.
+If you don't need it, skip it with `cargo build --release --no-default-features`.
 
-构建产物在 `target/release/muser`（CLI）和 `target/release/muser-mcp`（MCP server）。
-下文命令里的 `muser` 即指该二进制——把 `target/release` 加入 `PATH`，或用全路径调用。
+The binaries are `target/release/muser` (CLI) and `target/release/muser-mcp` (MCP server).
+`muser` in the commands below means that binary — add `target/release` to your `PATH`, or call it by full path.
 
-### 3. 用 CLI 做第一首
+### 3. Make a first track with the CLI
 
 ```bash
-# 生成一个示例工程 JSON
+# Generate an example project JSON
 muser new -o song.muser.json
 
-# 校验
+# Validate
 muser validate song.muser.json
 
-# 渲染为 WAV
+# Render to WAV
 muser render song.muser.json -o song.wav
 
-# 查看可用乐器与效果器（加名称看详情，加 --json 给 AI 解析）
+# List instruments and effects (add a name for details, --json for machine-readable output)
 muser instruments
 muser instruments guitar.nylon
 muser effects
 muser effects reverb
 
-# 查看信号流（总线、发送、侧链）
+# Show the signal flow (buses, sends, sidechains)
 muser routing song.muser.json
 
-# 给人听：本地播放页（时间线、音量/静音/独奏，改动由引擎重新渲染，可保存回工程；AI 改了工程页面自动刷新）
+# For humans: local player page (timeline, volume/mute/solo re-rendered by the engine, save back to the project;
+# the page refreshes when the AI edits the project)
 muser view song.muser.json --open      # http://127.0.0.1:8737/
+# Listening on this machine: sound comes straight out of its sound card, faders/mute/solo apply instantly, the page is a remote control
+muser view song.muser.json --open --device
 ```
 
-> 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。
+> During development you can also run `cargo run -p muser-cli -- <subcommand>` without installing.
 
-### 4. 以 MCP server 运行（给 agent 用）
+### 4. Run as an MCP server (for agents)
 
 ```bash
-muser-mcp          # stdio MCP server，暴露 34 个 tools
+muser-mcp          # stdio MCP server exposing 34 tools
 ```
 
-在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，
-agent 即可通过 `create_project / add_track / add_clip / add_notes / render` 等工具编曲。
+Register this executable as a stdio server in an MCP client (such as Claude Desktop),
+and the agent can arrange music with tools like `create_project / add_track / add_clip / add_notes / render`.
 
-## 外部音色与插件（可选）
+## External sounds and plugins (optional)
 
-内置的 115 个音源不需要下载任何东西（`samples/songs/dnb-liquid-skyline` 等大部分示范只用内置音源）。
-下面这些免费 / 开源的音色库和插件是可选的：`skills/` 与部分 `samples/` 用到它们，装好后按名称、别名、预设就能用。
+The 115 built-in instruments need no downloads (most samples, such as `samples/songs/dnb-liquid-skyline`, use only built-in sounds).
+The free / open-source sound libraries and plugins below are optional: `skills/` and some `samples/` use them; once installed they work by name, alias or preset.
 
-### SFZ 采样音色库
+### SFZ sample libraries
 
-| 音色库 | 内容 | 许可 | 下载 | 用到它的示范 |
+| Library | Contents | License | Download | Used by sample |
 |---|---|---|---|---|
-| Salamander Grand Piano（freepats） | 三角钢琴，多力度层、琴弦共鸣 | CC-BY 3.0 | [freepats.zenvoid.org](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html)（SFZ+FLAC 版） | `songs/bach-prelude-c` |
-| PianoFB（freepats） | 立式钢琴 | GPL-3.0 + 例外 | [freepats.zenvoid.org](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) | `instruments/sfz-piano` |
-| Sonatina Symphonic Orchestra 4.0 | 管弦乐：各声部的 Legato / Marcato / Sustain / Staccato / Pizzicato 等奏法 | CC Sampling Plus 1.0 | [github.com/peastman/sso](https://github.com/peastman/sso)（Releases 里的 v4.0 zip） | `songs/ode-to-joy-orchestra` |
-| Black And Blue Basses（Karoryfer） | 电贝斯，多种奏法（键位切换）与控制器开关 | CC0 | [github.com/sfzinstruments/karoryfer.black-and-blue-basses](https://github.com/sfzinstruments/karoryfer.black-and-blue-basses) | `instruments/sfz-bass-black-and-blue` |
-| VSCO 2 Community Edition | 管弦乐（较小，起音偏慢） | CC0 | [versilian-studios.com](https://versilian-studios.com/vsco-community/) | — |
+| Salamander Grand Piano (freepats) | Grand piano, multiple velocity layers, string resonance | CC-BY 3.0 | [freepats.zenvoid.org](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) (SFZ+FLAC version) | `songs/bach-prelude-c` |
+| PianoFB (freepats) | Upright piano | GPL-3.0 with exception | [freepats.zenvoid.org](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) | `instruments/sfz-piano` |
+| Sonatina Symphonic Orchestra 4.0 | Orchestra: Legato / Marcato / Sustain / Staccato / Pizzicato articulations per section | CC Sampling Plus 1.0 | [github.com/peastman/sso](https://github.com/peastman/sso) (v4.0 zip under Releases) | `songs/ode-to-joy-orchestra` |
+| Black And Blue Basses (Karoryfer) | Electric bass, multiple articulations (keyswitches) and controller switches | CC0 | [github.com/sfzinstruments/karoryfer.black-and-blue-basses](https://github.com/sfzinstruments/karoryfer.black-and-blue-basses) | `instruments/sfz-bass-black-and-blue` |
+| VSCO 2 Community Edition | Orchestra (smaller, slower attacks) | CC0 | [versilian-studios.com](https://versilian-studios.com/vsco-community/) | — |
 
-更多免费 SFZ：[sfzinstruments.github.io](https://sfzinstruments.github.io/)。工程里写 `"instrument": "sfz:<.sfz 文件路径>"`；
-示范工程里的路径是作者本机的 `/data/Music/SFZ-samples/...`，解压到别处时改成你的路径即可。
-SFZ 的控制器与奏法用 `instrument_params` 的 `cc` / `keyswitch` 设置（见 [skills/instruments/sfz.md](skills/instruments/sfz.md)）。
+More free SFZ: [sfzinstruments.github.io](https://sfzinstruments.github.io/). In a project, write `"instrument": "sfz:<path to .sfz>"`.
+The samples use paths relative to the sound library (e.g. `sfz:SalamanderGrandPiano-SFZ+FLAC-V3+20200602/...`):
+unpack the libraries into one folder and set `export MUSER_SFZ_PATH=~/Music/SFZ` (separate several folders with `:`, or `;` on Windows).
+muser searches these folders and their subfolders up to two levels deep; absolute paths work too.
+SFZ controllers and articulations are set with `cc` / `keyswitch` in `instrument_params` (see [skills/instruments/sfz.md](skills/instruments/sfz.md)).
 
-### 插件（需要 `host` 特性；预编译版已启用）
+### Plugins (need the `host` feature; enabled in prebuilt binaries)
 
-| 插件 | 类型 | 许可 | 下载 | muser 内置画像 / skill |
+| Plugin | Type | License | Download | Built-in muser profile / skill |
 |---|---|---|---|---|
-| Surge XT（含 Surge XT Effects） | 混合合成器 + 效果器合集 | GPL-3.0 | [surge-synthesizer.github.io](https://surge-synthesizer.github.io/) | [surge-xt](skills/plugins/surge-xt.md)、[surge-xt-effects](skills/plugins/surge-xt-effects.md) |
-| Vital | 波表合成器 | 免费（源码 GPL-3.0） | [vital.audio](https://vital.audio/)（免费版需注册） | [vital](skills/plugins/vital.md) |
-| Airwindows Consolidated | 约 470 个 Airwindows 效果合一（请用 CLAP 版） | MIT | [airwindows.com/consolidated](https://www.airwindows.com/consolidated/) 或 [github.com/baconpaul/airwin2rack](https://github.com/baconpaul/airwin2rack) | [airwindows-consolidated](skills/plugins/airwindows-consolidated.md) |
-| Plasma（Dimethoxy） | 双级失真 | AGPL-3.0 | [github.com/Dimethoxy/Plasma](https://github.com/Dimethoxy/Plasma) | [plasma](skills/plugins/plasma.md) |
+| Surge XT (incl. Surge XT Effects) | Hybrid synth + effects collection | GPL-3.0 | [surge-synthesizer.github.io](https://surge-synthesizer.github.io/) | [surge-xt](skills/plugins/surge-xt.md), [surge-xt-effects](skills/plugins/surge-xt-effects.md) |
+| Vital | Wavetable synth | Free (source GPL-3.0) | [vital.audio](https://vital.audio/) (free tier requires sign-up) | [vital](skills/plugins/vital.md) |
+| Airwindows Consolidated | ~470 Airwindows effects in one (use the CLAP version) | MIT | [airwindows.com/consolidated](https://www.airwindows.com/consolidated/) or [github.com/baconpaul/airwin2rack](https://github.com/baconpaul/airwin2rack) | [airwindows-consolidated](skills/plugins/airwindows-consolidated.md) |
+| Plasma (Dimethoxy) | Two-stage distortion | AGPL-3.0 | [github.com/Dimethoxy/Plasma](https://github.com/Dimethoxy/Plasma) | [plasma](skills/plugins/plasma.md) |
 
-装好后运行 `muser plugin scan` 确认 muser 能找到它们（CLAP / VST3 / LV2 的系统与用户目录都会扫描），
-插件示范在 `samples/plugins/`，用法见 [skills/plugins.md](skills/plugins.md)。
+After installing, run `muser plugin scan` to check that muser finds them (system and user folders for CLAP / VST3 / LV2 are all scanned).
+Plugin samples live in `samples/plugins/`; usage is in [skills/plugins.md](skills/plugins.md).
 
-## 工程文件格式（给 AI 的契约）
+## Project file format (the contract with the AI)
 
-时间单位是**拍 (beats)**：`1.0` = 四分音符，与 tempo 解耦。最小示例：
+Time is measured in **beats**: `1.0` = a quarter note, independent of tempo. Minimal example:
 
 ```json
 {
@@ -151,42 +160,44 @@ SFZ 的控制器与奏法用 `instrument_params` 的 `cc` / `keyswitch` 设置�
 }
 ```
 
-鼓组音高用 GM 鼓键（36=底鼓, 38=军鼓, 42=闭镲）；旋律乐器用音阶音高（60=中央C）。
+Drum pitches use GM drum keys (36 = kick, 38 = snare, 42 = closed hi-hat); melodic instruments use MIDI pitch (60 = middle C).
 
-## 可选特性
+## Optional features
 
 ```bash
-# 启用插件宿主（加载第三方 CLAP/VST3/LV2 效果器）
+# Enable the plugin host (load third-party CLAP/VST3/LV2 effects)
 cargo build -p muser-cli --features host
 ```
 
-## 项目结构
+## Project layout
 
 ```
 muser/
 ├─ crates/
-│  ├─ muser-core/     领域模型：Project/Track/Clip/Note/Effect（全 serde）
-│  ├─ muser-engine/   引擎适配：编译成 manguebyte 乐器并离线渲染
-│  ├─ muser-cli/      CLI 可执行文件 `muser`
-│  └─ muser-mcp/      MCP server（stdio）
-├─ vendor/manguebyte/ 上游音频引擎（git submodule）
-├─ samples/           示范工程（songs/instruments/params/effects/automation/routing/plugins 分组）
-├─ ARCHITECTURE.md    架构、分层、工程 JSON schema、路线图
-├─ SKILLS.md          给 AI 的编曲操作手册（总入口）
-├─ skills/            子 skill：每个乐器类别、每个效果器、自动化、路由、内置插件画像
-├─ profiles/          muser 内置的插件画像（JSON）
-├─ scripts/           gen_skills.py 生成 skills/；render_samples.sh 批量渲染示范
-└─ TOOLS.md           CLI + MCP 工具清单
+│  ├─ muser-core/     Domain model: Project/Track/Clip/Note/Effect (all serde)
+│  ├─ muser-engine/   Engine adapter: builds manguebyte instruments, streaming render (WAV / player page / sound card)
+│  ├─ muser-cli/      CLI executable `muser`
+│  └─ muser-mcp/      MCP server (stdio)
+├─ vendor/manguebyte/ Upstream audio engine (git submodule)
+├─ samples/           Sample projects (grouped: songs/instruments/params/effects/automation/routing/plugins)
+├─ ARCHITECTURE.md    Architecture, layers, project JSON schema, roadmap
+├─ SKILLS.md          Arrangement handbook for the AI (main entry point)
+├─ skills/            Sub-skills: each instrument family, each effect, automation, routing, built-in plugin profiles
+├─ profiles/          Plugin profiles shipped with muser (JSON)
+├─ scripts/           gen_skills.py generates skills/; render_samples.sh renders the samples in bulk
+└─ TOOLS.md           CLI + MCP tool list
 ```
 
-## 深入阅读
+## Further reading
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — 三层架构、数据流、工程文件格式、vendored 策略、路线图
-- [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（总入口：工作流、速查、乐器与效果器索引）
-- [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误；自动化、路由、延音踏板
-- [TOOLS.md](TOOLS.md) — CLI 命令与 MCP tools 清单
-- [samples/](samples/) — 分组示范工程（风格曲、音源、调音、效果器、自动化、路由、插件）
+The documents below are written in Chinese, except the plugin skills under `skills/plugins/`.
 
-## 许可
+- [ARCHITECTURE.md](ARCHITECTURE.md) — layered architecture, data flow, project file format, vendoring strategy, roadmap
+- [SKILLS.md](SKILLS.md) — how the AI expresses musical intent (entry point: workflow, cheat sheet, instrument and effect index)
+- [skills/](skills/) — parameters, scene presets and common mistakes for each instrument family and effect; automation, routing, sustain pedal
+- [TOOLS.md](TOOLS.md) — CLI commands and MCP tools
+- [samples/](samples/) — grouped sample projects (songs, instruments, tuning, effects, automation, routing, plugins)
 
-本仓库自身代码遵循 MIT / Apache-2.0 双许可。vendored 的 manguebyte 同为 MIT / Apache-2.0。
+## License
+
+The code in this repository is dual-licensed under MIT / Apache-2.0. The vendored manguebyte is also MIT / Apache-2.0.

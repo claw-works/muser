@@ -37,7 +37,7 @@ impl Lane {
     /// 取值相对上次写入有变化时返回新值，否则 `None`。
     pub fn poll(&mut self, beat: f64) -> Option<f64> {
         let v = self.current(beat);
-        let changed = self.last.map_or(true, |l| (l - v).abs() > 1e-9 * (1.0 + v.abs()));
+        let changed = self.last.is_none_or(|l| (l - v).abs() > 1e-9 * (1.0 + v.abs()));
         if changed {
             self.last = Some(v);
             Some(v)

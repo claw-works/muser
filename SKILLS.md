@@ -69,7 +69,7 @@
 | 弦乐 | [strings.md](skills/instruments/strings.md) | `strings.violin` `strings.cello` `strings.ensemble` `*_pizz` … |
 | 管乐 | [wind.md](skills/instruments/wind.md) | `wind.flute` `wind.sax` `wind.trumpet` … |
 | 人声 | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
-| SFZ 音色库 | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz`（内置采样器，无需插件） |
+| SFZ 音色库 | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz` 或相对 `MUSER_SFZ_PATH` 的路径（内置采样器，无需插件） |
 | 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 
 所有内置音源都由 manguebyte 实时合成（物理建模、模态合成、FM、减法合成等），不依赖系统 MIDI 音源。

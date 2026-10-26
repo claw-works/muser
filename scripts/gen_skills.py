@@ -623,6 +623,9 @@ def sfz_page():
 ```
 
 - 语法：`sfz:<.sfz 文件路径>`；采样文件按 .sfz 里的相对路径从其所在目录读取（支持 WAV、FLAC 等）。
+- 路径可以是绝对路径，也可以是相对音色库的路径（如 `sfz:SalamanderGrandPiano-SFZ+FLAC-V3+20200602/SalamanderGrandPiano-V3+20200602.sfz`）：
+  相对路径在环境变量 `MUSER_SFZ_PATH`（音色库根目录，`:` 分隔，Windows 用 `;`）里查找，根目录下两层以内的子目录也会找，
+  这样同一份工程在不同机器上都能用。分享的工程优先用相对路径。
 - 音符 `pitch` 用 MIDI 音高；音域、力度层、循环、释放采样都由 .sfz 文件定义。最多 32 个同时发声。
 - `muser validate` 会检查 .sfz 文件是否存在；采样缺失或格式错误会在渲染时报出。
 - 部分 SFZ opcode（如 `<curve>`、`<effect>`）不支持，渲染时会在 stderr 提示数量，音色可能与原设计略有差异。

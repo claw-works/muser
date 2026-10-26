@@ -348,15 +348,17 @@ fn sfz_controls_note(path: &std::path::Path) -> String {
 
 fn sfz_instrument(path: &std::path::Path, cc: &crate::sfz::Options) -> Result<TrackInstrument, String> {
     use manguebyte::sampler::Sampler;
-    let (inst, _dropped, warnings) = crate::sfz::load(path, cc)?;
-    if warnings > 0 {
+    let loaded = crate::sfz::load_shared(path, cc)?;
+    // 刚加载（不是共用已有的）时提示一次。
+    if loaded.warnings > 0 && std::sync::Arc::strong_count(&loaded) == 1 {
         eprintln!(
-            "[muser] sfz '{}': {warnings} 条提示（部分 opcode 不支持或被修正），音色可能与原设计略有差异",
-            path.display()
+            "[muser] sfz '{}': {} 条提示（部分 opcode 不支持或被修正），音色可能与原设计略有差异",
+            path.display(),
+            loaded.warnings
         );
     }
-    let (sampler, loader) = Sampler::with_instrument(inst, SFZ_VOICES);
-    Ok(TrackInstrument::new(SfzSampler { sampler, _loader: loader }, 0))
+    let (sampler, loader) = Sampler::with_instrument(loaded.instrument.clone(), SFZ_VOICES);
+    Ok(TrackInstrument::new(SfzSampler { sampler, _loader: loader, _shared: loaded }, 0))
 }
 
 /// 完整的 SFZ 采样器：自己管理复音、按住的键与踏板，所以 `trigger=first` / `legato`（连奏：
@@ -365,6 +367,8 @@ struct SfzSampler {
     sampler: manguebyte::sampler::Sampler<f32>,
     /// 采样器的加载端，需与采样器同生命周期。
     _loader: manguebyte::sampler::SamplerLoader,
+    /// 共用的音色：用着就留在池里。
+    _shared: std::sync::Arc<crate::sfz::Loaded>,
 }
 
 impl Playable for SfzSampler {
@@ -506,7 +510,7 @@ fn poly_range(category: poly::Category) -> (u8, u8) {
 fn lookup(name: &str) -> Option<(InstrumentInfo, Patch)> {
     let trimmed = name.trim();
     if let Some(path) = trimmed.strip_prefix("sfz:") {
-        let path = std::path::PathBuf::from(path.trim());
+        let path = crate::sfz::resolve(path.trim());
         return Some((
             InstrumentInfo {
                 name: trimmed.to_string(),
@@ -593,7 +597,8 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     if let Patch::Sfz(path, _) = &patch {
         if !path.is_file() {
-            return Err(InstrumentError::Load { detail: format!("找不到 SFZ 文件 '{}'", path.display()) });
+            let hint = if path.is_relative() { "（相对路径会在 MUSER_SFZ_PATH 的音色库目录及其两层子目录里查找）" } else { "" };
+            return Err(InstrumentError::Load { detail: format!("找不到 SFZ 文件 '{}'{hint}", path.display()) });
         }
     }
     patch.apply(params).map_err(|detail| InstrumentError::Param { detail })

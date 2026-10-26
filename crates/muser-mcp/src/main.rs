@@ -1192,3 +1192,47 @@ async fn main() -> anyhow::Result<()> {
     service.waiting().await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p<T: serde::de::DeserializeOwned>(v: serde_json::Value) -> Parameters<T> {
+        Parameters(serde_json::from_value(v).unwrap())
+    }
+
+    /// 工具结果的文本；工具报错时 panic 并带上错误信息。
+    fn ok(r: Result<CallToolResult, McpError>) -> String {
+        let r = r.unwrap();
+        let text = serde_json::to_string(&r.content).unwrap();
+        assert_ne!(r.is_error, Some(true), "工具报错: {text}");
+        text
+    }
+
+    #[test]
+    fn create_edit_render_round_trip() {
+        let m = Muser::new();
+        assert!(ok(m.create_project(p(serde_json::json!({ "tempo": 120 })))).contains("proj-1"));
+        let id = "proj-1";
+        ok(m.add_track(p(serde_json::json!({ "project_id": id, "instrument": "drums.808" }))));
+        ok(m.add_clip(p(serde_json::json!({ "project_id": id, "track_index": 0, "start": 0, "length": 2 }))));
+        ok(m.add_notes(p(serde_json::json!({ "project_id": id, "track_index": 0, "clip_index": 0,
+            "notes": [{ "pitch": 36, "start": 0, "length": 0.25 }, { "pitch": 38, "start": 1, "length": 0.25 }] }))));
+        ok(m.validate_project(p(serde_json::json!({ "project_id": id }))));
+        let wav = std::env::temp_dir().join(format!("muser-mcp-test-{}.wav", std::process::id()));
+        let out = ok(m.render(p(serde_json::json!({ "project_id": id, "output_path": wav, "tail": 0.2 }))));
+        assert!(out.contains("已渲染"), "{out}");
+        assert!(std::fs::metadata(&wav).unwrap().len() > 44, "WAV 应有音频数据");
+        std::fs::remove_file(&wav).ok();
+    }
+
+    #[test]
+    fn bad_input_is_tool_error_not_crash() {
+        let m = Muser::new();
+        assert_eq!(m.create_project(p(serde_json::json!({ "tempo": 0 }))).unwrap().is_error, Some(true));
+        assert_eq!(m.get_project(p(serde_json::json!({ "project_id": "nope" }))).unwrap().is_error, Some(true));
+        ok(m.create_project(p(serde_json::json!({ "tempo": 90 }))));
+        let r = m.add_track(p(serde_json::json!({ "project_id": "proj-1", "instrument": "no.such.instrument" }))).unwrap();
+        assert_eq!(r.is_error, Some(true));
+    }
+}

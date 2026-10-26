@@ -2,6 +2,7 @@
 name = "muser-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "muser 接口层：AI/用户通过 CLI 驱动引擎（render 等命令）"
@@ -20,7 +21,13 @@ serde_json = { workspace = true }
 tiny_http = "=0.12.0"
 
 [features]
-default = []
+default = ["device"]
 ## 启用插件宿主（加载第三方 CLAP/VST3/LV2 效果器）。
 ## 构建命令：cargo build -p muser-cli --features host
 host = ["muser-engine/host"]
+## 本机声卡播放（muser view --device），默认启用。Linux 上需要 ALSA 开发包（libasound2-dev）；
+## 没有时用 --no-default-features 构建。
+device = ["muser-engine/devices"]
+
+[lints]
+workspace = true

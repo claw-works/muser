@@ -4,7 +4,7 @@
   "tracks": [
     {
       "name": "piano",
-      "instrument": "sfz:/data/Music/SFZ-samples/freepats/PianoFB/PianoFB SFZ+FLAC-20200401/PianoFB 20200401.sfz",
+      "instrument": "sfz:PianoFB SFZ+FLAC-20200401/PianoFB 20200401.sfz",
       "effects": [
         {
           "type": "reverb",
