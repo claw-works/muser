@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muser poly · 音色编辑器</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #070910; --surface: #10131e; --panel: rgba(18,22,35,.92); --panel-2: #0c0f18;
+    --line: #272d40; --line-hi: #394158; --text: #f4f6fb; --dim: #929aae; --faint: #60687c;
+    --accent: #72e5c2; --accent-2: #9588ff; --accent-soft: rgba(114,229,194,.1);
+    --warn: #ffc46b; --err: #ff7c8b; --radius: 16px; --shadow: 0 18px 55px rgba(0,0,0,.24);
+  }
+  * { box-sizing: border-box; }
+  html { min-width: 680px; scroll-behavior: smooth; background: var(--bg); }
+  body {
+    margin: 0; color: var(--text); min-height: 100vh;
+    font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    background: radial-gradient(circle at 10% -10%, rgba(149,136,255,.15), transparent 32rem),
+      radial-gradient(circle at 90% 0, rgba(114,229,194,.09), transparent 28rem),
+      linear-gradient(180deg,#0a0d16 0,var(--bg) 34rem);
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .18;
+    background-image: linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+    background-size: 48px 48px; mask-image: linear-gradient(to bottom,#000,transparent 72%);
+  }
+  button, input, select, textarea { font: inherit; color: var(--text); }
+  button {
+    min-height: 34px; padding: 0 13px; background: #171b29; border: 1px solid var(--line-hi); border-radius: 9px;
+    cursor: pointer; transition: border-color .15s,background .15s,color .15s,transform .15s;
+  }
+  button:hover:not(:disabled) { border-color: #5b647d; background: #1d2233; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button.primary { color: #07130f; border-color: var(--accent); background: var(--accent); font-weight: 700; }
+  button.primary:hover:not(:disabled) { border-color: #91efd4; background: #91efd4; }
+  button.danger:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  input[type=text], input[type=number], select, textarea {
+    background: #0b0e17; border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; min-height: 32px;
+    transition: border-color .15s,background .15s;
+  }
+  input:hover, select:hover, textarea:hover { border-color: var(--line-hi); }
+  input[type=number] { width: 100%; padding-right: 32px; font-variant-numeric: tabular-nums; }
+  input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+  input[type=range] { width: 100%; height: 22px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px; background: linear-gradient(90deg,var(--accent) 0 var(--fill,50%),#262c3d var(--fill,50%) 100%); border-radius: 99px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    width: 15px; height: 15px; margin-top: -5.5px; appearance: none; background: #f1fff9; border: 3px solid var(--accent);
+    border-radius: 50%; box-shadow: 0 2px 9px rgba(0,0,0,.45);
+  }
+  input[type=range]::-moz-range-track {
+    height: 4px; background: linear-gradient(90deg,var(--accent) 0 var(--fill,50%),#262c3d var(--fill,50%) 100%); border: 0; border-radius: 99px;
+  }
+  input[type=range]::-moz-range-thumb { width: 10px; height: 10px; background: #f1fff9; border: 3px solid var(--accent); border-radius: 50%; }
+  .shell { width: min(1600px,100%); margin: 0 auto; padding: 0 24px 64px; }
+  header { height: 68px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .mark {
+    width: 34px; height: 34px; display: grid; place-items: center; color: #080c10; border-radius: 10px; font-weight: 900;
+    background: linear-gradient(145deg,var(--accent-2),var(--accent)); box-shadow: 0 8px 24px rgba(114,229,194,.14);
+  }
+  .brand b { letter-spacing: .17em; font-size: 12px; }
+  .brand span { color: var(--faint); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; }
+  .header-status { display: flex; align-items: center; gap: 8px; }
+  .badge { padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); background: rgba(7,9,16,.45); font-size: 11px; }
+  .badge.busy { color: var(--warn); border-color: rgba(255,196,107,.4); }
+  .badge.err { color: var(--err); border-color: rgba(255,124,139,.4); }
+  .patch-state { color: var(--faint); }
+  .patch-state.dirty { color: var(--warn); border-color: rgba(255,196,107,.32); }
+  .hero { padding: 28px 2px 18px; }
+  .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+  .hero h1 { margin: 0; font-size: clamp(26px,3vw,40px); line-height: 1.08; letter-spacing: -.035em; }
+  .hero p:last-child { max-width: 720px; margin: 9px 0 0; color: var(--dim); }
+  .workbench {
+    display: grid; grid-template-columns: minmax(420px,1.05fr) minmax(480px,1fr); gap: 12px; margin-bottom: 12px;
+  }
+  .toolbar-card {
+    min-width: 0; padding: 15px 16px; background: linear-gradient(180deg,rgba(22,26,42,.95),rgba(14,17,28,.95));
+    border: 1px solid rgba(255,255,255,.075); border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .toolbar-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .toolbar-head h2 { margin: 0; font-size: 12px; letter-spacing: .04em; }
+  .toolbar-head span { color: var(--faint); font-size: 10px; }
+  .source-grid { display: grid; grid-template-columns: minmax(220px,1fr) 130px 80px; gap: 9px; align-items: end; }
+  .preview-row { display: grid; grid-template-columns: auto auto 1fr; gap: 9px; align-items: center; margin-top: 10px; }
+  .save-grid { display: grid; grid-template-columns: minmax(130px,.65fr) minmax(220px,1.35fr) minmax(130px,.7fr); gap: 9px; }
+  .save-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .toolbar-card label { display: grid; gap: 4px; min-width: 0; color: var(--dim); font-size: 10px; font-weight: 700; letter-spacing: .05em; }
+  .toolbar-card label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #play { min-width: 108px; color: #07130f; border-color: var(--accent); background: var(--accent); font-weight: 800; }
+  .check { display: inline-flex; gap: 7px; align-items: center; color: var(--dim); min-height: 34px; white-space: nowrap; }
+  .banner { display: none; margin: 0 0 12px; padding: 9px 12px; border-radius: 10px; white-space: pre-wrap; }
+  .banner.err { display: block; background: rgba(255,124,139,.1); color: var(--err); border: 1px solid rgba(255,124,139,.3); }
+  .banner.info { display: block; background: rgba(114,229,194,.08); color: var(--accent); border: 1px solid rgba(114,229,194,.25); }
+  .section-nav {
+    position: sticky; z-index: 10; top: 0; display: flex; gap: 5px; margin: 0 -8px 14px; padding: 9px 8px;
+    overflow-x: auto; background: rgba(7,9,16,.86); border-bottom: 1px solid rgba(255,255,255,.065); backdrop-filter: blur(16px);
+  }
+  .section-nav a {
+    flex: 0 0 auto; padding: 6px 10px; color: var(--dim); border: 1px solid transparent; border-radius: 999px;
+    text-decoration: none; font-size: 10px; font-weight: 750; letter-spacing: .03em;
+  }
+  .section-nav a:hover { color: var(--text); background: rgba(255,255,255,.045); border-color: var(--line); }
+  .section-nav a.active { color: #07130f; background: var(--accent); border-color: var(--accent); }
+  .grid { display: grid; gap: 14px; }
+  .card {
+    scroll-margin-top: 58px; background: linear-gradient(180deg,rgba(18,22,35,.94),rgba(13,16,26,.94));
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: 0 12px 34px rgba(0,0,0,.16);
+  }
+  .card > h2 { margin: 0 0 12px; color: var(--text); font-size: 12px; font-weight: 780; letter-spacing: .06em; }
+  .card > h2::before { content: ""; display: inline-block; width: 3px; height: 11px; margin-right: 8px; vertical-align: -1px; background: var(--accent); border-radius: 3px; }
+  .cols { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(265px,1fr)); }
+  .col { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: rgba(7,9,16,.48); }
+  .col h3 { margin: 0 0 8px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .05em; }
+  .field { display: grid; grid-template-columns: 98px minmax(80px,1fr) 92px; gap: 9px; align-items: center; min-height: 34px; }
+  .field + .field { border-top: 1px solid rgba(255,255,255,.035); }
+  .field .name { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+  .field select { grid-column: span 2; }
+  .field.bool input { grid-column: span 2; justify-self: start; }
+  .number-wrap { position: relative; min-width: 0; }
+  .number-wrap .unit { position: absolute; right: 8px; top: 50%; max-width: 28px; overflow: hidden; color: var(--faint); font-size: 9px; transform: translateY(-50%); pointer-events: none; }
+  .row2 { scroll-margin-top: 58px; display: grid; gap: 14px; grid-template-columns: repeat(2,minmax(280px,1fr)); }
+  .matrix-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 7px; text-align: left; border-bottom: 1px solid var(--line); background: rgba(7,9,16,.35); }
+  tbody tr:last-child td { border-bottom: 0; }
+  th { color: var(--faint); background: #0d101a; font-weight: 700; font-size: 10px; letter-spacing: .05em; }
+  td input[type=number] { width: 90px; }
+  .muted { color: var(--faint); }
+  .json-card { margin-top: 14px; }
+  details summary { cursor: pointer; color: var(--dim); font-weight: 700; }
+  details[open] summary { margin-bottom: 10px; color: var(--text); }
+  textarea { width: 100%; min-height: 280px; resize: vertical; font: 11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; tab-size: 2; }
+  code { color: #b9b2ff; }
+  @media (max-width: 1120px) {
+    .workbench { grid-template-columns: 1fr; }
+    .row2 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .shell { padding-inline: 16px; }
+    .source-grid { grid-template-columns: minmax(240px,1fr) 130px 80px; }
+    .save-grid { grid-template-columns: 150px minmax(230px,1fr) 150px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand"><div class="mark">♪</div><div><b>MUSER</b><br><span>poly 音色编辑器</span></div></div>
+    <div class="header-status"><span class="badge patch-state" id="patch-state">正在载入音色</span><span class="badge" id="badge">载入中…</span></div>
+  </header>
+
+  <div class="hero">
+    <p class="eyebrow">Polyphonic synthesizer</p>
+    <h1>塑造一个可以直接使用的音色</h1>
+    <p>从预设开始，调整振荡器、滤波器与调制关系。参数改动会自动渲染试听，满意后存进本机音色库。</p>
+  </div>
+
+  <div class="workbench">
+    <section class="toolbar-card">
+      <div class="toolbar-head"><h2>音色与试听</h2><span>空格键快速试听</span></div>
+      <div class="source-grid">
+        <label><span>从这里开始</span><select id="source"></select></label>
+        <label><span>试听乐句</span>
+          <select id="phrase">
+            <option value="chord">和弦</option><option value="note">单音</option><option value="bass">贝斯线</option>
+            <option value="arp">琶音</option><option value="lead">旋律（连奏）</option>
+          </select>
+        </label>
+        <label><span>根音</span><select id="root"></select></label>
+      </div>
+      <div class="preview-row">
+        <button id="play" title="空格">▶ 试听</button>
+        <span class="check"><input type="checkbox" id="auto" checked> 改动后自动试听</span>
+        <span></span>
+      </div>
+    </section>
+
+    <section class="toolbar-card">
+      <div class="toolbar-head"><h2>存进音色库</h2><span>可在工程与 agent 中复用</span></div>
+      <div class="save-grid">
+        <label><span>名字</span><input type="text" id="name" placeholder="my_reese"></label>
+        <label><span>说明</span><input type="text" id="desc" placeholder="一句话描述这个音色"></label>
+        <label><span>标签</span><input type="text" id="tags" placeholder="bass, dark"></label>
+      </div>
+      <div class="save-actions">
+        <button class="danger" id="delete" disabled>删除</button>
+        <button class="primary" id="save">存进音色库</button>
+      </div>
+    </section>
+  </div>
+  <div class="banner" id="banner"></div>
+  <nav class="section-nav" aria-label="参数分区">
+    <a href="#section-voice">整体</a><a href="#section-oscillators">振荡器</a><a href="#section-tone">Sub 与噪声</a>
+    <a href="#section-filters">滤波器</a><a href="#section-envelopes">包络</a><a href="#section-lfos">LFO</a><a href="#section-matrix">调制矩阵</a>
+  </nav>
+  <div class="grid" id="editor"></div>
+  <div class="card json-card">
+    <details>
+      <summary>高级：编辑完整音色 JSON</summary>
+      <p class="muted">工程里这样用：<code>"instrument": "synth.poly", "instrument_params": { "patch": … }</code>；音色库里的音色用 <code>muser poly show &lt;名字&gt;</code> 取出。</p>
+      <textarea id="json" spellcheck="false"></textarea>
+      <p><button id="apply-json">套用 JSON</button> <button id="copy-json">复制</button></p>
+    </details>
+  </div>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let schema = null, patch = null, base = null, current = null;   // current：载入的音色库名字（预设为 null）
+let ctx = null, playing = null, timer = null, seq = 0;
+let navObserver = null;
+
+function banner(text, kind) { const b = $("banner"); b.className = "banner" + (text ? " " + kind : ""); b.textContent = text || ""; }
+function badge(text, kind) { const b = $("badge"); b.className = "badge" + (kind ? " " + kind : ""); b.textContent = text; }
+function patchState(text, dirty = false) {
+  const state = $("patch-state"); state.textContent = text; state.classList.toggle("dirty", dirty);
+}
+const paintRange = (range) => range.style.setProperty("--fill", `${Math.max(0, Math.min(1, +range.value)) * 100}%`);
+async function api(url, body) {
+  const res = await fetch(url, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (res.headers.get("Content-Type")?.includes("json")) {
+    const out = await res.json();
+    if (!res.ok) { const e = new Error(out.error || res.statusText); e.status = res.status; throw e; }
+    return out;
+  }
+  if (!res.ok) throw new Error(res.statusText);
+  return res;
+}
+
+// ---------- 控件 ----------
+/** 数值 ↔ 滑块位置（0..1）。频率按对数，秒按三次方，其余线性。 */
+function toPos(k, v) {
+  if (k.unit === "Hz" && k.min > 0) return Math.log(v / k.min) / Math.log(k.max / k.min);
+  if (k.unit === "s" && k.min === 0) return Math.cbrt((v - k.min) / (k.max - k.min));
+  return (v - k.min) / (k.max - k.min);
+}
+function fromPos(k, t) {
+  let v = k.unit === "Hz" && k.min > 0 ? k.min * Math.pow(k.max / k.min, t)
+    : k.unit === "s" && k.min === 0 ? k.min + (k.max - k.min) * t * t * t
+    : k.min + (k.max - k.min) * t;
+  if (k.integer) return Math.round(v);
+  const digits = Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 3;
+  return +v.toFixed(digits);
+}
+function control(field, get, set) {
+  const k = field.kind, row = document.createElement("div");
+  row.className = "field" + (k.type === "bool" ? " bool" : "");
+  const name = document.createElement("span");
+  name.className = "name"; name.textContent = field.name; name.title = field.description;
+  row.append(name);
+  if (k.type === "choice") {
+    const sel = document.createElement("select");
+    for (const c of k.choices) sel.add(new Option(c, c));
+    sel.value = get(); sel.title = field.description;
+    sel.addEventListener("change", () => set(sel.value));
+    row.append(sel);
+  } else if (k.type === "bool") {
+    const box = document.createElement("input");
+    box.type = "checkbox"; box.checked = !!get(); box.title = field.description;
+    box.addEventListener("change", () => set(box.checked));
+    row.append(box);
+  } else {
+    const range = document.createElement("input"), num = document.createElement("input");
+    range.type = "range"; range.min = 0; range.max = 1; range.step = k.integer ? 1 / (k.max - k.min) : 0.001;
+    num.type = "number"; num.min = k.min; num.max = k.max; num.step = k.integer ? 1 : "any";
+    const valueBox = document.createElement("div"), unit = document.createElement("span");
+    valueBox.className = "number-wrap"; unit.className = "unit"; unit.textContent = k.unit || "";
+    if (!k.unit) num.style.paddingRight = "9px";
+    valueBox.append(num, unit);
+    const show = (v) => { num.value = v; range.value = toPos(k, v); paintRange(range); };
+    show(get());
+    range.setAttribute("aria-label", field.name); num.setAttribute("aria-label", `${field.name} 数值`);
+    range.addEventListener("input", () => { const v = fromPos(k, +range.value); num.value = v; paintRange(range); set(v); });
+    num.addEventListener("change", () => { const v = Math.min(k.max, Math.max(k.min, +num.value)); show(v); set(v); });
+    range.title = num.title = `${field.description}（${k.min} – ${k.max}${k.unit ? " " + k.unit : ""}）`;
+    row.append(range, valueBox);
+  }
+  return row;
+}
+function column(title, fields, obj) {
+  const col = document.createElement("div");
+  col.className = "col";
+  if (title) { const h = document.createElement("h3"); h.textContent = title; col.append(h); }
+  for (const f of fields) col.append(control(f, () => obj[f.name], (v) => { obj[f.name] = v; changed(); }));
+  return col;
+}
+function card(title, ...children) {
+  const c = document.createElement("div");
+  c.className = "card";
+  const h = document.createElement("h2"); h.textContent = title; c.append(h, ...children);
+  return c;
+}
+function sectionCard(key, title, ...children) {
+  const c = card(title, ...children); c.id = `section-${key}`; return c;
+}
+function cols(n, children) { const d = document.createElement("div"); d.className = "cols"; d.style.setProperty("--n", n); d.append(...children); return d; }
+const section = (key) => schema.sections.find((s) => s.key === key);
+function observeSections() {
+  if (navObserver) navObserver.disconnect();
+  const links = [...document.querySelectorAll(".section-nav a")];
+  const activate = (id) => links.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${id}`));
+  for (const link of links) link.onclick = () => activate(link.getAttribute("href").slice(1));
+  if (!("IntersectionObserver" in window)) { if (links[0]) links[0].classList.add("active"); return; }
+  navObserver = new IntersectionObserver((entries) => {
+    const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible[0]) activate(visible[0].target.id);
+  }, { rootMargin: "-54px 0px -68% 0px", threshold: 0 });
+  for (const link of links) {
+    const target = document.querySelector(link.getAttribute("href"));
+    if (target) navObserver.observe(target);
+  }
+}
+
+function matrixCard() {
+  const s = section("matrix"), table = document.createElement("table");
+  const head = table.createTHead().insertRow();
+  for (const f of s.fields) { const th = document.createElement("th"); th.textContent = f.name; th.title = f.description; head.append(th); }
+  head.append(document.createElement("th"));
+  const body = table.createTBody();
+  patch.matrix.forEach((slot, i) => {
+    const tr = body.insertRow();
+    for (const f of s.fields) {
+      const cell = tr.insertCell(), ctl = control(f, () => slot[f.name], (v) => { slot[f.name] = v; changed(); });
+      ctl.querySelector(".name").remove(); ctl.style.gridTemplateColumns = f.kind.type === "number" ? "1fr 90px" : "1fr";
+      cell.append(ctl);
+    }
+    const del = document.createElement("button");
+    del.textContent = "✕"; del.title = "删除这条调制";
+    del.addEventListener("click", () => { patch.matrix.splice(i, 1); render(); changed(); });
+    tr.insertCell().append(del);
+  });
+  const add = document.createElement("button");
+  add.textContent = "+ 添加调制"; add.disabled = patch.matrix.length >= s.count;
+  add.addEventListener("click", () => { patch.matrix.push({ source: "lfo1", via: "off", destination: "cutoff", amount: 1 }); render(); changed(); });
+  const note = document.createElement("p");
+  note.className = "muted"; note.textContent = `${patch.matrix.length} / ${s.count} 条。深度为 0、或来源 / 目标为 off 的调制不起作用，保存时会省略。`;
+  const scroll = document.createElement("div"); scroll.className = "matrix-scroll"; scroll.append(table);
+  return sectionCard("matrix", s.label, scroll, note, add);
+}
+
+function render() {
+  const ed = $("editor"); ed.textContent = "";
+  const voice = section("voice").fields, half = Math.ceil(voice.length / 2);
+  ed.append(sectionCard("voice", section("voice").label, cols(2, [column("", voice.slice(0, half), patch), column("", voice.slice(half), patch)])));
+  const osc = section("oscillators");
+  ed.append(sectionCard("oscillators", osc.label, cols(osc.count, patch.oscillators.map((o, i) => column(`振荡器 ${i + 1}`, osc.fields, o)))));
+  const row = document.createElement("div"); row.className = "row2"; row.id = "section-tone";
+  row.append(card(section("sub").label, column("", section("sub").fields, patch.sub)), card(section("noise").label, column("", section("noise").fields, patch.noise)));
+  ed.append(row);
+  const flt = section("filters");
+  ed.append(sectionCard("filters", flt.label + "（串联 / 并联见「整体 · routing」）", cols(flt.count, patch.filters.map((f, i) => column(`滤波器 ${i + 1}`, flt.fields, f)))));
+  const env = section("envelopes");
+  ed.append(sectionCard("envelopes", env.label, cols(env.count, patch.envelopes.map((e, i) => column(`包络 ${env.names[i]}`, env.fields, e)))));
+  const lfo = section("lfos");
+  ed.append(sectionCard("lfos", lfo.label, cols(lfo.count, patch.lfos.map((l, i) => column(`LFO ${i + 1}`, lfo.fields, l)))));
+  ed.append(matrixCard());
+  $("json").value = JSON.stringify(patch, null, 2);
+  observeSections();
+}
+
+// ---------- 试听 ----------
+function changed(markDirty = true) {
+  $("json").value = JSON.stringify(patch, null, 2);
+  if (markDirty) patchState("未保存改动", true);
+  if (!$("auto").checked) return;
+  clearTimeout(timer);
+  timer = setTimeout(preview, 220);
+}
+async function preview() {
+  const my = ++seq;
+  badge("渲染中…", "busy");
+  try {
+    if (!ctx) ctx = new AudioContext();
+    if (ctx.state === "suspended") await ctx.resume();
+    const res = await api("/api/preview", { patch, phrase: $("phrase").value, root: +$("root").value });
+    const sr = +res.headers.get("X-Sample-Rate"), pcm = new Int16Array(await res.arrayBuffer());
+    if (my !== seq) return;                           // 期间又改了：等新的
+    const n = pcm.length / 2, buf = ctx.createBuffer(2, Math.max(1, n), sr);
+    const L = buf.getChannelData(0), R = buf.getChannelData(1);
+    for (let i = 0; i < n; i++) { L[i] = pcm[2 * i] / 32768; R[i] = pcm[2 * i + 1] / 32768; }
+    if (playing) { try { playing.stop(); } catch (_) {} }
+    playing = ctx.createBufferSource(); playing.buffer = buf; playing.connect(ctx.destination); playing.start();
+    const peak = +res.headers.get("X-Peak-Db");
+    badge(`渲染 ${res.headers.get("X-Render-Ms")} ms · 峰值 ${peak.toFixed(1)} dBFS`, peak > -0.5 ? "err" : "");
+    banner("");
+  } catch (e) {
+    if (my === seq) { badge("渲染失败", "err"); banner(String(e.message), "err"); }
+  }
+}
+
+// ---------- 音色 ----------
+async function loadSources(select) {
+  const [presets, lib] = await Promise.all([api("/api/presets"), api("/api/library")]);
+  const sel = $("source"); sel.textContent = "";
+  const mine = document.createElement("optgroup"); mine.label = `本机音色库（${lib.sounds.length}）`;
+  for (const s of lib.sounds) mine.append(new Option(`${s.name}${s.description ? " — " + s.description : ""}`, "lib:" + s.name));
+  if (!lib.sounds.length) { const o = new Option("（还没有音色）", ""); o.disabled = true; mine.append(o); }
+  sel.append(mine);
+  const groups = {};
+  for (const p of presets) {
+    const fam = p.family.split("/")[1] || "init";
+    if (!groups[fam]) { groups[fam] = document.createElement("optgroup"); groups[fam].label = "预设 · " + fam; sel.append(groups[fam]); }
+    groups[fam].append(new Option(`${p.name} — ${p.description.split("：")[0]}`, p.name));
+  }
+  $("source").title = "音色库：" + lib.dir;
+  if (select) sel.value = select;
+}
+async function load(value) {
+  if (!value) return;
+  const isLib = value.startsWith("lib:"), name = isLib ? value.slice(4) : value;
+  const s = await api("/api/sound?name=" + encodeURIComponent(name));
+  patch = s.patch; current = isLib ? s.name : null; base = isLib ? s.base || null : s.name;
+  $("name").value = isLib ? s.name : ""; $("desc").value = isLib ? s.description : ""; $("tags").value = isLib ? (s.tags || []).join(", ") : "";
+  $("delete").disabled = !isLib;
+  render(); changed(false);
+  patchState(isLib ? `音色库 · ${s.name}` : `预设 · ${s.name}`);
+}
+async function save(overwrite) {
+  const name = $("name").value.trim();
+  if (!name) { banner("先给音色起个名字（小写字母、数字、_、-）", "err"); $("name").focus(); return; }
+  try {
+    const out = await api("/api/save", { name, description: $("desc").value, tags: $("tags").value.split(","), base, patch, overwrite });
+    banner(`已存进音色库：${out.path}\n工程里用：muser poly show ${name}`, "info");
+    current = name; $("delete").disabled = false;
+    patchState(`已保存 · ${name}`);
+    await loadSources("lib:" + name);
+  } catch (e) {
+    if (e.status === 409 && !overwrite && confirm(`音色库里已有「${name}」，覆盖吗？`)) return save(true);
+    banner(String(e.message), "err");
+  }
+}
+
+// ---------- 启动 ----------
+(async () => {
+  for (let n = 24; n <= 84; n += 12) $("root").add(new Option(`C${n / 12 - 1}`, n));
+  $("root").value = 60;
+  schema = await api("/api/schema");
+  await loadSources();
+  $("source").value = "poly.reese";
+  await load($("source").value);
+  $("source").addEventListener("change", () => load($("source").value).catch((e) => banner(String(e.message), "err")));
+  $("phrase").addEventListener("change", preview);
+  $("root").addEventListener("change", preview);
+  $("play").addEventListener("click", preview);
+  $("auto").addEventListener("change", () => { if ($("auto").checked) preview(); });
+  for (const id of ["name", "desc", "tags"]) $(id).addEventListener("input", () => patchState("未保存改动", true));
+  $("save").addEventListener("click", () => save(false));
+  $("delete").addEventListener("click", async () => {
+    if (!current || !confirm(`从音色库删除「${current}」？`)) return;
+    try {
+      await api("/api/delete", { name: current }); banner(`已删除 ${current}`, "info"); current = null; $("delete").disabled = true;
+      patchState("当前音色未保存", true); await loadSources();
+    }
+    catch (e) { banner(String(e.message), "err"); }
+  });
+  $("apply-json").addEventListener("click", () => {
+    let overlay;
+    try { overlay = JSON.parse($("json").value); } catch (e) { banner("JSON 格式错误：" + e.message, "err"); return; }
+    // 可以只写部分字段：套到当前音色上，服务端校验并补全。
+    api("/api/normalize", { patch, overlay }).then((out) => { patch = out.patch; render(); changed(); banner("已套用 JSON", "info"); })
+      .catch((e) => banner(String(e.message), "err"));
+  });
+  $("copy-json").addEventListener("click", () => navigator.clipboard.writeText($("json").value).then(() => banner("已复制", "info")));
+  document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    if (e.code === "Space" && !(t.tagName === "INPUT" && t.type !== "range" && t.type !== "checkbox") && t.tagName !== "TEXTAREA" && t.tagName !== "SELECT") { e.preventDefault(); preview(); }
+  });
+})().catch((e) => { badge("出错", "err"); banner(String(e.message), "err"); });
+</script>
+</body>
+</html>
