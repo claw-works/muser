@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>muser poly · 音色编辑器</title>
+<title>muser poly · Sound Designer</title>
 <style>
   :root {
     color-scheme: dark;
@@ -69,6 +69,7 @@
   .brand b { letter-spacing: .17em; font-size: 12px; }
   .brand span { color: var(--faint); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; }
   .header-status { display: flex; align-items: center; gap: 8px; }
+  #language { min-width: 54px; min-height: 30px; height: 30px; padding: 0 10px; color: var(--dim); border-radius: 999px; font-size: 10px; font-weight: 750; }
   .badge { padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); background: rgba(7,9,16,.45); font-size: 11px; }
   .badge.busy { color: var(--warn); border-color: rgba(255,196,107,.4); }
   .badge.err { color: var(--err); border-color: rgba(255,124,139,.4); }
@@ -153,75 +154,159 @@
 <body>
 <div class="shell">
   <header>
-    <div class="brand"><div class="mark">♪</div><div><b>MUSER</b><br><span>poly 音色编辑器</span></div></div>
-    <div class="header-status"><span class="badge patch-state" id="patch-state">正在载入音色</span><span class="badge" id="badge">载入中…</span></div>
+    <div class="brand"><div class="mark">♪</div><div><b>MUSER</b><br><span data-i18n="editorName">poly sound designer</span></div></div>
+    <div class="header-status">
+      <button id="language" type="button" aria-label="Switch language">中文</button>
+      <span class="badge patch-state" id="patch-state">Loading sound</span><span class="badge" id="badge">Loading…</span>
+    </div>
   </header>
 
   <div class="hero">
     <p class="eyebrow">Polyphonic synthesizer</p>
-    <h1>塑造一个可以直接使用的音色</h1>
-    <p>从预设开始，调整振荡器、滤波器与调制关系。参数改动会自动渲染试听，满意后存进本机音色库。</p>
+    <h1 data-i18n="heroTitle">Shape a sound you can use immediately</h1>
+    <p data-i18n="heroBody">Start from a preset, then shape its oscillators, filters, and modulation. Changes can preview automatically and finished sounds can be saved to your local library.</p>
   </div>
 
   <div class="workbench">
     <section class="toolbar-card">
-      <div class="toolbar-head"><h2>音色与试听</h2><span>空格键快速试听</span></div>
+      <div class="toolbar-head"><h2 data-i18n="soundPreview">Sound & preview</h2><span data-i18n="spacePreview">Press Space to preview</span></div>
       <div class="source-grid">
-        <label><span>从这里开始</span><select id="source"></select></label>
-        <label><span>试听乐句</span>
+        <label><span data-i18n="startFrom">Start from</span><select id="source"></select></label>
+        <label><span data-i18n="previewPhrase">Preview phrase</span>
           <select id="phrase">
-            <option value="chord">和弦</option><option value="note">单音</option><option value="bass">贝斯线</option>
-            <option value="arp">琶音</option><option value="lead">旋律（连奏）</option>
+            <option value="chord" data-i18n="phraseChord">Chord</option><option value="note" data-i18n="phraseNote">Single note</option><option value="bass" data-i18n="phraseBass">Bass line</option>
+            <option value="arp" data-i18n="phraseArp">Arpeggio</option><option value="lead" data-i18n="phraseLead">Lead (legato)</option>
           </select>
         </label>
-        <label><span>根音</span><select id="root"></select></label>
+        <label><span data-i18n="rootNote">Root note</span><select id="root"></select></label>
       </div>
       <div class="preview-row">
-        <button id="play" title="空格">▶ 试听</button>
-        <span class="check"><input type="checkbox" id="auto" checked> 改动后自动试听</span>
+        <button id="play" title="Space" data-i18n="preview">▶ Preview</button>
+        <span class="check"><input type="checkbox" id="auto" checked> <span data-i18n="autoPreview">Auto-preview changes</span></span>
         <span></span>
       </div>
     </section>
 
     <section class="toolbar-card">
-      <div class="toolbar-head"><h2>存进音色库</h2><span>可在工程与 agent 中复用</span></div>
+      <div class="toolbar-head"><h2 data-i18n="saveLibrary">Save to sound library</h2><span data-i18n="reuseHint">Reuse in projects and with agents</span></div>
       <div class="save-grid">
-        <label><span>名字</span><input type="text" id="name" placeholder="my_reese"></label>
-        <label><span>说明</span><input type="text" id="desc" placeholder="一句话描述这个音色"></label>
-        <label><span>标签</span><input type="text" id="tags" placeholder="bass, dark"></label>
+        <label><span data-i18n="name">Name</span><input type="text" id="name" placeholder="my_reese"></label>
+        <label><span data-i18n="description">Description</span><input type="text" id="desc" placeholder="Describe this sound in one sentence" data-i18n-placeholder="descriptionPlaceholder"></label>
+        <label><span data-i18n="tags">Tags</span><input type="text" id="tags" placeholder="bass, dark"></label>
       </div>
       <div class="save-actions">
-        <button class="danger" id="delete" disabled>删除</button>
-        <button class="primary" id="save">存进音色库</button>
+        <button class="danger" id="delete" disabled data-i18n="delete">Delete</button>
+        <button class="primary" id="save" data-i18n="save">Save to library</button>
       </div>
     </section>
   </div>
   <div class="banner" id="banner"></div>
-  <nav class="section-nav" aria-label="参数分区">
-    <a href="#section-voice">整体</a><a href="#section-oscillators">振荡器</a><a href="#section-tone">Sub 与噪声</a>
-    <a href="#section-filters">滤波器</a><a href="#section-envelopes">包络</a><a href="#section-lfos">LFO</a><a href="#section-matrix">调制矩阵</a>
+  <nav class="section-nav" aria-label="Parameter sections">
+    <a href="#section-voice" data-i18n="voice">Voice</a><a href="#section-oscillators" data-i18n="oscillators">Oscillators</a><a href="#section-tone" data-i18n="tone">Sub & noise</a>
+    <a href="#section-filters" data-i18n="filters">Filters</a><a href="#section-envelopes" data-i18n="envelopes">Envelopes</a><a href="#section-lfos">LFO</a><a href="#section-matrix" data-i18n="matrix">Modulation matrix</a>
   </nav>
   <div class="grid" id="editor"></div>
   <div class="card json-card">
     <details>
-      <summary>高级：编辑完整音色 JSON</summary>
-      <p class="muted">工程里这样用：<code>"instrument": "synth.poly", "instrument_params": { "patch": … }</code>；音色库里的音色用 <code>muser poly show &lt;名字&gt;</code> 取出。</p>
+      <summary data-i18n="jsonSummary">Advanced: edit the complete sound JSON</summary>
+      <p class="muted"><span data-i18n="jsonHelpBefore">Use this in a project:</span> <code>"instrument": "synth.poly", "instrument_params": { "patch": … }</code>; <span data-i18n="jsonHelpAfter">retrieve library sounds with</span> <code>muser poly show &lt;name&gt;</code>.</p>
       <textarea id="json" spellcheck="false"></textarea>
-      <p><button id="apply-json">套用 JSON</button> <button id="copy-json">复制</button></p>
+      <p><button id="apply-json" data-i18n="applyJson">Apply JSON</button> <button id="copy-json" data-i18n="copy">Copy</button></p>
     </details>
   </div>
 </div>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+let language = "en";
+try { language = localStorage.getItem("muser-poly-language") === "zh" ? "zh" : "en"; } catch (_) {}
+const I18N = {
+  en: {
+    editorName: "poly sound designer", heroTitle: "Shape a sound you can use immediately",
+    heroBody: "Start from a preset, then shape its oscillators, filters, and modulation. Changes can preview automatically and finished sounds can be saved to your local library.",
+    soundPreview: "Sound & preview", spacePreview: "Press Space to preview", startFrom: "Start from", previewPhrase: "Preview phrase", rootNote: "Root note",
+    phraseChord: "Chord", phraseNote: "Single note", phraseBass: "Bass line", phraseArp: "Arpeggio", phraseLead: "Lead (legato)",
+    preview: "▶ Preview", autoPreview: "Auto-preview changes", saveLibrary: "Save to sound library", reuseHint: "Reuse in projects and with agents",
+    name: "Name", description: "Description", descriptionPlaceholder: "Describe this sound in one sentence", tags: "Tags",
+    delete: "Delete", save: "Save to library", voice: "Voice", oscillators: "Oscillators", tone: "Sub & noise",
+    filters: "Filters", envelopes: "Envelopes", matrix: "Modulation matrix",
+    jsonSummary: "Advanced: edit the complete sound JSON", jsonHelpBefore: "Use this in a project:",
+    jsonHelpAfter: "retrieve library sounds with", applyJson: "Apply JSON", copy: "Copy",
+    loadingSound: "Loading sound", loading: "Loading…", unsaved: "Unsaved changes", currentUnsaved: "Current sound is not saved",
+    presetState: (name) => `Preset · ${name}`, libraryState: (name) => `Library · ${name}`, savedState: (name) => `Saved · ${name}`,
+    rendering: "Rendering…", rendered: (ms, peak) => `Rendered in ${ms} ms · Peak ${peak} dBFS`, renderFailed: "Render failed", error: "Error",
+    numericValue: (name) => `${name} value`, parameterHelp: (name) => `${name} parameter`,
+    oscillator: (n) => `Oscillator ${n}`, filter: (n) => `Filter ${n}`, envelope: (name) => `Envelope ${name}`, lfo: (n) => `LFO ${n}`,
+    filterTitle: "Filters (serial / parallel: Voice · routing)", sub: "Sub oscillator", noise: "Noise",
+    deleteModulation: "Delete this modulation", addModulation: "+ Add modulation",
+    matrixNote: (used, count) => `${used} / ${count} slots. Modulations with zero depth or an off source / destination are omitted when saved.`,
+    localLibrary: (n) => `Local library (${n})`, emptyLibrary: "(No saved sounds yet)", presetGroup: (family) => `Presets · ${family}`,
+    libraryPath: (path) => `Sound library: ${path}`, nameRequired: "Give the sound a name first (lowercase letters, numbers, _ or -).",
+    saved: (path, name) => `Saved to sound library: ${path}\nUse in projects with: muser poly show ${name}`,
+    overwrite: (name) => `“${name}” already exists in the sound library. Overwrite it?`,
+    deleteConfirm: (name) => `Delete “${name}” from the sound library?`, deleted: (name) => `Deleted ${name}`,
+    jsonError: (message) => `Invalid JSON: ${message}`, jsonApplied: "JSON applied", copied: "Copied",
+  },
+  zh: {
+    editorName: "poly 音色编辑器", heroTitle: "塑造一个可以直接使用的音色",
+    heroBody: "从预设开始，调整振荡器、滤波器与调制关系。参数改动会自动渲染试听，满意后存进本机音色库。",
+    soundPreview: "音色与试听", spacePreview: "空格键快速试听", startFrom: "从这里开始", previewPhrase: "试听乐句", rootNote: "根音",
+    phraseChord: "和弦", phraseNote: "单音", phraseBass: "贝斯线", phraseArp: "琶音", phraseLead: "旋律（连奏）",
+    preview: "▶ 试听", autoPreview: "改动后自动试听", saveLibrary: "存进音色库", reuseHint: "可在工程与 agent 中复用",
+    name: "名字", description: "说明", descriptionPlaceholder: "一句话描述这个音色", tags: "标签",
+    delete: "删除", save: "存进音色库", voice: "整体", oscillators: "振荡器", tone: "Sub 与噪声",
+    filters: "滤波器", envelopes: "包络", matrix: "调制矩阵",
+    jsonSummary: "高级：编辑完整音色 JSON", jsonHelpBefore: "工程里这样用：",
+    jsonHelpAfter: "音色库里的音色用", applyJson: "套用 JSON", copy: "复制",
+    loadingSound: "正在载入音色", loading: "载入中…", unsaved: "未保存改动", currentUnsaved: "当前音色未保存",
+    presetState: (name) => `预设 · ${name}`, libraryState: (name) => `音色库 · ${name}`, savedState: (name) => `已保存 · ${name}`,
+    rendering: "渲染中…", rendered: (ms, peak) => `渲染 ${ms} ms · 峰值 ${peak} dBFS`, renderFailed: "渲染失败", error: "出错",
+    numericValue: (name) => `${name} 数值`, parameterHelp: (name) => `${name} 参数`,
+    oscillator: (n) => `振荡器 ${n}`, filter: (n) => `滤波器 ${n}`, envelope: (name) => `包络 ${name}`, lfo: (n) => `LFO ${n}`,
+    filterTitle: "滤波器（串联 / 并联见「整体 · routing」）", sub: "Sub 振荡器", noise: "噪声",
+    deleteModulation: "删除这条调制", addModulation: "+ 添加调制",
+    matrixNote: (used, count) => `${used} / ${count} 条。深度为 0、或来源 / 目标为 off 的调制不起作用，保存时会省略。`,
+    localLibrary: (n) => `本机音色库（${n}）`, emptyLibrary: "（还没有音色）", presetGroup: (family) => `预设 · ${family}`,
+    libraryPath: (path) => `音色库：${path}`, nameRequired: "先给音色起个名字（小写字母、数字、_、-）",
+    saved: (path, name) => `已存进音色库：${path}\n工程里用：muser poly show ${name}`,
+    overwrite: (name) => `音色库里已有「${name}」，覆盖吗？`, deleteConfirm: (name) => `从音色库删除「${name}」？`,
+    deleted: (name) => `已删除 ${name}`, jsonError: (message) => `JSON 格式错误：${message}`, jsonApplied: "已套用 JSON", copied: "已复制",
+  },
+};
+const t = (key, ...args) => {
+  const value = I18N[language][key];
+  return typeof value === "function" ? value(...args) : value;
+};
 let schema = null, patch = null, base = null, current = null;   // current：载入的音色库名字（预设为 null）
 let ctx = null, playing = null, timer = null, seq = 0;
 let navObserver = null;
+let presetCatalog = null, libraryCatalog = null;
+let lastBadge = { key: "loading", kind: "", args: [] };
+let lastPatchState = { key: "loadingSound", dirty: false, args: [] };
 
 function banner(text, kind) { const b = $("banner"); b.className = "banner" + (text ? " " + kind : ""); b.textContent = text || ""; }
-function badge(text, kind) { const b = $("badge"); b.className = "badge" + (kind ? " " + kind : ""); b.textContent = text; }
-function patchState(text, dirty = false) {
-  const state = $("patch-state"); state.textContent = text; state.classList.toggle("dirty", dirty);
+function badge(key, kind = "", ...args) {
+  lastBadge = { key, kind, args };
+  const b = $("badge"); b.className = "badge" + (kind ? " " + kind : ""); b.textContent = t(key, ...args);
+}
+function patchState(key, dirty = false, ...args) {
+  lastPatchState = { key, dirty, args };
+  const state = $("patch-state"); state.textContent = t(key, ...args); state.classList.toggle("dirty", dirty);
+}
+function applyLanguage(rerender = true) {
+  document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+  document.title = language === "zh" ? "muser poly · 音色编辑器" : "muser poly · Sound Designer";
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) el.placeholder = t(el.dataset.i18nPlaceholder);
+  $("language").textContent = language === "en" ? "中文" : "EN";
+  $("language").setAttribute("aria-label", language === "en" ? "切换到中文" : "Switch to English");
+  document.querySelector(".section-nav").setAttribute("aria-label", language === "zh" ? "参数分区" : "Parameter sections");
+  $("play").title = language === "zh" ? "空格" : "Space";
+  badge(lastBadge.key, lastBadge.kind, ...lastBadge.args);
+  patchState(lastPatchState.key, lastPatchState.dirty, ...lastPatchState.args);
+  if (presetCatalog && libraryCatalog) renderSourceOptions($("source").value);
+  if (rerender && schema && patch) render();
+  if (rerender) banner("");
 }
 const paintRange = (range) => range.style.setProperty("--fill", `${Math.max(0, Math.min(1, +range.value)) * 100}%`);
 async function api(url, body) {
@@ -253,18 +338,19 @@ function fromPos(k, t) {
 function control(field, get, set) {
   const k = field.kind, row = document.createElement("div");
   row.className = "field" + (k.type === "bool" ? " bool" : "");
+  const help = language === "zh" ? field.description : t("parameterHelp", field.name);
   const name = document.createElement("span");
-  name.className = "name"; name.textContent = field.name; name.title = field.description;
+  name.className = "name"; name.textContent = field.name; name.title = help;
   row.append(name);
   if (k.type === "choice") {
     const sel = document.createElement("select");
     for (const c of k.choices) sel.add(new Option(c, c));
-    sel.value = get(); sel.title = field.description;
+    sel.value = get(); sel.title = help;
     sel.addEventListener("change", () => set(sel.value));
     row.append(sel);
   } else if (k.type === "bool") {
     const box = document.createElement("input");
-    box.type = "checkbox"; box.checked = !!get(); box.title = field.description;
+    box.type = "checkbox"; box.checked = !!get(); box.title = help;
     box.addEventListener("change", () => set(box.checked));
     row.append(box);
   } else {
@@ -277,10 +363,10 @@ function control(field, get, set) {
     valueBox.append(num, unit);
     const show = (v) => { num.value = v; range.value = toPos(k, v); paintRange(range); };
     show(get());
-    range.setAttribute("aria-label", field.name); num.setAttribute("aria-label", `${field.name} 数值`);
+    range.setAttribute("aria-label", field.name); num.setAttribute("aria-label", t("numericValue", field.name));
     range.addEventListener("input", () => { const v = fromPos(k, +range.value); num.value = v; paintRange(range); set(v); });
     num.addEventListener("change", () => { const v = Math.min(k.max, Math.max(k.min, +num.value)); show(v); set(v); });
-    range.title = num.title = `${field.description}（${k.min} – ${k.max}${k.unit ? " " + k.unit : ""}）`;
+    range.title = num.title = `${help} (${k.min} – ${k.max}${k.unit ? " " + k.unit : ""})`;
     row.append(range, valueBox);
   }
   return row;
@@ -322,7 +408,10 @@ function observeSections() {
 function matrixCard() {
   const s = section("matrix"), table = document.createElement("table");
   const head = table.createTHead().insertRow();
-  for (const f of s.fields) { const th = document.createElement("th"); th.textContent = f.name; th.title = f.description; head.append(th); }
+  for (const f of s.fields) {
+    const th = document.createElement("th"); th.textContent = f.name;
+    th.title = language === "zh" ? f.description : t("parameterHelp", f.name); head.append(th);
+  }
   head.append(document.createElement("th"));
   const body = table.createTBody();
   patch.matrix.forEach((slot, i) => {
@@ -333,34 +422,35 @@ function matrixCard() {
       cell.append(ctl);
     }
     const del = document.createElement("button");
-    del.textContent = "✕"; del.title = "删除这条调制";
+    del.textContent = "✕"; del.title = t("deleteModulation");
     del.addEventListener("click", () => { patch.matrix.splice(i, 1); render(); changed(); });
     tr.insertCell().append(del);
   });
   const add = document.createElement("button");
-  add.textContent = "+ 添加调制"; add.disabled = patch.matrix.length >= s.count;
+  add.textContent = t("addModulation"); add.disabled = patch.matrix.length >= s.count;
   add.addEventListener("click", () => { patch.matrix.push({ source: "lfo1", via: "off", destination: "cutoff", amount: 1 }); render(); changed(); });
   const note = document.createElement("p");
-  note.className = "muted"; note.textContent = `${patch.matrix.length} / ${s.count} 条。深度为 0、或来源 / 目标为 off 的调制不起作用，保存时会省略。`;
+  note.className = "muted"; note.textContent = t("matrixNote", patch.matrix.length, s.count);
   const scroll = document.createElement("div"); scroll.className = "matrix-scroll"; scroll.append(table);
-  return sectionCard("matrix", s.label, scroll, note, add);
+  return sectionCard("matrix", t("matrix"), scroll, note, add);
 }
 
 function render() {
   const ed = $("editor"); ed.textContent = "";
   const voice = section("voice").fields, half = Math.ceil(voice.length / 2);
-  ed.append(sectionCard("voice", section("voice").label, cols(2, [column("", voice.slice(0, half), patch), column("", voice.slice(half), patch)])));
+  ed.append(sectionCard("voice", t("voice"), cols(2, [column("", voice.slice(0, half), patch), column("", voice.slice(half), patch)])));
   const osc = section("oscillators");
-  ed.append(sectionCard("oscillators", osc.label, cols(osc.count, patch.oscillators.map((o, i) => column(`振荡器 ${i + 1}`, osc.fields, o)))));
+  ed.append(sectionCard("oscillators", t("oscillators"), cols(osc.count, patch.oscillators.map((o, i) => column(t("oscillator", i + 1), osc.fields, o)))));
   const row = document.createElement("div"); row.className = "row2"; row.id = "section-tone";
-  row.append(card(section("sub").label, column("", section("sub").fields, patch.sub)), card(section("noise").label, column("", section("noise").fields, patch.noise)));
+  row.append(card(t("sub"), column("", section("sub").fields, patch.sub)), card(t("noise"), column("", section("noise").fields, patch.noise)));
   ed.append(row);
   const flt = section("filters");
-  ed.append(sectionCard("filters", flt.label + "（串联 / 并联见「整体 · routing」）", cols(flt.count, patch.filters.map((f, i) => column(`滤波器 ${i + 1}`, flt.fields, f)))));
+  ed.append(sectionCard("filters", t("filterTitle"), cols(flt.count, patch.filters.map((f, i) => column(t("filter", i + 1), flt.fields, f)))));
   const env = section("envelopes");
-  ed.append(sectionCard("envelopes", env.label, cols(env.count, patch.envelopes.map((e, i) => column(`包络 ${env.names[i]}`, env.fields, e)))));
+  const envNames = language === "zh" ? env.names : ["1 · Amp", "2 · Filter", "3", "4"];
+  ed.append(sectionCard("envelopes", t("envelopes"), cols(env.count, patch.envelopes.map((e, i) => column(t("envelope", envNames[i]), env.fields, e)))));
   const lfo = section("lfos");
-  ed.append(sectionCard("lfos", lfo.label, cols(lfo.count, patch.lfos.map((l, i) => column(`LFO ${i + 1}`, lfo.fields, l)))));
+  ed.append(sectionCard("lfos", "LFO", cols(lfo.count, patch.lfos.map((l, i) => column(t("lfo", i + 1), lfo.fields, l)))));
   ed.append(matrixCard());
   $("json").value = JSON.stringify(patch, null, 2);
   observeSections();
@@ -369,14 +459,14 @@ function render() {
 // ---------- 试听 ----------
 function changed(markDirty = true) {
   $("json").value = JSON.stringify(patch, null, 2);
-  if (markDirty) patchState("未保存改动", true);
+  if (markDirty) patchState("unsaved", true);
   if (!$("auto").checked) return;
   clearTimeout(timer);
   timer = setTimeout(preview, 220);
 }
 async function preview() {
   const my = ++seq;
-  badge("渲染中…", "busy");
+  badge("rendering", "busy");
   try {
     if (!ctx) ctx = new AudioContext();
     if (ctx.state === "suspended") await ctx.resume();
@@ -389,29 +479,36 @@ async function preview() {
     if (playing) { try { playing.stop(); } catch (_) {} }
     playing = ctx.createBufferSource(); playing.buffer = buf; playing.connect(ctx.destination); playing.start();
     const peak = +res.headers.get("X-Peak-Db");
-    badge(`渲染 ${res.headers.get("X-Render-Ms")} ms · 峰值 ${peak.toFixed(1)} dBFS`, peak > -0.5 ? "err" : "");
+    badge("rendered", peak > -0.5 ? "err" : "", res.headers.get("X-Render-Ms"), peak.toFixed(1));
     banner("");
   } catch (e) {
-    if (my === seq) { badge("渲染失败", "err"); banner(String(e.message), "err"); }
+    if (my === seq) { badge("renderFailed", "err"); banner(String(e.message), "err"); }
   }
 }
 
 // ---------- 音色 ----------
 async function loadSources(select) {
-  const [presets, lib] = await Promise.all([api("/api/presets"), api("/api/library")]);
-  const sel = $("source"); sel.textContent = "";
-  const mine = document.createElement("optgroup"); mine.label = `本机音色库（${lib.sounds.length}）`;
+  [presetCatalog, libraryCatalog] = await Promise.all([api("/api/presets"), api("/api/library")]);
+  renderSourceOptions(select);
+}
+function renderSourceOptions(select) {
+  const presets = presetCatalog, lib = libraryCatalog;
+  if (!presets || !lib) return;
+  const sel = $("source"), previous = select || sel.value;
+  sel.textContent = "";
+  const mine = document.createElement("optgroup"); mine.label = t("localLibrary", lib.sounds.length);
   for (const s of lib.sounds) mine.append(new Option(`${s.name}${s.description ? " — " + s.description : ""}`, "lib:" + s.name));
-  if (!lib.sounds.length) { const o = new Option("（还没有音色）", ""); o.disabled = true; mine.append(o); }
+  if (!lib.sounds.length) { const o = new Option(t("emptyLibrary"), ""); o.disabled = true; mine.append(o); }
   sel.append(mine);
   const groups = {};
   for (const p of presets) {
     const fam = p.family.split("/")[1] || "init";
-    if (!groups[fam]) { groups[fam] = document.createElement("optgroup"); groups[fam].label = "预设 · " + fam; sel.append(groups[fam]); }
-    groups[fam].append(new Option(`${p.name} — ${p.description.split("：")[0]}`, p.name));
+    if (!groups[fam]) { groups[fam] = document.createElement("optgroup"); groups[fam].label = t("presetGroup", fam); sel.append(groups[fam]); }
+    const description = language === "en" && /\p{Script=Han}/u.test(p.description) ? "" : p.description.split("：")[0];
+    groups[fam].append(new Option(`${p.name}${description ? " — " + description : ""}`, p.name));
   }
-  $("source").title = "音色库：" + lib.dir;
-  if (select) sel.value = select;
+  $("source").title = t("libraryPath", lib.dir);
+  if (previous) sel.value = previous;
 }
 async function load(value) {
   if (!value) return;
@@ -421,24 +518,25 @@ async function load(value) {
   $("name").value = isLib ? s.name : ""; $("desc").value = isLib ? s.description : ""; $("tags").value = isLib ? (s.tags || []).join(", ") : "";
   $("delete").disabled = !isLib;
   render(); changed(false);
-  patchState(isLib ? `音色库 · ${s.name}` : `预设 · ${s.name}`);
+  patchState(isLib ? "libraryState" : "presetState", false, s.name);
 }
 async function save(overwrite) {
   const name = $("name").value.trim();
-  if (!name) { banner("先给音色起个名字（小写字母、数字、_、-）", "err"); $("name").focus(); return; }
+  if (!name) { banner(t("nameRequired"), "err"); $("name").focus(); return; }
   try {
     const out = await api("/api/save", { name, description: $("desc").value, tags: $("tags").value.split(","), base, patch, overwrite });
-    banner(`已存进音色库：${out.path}\n工程里用：muser poly show ${name}`, "info");
+    banner(t("saved", out.path, name), "info");
     current = name; $("delete").disabled = false;
-    patchState(`已保存 · ${name}`);
+    patchState("savedState", false, name);
     await loadSources("lib:" + name);
   } catch (e) {
-    if (e.status === 409 && !overwrite && confirm(`音色库里已有「${name}」，覆盖吗？`)) return save(true);
+    if (e.status === 409 && !overwrite && confirm(t("overwrite", name))) return save(true);
     banner(String(e.message), "err");
   }
 }
 
 // ---------- 启动 ----------
+applyLanguage(false);
 (async () => {
   for (let n = 24; n <= 84; n += 12) $("root").add(new Option(`C${n / 12 - 1}`, n));
   $("root").value = 60;
@@ -451,29 +549,34 @@ async function save(overwrite) {
   $("root").addEventListener("change", preview);
   $("play").addEventListener("click", preview);
   $("auto").addEventListener("change", () => { if ($("auto").checked) preview(); });
-  for (const id of ["name", "desc", "tags"]) $(id).addEventListener("input", () => patchState("未保存改动", true));
+  for (const id of ["name", "desc", "tags"]) $(id).addEventListener("input", () => patchState("unsaved", true));
   $("save").addEventListener("click", () => save(false));
   $("delete").addEventListener("click", async () => {
-    if (!current || !confirm(`从音色库删除「${current}」？`)) return;
+    if (!current || !confirm(t("deleteConfirm", current))) return;
     try {
-      await api("/api/delete", { name: current }); banner(`已删除 ${current}`, "info"); current = null; $("delete").disabled = true;
-      patchState("当前音色未保存", true); await loadSources();
+      await api("/api/delete", { name: current }); banner(t("deleted", current), "info"); current = null; $("delete").disabled = true;
+      patchState("currentUnsaved", true); await loadSources();
     }
     catch (e) { banner(String(e.message), "err"); }
   });
   $("apply-json").addEventListener("click", () => {
     let overlay;
-    try { overlay = JSON.parse($("json").value); } catch (e) { banner("JSON 格式错误：" + e.message, "err"); return; }
+    try { overlay = JSON.parse($("json").value); } catch (e) { banner(t("jsonError", e.message), "err"); return; }
     // 可以只写部分字段：套到当前音色上，服务端校验并补全。
-    api("/api/normalize", { patch, overlay }).then((out) => { patch = out.patch; render(); changed(); banner("已套用 JSON", "info"); })
+    api("/api/normalize", { patch, overlay }).then((out) => { patch = out.patch; render(); changed(); banner(t("jsonApplied"), "info"); })
       .catch((e) => banner(String(e.message), "err"));
   });
-  $("copy-json").addEventListener("click", () => navigator.clipboard.writeText($("json").value).then(() => banner("已复制", "info")));
+  $("copy-json").addEventListener("click", () => navigator.clipboard.writeText($("json").value).then(() => banner(t("copied"), "info")));
+  $("language").addEventListener("click", () => {
+    language = language === "en" ? "zh" : "en";
+    try { localStorage.setItem("muser-poly-language", language); } catch (_) {}
+    applyLanguage();
+  });
   document.addEventListener("keydown", (e) => {
     const t = e.target;
     if (e.code === "Space" && !(t.tagName === "INPUT" && t.type !== "range" && t.type !== "checkbox") && t.tagName !== "TEXTAREA" && t.tagName !== "SELECT") { e.preventDefault(); preview(); }
   });
-})().catch((e) => { badge("出错", "err"); banner(String(e.message), "err"); });
+})().catch((e) => { badge("error", "err"); banner(String(e.message), "err"); });
 </script>
 </body>
 </html>
