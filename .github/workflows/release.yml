@@ -61,8 +61,8 @@ jobs:
           mkdir -p "dist/$name"
           ext=""; [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
           cp "target/${{ matrix.target }}/release/muser$ext" "target/${{ matrix.target }}/release/muser-mcp$ext" "dist/$name/"
-          # 给 AI 用的文档一起打包（插件画像已编译进二进制）。
-          cp -r README.md README.zh-CN.md SKILLS.md TOOLS.md ARCHITECTURE.md skills "dist/$name/"
+          # 给 AI 用的文档与示范工程一起打包（插件画像已编译进二进制）。
+          cp -r README.md README.zh-CN.md SKILLS.md TOOLS.md ARCHITECTURE.md skills samples "dist/$name/"
           cd dist
           if [[ "${{ matrix.archive }}" == zip ]]; then
             7z a -tzip "$name.zip" "$name" > /dev/null

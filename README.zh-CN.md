@@ -34,13 +34,64 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
 
 ## 快速上手
 
-### 0. 直接下载（可选）
+### 下载即用（不需要装 Rust）
 
-[Releases](https://github.com/claw-works/muser/releases) 提供 Linux x86_64、macOS（Apple Silicon / Intel）、Windows x86_64 的预编译版本
-（`muser` 与 `muser-mcp`，已启用插件宿主），解压即用。Linux 版的声卡播放（`muser view --device`）需要 `libasound2`（桌面系统都有）；
-没有 ALSA 的服务器、Docker 用 `-headless` 版。想从源码构建，继续往下。
+1. 从 [Releases](https://github.com/claw-works/muser/releases) 下载对应系统的压缩包：
 
-### 1. 克隆（含 submodule）
+   | 系统 | 文件 |
+   |---|---|
+   | macOS，Apple 芯片（M1–M4） | `muser-<版本>-aarch64-apple-darwin.tar.gz` |
+   | macOS，Intel | `muser-<版本>-x86_64-apple-darwin.tar.gz` |
+   | Windows | `muser-<版本>-x86_64-pc-windows-msvc.zip` |
+   | Linux 桌面 | `muser-<版本>-x86_64-unknown-linux-gnu.tar.gz`（需要 `libasound2`，桌面系统都有） |
+   | Linux 服务器 / Docker | `muser-<版本>-x86_64-unknown-linux-gnu-headless.tar.gz`（不带声卡播放） |
+
+2. 解压，在解压出来的目录里打开终端。目录里有 `muser`（CLI）、`muser-mcp`（MCP server）、
+   给 AI agent 的文档（`SKILLS.md`、`skills/`、`TOOLS.md`）和示范工程（`samples/`）。
+
+   macOS / Linux：
+
+   ```bash
+   tar xzf muser-<版本>-aarch64-apple-darwin.tar.gz
+   cd muser-<版本>-aarch64-apple-darwin
+   # 仅 macOS：程序没有签名，先去掉下载隔离标记
+   xattr -dr com.apple.quarantine .
+   ```
+
+   Windows（PowerShell）：
+
+   ```powershell
+   Expand-Archive muser-<版本>-x86_64-pc-windows-msvc.zip -DestinationPath .
+   cd muser-<版本>-x86_64-pc-windows-msvc
+   ```
+
+   如果 Windows SmartScreen 提示"未知发布者"，点"更多信息"→"仍要运行"。
+
+3. 试听一首示范曲。播放页会在浏览器里打开，声音从这台电脑的声卡出：
+
+   ```bash
+   ./muser view samples/songs/dnb-liquid-skyline.muser.json --open --device
+   ```
+
+   Windows 上把 `./muser` 换成 `.\muser.exe`。在终端里按 Ctrl+C 退出。
+   去掉 `--device` 则在浏览器里播放（比如 muser 跑在远程机器上时）。
+
+4. 渲染成 WAV 文件：
+
+   ```bash
+   ./muser render samples/songs/dnb-liquid-skyline.muser.json -o dnb.wav
+   ```
+
+5. 让 AI agent 来作曲：在 agent（Claude Code、Codex 等）里打开解压出来的目录，让它先读 `SKILLS.md`，
+   再描述你想要的音乐。agent 会写出工程 JSON 并用 `./muser` 渲染；
+   用 `./muser view <工程文件> --open --device` 试听结果。
+   支持 MCP 的 agent 也可以改用 `muser-mcp`（见[下文](#以-mcp-server-运行给-agent-用)）。
+
+想在任意目录直接运行 `muser`，把解压出来的目录加入 `PATH`。
+
+### 从源码构建（开发者）
+
+#### 1. 克隆（含 submodule）
 
 muser 依赖 vendored 的 manguebyte 子模块，务必递归克隆：
 
@@ -55,7 +106,7 @@ cd muser
 git submodule update --init --recursive
 ```
 
-### 2. 构建
+#### 2. 构建
 
 需要 Rust 1.85+（edition 2024）。
 
@@ -66,12 +117,10 @@ cargo build --release
 Linux 上声卡播放（`muser view --device`，默认启用）需要 ALSA 开发包：`sudo apt install libasound2-dev`；
 不需要时可用 `cargo build --release --no-default-features` 跳过。
 
-> 中国大陆网络访问 crates.io 较慢时，建议配置镜像（如 rsproxy.cn）加速。
-
 构建产物在 `target/release/muser`（CLI）和 `target/release/muser-mcp`（MCP server）。
 下文命令里的 `muser` 即指该二进制——把 `target/release` 加入 `PATH`，或用全路径调用。
 
-### 3. 用 CLI 做第一首
+### 用 CLI 编曲
 
 ```bash
 # 生成一个示例工程 JSON
@@ -100,7 +149,7 @@ muser view song.muser.json --open --device
 
 > 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。
 
-### 4. 以 MCP server 运行（给 agent 用）
+### 以 MCP server 运行（给 agent 用）
 
 ```bash
 muser-mcp          # stdio MCP server，暴露 34 个 tools

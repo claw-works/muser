@@ -33,13 +33,64 @@ vendored as a git submodule.
 
 ## Quick start
 
-### 0. Download (optional)
+### Download and run (no Rust needed)
 
-[Releases](https://github.com/claw-works/muser/releases) has prebuilt binaries for Linux x86_64, macOS (Apple Silicon / Intel) and Windows x86_64
-(`muser` and `muser-mcp`, with the plugin host enabled). Unpack and run. The Linux build needs `libasound2` (present on desktop systems) for `muser view --device`;
-for servers or Docker without ALSA, use the `-headless` Linux build. To build from source, read on.
+1. Download the archive for your system from [Releases](https://github.com/claw-works/muser/releases):
 
-### 1. Clone (with submodules)
+   | System | File |
+   |---|---|
+   | macOS, Apple Silicon (M1–M4) | `muser-<version>-aarch64-apple-darwin.tar.gz` |
+   | macOS, Intel | `muser-<version>-x86_64-apple-darwin.tar.gz` |
+   | Windows | `muser-<version>-x86_64-pc-windows-msvc.zip` |
+   | Linux desktop | `muser-<version>-x86_64-unknown-linux-gnu.tar.gz` (needs `libasound2`, present on desktop systems) |
+   | Linux server / Docker | `muser-<version>-x86_64-unknown-linux-gnu-headless.tar.gz` (no sound-card playback) |
+
+2. Unpack it and open a terminal in the unpacked folder. It contains `muser` (CLI), `muser-mcp` (MCP server),
+   the docs for AI agents (`SKILLS.md`, `skills/`, `TOOLS.md`) and sample projects (`samples/`).
+
+   macOS / Linux:
+
+   ```bash
+   tar xzf muser-<version>-aarch64-apple-darwin.tar.gz
+   cd muser-<version>-aarch64-apple-darwin
+   # macOS only: the binaries are not signed, so clear the download quarantine first
+   xattr -dr com.apple.quarantine .
+   ```
+
+   Windows (PowerShell):
+
+   ```powershell
+   Expand-Archive muser-<version>-x86_64-pc-windows-msvc.zip -DestinationPath .
+   cd muser-<version>-x86_64-pc-windows-msvc
+   ```
+
+   If Windows SmartScreen warns about an unknown publisher, choose "More info" → "Run anyway".
+
+3. Listen to a sample song. The player page opens in your browser and the sound comes out of this computer's sound card:
+
+   ```bash
+   ./muser view samples/songs/dnb-liquid-skyline.muser.json --open --device
+   ```
+
+   On Windows use `.\muser.exe` instead of `./muser`. Press Ctrl+C in the terminal to stop.
+   Leave out `--device` to play inside the browser instead (for example when muser runs on a remote machine).
+
+4. Render it to a WAV file:
+
+   ```bash
+   ./muser render samples/songs/dnb-liquid-skyline.muser.json -o dnb.wav
+   ```
+
+5. Compose with an AI agent: open the unpacked folder in your agent (Claude Code, Codex, …) and ask it to read `SKILLS.md`,
+   then describe the music you want. The agent writes a project JSON and renders it with `./muser`;
+   play the result with `./muser view <project> --open --device`.
+   Agents that speak MCP can use `muser-mcp` instead (see [below](#run-as-an-mcp-server-for-agents)).
+
+To run `muser` from any folder, add the unpacked folder to your `PATH`.
+
+### Build from source (for developers)
+
+#### 1. Clone (with submodules)
 
 muser depends on the vendored manguebyte submodule, so clone recursively:
 
@@ -54,7 +105,7 @@ If you already cloned without it, fetch the submodule:
 git submodule update --init --recursive
 ```
 
-### 2. Build
+#### 2. Build
 
 Requires Rust 1.85+ (edition 2024).
 
@@ -68,7 +119,7 @@ If you don't need it, skip it with `cargo build --release --no-default-features`
 The binaries are `target/release/muser` (CLI) and `target/release/muser-mcp` (MCP server).
 `muser` in the commands below means that binary — add `target/release` to your `PATH`, or call it by full path.
 
-### 3. Make a first track with the CLI
+### Using the CLI
 
 ```bash
 # Generate an example project JSON
@@ -98,7 +149,7 @@ muser view song.muser.json --open --device
 
 > During development you can also run `cargo run -p muser-cli -- <subcommand>` without installing.
 
-### 4. Run as an MCP server (for agents)
+### Run as an MCP server (for agents)
 
 ```bash
 muser-mcp          # stdio MCP server exposing 34 tools
