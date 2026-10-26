@@ -167,7 +167,7 @@
   #path { margin-top: 12px; overflow-wrap: anywhere; color: var(--faint); font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: 9px; }
   .flow-card { overflow: hidden; }
   #flow-wrap { padding: 14px 16px 16px; overflow-x: auto; }
-  #flow { display: block; min-width: 100%; background: rgba(7,9,15,.46); border: 1px solid var(--line); border-radius: 10px; }
+  #flow { display: block; background: rgba(7,9,15,.46); border: 1px solid var(--line); border-radius: 10px; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--faint); font-size: 10px; }
   .legend span { white-space: nowrap; }
   .arrangement { min-width: 0; }
@@ -635,12 +635,12 @@ async function refresh() {
     if (loopEnd <= loopStart) loopEnd = null;
   }
   updateLoopRangeUI();
+  $("loading").hidden = true; $("loading").style.display = "none"; $("app").hidden = false;
   renderHeader(); renderChanges();
   decodeMeters();
   if (!dragging) renderMixer();
   renderFlow();
   drawTimeline();
-  $("loading").hidden = true; $("loading").style.display = "none"; $("app").hidden = false;
   if (first) version = st.version;
   else if (st.version !== version) swapVersion(st.version);
   banner(st.error ? t("renderFailedPrevious") + st.error : "", "err");
@@ -880,18 +880,24 @@ function renderFlow() {
   }
   const cols = [];
   for (const n of all) (cols[level[n.id]] ||= []).push(n);
-  const gapX = 90, gapY = 8, pad = 12;
+  const gapX = 90, gapY = 8, padX = 16, padY = 16;
   const colW = cols.map((c) => Math.max(...(c || [{ w: 0 }]).map((n) => n.w)));
   const colH = cols.map((c) => (c || []).reduce((s, n) => s + n.h + gapY, -gapY));
-  const H = Math.max(...colH) + pad * 2;
-  let x = pad;
+  const H = Math.max(76, ...colH.filter(Number.isFinite).map((h) => h + padY * 2));
+  let x = padX;
   cols.forEach((c, i) => {
-    let y = pad + (H - pad * 2 - colH[i]) / 2;
+    let y = padY + (H - padY * 2 - colH[i]) / 2;
     for (const n of c || []) { n.x = x; n.y = y; y += n.h + gapY; }
     x += colW[i] + gapX;
   });
-  const W = x - gapX + pad;
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
+  const contentW = x - gapX + padX;
+  const availableW = Math.max(0, $("flow-wrap").clientWidth - 32);
+  const W = Math.max(contentW, availableW);
+  const offsetX = Math.max(0, (W - contentW) / 2);
+  if (offsetX) for (const n of all) n.x += offsetX;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.style.width = `${W}px`; svg.style.height = `${H}px`;
   // 连线
   const gEdges = el("g", {}, svg);
   for (const e of edges) {
@@ -916,8 +922,8 @@ function renderFlow() {
     const g = el("g", { opacity: n.muted ? 0.45 : 1 }, svg);
     const stroke = n.kind === "track" ? "#343c55" : n.kind === "master" ? "#72e5c2" : "#8a7dff";
     el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 7, fill: "#171b29", stroke, "stroke-width": n.kind === "master" ? 2 : 1 }, g);
-    const t = el("text", { x: n.x + 8, y: n.y + 16, fill: n.kind === "track" ? "#f3f5fb" : n.kind === "master" ? "#72e5c2" : "#bcb5ff", "font-size": 12, "font-weight": 650 }, g);
-    t.textContent = n.name + (n.muted ? t("muted") : "");
+    const label = el("text", { x: n.x + 8, y: n.y + 16, fill: n.kind === "track" ? "#f3f5fb" : n.kind === "master" ? "#72e5c2" : "#bcb5ff", "font-size": 12, "font-weight": 650 }, g);
+    label.textContent = n.name + (n.muted ? t("muted") : "");
     let cx = n.x + 8;
     (n.chain || []).forEach((c, i) => {
       const w = chipW(c);
@@ -1198,7 +1204,7 @@ document.addEventListener("keydown", (e) => {
 }, true);
 // 按钮/复选框在松开空格时会被"点击"，一并拦下。
 document.addEventListener("keyup", (e) => { if (e.code === "Space" && !typing(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
-window.addEventListener("resize", drawTimeline);
+window.addEventListener("resize", () => { drawTimeline(); if (data) renderFlow(); });
 $("save").addEventListener("click", async () => { await post("/api/save"); banner(t("saved"), "info"); await refresh(); });
 $("reset").addEventListener("click", () => post("/api/reset").catch(() => {}));
 $("copy").addEventListener("click", async () => {
