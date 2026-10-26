@@ -304,4 +304,34 @@ mod tests {
         assert_eq!(note_number("C#-1"), Some(1));
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    #[test]
+    fn legato_trigger_uses_legato_regions() {
+        // first 区域是 1 号正弦音高，legato 区域移高一个八度：重叠的第二个音应走 legato。
+        let dir = std::env::temp_dir().join(format!("muser-sfzleg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("l.sfz");
+        std::fs::write(&path, "<region> sample=*sine trigger=first\n<region> sample=*sine trigger=legato transpose=12").unwrap();
+        let render = |second_start: f64| {
+            let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 60, "tracks": [{ "instrument": format!("sfz:{}", path.display()),
+                "clips": [{ "start": 0, "length": 3, "notes": [{ "pitch": 57, "start": 0, "length": 1.0 }, { "pitch": 57 + 2, "start": second_start, "length": 1.0 }] }] }] })).unwrap();
+            crate::render(&p, crate::RenderSettings { tail_seconds: 0.2, ..Default::default() }).unwrap()
+        };
+        // 第二个音 1.5–1.9 s 的过零率估频率：连奏约 2× 音高。
+        let freq = |a: &manguebyte::prelude::AudioBuffer<f32>| {
+            let x = &a.channel(0)[72_000..91_200];
+            x.windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count() as f64 / 0.4
+        };
+        let detached = freq(&render(1.1));
+        // clip 的 legato 字段：不重叠的写法也自动连起来。
+        let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 60, "tracks": [{ "instrument": format!("sfz:{}", path.display()),
+            "clips": [{ "start": 0, "length": 3, "legato": true, "notes": [{ "pitch": 57, "start": 0, "length": 0.9 }, { "pitch": 59, "start": 1.0, "length": 1.0 }] }] }] })).unwrap();
+        let auto = freq(&crate::render(&p, crate::RenderSettings { tail_seconds: 0.2, ..Default::default() }).unwrap());
+        let legato = freq(&render(0.95));
+        let hz = 440.0 * 2f64.powf((59.0 - 69.0) / 12.0);
+        assert!((detached - hz).abs() < hz * 0.05, "不重叠：普通音头 {detached}");
+        assert!((legato - 2.0 * hz).abs() < hz * 0.1, "重叠：连奏区域 {legato}");
+        assert!((auto - 2.0 * hz).abs() < hz * 0.1, "legato 字段：连奏区域 {auto}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

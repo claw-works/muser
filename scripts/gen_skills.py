@@ -632,6 +632,8 @@ def sfz_page():
     没给的用 .sfz 里 `set_ccN` 的默认值。
   - `"keyswitch": "Staccato"`：选键位切换（`sw_last`）的奏法，可写 `sw_label` 名称、音高数字或音名；默认 `sw_default`。
   - `muser instruments "sfz:/path/to.sfz"` 会列出该音色声明的控制器（名称与默认值）和可选奏法。
+- 触发方式按 .sfz 设计工作：`trigger=first` / `legato`（连奏采样，前一个键还按着时触发；clip 写 `"legato": true` 自动连起来，
+  见 SKILLS.md 的连奏一节）、`release`（松键/抬踏板时的余音、琴弦共鸣）。
 - 其它需要调整的地方可在轨上加效果器（如 `eq`、`reverb`）。
 - 采样里的 LFO、滤波器、速度曲线等 opcode 暂不支持（加载时提示数量），控制器默认值让它们不起作用时影响不大。
 - 免费音色库：freepats（钢琴、吉他等）、Versilian VSCO（管弦乐）、sfzinstruments.github.io。

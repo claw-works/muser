@@ -174,6 +174,7 @@ samples = seconds × sample_rate
         {
           "start": 0.0,         // 必填，片段起点（beats，从工程开头算）
           "length": 4.0,        // 必填，片段长度（beats），> 0
+          "legato": false,      // 连奏（可省略）：每个音接到下一个不同音高的音，重叠约 40 ms
           "pedal": [[0.1, 4.03]], // 延音踏板（CC64）踩下区间（可省略）：[起, 止] 拍，相对 clip 起点，递增不重叠
           "notes": [            // 音符数组
             {

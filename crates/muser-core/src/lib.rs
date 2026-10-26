@@ -311,6 +311,11 @@ pub struct Clip {
     /// 踩下期间松开的键继续发声，抬起时一起进入释音。换踏板：前一区间结束与下一区间开始之间留一点空隙。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pedal: Vec<(f64, f64)>,
+    /// 连奏：每个音延长到与下一个（不同音高的）音重叠约 40 毫秒，让乐器按连奏演奏
+    /// （SFZ 的 `trigger=legato` 连奏采样、单音合成器的滑音）。音之间空隙超过 1/4 拍（休止）、
+    /// 或下一个音同音高（重新发音）时不连。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub legato: bool,
 }
 
 impl Clip {
@@ -319,6 +324,7 @@ impl Clip {
             start: start.into(),
             length: length.into(),
             pedal: Vec::new(),
+            legato: false,
             notes: Vec::new(),
         }
     }

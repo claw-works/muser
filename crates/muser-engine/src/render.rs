@@ -91,7 +91,24 @@ fn render_instrument(track: &muser_core::Track, cx: &Ctx, lanes: &mut TrackLanes
         let clip_start = clip.start.to_seconds(tempo) * sr;
         let clip_len_frames = (clip.length.to_seconds(tempo) * sr) as usize;
         let clip_end_frame = clip_start as usize + clip_len_frames;
-        for note in &clip.notes {
+        // 连奏：延长到下一个不同音高的音之后约 40 ms（空隙超过 1/4 拍视为休止，不连）。
+        let legato_len = |i: usize| -> Option<f64> {
+            let n = &clip.notes[i];
+            let end = n.start.0 + n.length.0;
+            let next = clip.notes.iter().filter(|m| m.start.0 > n.start.0 + 1e-9).map(|m| m.start.0).fold(f64::INFINITY, f64::min);
+            if !next.is_finite() || next - end > 0.25 {
+                return None;
+            }
+            let at_next: Vec<&muser_core::Note> = clip.notes.iter().filter(|m| (m.start.0 - next).abs() < 1e-9).collect();
+            if at_next.iter().any(|m| m.pitch == n.pitch) {
+                return None;
+            }
+            let overlap = 0.04 * tempo / 60.0;
+            Some((next - n.start.0 + overlap).max(n.length.0))
+        };
+        for (ni, note) in clip.notes.iter().enumerate() {
+            let length = if clip.legato { legato_len(ni).map_or(note.length, Beats) } else { note.length };
+            let note = &muser_core::Note { length, ..note.clone() };
             let on = (clip_start + note.start.to_seconds(tempo) * sr) as usize;
             // 音符结束不超过 clip 边界（被裁剪）。
             let raw_off = (clip_start + (note.start + note.length).to_seconds(tempo) * sr) as usize;

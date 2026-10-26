@@ -94,6 +94,10 @@ struct AddClipParams {
     /// 延音踏板踩下的区间（可选）：[[起, 止], ...]，拍，相对 clip 起点，按时间递增、互不重叠。
     #[serde(default)]
     pedal: Vec<(f64, f64)>,
+    /// 连奏（可选）：把每个音接到下一个不同音高的音上（空隙超过 1/4 拍或同音重复时不连）。
+    /// 弦乐/木管唱旋律时用；SFZ 的 legato 采样与单音合成器的滑音会生效。
+    #[serde(default)]
+    legato: bool,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -537,6 +541,7 @@ impl Muser {
                 .ok_or_else(|| user_err(format!("track_index {} 越界", p.track_index)))?;
             let mut clip = Clip::new(Beats(p.start), Beats(p.length));
             clip.pedal = p.pedal.clone();
+            clip.legato = p.legato;
             track.clips.push(clip);
             let n = track.clips.len() - 1;
             if let Err(e) = proj.validate() {

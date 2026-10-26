@@ -33,7 +33,7 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `dnb-roller` | Drum & Bass | 174 | breakbeat 鼓型、超低 sub-bass、长音 pad 铺底 |
 | `dnb-liquid-skyline` | Liquid Drum & Bass（约 2 分钟完整曲） | 174 | F 小调 Fm7–Dbmaj7–Abmaj7–Eb7；Intro（pad 滤波渐开、高通鼓）→ Build（电钢、sub 第 25 小节进、军鼓滚奏）→ Drop 1（reese 滤波 LFO + 侧链泵感）→ Breakdown（弦乐、主旋律 hook、ride 预示）→ Drop 2（新 reese 节奏、16 分镲、ride、hook 回归）→ Outro；riser / downlifter / impact 过渡，军鼓段尾甩混响 |
 | `bach-prelude-c` | 巴赫《C 大调前奏曲》BWV 846（第 1–19 小节，约 80 秒） | 66 | 原谱（公有领域）+ 自己的演奏处理：Salamander 三角钢琴（SFZ，需本机音色库）；按谱时值（右手十六分音符不连奏）+ 真延音踏板（每小节切分换踏板，`pedal` 字段）；低音与高声部顶音略突出；力度随和声张力起伏（第 12 小节减七、第 18 小节属七最强），乐句末呼吸、结尾渐慢渐弱，落在 C 大调长和弦；时值带细微人性化（固定种子） |
-| `ode-to-joy-orchestra` | 贝多芬第九交响曲第四乐章《欢乐颂》主题（约 2 分 17 秒，管弦乐） | 120 | D 大调主题陈述四次、逐次加配器（配器与对位为自己编写）：① 大提琴+低音提琴 → ② 中提琴唱旋律、大管对位、低音提琴拨弦 → ③ 小提琴唱旋律、单簧管对位、中提琴/大提琴长音 → ④ 全奏 → V7–I 尾声与定音鼓滚奏。Sonatina Symphonic Orchestra 采样（需本机音色库）：旋律用起音快的 Marcato，和声用 Sustain，低音用 Pizzicato；力度用 SFZ 控制器 CC1（`instrument_params.cc`）。逐拍配和声，强拍零半音冲突；旋律比伴奏高 4–6 dB；四段 -26 → -22 → -17 → -14 dB |
+| `ode-to-joy-orchestra` | 贝多芬第九交响曲第四乐章《欢乐颂》主题（约 2 分 18 秒，管弦乐） | 120 | D 大调主题陈述四次、逐次加配器（配器与对位为自己编写）：① 大提琴+低音提琴 → ② 中提琴唱旋律、大管对位、低音提琴拨弦 → ③ 小提琴唱旋律、单簧管对位、中提琴/大提琴长音 → ④ 全奏 → V7–I 尾声与定音鼓滚奏。Sonatina Symphonic Orchestra 采样（需本机音色库）：旋律声部用 Legato 音色、每个乐句一个 `"legato": true` 的 clip（句末换气、同音重复重新发音；音与音交界处不再凹陷），伴奏用 Marcato / Sustain / Pizzicato；力度用 SFZ 控制器 CC1；强拍零半音冲突 |
 
 ## instruments
 

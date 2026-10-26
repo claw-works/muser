@@ -322,10 +322,6 @@ fn kit_keys(kit: &DrumKit) -> String {
     kit.keys().map(|k| k.to_string()).collect::<Vec<_>>().join(",")
 }
 
-fn pitched<V: Voice<f32> + 'static>(count: usize, make: impl FnMut() -> V) -> TrackInstrument {
-    TrackInstrument::new(Synth::with_voices(count, make), 0)
-}
-
 /// SFZ 采样器乐器（内置，manguebyte-sampler）。
 /// `muser instruments sfz:…` 的说明：列出 .sfz 声明的控制器。
 fn sfz_controls_note(path: &std::path::Path) -> String {
@@ -351,8 +347,7 @@ fn sfz_controls_note(path: &std::path::Path) -> String {
 }
 
 fn sfz_instrument(path: &std::path::Path, cc: &crate::sfz::Options) -> Result<TrackInstrument, String> {
-    use manguebyte::sampler::SamplerVoice;
-    use std::sync::Arc;
+    use manguebyte::sampler::Sampler;
     let (inst, _dropped, warnings) = crate::sfz::load(path, cc)?;
     if warnings > 0 {
         eprintln!(
@@ -360,11 +355,38 @@ fn sfz_instrument(path: &std::path::Path, cc: &crate::sfz::Options) -> Result<Tr
             path.display()
         );
     }
-    let inst = Arc::new(inst);
-    Ok(pitched(SFZ_VOICES, move || SamplerVoice::new(Arc::clone(&inst))))
+    let (sampler, loader) = Sampler::with_instrument(inst, SFZ_VOICES);
+    Ok(TrackInstrument::new(SfzSampler { sampler, _loader: loader }, 0))
 }
 
-const SFZ_VOICES: usize = 32;
+/// 完整的 SFZ 采样器：自己管理复音、按住的键与踏板，所以 `trigger=first` / `legato`（连奏：
+/// 前一个键还按着时换用连奏采样）、`release` 等触发方式按 .sfz 的设计工作。
+struct SfzSampler {
+    sampler: manguebyte::sampler::Sampler<f32>,
+    /// 采样器的加载端，需与采样器同生命周期。
+    _loader: manguebyte::sampler::SamplerLoader,
+}
+
+impl Playable for SfzSampler {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        Processor::prepare(&mut self.sampler, spec);
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, _accent: bool) {
+        self.sampler.note_on(note, velocity);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        self.sampler.note_off(note, velocity);
+    }
+    fn pedal(&mut self, channel: u8, down: bool) {
+        self.sampler.handle_event(&sustain_event(channel, down));
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        Processor::process(&mut self.sampler, buffer);
+    }
+}
+
+/// 同时发声的区域数（一个音可能叠几层区域，连奏时前一个音还在淡出）。
+const SFZ_VOICES: usize = 64;
 
 /// 内置（非 poly 预设）乐器条目。
 struct Builtin {
