@@ -93,6 +93,19 @@
   .time { color: #fff; font: 600 17px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
   .transport-options { margin-left: auto; display: flex; align-items: center; gap: 18px; }
   label.inline { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .loop-control { display: inline-flex; align-items: center; gap: 7px; }
+  .loop-range {
+    max-width: 150px; overflow: hidden; padding: 3px 8px; color: var(--faint); background: rgba(255,255,255,.03);
+    border: 1px solid var(--line); border-radius: 999px; font: 600 9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
+    text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .loop-range.active { color: var(--accent); border-color: rgba(114,229,194,.28); background: var(--accent-soft); }
+  #clear-loop {
+    width: 22px; min-height: 22px; height: 22px; padding: 0; color: var(--faint); background: transparent;
+    border-color: transparent; border-radius: 50%; font-size: 14px; line-height: 1;
+  }
+  #clear-loop:hover:not(:disabled) { color: var(--text); border-color: var(--line); background: rgba(255,255,255,.04); }
+  #clear-loop[hidden] { display: none; }
   input[type=checkbox] { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
   input[type=range] { width: 100%; height: 20px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
   input[type=range]::-webkit-slider-runnable-track { height: 4px; background: linear-gradient(90deg,var(--accent) 0 var(--fill,50%),#242a3b var(--fill,50%) 100%); border-radius: 99px; }
@@ -283,13 +296,17 @@
         <span class="time" id="time">0:00.0 / 0:00.0</span>
       </div>
       <div class="transport-options">
-        <label class="inline"><input type="checkbox" id="loop"> <span data-i18n="loop">Loop</span></label>
+        <div class="loop-control">
+          <label class="inline"><input type="checkbox" id="loop"> <span data-i18n="loop">Loop</span></label>
+          <span id="loop-range" class="loop-range">Full song</span>
+          <button id="clear-loop" type="button" hidden aria-label="Clear loop range">×</button>
+        </div>
         <label class="inline"><span data-i18n="monitor">Monitor</span> <input type="range" id="monitor" min="-40" max="6" step="0.5" value="0" aria-label="Monitor volume"> <span id="monitor-db">0.0 dB</span></label>
       </div>
     </section>
     <main>
       <section class="timeline-card">
-        <div class="section-bar"><h2 data-i18n="tracksMix">Tracks & Mix</h2><span class="section-note" data-i18n="expandHint">Expand a track to adjust volume and routing</span></div>
+        <div class="section-bar"><h2 data-i18n="tracksMix">Tracks & Mix</h2><span class="section-note" data-i18n="expandHint">Right-drag the ruler to set a loop range · expand tracks for mix</span></div>
         <div class="arrangement">
           <div class="overview-row">
             <div class="overview-label" data-i18n="masterOverview">MASTER OVERVIEW</div>
@@ -332,7 +349,8 @@ const I18N = {
   en: {
     liveView: "Live view", currentProject: "Current project", playShortcut: "Play / pause", loading: "Preparing audio engine…",
     positionDuration: "Position / Duration", masterOverview: "MASTER OVERVIEW",
-    loop: "Loop", monitor: "Monitor", tracksMix: "Tracks & Mix", expandHint: "Expand a track to adjust volume and routing",
+    loop: "Loop", fullSong: "Full song", clearLoop: "Clear loop range", monitor: "Monitor", tracksMix: "Tracks & Mix",
+    expandHint: "Right-drag the ruler to set a loop range · expand tracks for mix",
     commonChannels: "Shared channels", busesMaster: "Buses & Master", pendingChanges: "Pending changes",
     relativeProject: "Compared with project file", mixMatches: "Mix matches the project file",
     save: "Save to project file", reset: "Reset changes", copyJson: "Copy JSON", signalFlow: "Signal flow",
@@ -356,7 +374,8 @@ const I18N = {
   zh: {
     liveView: "实时视图", currentProject: "当前工程", playShortcut: "播放 / 暂停", loading: "引擎正在准备音频…",
     positionDuration: "位置 / 时长", masterOverview: "主输出总览",
-    loop: "循环播放", monitor: "监听", tracksMix: "轨道与混音", expandHint: "展开轨道调整音量与路由",
+    loop: "循环播放", fullSong: "整首", clearLoop: "清除循环范围", monitor: "监听", tracksMix: "轨道与混音",
+    expandHint: "右键拖动标尺设置循环范围 · 展开轨道调整混音",
     commonChannels: "公共通道", busesMaster: "总线与 Master", pendingChanges: "待保存改动",
     relativeProject: "相对工程文件", mixMatches: "混音与工程文件一致",
     save: "保存到工程文件", reset: "撤销改动", copyJson: "复制 JSON", signalFlow: "信号流",
@@ -394,6 +413,7 @@ function applyLanguage(rerender = true) {
   $("monitor").setAttribute("aria-label", language === "en" ? "Monitor volume" : "监听音量");
   $("timeline").setAttribute("aria-label", language === "en" ? "Overview timeline" : "总览时间线");
   $("flow").setAttribute("aria-label", language === "en" ? "Signal flow graph" : "信号流图");
+  updateLoopRangeUI();
   setPlayLabel(deviceMode() ? !!(device && device.playing) : playing);
   if (!rerender || !data) {
     if (!lastStatus) $("badge").textContent = t("connecting");
@@ -419,9 +439,62 @@ let playing = false, pausedAt = 0;   // pausedAt：暂停时的帧位置
 let entries = [];             // 已排期的分段 { src, from, to, when }
 let nextFrame = 0, nextWhen = 0, endWhen = Infinity;
 let gen = 0, pumping = false;
+let loopStart = 0, loopEnd = null;
+let loopDrag = null, deviceLoopSeeking = false;
 // ---------- 声卡模式（muser view --device）：声音从运行 muser 的机器出，页面只做遥控 ----------
 let device = null;            // 最近一次的播放状态，加上取到它的时刻 at
 const deviceMode = () => !!(data && data.device_mode);
+const hasLoopRange = () => loopEnd !== null && loopEnd > loopStart;
+function loopBounds() {
+  return $("loop").checked && hasLoopRange() ? [loopStart, Math.min(loopEnd, total)] : [0, total];
+}
+function defaultLoopFrames() {
+  if (!data) return sr * 8;
+  return Math.max(1, Math.round(data.beats_per_bar * 4 * 60 / data.tempo * sr));
+}
+function snapLoopFrame(frame) {
+  if (!data) return Math.round(frame);
+  const beat = 60 / data.tempo * sr;
+  return Math.max(0, Math.min(total, Math.round(frame / beat) * beat));
+}
+function updateLoopRangeUI() {
+  const label = $("loop-range"), clear = $("clear-loop");
+  if (!label || !clear) return;
+  if (hasLoopRange()) {
+    label.textContent = `${fmtTime(loopStart / sr)} – ${fmtTime(loopEnd / sr)}`;
+    label.classList.add("active");
+    clear.hidden = false;
+  } else {
+    label.textContent = t("fullSong");
+    label.classList.remove("active");
+    clear.hidden = true;
+  }
+  clear.setAttribute("aria-label", t("clearLoop"));
+  clear.title = t("clearLoop");
+}
+function setLoopRange(a, b) {
+  a = snapLoopFrame(a); b = snapLoopFrame(b);
+  if (b < a) [a, b] = [b, a];
+  const min = data ? 60 / data.tempo * sr : 1;
+  if (b - a < min) b = Math.min(total, a + min);
+  loopStart = a; loopEnd = Math.max(a, b);
+  updateLoopRangeUI();
+  drawTimeline();
+}
+function restartForLoopChange() {
+  if (!data) return;
+  const pos = position();
+  const target = $("loop").checked && hasLoopRange() && (pos < loopStart || pos >= loopEnd) ? loopStart : pos;
+  if (deviceMode()) {
+    if (target !== pos) transport({ action: "seek", seconds: target / sr });
+  } else if (playing) {
+    startFrom(target);
+  }
+}
+function clearLoopRange() {
+  loopStart = 0; loopEnd = null;
+  updateLoopRangeUI(); drawTimeline(); restartForLoopChange();
+}
 function devicePosition() {
   if (!device) return 0;
   const s = device.position + (device.playing && !device.seeking ? (performance.now() - device.at) / 1000 : 0);
@@ -471,9 +544,10 @@ async function pump() {
   try {
     while (playing && nextWhen - ctx.currentTime < LEAD && nextWhen !== Infinity) {
       const my = gen, v = version, from = nextFrame;
-      const frames = Math.min(Math.floor(sr / 2), total - from);
+      const [rangeStart, rangeEnd] = loopBounds();
+      const frames = Math.min(Math.floor(sr / 2), rangeEnd - from);
       if (frames <= 0) {
-        if ($("loop").checked) { nextFrame = 0; continue; }
+        if ($("loop").checked) { nextFrame = rangeStart; continue; }
         endWhen = nextWhen; nextWhen = Infinity; break;
       }
       let chunk;
@@ -546,6 +620,12 @@ async function refresh() {
     return;
   }
   data = st; sr = st.sample_rate; total = st.frames;
+  loopStart = Math.min(loopStart, total);
+  if (loopEnd !== null) {
+    loopEnd = Math.min(loopEnd, total);
+    if (loopEnd <= loopStart) loopEnd = null;
+  }
+  updateLoopRangeUI();
   renderHeader(); renderChanges();
   decodeMeters();
   if (!dragging) renderMixer();
@@ -564,7 +644,10 @@ async function poll1() {
     const ended = device && device.playing && !s.device.playing && s.device.position >= s.device.duration - 0.05;
     device = { ...s.device, at: performance.now() };
     setPlayLabel(device.playing);
-    if (ended && $("loop").checked) transport({ action: "seek", seconds: 0 }).then(() => transport({ action: "play" }));
+    if (ended && $("loop").checked) {
+      const restart = hasLoopRange() ? loopStart / sr : 0;
+      transport({ action: "seek", seconds: restart }).then(() => transport({ action: "play" }));
+    }
     if (device.error) banner(t("deviceFailed") + device.error, "err");
   }
   return s;
@@ -883,6 +966,7 @@ function drawTimeline() {
     const h = Math.min(1, p) * ((H - rulerH) / 2 - 5);
     g.fillRect(px, mid - h, 1, h * 2 || 1);
   }
+  drawLoopRange(g, W, H, true);
   drawPlayhead(g, position() / Math.max(1, total) * W, H);
   drawTrackLanes();
 }
@@ -919,8 +1003,22 @@ function drawTrackLanes() {
       }
     }
     g.globalAlpha = 1;
+    drawLoopRange(g, W, H, false);
     drawPlayhead(g, position() / Math.max(1, total) * W, H);
   }
+}
+
+function drawLoopRange(g, width, height, showLabel) {
+  if (!hasLoopRange() || total <= 0) return;
+  const x0 = loopStart / total * width, x1 = loopEnd / total * width;
+  g.fillStyle = "rgba(114,229,194,.09)"; g.fillRect(x0, 0, Math.max(1, x1 - x0), height);
+  g.fillStyle = "rgba(114,229,194,.8)"; g.fillRect(x0, 0, 1.5, height); g.fillRect(x1 - 1.5, 0, 1.5, height);
+  if (!showLabel) return;
+  g.fillStyle = "rgba(114,229,194,.24)"; g.fillRect(x0, 0, Math.max(1, x1 - x0), 20);
+  g.fillStyle = "#9af0d6"; g.font = "700 8px system-ui"; g.textBaseline = "middle";
+  if (x1 - x0 > 34) g.fillText("LOOP", x0 + 5, 10);
+  g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0 + 7, 0); g.lineTo(x0, 7); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(x1, 0); g.lineTo(x1 - 7, 0); g.lineTo(x1, 7); g.closePath(); g.fill();
 }
 
 function drawPlayhead(g, px, height) {
@@ -971,7 +1069,19 @@ function drawMeters() {
     cv.title = t("peak", Math.round(Math.max(s[0], s[1]) / 255 * 60 - 60));
   }
 }
-function tick() { if (data) { drawMeters(); $("time").textContent = `${fmtTime(position() / sr)} / ${fmtTime(total / sr)}`; drawTimeline(); } requestAnimationFrame(tick); }
+function tick() {
+  if (data) {
+    if (deviceMode() && device && device.playing && $("loop").checked && hasLoopRange() &&
+        devicePosition() >= loopEnd && !deviceLoopSeeking) {
+      deviceLoopSeeking = true;
+      device.position = loopStart / sr; device.at = performance.now();
+      post("/api/transport", { action: "seek", seconds: loopStart / sr })
+        .then(poll1).catch(() => {}).finally(() => { deviceLoopSeeking = false; });
+    }
+    drawMeters(); $("time").textContent = `${fmtTime(position() / sr)} / ${fmtTime(total / sr)}`; drawTimeline();
+  }
+  requestAnimationFrame(tick);
+}
 
 // ---------- 交互 ----------
 $("play").addEventListener("click", togglePlay);
@@ -990,6 +1100,43 @@ function seekFromCanvas(e) {
   seek(Math.floor(Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * total));
 }
 $("timeline").addEventListener("click", seekFromCanvas);
+function frameFromTimelinePointer(e) {
+  const r = $("timeline").getBoundingClientRect();
+  return snapLoopFrame(Math.max(0, Math.min(r.width, e.clientX - r.left)) / Math.max(1, r.width) * total);
+}
+$("timeline").addEventListener("contextmenu", (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  if (e.clientY - r.top <= 20) e.preventDefault();
+});
+$("timeline").addEventListener("pointerdown", (e) => {
+  if (e.button !== 2) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  if (e.clientY - r.top > 20) return;
+  e.preventDefault();
+  const frame = frameFromTimelinePointer(e);
+  loopDrag = { pointerId: e.pointerId, start: frame, last: frame, startX: e.clientX, moved: false };
+  e.currentTarget.setPointerCapture(e.pointerId);
+});
+$("timeline").addEventListener("pointermove", (e) => {
+  if (!loopDrag || loopDrag.pointerId !== e.pointerId) return;
+  loopDrag.last = frameFromTimelinePointer(e);
+  loopDrag.moved ||= Math.abs(e.clientX - loopDrag.startX) > 3;
+  if (loopDrag.moved) setLoopRange(loopDrag.start, loopDrag.last);
+});
+$("timeline").addEventListener("pointerup", (e) => {
+  if (!loopDrag || loopDrag.pointerId !== e.pointerId) return;
+  const drag = loopDrag; loopDrag = null;
+  if (!drag.moved) {
+    const length = hasLoopRange() ? loopEnd - loopStart : defaultLoopFrames();
+    setLoopRange(drag.start, Math.min(total, drag.start + length));
+  } else {
+    setLoopRange(drag.start, drag.last);
+  }
+  restartForLoopChange();
+});
+$("timeline").addEventListener("pointercancel", () => { loopDrag = null; });
+$("loop").addEventListener("change", restartForLoopChange);
+$("clear-loop").addEventListener("click", clearLoopRange);
 /** 正在输入文字时空格留给输入框；其它情况（包括焦点在按钮、推子、复选框上）空格都切换播放/暂停。 */
 const typing = (t) => t && (t.isContentEditable || t.tagName === "TEXTAREA" || t.tagName === "SELECT" ||
   (t.tagName === "INPUT" && !["range", "checkbox", "radio", "button", "submit", "reset", "color"].includes(t.type)));
