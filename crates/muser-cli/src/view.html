@@ -306,7 +306,7 @@
     </section>
     <main>
       <section class="timeline-card">
-        <div class="section-bar"><h2 data-i18n="tracksMix">Tracks & Mix</h2><span class="section-note" data-i18n="expandHint">Right-drag the ruler to set a loop range · expand tracks for mix</span></div>
+        <div class="section-bar"><h2 data-i18n="tracksMix">Tracks & Mix</h2><span class="section-note" data-i18n="expandHint">Right-drag the ruler to set a loop · drag either edge to adjust</span></div>
         <div class="arrangement">
           <div class="overview-row">
             <div class="overview-label" data-i18n="masterOverview">MASTER OVERVIEW</div>
@@ -350,7 +350,7 @@ const I18N = {
     liveView: "Live view", currentProject: "Current project", playShortcut: "Play / pause", loading: "Preparing audio engine…",
     positionDuration: "Position / Duration", masterOverview: "MASTER OVERVIEW",
     loop: "Loop", fullSong: "Full song", clearLoop: "Clear loop range", monitor: "Monitor", tracksMix: "Tracks & Mix",
-    expandHint: "Right-drag the ruler to set a loop range · expand tracks for mix",
+    expandHint: "Right-drag the ruler to set a loop · drag either edge to adjust",
     commonChannels: "Shared channels", busesMaster: "Buses & Master", pendingChanges: "Pending changes",
     relativeProject: "Compared with project file", mixMatches: "Mix matches the project file",
     save: "Save to project file", reset: "Reset changes", copyJson: "Copy JSON", signalFlow: "Signal flow",
@@ -375,7 +375,7 @@ const I18N = {
     liveView: "实时视图", currentProject: "当前工程", playShortcut: "播放 / 暂停", loading: "引擎正在准备音频…",
     positionDuration: "位置 / 时长", masterOverview: "主输出总览",
     loop: "循环播放", fullSong: "整首", clearLoop: "清除循环范围", monitor: "监听", tracksMix: "轨道与混音",
-    expandHint: "右键拖动标尺设置循环范围 · 展开轨道调整混音",
+    expandHint: "右键拖动标尺设置循环范围 · 拖动两侧边界进行调整",
     commonChannels: "公共通道", busesMaster: "总线与 Master", pendingChanges: "待保存改动",
     relativeProject: "相对工程文件", mixMatches: "混音与工程文件一致",
     save: "保存到工程文件", reset: "撤销改动", copyJson: "复制 JSON", signalFlow: "信号流",
@@ -440,7 +440,7 @@ let entries = [];             // 已排期的分段 { src, from, to, when }
 let nextFrame = 0, nextWhen = 0, endWhen = Infinity;
 let gen = 0, pumping = false;
 let loopStart = 0, loopEnd = null;
-let loopDrag = null, deviceLoopSeeking = false;
+let loopDrag = null, loopResize = null, suppressTimelineClickUntil = 0, deviceLoopSeeking = false;
 // ---------- 声卡模式（muser view --device）：声音从运行 muser 的机器出，页面只做遥控 ----------
 let device = null;            // 最近一次的播放状态，加上取到它的时刻 at
 const deviceMode = () => !!(data && data.device_mode);
@@ -455,7 +455,7 @@ function defaultLoopFrames() {
 function snapLoopFrame(frame) {
   if (!data) return Math.round(frame);
   const beat = 60 / data.tempo * sr;
-  return Math.max(0, Math.min(total, Math.round(frame / beat) * beat));
+  return Math.max(0, Math.min(total, Math.round(Math.round(frame / beat) * beat)));
 }
 function updateLoopRangeUI() {
   const label = $("loop-range"), clear = $("clear-loop");
@@ -475,9 +475,18 @@ function updateLoopRangeUI() {
 function setLoopRange(a, b) {
   a = snapLoopFrame(a); b = snapLoopFrame(b);
   if (b < a) [a, b] = [b, a];
-  const min = data ? 60 / data.tempo * sr : 1;
+  const min = data ? Math.max(1, Math.round(60 / data.tempo * sr)) : 1;
   if (b - a < min) b = Math.min(total, a + min);
   loopStart = a; loopEnd = Math.max(a, b);
+  updateLoopRangeUI();
+  drawTimeline();
+}
+function setLoopBoundary(side, frame) {
+  if (!hasLoopRange()) return;
+  frame = snapLoopFrame(frame);
+  const min = data ? Math.max(1, Math.round(60 / data.tempo * sr)) : 1;
+  if (side === "start") loopStart = Math.max(0, Math.min(frame, loopEnd - min));
+  else loopEnd = Math.min(total, Math.max(frame, loopStart + min));
   updateLoopRangeUI();
   drawTimeline();
 }
@@ -1019,6 +1028,8 @@ function drawLoopRange(g, width, height, showLabel) {
   if (x1 - x0 > 34) g.fillText("LOOP", x0 + 5, 10);
   g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0 + 7, 0); g.lineTo(x0, 7); g.closePath(); g.fill();
   g.beginPath(); g.moveTo(x1, 0); g.lineTo(x1 - 7, 0); g.lineTo(x1, 7); g.closePath(); g.fill();
+  g.beginPath(); g.arc(x0, 11, 3, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(x1, 11, 3, 0, Math.PI * 2); g.fill();
 }
 
 function drawPlayhead(g, px, height) {
@@ -1096,6 +1107,7 @@ $("monitor").addEventListener("input", (e) => {
   else if (monitor) monitor.gain.value = dbToGain(+e.target.value);
 });
 function seekFromCanvas(e) {
+  if (performance.now() < suppressTimelineClickUntil) return;
   const r = e.currentTarget.getBoundingClientRect();
   seek(Math.floor(Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * total));
 }
@@ -1104,11 +1116,30 @@ function frameFromTimelinePointer(e) {
   const r = $("timeline").getBoundingClientRect();
   return snapLoopFrame(Math.max(0, Math.min(r.width, e.clientX - r.left)) / Math.max(1, r.width) * total);
 }
+function loopHandleAt(e) {
+  if (!hasLoopRange() || total <= 0) return null;
+  const r = $("timeline").getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const startX = loopStart / total * r.width, endX = loopEnd / total * r.width;
+  const startDistance = Math.abs(x - startX), endDistance = Math.abs(x - endX);
+  if (Math.min(startDistance, endDistance) > 8) return null;
+  return startDistance <= endDistance ? "start" : "end";
+}
 $("timeline").addEventListener("contextmenu", (e) => {
   const r = e.currentTarget.getBoundingClientRect();
   if (e.clientY - r.top <= 20) e.preventDefault();
 });
 $("timeline").addEventListener("pointerdown", (e) => {
+  if (e.button === 0) {
+    const side = loopHandleAt(e);
+    if (!side) return;
+    e.preventDefault();
+    loopResize = { pointerId: e.pointerId, side };
+    suppressTimelineClickUntil = performance.now() + 250;
+    e.currentTarget.style.cursor = "ew-resize";
+    e.currentTarget.setPointerCapture(e.pointerId);
+    return;
+  }
   if (e.button !== 2) return;
   const r = e.currentTarget.getBoundingClientRect();
   if (e.clientY - r.top > 20) return;
@@ -1118,12 +1149,27 @@ $("timeline").addEventListener("pointerdown", (e) => {
   e.currentTarget.setPointerCapture(e.pointerId);
 });
 $("timeline").addEventListener("pointermove", (e) => {
+  if (loopResize && loopResize.pointerId === e.pointerId) {
+    setLoopBoundary(loopResize.side, frameFromTimelinePointer(e));
+    return;
+  }
   if (!loopDrag || loopDrag.pointerId !== e.pointerId) return;
   loopDrag.last = frameFromTimelinePointer(e);
   loopDrag.moved ||= Math.abs(e.clientX - loopDrag.startX) > 3;
   if (loopDrag.moved) setLoopRange(loopDrag.start, loopDrag.last);
 });
+$("timeline").addEventListener("pointermove", (e) => {
+  if (loopResize || loopDrag) return;
+  e.currentTarget.style.cursor = loopHandleAt(e) ? "ew-resize" : "crosshair";
+});
 $("timeline").addEventListener("pointerup", (e) => {
+  if (loopResize && loopResize.pointerId === e.pointerId) {
+    loopResize = null;
+    suppressTimelineClickUntil = performance.now() + 120;
+    e.currentTarget.style.cursor = loopHandleAt(e) ? "ew-resize" : "crosshair";
+    restartForLoopChange();
+    return;
+  }
   if (!loopDrag || loopDrag.pointerId !== e.pointerId) return;
   const drag = loopDrag; loopDrag = null;
   if (!drag.moved) {
@@ -1134,7 +1180,12 @@ $("timeline").addEventListener("pointerup", (e) => {
   }
   restartForLoopChange();
 });
-$("timeline").addEventListener("pointercancel", () => { loopDrag = null; });
+$("timeline").addEventListener("pointerleave", (e) => {
+  if (!loopResize && !loopDrag) e.currentTarget.style.cursor = "crosshair";
+});
+$("timeline").addEventListener("pointercancel", (e) => {
+  loopDrag = null; loopResize = null; e.currentTarget.style.cursor = "crosshair";
+});
 $("loop").addEventListener("change", restartForLoopChange);
 $("clear-loop").addEventListener("click", clearLoopRange);
 /** 正在输入文字时空格留给输入框；其它情况（包括焦点在按钮、推子、复选框上）空格都切换播放/暂停。 */
