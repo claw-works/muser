@@ -33,7 +33,7 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `dnb-roller` | Drum & Bass | 174 | breakbeat 鼓型、超低 sub-bass、长音 pad 铺底 |
 | `dnb-liquid-skyline` | Liquid Drum & Bass（约 2 分钟完整曲） | 174 | F 小调 Fm7–Dbmaj7–Abmaj7–Eb7；Intro（pad 滤波渐开、高通鼓）→ Build（电钢、sub 第 25 小节进、军鼓滚奏）→ Drop 1（reese 滤波 LFO + 侧链泵感）→ Breakdown（弦乐、主旋律 hook、ride 预示）→ Drop 2（新 reese 节奏、16 分镲、ride、hook 回归）→ Outro；riser / downlifter / impact 过渡，军鼓段尾甩混响 |
 | `bach-prelude-c` | 巴赫《C 大调前奏曲》BWV 846（第 1–19 小节，约 80 秒） | 66 | 原谱（公有领域）+ 自己的演奏处理：Salamander 三角钢琴（SFZ，需本机音色库）；按谱时值（右手十六分音符不连奏）+ 真延音踏板（每小节切分换踏板，`pedal` 字段）；低音与高声部顶音略突出；力度随和声张力起伏（第 12 小节减七、第 18 小节属七最强），乐句末呼吸、结尾渐慢渐弱，落在 C 大调长和弦；时值带细微人性化（固定种子） |
-| `ode-to-joy-orchestra` | 贝多芬第九交响曲第四乐章《欢乐颂》主题（约 2 分 17 秒，管弦乐） | 120 | D 大调主题陈述四次、逐次加配器（配器与对位为自己编写）：① 大提琴+低音提琴齐奏 → ② 中提琴唱旋律、大管对位 → ③ 小提琴唱旋律、单簧管对位、中提琴/大提琴和弦 → ④ 全奏（铜管、定音鼓）→ V7–I 尾声与定音鼓滚奏。逐拍配和声，对位按和弦选音（强拍与伴奏声部之间零半音冲突，生成时自动检查）；弦乐用起音快的强奏力度层、动态由分段增益控制，并提前约 60 ms 触发；句末与同音重复处换弓。VSCO 2 CE 采样（需本机音色库），四条编组总线 + 音乐厅混响 |
+| `ode-to-joy-orchestra` | 贝多芬第九交响曲第四乐章《欢乐颂》主题（约 2 分 17 秒，管弦乐） | 120 | D 大调主题陈述四次、逐次加配器（配器与对位为自己编写）：① 大提琴+低音提琴 → ② 中提琴唱旋律、大管对位、低音提琴拨弦 → ③ 小提琴唱旋律、单簧管对位、中提琴/大提琴长音 → ④ 全奏 → V7–I 尾声与定音鼓滚奏。Sonatina Symphonic Orchestra 采样（需本机音色库）：旋律用起音快的 Marcato，和声用 Sustain，低音用 Pizzicato；力度用 SFZ 控制器 CC1（`instrument_params.cc`）。逐拍配和声，强拍零半音冲突；旋律比伴奏高 4–6 dB；四段 -26 → -22 → -17 → -14 dB |
 
 ## instruments
 
@@ -44,6 +44,8 @@ scripts/render_samples.sh effects    # 只渲染一个分组
   poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck。完整列表用 `muser instruments` 查看（115 个）。
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径是本机路径
   `/data/Music/SFZ-samples/freepats/...`，换机器需改成你自己的 `.sfz` 文件。
+
+`sfz-bass-black-and-blue`：Black And Blue Basses（CC0 采样贝斯，需本机音色库）的 SFZ 示例：`instrument_params` 用 `"keyswitch": "Pluck"` 选奏法、`"cc": {"105": 127}` 打开单音模式。
 
 ## params
 

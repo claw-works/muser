@@ -163,6 +163,13 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, usize), S
     let mut handled = std::collections::HashSet::<String>::new();
     sfz.regions.retain_mut(|r| {
         let (mut lo, mut hi): (BTreeMap<u8, f64>, BTreeMap<u8, f64>) = (BTreeMap::new(), BTreeMap::new());
+        // 控制器交叉淡化：cc → (lo, hi)，淡入 / 淡出。
+        let (mut xin, mut xout): (BTreeMap<u8, (f64, f64)>, BTreeMap<u8, (f64, f64)>) = (BTreeMap::new(), BTreeMap::new());
+        let mut power = false;
+        // 同名的调制 opcode（如重复写了两次 `gain_cc1`）以最后一个为准，不累加。
+        let mut vol_mod: BTreeMap<u8, f64> = BTreeMap::new();
+        let mut amp_mod: BTreeMap<u8, f64> = BTreeMap::new();
+        let mut pan_mod: BTreeMap<u8, f64> = BTreeMap::new();
         let mut keep: Vec<Opcode> = Vec::new();
         let num = |o: &Opcode| o.value.trim().parse::<f64>().ok();
         for o in r.unknown.drain(..) {
@@ -176,15 +183,27 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, usize), S
                 lo.insert(c, num(&o).unwrap_or(0.0) * 127.0);
             } else if let Some(c) = cc_num(n, "hihdcc") {
                 hi.insert(c, num(&o).unwrap_or(1.0) * 127.0);
-            } else if let Some(c) = cc_num(n, "volume_oncc").or_else(|| cc_num(n, "gain_oncc")) {
-                r.volume += num(&o).unwrap_or(0.0) * cc(c) / 127.0;
+            } else if let Some(c) = cc_num(n, "xfin_locc") {
+                xin.entry(c).or_insert((0.0, 127.0)).0 = num(&o).unwrap_or(0.0);
+            } else if let Some(c) = cc_num(n, "xfin_hicc") {
+                xin.entry(c).or_insert((0.0, 127.0)).1 = num(&o).unwrap_or(127.0);
+            } else if let Some(c) = cc_num(n, "xfout_locc") {
+                xout.entry(c).or_insert((0.0, 127.0)).0 = num(&o).unwrap_or(0.0);
+            } else if let Some(c) = cc_num(n, "xfout_hicc") {
+                xout.entry(c).or_insert((0.0, 127.0)).1 = num(&o).unwrap_or(127.0);
+            } else if n == "xf_cccurve" {
+                power = o.value.trim() == "power";
+            } else if n == "group_volume" || n == "master_volume" || n == "global_volume" {
+                r.volume += num(&o).unwrap_or(0.0);
+            } else if let Some(c) = cc_num(n, "volume_oncc").or_else(|| cc_num(n, "gain_oncc")).or_else(|| cc_num(n, "gain_cc")).or_else(|| cc_num(n, "volume_cc")) {
+                vol_mod.insert(c, num(&o).unwrap_or(0.0));
             } else if let Some(c) = cc_num(n, "amplitude_oncc").or_else(|| cc_num(n, "amplitude_cc")) {
                 // SFZ v2：amplitude 加上 depth × 控制器/127（百分比），如 `amplitude=0 amplitude_oncc100=100` 由 CC100 决定音量。
-                r.amplitude = (r.amplitude + num(&o).unwrap_or(0.0) * cc(c) / 127.0).clamp(0.0, 100.0);
+                amp_mod.insert(c, num(&o).unwrap_or(0.0));
             } else if switched && matches!(n, "sw_last" | "sw_label" | "sw_default" | "sw_lokey" | "sw_hikey") {
                 // 已在上面按键位切换选好奏法。
             } else if let Some(c) = cc_num(n, "pan_oncc") {
-                r.pan = (r.pan + num(&o).unwrap_or(0.0) * cc(c) / 127.0).clamp(-100.0, 100.0);
+                pan_mod.insert(c, num(&o).unwrap_or(0.0));
             } else {
                 used = false;
             }
@@ -195,6 +214,33 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, usize), S
             }
         }
         r.unknown = keep;
+        for (c, d) in &vol_mod {
+            r.volume += d * cc(*c) / 127.0;
+        }
+        for (c, d) in &amp_mod {
+            r.amplitude = (r.amplitude + d * cc(*c) / 127.0).clamp(0.0, 100.0);
+        }
+        for (c, d) in &pan_mod {
+            r.pan = (r.pan + d * cc(*c) / 127.0).clamp(-100.0, 100.0);
+        }
+        // 交叉淡化折算成音量（gain 曲线线性，power 曲线取平方根，保持功率）。
+        let ramp = |v: f64, (a, b): (f64, f64)| if b <= a { if v >= b { 1.0 } else { 0.0 } } else { ((v - a) / (b - a)).clamp(0.0, 1.0) };
+        let mut w = 1.0;
+        for (c, range) in &xin {
+            w *= ramp(cc(*c), *range);
+        }
+        for (c, range) in &xout {
+            w *= 1.0 - ramp(cc(*c), *range);
+        }
+        if power {
+            w = w.sqrt();
+        }
+        if w < 1.0 {
+            if w <= 1e-4 {
+                return false;
+            }
+            r.volume += 20.0 * w.log10();
+        }
         lo.keys().chain(hi.keys()).all(|c| {
             let v = cc(*c);
             v >= lo.get(c).copied().unwrap_or(0.0) && v <= hi.get(c).copied().unwrap_or(127.0)
