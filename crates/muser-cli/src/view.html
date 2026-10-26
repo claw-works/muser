@@ -873,9 +873,31 @@ function renderFlow() {
   for (let k = 0; k < nodes.length; k++) for (const e of edges) if (e.kind !== "sc" && e.to && e.to !== "master" && byId[e.to].kind === "bus") level[e.to] = Math.max(level[e.to], level[e.from] + 1);
   level.master = Math.max(1, ...Object.values(level)) + 1;
   // 尺寸
-  const chipW = (c) => Math.min(150, fxLabel(c).length * 6.3 + 12);
+  const measure = document.createElement("canvas").getContext("2d");
+  const flowFontFamily = 'Inter, system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif';
+  const nodeFont = `650 12px ${flowFontFamily}`;
+  const chipFont = `650 10px ${flowFontFamily}`;
+  const textWidth = (text, font) => {
+    if (!measure) return Array.from(text).length * (font === nodeFont ? 8 : 6.3);
+    measure.font = font;
+    return measure.measureText(text).width;
+  };
+  const fitText = (text, maxWidth, font) => {
+    if (textWidth(text, font) <= maxWidth) return text;
+    const chars = Array.from(text), suffix = "…";
+    let lo = 0, hi = chars.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (textWidth(chars.slice(0, mid).join("") + suffix, font) <= maxWidth) lo = mid;
+      else hi = mid - 1;
+    }
+    return chars.slice(0, lo).join("") + suffix;
+  };
+  const chipW = (c) => Math.min(150, Math.max(44, Math.ceil(textWidth(fxLabel(c), chipFont)) + 10));
   for (const n of all) {
-    n.w = Math.max(120, n.name.length * 7.5 + 24, 12 + (n.chain || []).reduce((s, c) => s + chipW(c) + 6, 0));
+    n.displayName = n.name + (n.muted ? t("muted") : "");
+    const nameW = Math.min(340, Math.ceil(textWidth(n.displayName, nodeFont)) + 18);
+    n.w = Math.max(120, nameW, 12 + (n.chain || []).reduce((s, c) => s + chipW(c) + 6, 0));
     n.h = (n.chain || []).length ? 44 : 26;
   }
   const cols = [];
@@ -898,6 +920,7 @@ function renderFlow() {
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg.style.width = `${W}px`; svg.style.height = `${H}px`;
+  const defs = el("defs", {}, svg);
   // 连线
   const gEdges = el("g", {}, svg);
   for (const e of edges) {
@@ -918,19 +941,26 @@ function renderFlow() {
     if (e.label) { const t = el("text", { x: x1 + 6, y: y1 - 3, fill: "#8d95aa", "font-size": 10 }, gEdges); t.textContent = e.label + " dB"; }
   }
   // 节点
-  for (const n of all) {
+  for (const [nodeIndex, n] of all.entries()) {
     const g = el("g", { opacity: n.muted ? 0.45 : 1 }, svg);
     const stroke = n.kind === "track" ? "#343c55" : n.kind === "master" ? "#72e5c2" : "#8a7dff";
     el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 7, fill: "#171b29", stroke, "stroke-width": n.kind === "master" ? 2 : 1 }, g);
-    const label = el("text", { x: n.x + 8, y: n.y + 16, fill: n.kind === "track" ? "#f3f5fb" : n.kind === "master" ? "#72e5c2" : "#bcb5ff", "font-size": 12, "font-weight": 650 }, g);
-    label.textContent = n.name + (n.muted ? t("muted") : "");
+    const clipId = `flow-node-label-${nodeIndex}`;
+    const clip = el("clipPath", { id: clipId }, defs);
+    el("rect", { x: n.x + 7, y: n.y + 2, width: Math.max(1, n.w - 14), height: 19 }, clip);
+    const label = el("text", {
+      x: n.x + 8, y: n.y + 16, fill: n.kind === "track" ? "#f3f5fb" : n.kind === "master" ? "#72e5c2" : "#bcb5ff",
+      "font-size": 12, "font-weight": 650, "font-family": flowFontFamily, "clip-path": `url(#${clipId})`,
+    }, g);
+    label.textContent = fitText(n.displayName, n.w - 16, nodeFont);
+    const labelTip = el("title", {}, label); labelTip.textContent = n.displayName;
     let cx = n.x + 8;
     (n.chain || []).forEach((c, i) => {
       const w = chipW(c);
       if (i > 0) el("line", { x1: cx - 6, y1: n.y + 31, x2: cx, y2: n.y + 31, stroke: "#69728a" }, g);
       el("rect", { x: cx, y: n.y + 23, width: w, height: 16, rx: 3, fill: fxColor(c.type) }, g);
-      const ct = el("text", { x: cx + 5, y: n.y + 35, fill: "#0b1018", "font-size": 10, "font-weight": 650 }, g);
-      ct.textContent = fxLabel(c).length > 24 ? fxLabel(c).slice(0, 23) + "…" : fxLabel(c);
+      const ct = el("text", { x: cx + 5, y: n.y + 35, fill: "#0b1018", "font-size": 10, "font-weight": 650, "font-family": flowFontFamily }, g);
+      ct.textContent = fitText(fxLabel(c), w - 10, chipFont);
       const tip = el("title", {}, ct); tip.textContent = fxLabel(c);
       cx += w + 6;
     });
