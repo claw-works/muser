@@ -4,8 +4,9 @@ English | [简体中文](README.zh-CN.md)
 
 **A headless music-arrangement engine built for AI.**
 
-muser has no GUI. It wraps a deterministic audio engine in **a structured data format + a CLI + an MCP server**,
-so an AI agent composes by expressing musical intent: the AI writes or edits a project JSON, and the engine renders it to audio.
+With muser you arrange music with data, not a mouse. Instead of an editor window, it puts a deterministic audio engine behind
+**a structured project format + a CLI + an MCP server**: an AI agent expresses musical intent by writing or editing a project JSON,
+and the engine turns it into audio.
 
 Design principle: **the engine owns the deterministic "audio truth", the AI owns "intent translation", and the interface layer is the contract between them.**
 
@@ -44,6 +45,8 @@ vendored as a git submodule.
    | Windows | `muser-<version>-x86_64-pc-windows-msvc.zip` |
    | Linux desktop | `muser-<version>-x86_64-unknown-linux-gnu.tar.gz` (needs `libasound2`, present on desktop systems) |
    | Linux server / Docker | `muser-<version>-x86_64-unknown-linux-gnu-headless.tar.gz` (no sound-card playback) |
+   | Linux arm64 desktop (e.g. Raspberry Pi 4/5, 64-bit OS) | `muser-<version>-aarch64-unknown-linux-gnu.tar.gz` (needs `libasound2`) |
+   | Linux arm64 server / Docker (e.g. AWS Graviton) | `muser-<version>-aarch64-unknown-linux-gnu-headless.tar.gz` (no sound-card playback) |
 
 2. Unpack it and open a terminal in the unpacked folder. It contains `muser` (CLI), `muser-mcp` (MCP server),
    the docs for AI agents (`SKILLS.md`, `skills/`, `TOOLS.md`) and sample projects (`samples/`).

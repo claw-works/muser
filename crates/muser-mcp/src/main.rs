@@ -1165,7 +1165,7 @@ fn json_result<T: serde::Serialize + ?Sized>(value: &T) -> Result<CallToolResult
 
 #[tool_handler(
     name = "muser",
-    version = "0.1.0",
+    version = "0.1.1",
     instructions = "muser：面向 AI 的无头编曲引擎。用 create_project 建工程得到 project_id，\
 再用 add_track / add_clip / add_notes 增量编排（或 set_project 一次性提交完整 JSON），\
 最后用 render 离线渲染为 WAV。时间单位是拍(beats)：1.0=四分音符。\

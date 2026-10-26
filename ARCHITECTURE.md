@@ -1,7 +1,7 @@
 # muser 架构
 
-muser 是一个**面向 AI 的无头（headless）编曲引擎**。它没有 GUI，只提供
-结构化数据格式 + CLI + MCP server，让 AI agent 能够以「表达音乐意图」
+muser 是一个**面向 AI 的无头（headless）编曲引擎**：用数据而不是鼠标来编曲。它不提供编辑器窗口，
+而是提供结构化数据格式 + CLI + MCP server，让 AI agent 能够以「表达音乐意图」
 的方式驱动一个确定性的音频引擎，产出可听的音频。
 
 设计信条：**引擎负责确定性的"音频真相"，AI 负责"意图翻译"，接口层是两者的契约。**
@@ -273,7 +273,7 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
   （插件乐器与效果器在渲染线程），渲染期间关闭非规格化浮点（`NoDenormals`），近乎静音的尾巴不再拖慢滤波与混响
 - 插件实例延迟约一分钟释放（同一线程内），避免插件后台线程（如 JUCE 联网检查更新）访问已释放对象
 - CI / 发布：GitHub Actions 在 Linux、macOS、Windows 上构建与测试（默认与插件宿主特性）；推送 `v*` 标签时构建
-  Linux x86_64、macOS arm64 / x86_64、Windows x86_64 的 `muser` + `muser-mcp`（含插件宿主），附文档与 SHA256，发布到 GitHub Release
+  Linux x86_64 / arm64（各有桌面版与 headless 版）、macOS arm64 / x86_64、Windows x86_64 的 `muser` + `muser-mcp`（含插件宿主），附文档与 SHA256，发布到 GitHub Release
 - MCP server（`muser-mcp`）：34 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
 
 尚未实现（路线图）：

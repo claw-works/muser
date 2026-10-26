@@ -4,8 +4,8 @@
 
 **面向 AI 的无头（headless）编曲引擎。**
 
-muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数据格式 + CLI + MCP server**，
-让 AI agent 以"表达音乐意图"的方式创作：AI 产出/编辑一份工程 JSON，引擎把它离线渲染成音频。
+muser 用数据而不是鼠标来编曲。它不提供编辑器窗口，而是把一个确定性的音频引擎放在 **结构化工程格式 + CLI + MCP server** 后面：
+AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它变成音频。
 
 设计信条：**引擎负责确定性的"音频真相"，AI 负责"意图翻译"，接口层是两者的契约。**
 
@@ -45,6 +45,8 @@ muser 没有 GUI。它把一个确定性的音频引擎包装成 **结构化数�
    | Windows | `muser-<版本>-x86_64-pc-windows-msvc.zip` |
    | Linux 桌面 | `muser-<版本>-x86_64-unknown-linux-gnu.tar.gz`（需要 `libasound2`，桌面系统都有） |
    | Linux 服务器 / Docker | `muser-<版本>-x86_64-unknown-linux-gnu-headless.tar.gz`（不带声卡播放） |
+   | Linux arm64 桌面（如树莓派 4/5 的 64 位系统） | `muser-<版本>-aarch64-unknown-linux-gnu.tar.gz`（需要 `libasound2`） |
+   | Linux arm64 服务器 / Docker（如 AWS Graviton） | `muser-<版本>-aarch64-unknown-linux-gnu-headless.tar.gz`（不带声卡播放） |
 
 2. 解压，在解压出来的目录里打开终端。目录里有 `muser`（CLI）、`muser-mcp`（MCP server）、
    给 AI agent 的文档（`SKILLS.md`、`skills/`、`TOOLS.md`）和示范工程（`samples/`）。

@@ -24,6 +24,9 @@ jobs:
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, archive: tar.gz }
           # 不带声卡播放（--device），不依赖 libasound.so.2：给服务器、Docker 等没有 ALSA 的环境。
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, archive: tar.gz, variant: -headless, flags: --no-default-features }
+          # arm64 用 GitHub 的原生 arm runner 构建（不用交叉编译 ALSA，冒烟测试也在 arm64 上跑）。
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, archive: tar.gz }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, archive: tar.gz, variant: -headless, flags: --no-default-features }
           - { os: macos-14, target: aarch64-apple-darwin, archive: tar.gz }
           - { os: macos-14, target: x86_64-apple-darwin, archive: tar.gz }
           - { os: windows-2022, target: x86_64-pc-windows-msvc, archive: zip }
