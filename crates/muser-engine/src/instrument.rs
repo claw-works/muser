@@ -220,7 +220,7 @@ enum Patch {
     Bowed(BowedParams, usize),
     Wind(WindParams, usize),
     Choir(ChoirParams, usize),
-    Sfz(std::path::PathBuf),
+    Sfz(std::path::PathBuf, crate::sfz::Options),
 }
 
 impl Patch {
@@ -258,7 +258,10 @@ impl Patch {
                 }
                 Ok(())
             }
-            Patch::Sfz(_) => Err("sfz 乐器的音色由 .sfz 文件定义，暂不支持 instrument_params".into()),
+            Patch::Sfz(_, cc) => {
+                *cc = crate::sfz::parse_params(params)?;
+                Ok(())
+            }
         }
     }
 
@@ -286,7 +289,7 @@ impl Patch {
                     kit_keys(kit)
                 ),
             ),
-            Patch::Sfz(_) => (Vec::new(), "音色由 .sfz 文件定义".into()),
+            Patch::Sfz(path, _) => (Vec::new(), sfz_controls_note(path)),
         }
     }
 
@@ -310,7 +313,7 @@ impl Patch {
             Patch::Bowed(p, n) => tunable(Synth::with_voices(n, move || BowedString::new(p)), p, params::BOWED, |v, p| v.set_params(p)),
             Patch::Wind(p, n) => tunable(Synth::with_voices(n, move || WindVoice::new(p)), p, params::WIND, |v, p| v.set_params(p)),
             Patch::Choir(p, n) => tunable(Synth::with_voices(n, move || ChoirVoice::new(p)), p, params::CHOIR, |v, p| v.set_params(p)),
-            Patch::Sfz(path) => sfz_instrument(&path)?,
+            Patch::Sfz(path, cc) => sfz_instrument(&path, &cc)?,
         })
     }
 }
@@ -324,11 +327,33 @@ fn pitched<V: Voice<f32> + 'static>(count: usize, make: impl FnMut() -> V) -> Tr
 }
 
 /// SFZ 采样器乐器（内置，manguebyte-sampler）。
-fn sfz_instrument(path: &std::path::Path) -> Result<TrackInstrument, String> {
-    use manguebyte::sampler::{Instrument, SamplerVoice};
+/// `muser instruments sfz:…` 的说明：列出 .sfz 声明的控制器。
+fn sfz_controls_note(path: &std::path::Path) -> String {
+    let base = "音色由 .sfz 文件定义。可用 instrument_params 的 \"cc\" 设控制器值（加载时生效），如 { \"cc\": { \"105\": 127 } }。";
+    let mut out = base.to_string();
+    if let Ok(c) = crate::sfz::read_controls(path) {
+        if !c.is_empty() {
+            let list: Vec<String> = c.iter().map(|(n, (label, v))| format!("cc{n}{} = {v}", if label.is_empty() { String::new() } else { format!("（{label}）") })).collect();
+            out.push_str(&format!("这个音色声明的控制器（默认值）：{}。", list.join("，")));
+        }
+    }
+    if let Ok((sw, def)) = crate::sfz::read_keyswitches(path) {
+        if !sw.is_empty() {
+            let list: Vec<String> = sw.iter().map(|(n, l)| if l.is_empty() { n.to_string() } else { format!("{n}（{l}）") }).collect();
+            out.push_str(&format!(
+                "键位切换奏法（instrument_params 的 \"keyswitch\" 选择，默认 {}）：{}。",
+                def.map_or("第一个".to_string(), |d| d.to_string()),
+                list.join("，")
+            ));
+        }
+    }
+    out
+}
+
+fn sfz_instrument(path: &std::path::Path, cc: &crate::sfz::Options) -> Result<TrackInstrument, String> {
+    use manguebyte::sampler::SamplerVoice;
     use std::sync::Arc;
-    let inst = Instrument::open(path).map_err(|e| format!("加载 SFZ '{}' 失败: {e}", path.display()))?;
-    let warnings = inst.warnings().len();
+    let (inst, _dropped, warnings) = crate::sfz::load(path, cc)?;
     if warnings > 0 {
         eprintln!(
             "[muser] sfz '{}': {warnings} 条提示（部分 opcode 不支持或被修正），音色可能与原设计略有差异",
@@ -469,9 +494,9 @@ fn lookup(name: &str) -> Option<(InstrumentInfo, Patch)> {
                 polyphony: SFZ_VOICES,
                 description: format!("SFZ 采样器：{}", path.display()),
                 params: Vec::new(),
-                params_note: String::new(),
+                params_note: sfz_controls_note(&path),
             },
-            Patch::Sfz(path),
+            Patch::Sfz(path, Default::default()),
         ));
     }
     let key = trimmed.to_ascii_lowercase();
@@ -544,7 +569,7 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
         return crate::plugin::check_params(path, id, params).map_err(|detail| InstrumentError::Param { detail });
     }
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
-    if let Patch::Sfz(path) = &patch {
+    if let Patch::Sfz(path, _) = &patch {
         if !path.is_file() {
             return Err(InstrumentError::Load { detail: format!("找不到 SFZ 文件 '{}'", path.display()) });
         }
@@ -613,7 +638,7 @@ pub(crate) fn automation_param(
             let p = kit.piece(key).ok_or_else(|| format!("这套鼓没有鼓键 {key}（{piece}）"))?;
             find(params::PIECE, p, field, params::NEXT_PIECE)
         }
-        Patch::Sfz(_) => Err("sfz 乐器的参数自动化尚未支持".into()),
+        Patch::Sfz(..) => Err("sfz 乐器的参数自动化尚未支持".into()),
     }
 }
 

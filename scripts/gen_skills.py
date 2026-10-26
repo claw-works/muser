@@ -626,7 +626,14 @@ def sfz_page():
 - 音符 `pitch` 用 MIDI 音高；音域、力度层、循环、释放采样都由 .sfz 文件定义。最多 32 个同时发声。
 - `muser validate` 会检查 .sfz 文件是否存在；采样缺失或格式错误会在渲染时报出。
 - 部分 SFZ opcode（如 `<curve>`、`<effect>`）不支持，渲染时会在 stderr 提示数量，音色可能与原设计略有差异。
-- 音色由 .sfz 文件决定，暂不支持 `instrument_params`；需要调整时可在轨上加效果器（如 `eq`、`reverb`）。
+- `instrument_params` 支持两项（加载时生效，不能自动化）：
+  - `"cc": { "105": 127 }`：设控制器值。很多音色库用控制器做开关（单音模式、选弦、齐奏音量、滤波、颤音深度…），
+    muser 按这些值选择区域（`loccN`/`hiccN`）并折算 `volume_onccN` / `amplitude_onccN` / `pan_onccN`；
+    没给的用 .sfz 里 `set_ccN` 的默认值。
+  - `"keyswitch": "Staccato"`：选键位切换（`sw_last`）的奏法，可写 `sw_label` 名称、音高数字或音名；默认 `sw_default`。
+  - `muser instruments "sfz:/path/to.sfz"` 会列出该音色声明的控制器（名称与默认值）和可选奏法。
+- 其它需要调整的地方可在轨上加效果器（如 `eq`、`reverb`）。
+- 采样里的 LFO、滤波器、速度曲线等 opcode 暂不支持（加载时提示数量），控制器默认值让它们不起作用时影响不大。
 - 免费音色库：freepats（钢琴、吉他等）、Versilian VSCO（管弦乐）、sfzinstruments.github.io。
 - 路径是本机路径，工程换机器后需改成新位置。
 - 钢琴类音色配合延音踏板：clip 的 `pedal` 字段，见 [pedal.md](../pedal.md)。
