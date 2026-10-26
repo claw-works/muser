@@ -99,6 +99,37 @@ muser-mcp          # stdio MCP server，暴露 34 个 tools
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，
 agent 即可通过 `create_project / add_track / add_clip / add_notes / render` 等工具编曲。
 
+## 外部音色与插件（可选）
+
+内置的 115 个音源不需要下载任何东西（`samples/songs/dnb-liquid-skyline` 等大部分示范只用内置音源）。
+下面这些免费 / 开源的音色库和插件是可选的：`skills/` 与部分 `samples/` 用到它们，装好后按名称、别名、预设就能用。
+
+### SFZ 采样音色库
+
+| 音色库 | 内容 | 许可 | 下载 | 用到它的示范 |
+|---|---|---|---|---|
+| Salamander Grand Piano（freepats） | 三角钢琴，多力度层、琴弦共鸣 | CC-BY 3.0 | [freepats.zenvoid.org](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html)（SFZ+FLAC 版） | `songs/bach-prelude-c` |
+| PianoFB（freepats） | 立式钢琴 | GPL-3.0 + 例外 | [freepats.zenvoid.org](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) | `instruments/sfz-piano` |
+| Sonatina Symphonic Orchestra 4.0 | 管弦乐：各声部的 Legato / Marcato / Sustain / Staccato / Pizzicato 等奏法 | CC Sampling Plus 1.0 | [github.com/peastman/sso](https://github.com/peastman/sso)（Releases 里的 v4.0 zip） | `songs/ode-to-joy-orchestra` |
+| Black And Blue Basses（Karoryfer） | 电贝斯，多种奏法（键位切换）与控制器开关 | CC0 | [github.com/sfzinstruments/karoryfer.black-and-blue-basses](https://github.com/sfzinstruments/karoryfer.black-and-blue-basses) | `instruments/sfz-bass-black-and-blue` |
+| VSCO 2 Community Edition | 管弦乐（较小，起音偏慢） | CC0 | [versilian-studios.com](https://versilian-studios.com/vsco-community/) | — |
+
+更多免费 SFZ：[sfzinstruments.github.io](https://sfzinstruments.github.io/)。工程里写 `"instrument": "sfz:<.sfz 文件路径>"`；
+示范工程里的路径是作者本机的 `/data/Music/SFZ-samples/...`，解压到别处时改成你的路径即可。
+SFZ 的控制器与奏法用 `instrument_params` 的 `cc` / `keyswitch` 设置（见 [skills/instruments/sfz.md](skills/instruments/sfz.md)）。
+
+### 插件（需要 `host` 特性；预编译版已启用）
+
+| 插件 | 类型 | 许可 | 下载 | muser 内置画像 / skill |
+|---|---|---|---|---|
+| Surge XT（含 Surge XT Effects） | 混合合成器 + 效果器合集 | GPL-3.0 | [surge-synthesizer.github.io](https://surge-synthesizer.github.io/) | [surge-xt](skills/plugins/surge-xt.md)、[surge-xt-effects](skills/plugins/surge-xt-effects.md) |
+| Vital | 波表合成器 | 免费（源码 GPL-3.0） | [vital.audio](https://vital.audio/)（免费版需注册） | [vital](skills/plugins/vital.md) |
+| Airwindows Consolidated | 约 470 个 Airwindows 效果合一（请用 CLAP 版） | MIT | [airwindows.com/consolidated](https://www.airwindows.com/consolidated/) 或 [github.com/baconpaul/airwin2rack](https://github.com/baconpaul/airwin2rack) | [airwindows-consolidated](skills/plugins/airwindows-consolidated.md) |
+| Plasma（Dimethoxy） | 双级失真 | AGPL-3.0 | [github.com/Dimethoxy/Plasma](https://github.com/Dimethoxy/Plasma) | [plasma](skills/plugins/plasma.md) |
+
+装好后运行 `muser plugin scan` 确认 muser 能找到它们（CLAP / VST3 / LV2 的系统与用户目录都会扫描），
+插件示范在 `samples/plugins/`，用法见 [skills/plugins.md](skills/plugins.md)。
+
 ## 工程文件格式（给 AI 的契约）
 
 时间单位是**拍 (beats)**：`1.0` = 四分音符，与 tempo 解耦。最小示例：

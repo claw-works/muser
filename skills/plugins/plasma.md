@@ -8,7 +8,7 @@
 Vendor: Dimethoxy  
 Plugin ids: `ABCDEF019182FAEB446D7478516D6638`, `https://dimethoxy.com/plasma`
 
-Plasma is an open-source (GPL) dual-stage distortion with sculpting filters. Signal flow: Pre Gain → highpass / peak / dual peak / lowpass filters → Distortion (Drive, Type, Girth, Bias) → Late Distortion (second stage) → Gain → Mix. Use it as an effect: {"type": "plugin", "path": "~/.vst3/Plasma.vst3", "params": {...}}. All 29 parameters are on a 0–1 scale; write the text the plugin displays ("4.00", "150.0", "Soft Clip") instead of guessing numbers.
+Plasma is an open-source (AGPL-3.0) dual-stage distortion with sculpting filters. Signal flow: Pre Gain → highpass / peak / dual peak / lowpass filters → Distortion (Drive, Type, Girth, Bias) → Late Distortion (second stage) → Gain → Mix. Use it as an effect: {"type": "plugin", "path": "~/.vst3/Plasma.vst3", "params": {...}}. All 29 parameters are on a 0–1 scale; write the text the plugin displays ("4.00", "150.0", "Soft Clip") instead of guessing numbers.
 
 ## Key parameters
 
