@@ -127,6 +127,7 @@
   .channel-sub { margin-top: 3px; overflow: hidden; color: var(--faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .pill { padding: 2px 5px; color: #bcb5ff; background: rgba(138,125,255,.09); border: 1px solid rgba(138,125,255,.22); border-radius: 4px; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
   .ms { display: flex; gap: 5px; }
+  .ms-placeholder { width: 59px; flex: 0 0 59px; }
   .ms button { width: 27px; min-height: 27px; height: 27px; padding: 0; border-radius: 7px; color: var(--faint); font-size: 9px; font-weight: 850; }
   .ms button.m.on { color: #170d01; border-color: var(--warn); background: var(--warn); }
   .ms button.s.on { color: #07130f; border-color: var(--accent); background: var(--accent); }
@@ -158,7 +159,7 @@
   .legend span { white-space: nowrap; }
   .arrangement { min-width: 0; }
   .overview-row, .track-summary {
-    display: grid; grid-template-columns: 250px minmax(260px,1fr) 30px 32px; align-items: center;
+    display: grid; grid-template-columns: 250px minmax(260px,1fr) 30px; align-items: center;
   }
   .overview-row { min-height: 72px; border-bottom: 1px solid var(--line); background: #0d1019; }
   .overview-label { padding: 0 16px; color: var(--faint); font-size: 9px; font-weight: 800; letter-spacing: .14em; }
@@ -175,7 +176,8 @@
   .track-item.master .track-summary { background: linear-gradient(90deg,rgba(114,229,194,.07),transparent 55%); }
   .track-identity { min-width: 0; padding: 7px 10px 7px 12px; display: flex; align-items: center; gap: 8px; }
   .track-identity .ms { flex: 0 0 auto; }
-  .track-copy { min-width: 0; }
+  .track-copy { min-width: 0; flex: 1; }
+  .track-title { min-width: 0; display: flex; align-items: center; gap: 4px; }
   .track-name { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
   .track-instrument { margin-top: 2px; overflow: hidden; color: var(--faint); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
   canvas.track-notes { width: 100%; height: 50px; display: block; cursor: crosshair; }
@@ -185,14 +187,14 @@
   }
   .track-summary .meter-wrap { height: 50px; }
   .expand-button {
-    width: 27px; min-height: 27px; height: 27px; padding: 0; color: var(--faint); border-color: transparent;
-    background: transparent; font-size: 15px; line-height: 1; transition: transform .15s, color .15s, background .15s;
+    width: 22px; min-height: 22px; height: 22px; flex: 0 0 auto; padding: 0; color: var(--faint); border-color: transparent;
+    background: transparent; font-size: 13px; line-height: 1; transition: transform .15s, color .15s, background .15s;
   }
   .expand-button:hover:not(:disabled) { color: var(--text); border-color: var(--line); background: rgba(255,255,255,.04); }
   .track-item.expanded .expand-button { color: var(--accent); transform: rotate(180deg); }
   .track-detail {
-    display: grid; grid-template-columns: 202px minmax(180px,.8fr) 72px minmax(260px,1.5fr);
-    align-items: center; gap: 14px; min-height: 58px; padding: 9px 46px 9px 16px;
+    display: grid; grid-template-columns: 220px minmax(180px,.8fr) 72px minmax(260px,1.5fr);
+    align-items: center; gap: 14px; min-height: 58px; padding: 9px 16px;
     background: rgba(5,7,12,.48); border-top: 1px solid rgba(255,255,255,.045);
   }
   .track-detail[hidden] { display: none; }
@@ -204,6 +206,22 @@
     border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
   }
   .common-divider small { color: var(--faint); font-size: 9px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .shared-item {
+    position: relative; min-height: 64px; display: grid;
+    grid-template-columns: 250px minmax(150px,.8fr) 68px 30px minmax(240px,1.5fr);
+    align-items: center; gap: 12px; padding: 7px 16px 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,.055);
+    background: linear-gradient(90deg,rgba(138,125,255,.065),transparent 48%);
+  }
+  .shared-item:last-child { border-bottom: 0; }
+  .shared-item.master { background: linear-gradient(90deg,rgba(114,229,194,.07),transparent 55%); }
+  .shared-item.changed::before {
+    content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+    background: var(--warn); border-radius: 0 4px 4px 0; box-shadow: 0 0 12px rgba(255,196,107,.35);
+  }
+  .shared-item .track-identity { padding-right: 0; }
+  .shared-item .chain-cell { padding-left: 4px; }
+  .shared-fixed-gain { color: var(--faint); font-size: 9px; }
   @media (max-width: 1180px) {
     main { grid-template-columns: 1fr; }
     .panel { position: static; }
@@ -223,10 +241,12 @@
     .transport-options { width: 100%; margin-left: 0; padding-top: 12px; border-top: 1px solid var(--line); }
   }
   @media (max-width: 980px) {
-    .overview-row, .track-summary { grid-template-columns: 224px minmax(240px,1fr) 30px 32px; }
-    .track-detail { grid-template-columns: 174px minmax(180px,1fr) 72px; }
+    .overview-row, .track-summary { grid-template-columns: 224px minmax(240px,1fr) 30px; }
+    .track-detail { grid-template-columns: 194px minmax(180px,1fr) 72px; }
     .track-detail .chain-cell { grid-column: 2 / -1; }
     .detail-label { padding-left: 30px; }
+    .shared-item { grid-template-columns: 224px minmax(160px,1fr) 62px 30px; }
+    .shared-item .chain-cell { grid-column: 2 / -1; padding: 4px 0 5px; }
   }
 </style>
 </head>
@@ -591,13 +611,13 @@ function renderMixer() {
   let trackNumber = 0, busNumber = 0;
   for (const n of data.nodes) {
     const number = n.kind === "track" ? String(++trackNumber).padStart(2, "0") : "B" + ++busNumber;
-    const item = channelItem(n, number, n.kind === "track", changed.has(n.id));
+    const item = n.kind === "track" ? channelItem(n, number, changed.has(n.id)) : sharedItem(n, number, changed.has(n.id));
     (n.kind === "track" ? tracksRoot : commonRoot).appendChild(item);
   }
   commonRoot.appendChild(masterItem());
 }
 
-function channelItem(n, number, withNotes, isChanged) {
+function channelItem(n, number, isChanged) {
   const item = document.createElement("div");
   item.className = `track-item ${n.kind}`;
   if (isChanged) item.classList.add("changed");
@@ -606,11 +626,10 @@ function channelItem(n, number, withNotes, isChanged) {
       <div class="track-identity">
         <div class="ms"><button class="m" aria-label="Mute">M</button><button class="s" aria-label="Solo">S</button></div>
         <span class="channel-number">${number}</span>
-        <div class="track-copy"><div class="track-name"></div><div class="track-instrument"></div></div>
+        <div class="track-copy"><div class="track-title"><div class="track-name"></div><button class="expand-button" aria-label="Expand mix settings" aria-expanded="false">⌄</button></div><div class="track-instrument"></div></div>
       </div>
-      ${withNotes ? `<canvas class="track-notes" height="50"></canvas>` : `<div class="route-preview"></div>`}
+      <canvas class="track-notes" height="50"></canvas>
       <div class="meter-wrap"><canvas class="meter" width="16" height="38"></canvas></div>
-      <button class="expand-button" aria-label="Expand mix settings" aria-expanded="false">⌄</button>
     </div>
     <div class="track-detail" hidden>
       <div class="detail-label"></div>
@@ -625,12 +644,8 @@ function channelItem(n, number, withNotes, isChanged) {
   instrument.textContent = sub; if (n.kind === "track") instrument.title = n.instrument;
   const meter = item.querySelector("canvas.meter"); meter.dataset.id = n.id;
   const lane = item.querySelector("canvas.track-notes");
-  if (lane) {
-    lane.dataset.id = n.id;
-    lane.addEventListener("click", seekFromCanvas);
-  } else {
-    item.querySelector(".route-preview").textContent = t("processors", n.chain.length, n.output);
-  }
+  lane.dataset.id = n.id;
+  lane.addEventListener("click", seekFromCanvas);
   item.querySelector(".chain-cell").appendChild(chainView(n.chain, n.output, n.sends));
   bindGain(item, n);
   bindMuteSolo(item, n);
@@ -638,24 +653,42 @@ function channelItem(n, number, withNotes, isChanged) {
   return item;
 }
 
-function masterItem() {
-  const item = document.createElement("div"); item.className = "track-item master";
-  item.innerHTML = `<div class="track-summary">
-      <div class="track-identity"><span class="channel-number">M</span><div class="track-copy"><div class="track-name">master</div><div class="track-instrument"></div></div></div>
-      <div class="route-preview"></div>
-      <div class="meter-wrap"><canvas class="meter" width="16" height="38" data-id="master"></canvas></div>
-      <button class="expand-button" aria-label="Expand Master chain" aria-expanded="false">⌄</button>
+function sharedItem(n, number, isChanged) {
+  const item = document.createElement("div");
+  item.className = "shared-item bus";
+  if (isChanged) item.classList.add("changed");
+  item.innerHTML = `<div class="track-identity">
+      <div class="ms"><button class="m" aria-label="Mute">M</button><button class="s" aria-label="Solo">S</button></div>
+      <span class="channel-number">${number}</span>
+      <div class="track-copy"><div class="track-name"></div><div class="track-instrument"></div></div>
     </div>
-    <div class="track-detail" hidden>
-      <div class="detail-label"></div>
-      <div></div><div class="db">${fmtDb(data.master_gain_db)}</div><div class="chain-cell"></div>
-    </div>`;
+    <div class="fader"><input type="range" min="-60" max="12" step="0.5"></div>
+    <div class="db"></div>
+    <div class="meter-wrap"><canvas class="meter" width="16" height="38"></canvas></div>
+    <div class="chain-cell"></div>`;
+  item.querySelector(".track-name").textContent = n.name;
+  item.querySelector(".track-instrument").textContent = t("sharedBus");
+  item.querySelector("canvas.meter").dataset.id = n.id;
+  item.querySelector(".chain-cell").appendChild(chainView(n.chain, n.output, n.sends));
+  bindGain(item, n);
+  bindMuteSolo(item, n);
+  return item;
+}
+
+function masterItem() {
+  const item = document.createElement("div"); item.className = "shared-item master";
+  item.innerHTML = `<div class="track-identity">
+      <div class="ms-placeholder"></div>
+      <span class="channel-number">M</span>
+      <div class="track-copy"><div class="track-name">master</div><div class="track-instrument"></div></div>
+    </div>
+    <div class="shared-fixed-gain"></div>
+    <div class="db">${fmtDb(data.master_gain_db)}</div>
+    <div class="meter-wrap"><canvas class="meter" width="16" height="38" data-id="master"></canvas></div>
+    <div class="chain-cell"></div>`;
   item.querySelector(".track-instrument").textContent = t("mainOutput");
-  item.querySelector(".expand-button").setAttribute("aria-label", t("expand", "Master"));
-  item.querySelector(".detail-label").innerHTML = `${t("mainOutput")}<span>${t("projectGain", fmtDb(data.master_gain_db))}</span>`;
-  item.querySelector(".route-preview").textContent = t("masterChain", data.master_chain.length);
+  item.querySelector(".shared-fixed-gain").textContent = t("projectGain", fmtDb(data.master_gain_db));
   item.querySelector(".chain-cell").appendChild(chainView(data.master_chain, null, {}));
-  bindExpansion(item, "master");
   return item;
 }
 
