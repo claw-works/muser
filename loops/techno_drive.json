@@ -1,0 +1,28 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "techno_drive",
+  "style": "techno",
+  "description": "推进型 techno：四踩、反拍开镲、16 分闭镲有强弱，二四拍 rim",
+  "tags": [
+    "four_on_the_floor",
+    "dance",
+    "driving"
+  ],
+  "tempo": [
+    126,
+    136
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.techno",
+  "grid": {
+    "kick": "x...x...x...x...",
+    "open_hat": "..x...x...x...x.",
+    "hat": "5x5x5x5x5x5x5x5x",
+    "rim": "....x.......x..."
+  },
+  "humanize": {
+    "velocity": 0.04
+  }
+}

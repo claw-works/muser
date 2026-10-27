@@ -22,14 +22,19 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 - 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级、总线或主总线
 - 混音路由：总线编组、发送到共用混响/延迟、总线套总线、压缩器侧链（底鼓压贝斯的泵感），自动延迟补偿
 - 自动化：乐器参数、效果器参数、增益、声像、发送量随时间变化（时间点曲线 / LFO / 带种子的随机游走）
-- 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)，扫描本机插件、按参数名 + 文字设置参数、参数自动化（`host` 特性）
+- 加载第三方 CLAP/VST3/LV2 插件：作为效果器(VST)或作为音源(VSTi)，扫描本机插件、按参数名 + 文字设置参数、参数自动化
 - 试听：`muser audition` 按参数取值逐个渲染，报告响度、亮度、起音、余音，帮 AI 摸清陌生参数
+- 混音报告：`muser mix-report` 渲染一遍整首，报告每条音轨、总线与主总线的响度（干声与推子后 LUFS、峰值、相对最响音轨的差），AI 据此平衡 `gain_db`，不用靠猜
 - 插件画像：把插件使用经验（别名、预设、试听结论）存成可分享的数据文件；插件音色可存为状态文件
 - 内置开源插件的画像与英文 skill：Surge XT / Surge XT Effects、Vital（波表合成器，可设波表与调制矩阵）、
   Airwindows Consolidated（约 470 个效果，按名称选择）、Plasma（失真）——装好插件即可按名称、别名、预设使用
 - 流式渲染引擎：逐块走完整张路由图，离线渲染为 WAV 与边渲染边播放共用同一份代码、结果逐样本一致（各音轨乐器并行演奏）
 - `muser view` 播放页：边渲染边播（开头一小段好了就能听），调音量/静音/独奏后从当前位置无缝换上新版本，可保存回工程；
   加 `--device` 直接用本机声卡出声，调音量/静音/独奏即时生效（远程经 SSH 端口转发时用默认的浏览器播放）
+- `muser poly edit` 音色编辑器：在本地网页里设计 poly 合成器音色（振荡器、滤波器、包络、LFO、调制矩阵），改完即时试听，存进本机音色库；agent 用 `muser poly show <名字>` 把音色写进工程
+- 给 agent 的简写音符：**ABC 记谱**写旋律（`"abc"`）、步进节奏（`"grid"`）、17 种常见律动的 **loop 库**（`muser loop`）、每小节有变化会打过门的**生成式鼓手**——几行 JSON 代替一长串音符
+- **人性化演奏（humanize）**：时间漂移、力度与时值变化、swing、整体提前/拖后，可写在音轨或 clip 上；种子留住喜欢的一遍，换种子再弹一遍
+- `muser play`：用声卡把工程放一遍就退出，配合"先听后写"的草稿流程
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 
 ## 快速上手
@@ -47,6 +52,8 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
    | Linux 服务器 / Docker | `muser-<版本>-x86_64-unknown-linux-gnu-headless.tar.gz`（不带声卡播放） |
    | Linux arm64 桌面（如树莓派 4/5 的 64 位系统） | `muser-<版本>-aarch64-unknown-linux-gnu.tar.gz`（需要 `libasound2`） |
    | Linux arm64 服务器 / Docker（如 AWS Graviton） | `muser-<版本>-aarch64-unknown-linux-gnu-headless.tar.gz`（不带声卡播放） |
+
+   Linux 版需要 glibc 2.28 及以上（Amazon Linux 2023、RHEL / Rocky 8+、Debian 10+、Ubuntu 18.10+）。
 
 2. 解压，在解压出来的目录里打开终端。目录里有 `muser`（CLI）、`muser-mcp`（MCP server）、
    给 AI agent 的文档（`SKILLS.md`、`skills/`、`TOOLS.md`）和示范工程（`samples/`）。
@@ -117,7 +124,7 @@ cargo build --release
 ```
 
 Linux 上声卡播放（`muser view --device`，默认启用）需要 ALSA 开发包：`sudo apt install libasound2-dev`；
-不需要时可用 `cargo build --release --no-default-features` 跳过。
+不需要时见[构建特性](#构建特性)，可以构建不带它的版本。
 
 构建产物在 `target/release/muser`（CLI）和 `target/release/muser-mcp`（MCP server）。
 下文命令里的 `muser` 即指该二进制——把 `target/release` 加入 `PATH`，或用全路径调用。
@@ -143,10 +150,25 @@ muser effects reverb
 # 查看信号流（总线、发送、侧链）
 muser routing song.muser.json
 
+# 各音轨/总线/主总线的响度，用来平衡 gain_db
+muser mix-report song.muser.json
+
 # 给人听：本地播放页（时间线、音量/静音/独奏，改动由引擎重新渲染，可保存回工程；AI 改了工程页面自动刷新）
 muser view song.muser.json --open      # http://127.0.0.1:8737/
 # 在本机听：声音直接从这台机器的声卡出，推子/静音/独奏即时生效，页面只做遥控
 muser view song.muser.json --open --device
+
+# 快速试听：用声卡放一遍就退出（--seed N 让 humanize / 鼓手换一遍）
+muser play song.muser.json
+
+# 律动库：列出、试听、取出写进工程的 clip
+muser loop list --style dnb
+muser loop play dnb_two_step
+muser loop show dnb_two_step --repeat 8
+
+# poly 合成器音色编辑器（本地网页）与本机音色库
+muser poly edit --open
+muser poly show my_reese          # 写进音轨的 JSON，完整音色内嵌
 ```
 
 > 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。
@@ -154,7 +176,7 @@ muser view song.muser.json --open --device
 ### 以 MCP server 运行（给 agent 用）
 
 ```bash
-muser-mcp          # stdio MCP server，暴露 34 个 tools
+muser-mcp          # stdio MCP server，暴露 35 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，
@@ -181,7 +203,7 @@ agent 即可通过 `create_project / add_track / add_clip / add_notes / render` 
 muser 会在这些目录及其两层以内的子目录里查找；也可以直接写绝对路径。
 SFZ 的控制器与奏法用 `instrument_params` 的 `cc` / `keyswitch` 设置（见 [skills/instruments/sfz.md](skills/instruments/sfz.md)）。
 
-### 插件（需要 `host` 特性；预编译版已启用）
+### 插件
 
 | 插件 | 类型 | 许可 | 下载 | muser 内置画像 / skill |
 |---|---|---|---|---|
@@ -216,12 +238,27 @@ SFZ 的控制器与奏法用 `instrument_params` 的 `cc` / `keyswitch` 设置�
 
 鼓组音高用 GM 鼓键（36=底鼓, 38=军鼓, 42=闭镲）；旋律乐器用音阶音高（60=中央C）。
 
-## 可选特性
+不用一个个列音符：clip 可以用简写，渲染时展开；再加 `humanize` 让它像人在弹：
 
-```bash
-# 启用插件宿主（加载第三方 CLAP/VST3/LV2 效果器）
-cargo build -p muser-cli --features host
+```json
+{ "instrument": "poly.wurly", "humanize": { "timing_ms": 8, "drift": 0.6, "velocity": 0.07 },
+  "clips": [{ "start": 0, "length": 8, "abc": "L:1/8\nK:Am\nA2 cB e2 dc | B4 z4 |" }] },
+{ "instrument": "drums.lofi",
+  "clips": [{ "start": 0, "length": 16, "drummer": { "loop": "lofi", "complexity": 0.5, "fill_every": 4 } },
+            { "start": 16, "length": 4, "grid": { "kick": "x.....x...x.....", "snare": "....x.......x...", "hat": "x.o.x.o.x.o.x.oo" } }] }
 ```
+
+`abc` 是 ABC 记谱、`grid` 是步进节奏、`drummer` 是以 loop 为底的生成式鼓手，写法见 [skills/notation.md](skills/notation.md)、[skills/humanize.md](skills/humanize.md)。
+
+## 构建特性
+
+下面两个都默认启用，所有发行版都带：
+
+- `host`：插件宿主（第三方 CLAP/VST3/LV2 乐器与效果器）
+- `device`：声卡播放（`muser view --device`；Linux 上构建需要 `libasound2-dev`）
+
+`cargo build --release --no-default-features --features muser-cli/host,muser-mcp/host` 构建不带声卡播放的版本，
+Linux 的 `-headless` 发行版就是这样构建的。
 
 ## 项目结构
 
@@ -238,6 +275,7 @@ muser/
 ├─ SKILLS.md          给 AI 的编曲操作手册（总入口）
 ├─ skills/            子 skill：每个乐器类别、每个效果器、自动化、路由、内置插件画像
 ├─ profiles/          muser 内置的插件画像（JSON）
+├─ loops/             muser 内置的律动库（JSON 步进节奏型）
 ├─ scripts/           gen_skills.py 生成 skills/；render_samples.sh 批量渲染示范
 └─ TOOLS.md           CLI + MCP 工具清单
 ```

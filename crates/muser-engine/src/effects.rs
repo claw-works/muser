@@ -18,7 +18,7 @@ use manguebyte::prelude::{
 /// 效果链构建错误。
 #[derive(Debug, thiserror::Error)]
 pub enum EffectError {
-    #[error("插件宿主未启用：请在构建 muser-engine 时开启 `host` 特性以使用 plugin 效果器")]
+    #[error("plugin 效果器不可用：这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它")]
     HostDisabled,
     #[error("加载插件 '{path}' 失败: {detail}")]
     PluginLoad { path: String, detail: String },

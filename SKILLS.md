@@ -13,6 +13,23 @@
 
 你只在 Project JSON 这一层工作，不需要懂底层 DSP。
 
+## 先听后写：和人一起创作的流程
+
+音乐创作是感性的：**先拿草稿给人听，再写整首**。不要一上来就编配完整的曲子。
+
+1. **出草稿**：用户描述想法后，先写 4–8 小节的草稿，最好一次给 2–3 个版本（A / B / C：同一段旋律配不同节奏、
+   不同 loop、不同速度或音色）。旋律用 `abc`、鼓用 loop / `drummer`、律动用 `humanize`（见 [skills/notation.md](skills/notation.md)），
+   一个版本几行 JSON，不要写脚本生成音符。
+2. **一句话 + 一条命令**：每个版本说一句它是什么感觉，给出试听命令 `muser play sketch-a.muser.json`
+   （用声卡放一遍就退出）。鼓型单独试 `muser loop play <名字>`。
+3. **问具体的问题**，而不是"你觉得怎么样"：快一点还是慢一点？旋律更跳还是更平？鼓更满还是更空？更亮还是更暗？
+   要不要换一种乐器？哪个版本最接近？
+4. **按反馈改草稿**，再听；同一个版本"换一遍演奏"：`muser play sketch-a.muser.json --seed 2`。
+5. **满意了再展开**：在定下来的草稿上编配整首（段落、过门、加声部），最后 `mix-report` 平衡音量，
+   `muser view` 交给人微调。
+
+用户这样说时进入草稿流程（不要直接改整首）："先听听""来几个版本""随便哼一段""感觉不对""这段再活泼点""换个感觉"。
+
 ## 先查再写：可发现性
 
 不要凭记忆写乐器名和效果器参数，先查：
@@ -27,6 +44,10 @@
 | 本机有哪些外置插件 | `muser plugin scan` | `scan_plugins` |
 | 插件的参数、选项文字 | `muser plugin params <插件> --filter <词>`、`muser plugin values <插件> <参数>` | `list_plugin_params`、`plugin_param_values` |
 | 某个参数到底起什么作用 | `muser audition ... --param <名> --values ...` | `audition` |
+| 各轨音量是否均衡 | `muser mix-report <file>` | `mix_report` |
+| 有哪些现成的鼓型（loop），拿一个放进工程 | `muser loop list [--style S]`、`muser loop show <名字>` | — |
+| 本机音色库里的 poly 音色 | `muser poly list`、`muser poly show <名字>` | — |
+| 让人快速听一下草稿 | `muser play <file> [--seed N]`、`muser loop play <名字>` | — |
 | 插件有没有现成的使用经验（别名、预设） | `muser plugin profile show <插件> --markdown` | `get_profile` / `list_profiles` |
 
 加 `--json` 得到机器可读输出。`validate` 会指出越界参数和未知乐器的具体位置，例如
@@ -60,7 +81,7 @@
 | 类别 | 子 skill | 代表 |
 |---|---|---|
 | 鼓组 | [drums.md](skills/instruments/drums.md) | `drums.808` `drums.909` `drums.acoustic` `drums.trap` `drums.lofi` … 10 套 |
-| 合成器预设 | [poly.md](skills/instruments/poly.md) | 68 个：`poly.moog_bass` `poly.trance_supersaw` `poly.warm_analog_pad` `poly.juno_keys` … |
+| 合成器预设 | [poly.md](skills/instruments/poly.md) | 68 个：`poly.moog_bass` `poly.trance_supersaw` `poly.warm_analog_pad` `poly.juno_keys` …；完整音色 `patch` 与本机音色库（`muser poly list / show`） |
 | 通用合成器 | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
 | 吉他 | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` |
 | 贝斯 | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
@@ -99,6 +120,12 @@ clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`
   这样新音不会混进旧和弦、也不会断开。不换踏板会把不同和弦糊在一起。
 - MCP：`add_clip` 可带 `pedal`，或用 `set_pedal` 设置。
 - 完整写法、怎么踩与示例：[skills/pedal.md](skills/pedal.md)。
+
+### 人性化演奏（humanize）
+
+音轨或 clip 上写 `"humanize": { "timing_ms": 6, "drift": 0.6, "velocity": 0.08, "swing": 58 }`，时间、力度、时值像真人一样有偏移，
+再加 swing、整体提前/拖后。同一种子每次渲染一样；换工程 `seed`（或 `muser render --seed N`）就换一遍。
+- 字段、量化含义与各风格的起点：[skills/humanize.md](skills/humanize.md)。
 
 ## 调音色：instrument_params
 
@@ -196,6 +223,7 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 - `sidechain`：compressor 由另一条轨/总线的信号触发——底鼓压 pad/贝斯的泵感。触发轨 muted 也照样触发。
 - 总线可以有自己的 `effects` / `gain_db` / `pan` / `output` / `sends` / `automation`，总线可以送进总线，不能成环。
 - `muser routing <工程>` 打印信号流，改完先看一眼。完整说明与混音经验：[skills/routing.md](skills/routing.md)。
+- 平衡各轨音量：`muser mix-report <工程>` 给出每条轨的干声与推子后响度、相对最响轨的差，见 [skills/mixing.md](skills/mixing.md)。
 
 ## 效果器索引
 
@@ -293,7 +321,8 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 - **重复多小节**：复制 clip 并把 `start` 后移 4 拍（第 2 小节 `start: 4.0`），或在一个长 clip 里铺满。
 - **和弦**：多个音符 `start` 相同、`pitch` 不同。C 大三 = 60/64/67，A 小三 = 57/60/64。
 - **层次**：不同角色放不同 track（鼓 / 贝斯 / 和弦 / 旋律），用 `gain_db` 平衡，用 `pan`（-1 左 ~ 1 右）分开。
-- **音量**：几条轨叠加后容易过载；各轨 `gain_db` 设 -3 到 -8，主总线最后放 `limiter`。
+- **音量**：乐器本体音量差别很大，`gain_db` 不要凭感觉定。写完一版跑 `muser mix-report`，按角色把各轨调到目标相对响度，
+  主总线最后放 `limiter`。流程与各角色目标见 [skills/mixing.md](skills/mixing.md)。
 
 ## 排错
 

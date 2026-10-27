@@ -1,0 +1,26 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "dubstep_halftime",
+  "style": "dubstep",
+  "description": "dubstep 半速：第一拍底鼓、第三拍军鼓，八分踩镲",
+  "tags": [
+    "halftime",
+    "bass_music"
+  ],
+  "tempo": [
+    138,
+    145
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.trap",
+  "grid": {
+    "kick": "x.........x.....",
+    "snare": "........x.......",
+    "hat": "x.x.x.x.x.x.x.x."
+  },
+  "humanize": {
+    "velocity": 0.05
+  }
+}

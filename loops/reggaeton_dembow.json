@@ -1,0 +1,27 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "reggaeton_dembow",
+  "style": "reggaeton",
+  "description": "dembow：四踩底鼓 + 3+3+2 切分的军鼓",
+  "tags": [
+    "latin",
+    "dance"
+  ],
+  "tempo": [
+    88,
+    100
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.trap",
+  "grid": {
+    "kick": "x...x...x...x...",
+    "snare": "...x..x....x..x.",
+    "hat": "x.x.x.x.x.x.x.x."
+  },
+  "humanize": {
+    "timing_ms": 2,
+    "velocity": 0.05
+  }
+}

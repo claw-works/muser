@@ -23,7 +23,6 @@
 - 有画像的插件可写短别名（如 `"cutoff"`）与 `"@preset": "<预设>"`；画像 `setup` 自动应用（`"@setup": false` 关闭）；
   `"@state": "<文件>"` 加载 `muser plugin save-state` 保存的完整音色。见 [plugins.md](../plugins.md)。
 - 音符 `pitch` 是 MIDI 音高；插件自己决定音色与音域。`accent` 对插件无效。
-- 需要用 `cargo build -p muser-cli --features host` 构建的 muser，否则报 HostDisabled。
 - `muser validate` 会加载插件检查参数名与取值；渲染时插件以工程的采样率激活。
 - 加载插件会运行第三方代码，只使用可信的本机插件。
 

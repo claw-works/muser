@@ -1,0 +1,31 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "jazz_swing",
+  "style": "jazz",
+  "description": "摇摆爵士：ride 的 ding ding-a，二四拍踩镲，羽毛般轻的四分底鼓",
+  "tags": [
+    "swing",
+    "jazz"
+  ],
+  "tempo": [
+    110,
+    200
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.acoustic",
+  "grid": {
+    "step": 0.5,
+    "ride": "x.xxx.xx",
+    "pedal_hat": "..x...x.",
+    "kick": "2.2.2.2."
+  },
+  "humanize": {
+    "timing_ms": 8,
+    "drift": 0.6,
+    "velocity": 0.08,
+    "swing": 66,
+    "swing_unit": 0.5
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "abc/ode-to-joy-trio",
+  "tempo": 100,
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.0
+        }
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "name": "melody",
+      "instrument": "poly.juno_keys",
+      "gain_db": -1,
+      "sends": {
+        "verb": -10
+      },
+      "humanize": {
+        "timing_ms": 7,
+        "velocity": 0.07
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "abc": "L:1/4\nK:D\n!mf! F F G A | A G F E | D D E F | F>E E2 |\nF F G A | A G F E | D D E F | E>D D2 |]"
+        }
+      ]
+    },
+    {
+      "name": "chords",
+      "instrument": "poly.warm_analog_pad",
+      "gain_db": -13,
+      "sends": {
+        "verb": -8
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "abc": "L:1/1\nK:D\n[DFA] | [A,CE] | [DFA] | [A,CE] | [DFA] | [A,CE] | [G,B,D]/2 [A,CE]/2 | [DFA] |]"
+        }
+      ]
+    },
+    {
+      "name": "bass",
+      "instrument": "bass.finger",
+      "gain_db": -3,
+      "humanize": {
+        "timing_ms": 5
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "abc": "L:1/4\nK:D\nD, z A,, z | A,, z E, z | D, z A,, z | A,, z A,, z |\nD, z A,, z | A,, z E, z | G,, z A,, z | D,4 |]"
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ]
+}

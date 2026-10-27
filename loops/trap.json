@@ -1,0 +1,29 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "trap",
+  "style": "trap",
+  "description": "trap：半速感（第三拍军鼓）、808 底鼓切分、32 分踩镲滚奏",
+  "tags": [
+    "hiphop",
+    "halftime",
+    "rolls"
+  ],
+  "tempo": [
+    130,
+    150
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.trap",
+  "grid": {
+    "step": 0.125,
+    "kick": "x...........x.......x.......x...",
+    "snare": "................x...............",
+    "hat": "x...x...x...x...x...x.x.xxxxx...",
+    "open_hat": "..............................x."
+  },
+  "humanize": {
+    "velocity": 0.06
+  }
+}

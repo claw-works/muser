@@ -1,0 +1,30 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "ukg_2step",
+  "style": "garage",
+  "description": "UK garage 2-step：底鼓跳开二四拍，摇摆的 16 分踩镲",
+  "tags": [
+    "swing",
+    "2step"
+  ],
+  "tempo": [
+    128,
+    136
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.909",
+  "grid": {
+    "kick": "x.........x.....",
+    "snare": "....x.......x...",
+    "hat": ".x.x.x.x.x.x.x.x",
+    "rim": "..........o..o.."
+  },
+  "humanize": {
+    "timing_ms": 3,
+    "velocity": 0.07,
+    "swing": 60,
+    "swing_unit": 0.25
+  }
+}

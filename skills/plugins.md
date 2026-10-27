@@ -4,7 +4,6 @@
 
 muser 不需要事先"适配"某个插件：任何 VST3 / CLAP / LV2 插件都能用同一套工具读出它的信息、
 搜索参数、试听参数的作用。下面是遇到一个陌生插件时的标准流程（括号里是 MCP tool 名）。
-所有命令需要 `--features host` 构建的 muser。
 
 ## 1. 找到插件（scan_plugins）
 

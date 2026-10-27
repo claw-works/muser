@@ -1,0 +1,114 @@
+{
+  "name": "sketches/sketch-a-lofi",
+  "tempo": 82,
+  "seed": 1,
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.2
+        }
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "drums.lofi",
+      "gain_db": 4,
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "drummer": {
+            "loop": "lofi",
+            "complexity": 0.45,
+            "intensity": 0.55,
+            "fill_every": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "bass",
+      "instrument": "bass.finger",
+      "gain_db": -6,
+      "humanize": {
+        "timing_ms": 6,
+        "drift": 0.6,
+        "velocity": 0.06
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "grid": {
+            "step": 0.5,
+            "c2": "................................x=..x.x.x=..x.x.................",
+            "a1": "x=..x.x.x=..x.x.................................................",
+            "f1": "................x=..x.x.x=..x.x.................................",
+            "g1": "................................................x=..x.x.x=..x.x."
+          }
+        }
+      ]
+    },
+    {
+      "name": "chords",
+      "instrument": "poly.wurly",
+      "gain_db": -13,
+      "sends": {
+        "verb": -10
+      },
+      "humanize": {
+        "timing_ms": 10,
+        "drift": 0.6,
+        "velocity": 0.06
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "abc": "L:1/2\nK:Am\n[A,CE] [A,CE] | [F,A,C] [F,A,C] | [C,E,G] [C,E,G] | [G,B,D] [G,B,D] |\n[A,CE] [A,CE] | [E,G,B] [E,G,B] | [F,A,C] [G,B,D] | [A,CE]2 |]"
+        }
+      ]
+    },
+    {
+      "name": "melody",
+      "instrument": "poly.bell_pluck",
+      "gain_db": -8,
+      "sends": {
+        "verb": -8
+      },
+      "humanize": {
+        "timing_ms": 7,
+        "drift": 0.6,
+        "velocity": 0.08,
+        "length": 0.08
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 32,
+          "abc": "L:1/8\nK:Am\n!mf! e2 c2 A2 B2 | c3 B A2 G2 | A2 c2 e2 a2 | g3 e d2 c2 |\nA2 c2 e2 dc | B3 G E2 G2 | A4 c4 | A8 |]"
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "compressor",
+      "threshold_db": -20,
+      "ratio": 2,
+      "attack_ms": 20,
+      "release_ms": 200,
+      "makeup_db": 4
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ]
+}

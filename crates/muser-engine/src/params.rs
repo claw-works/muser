@@ -339,22 +339,7 @@ pub(crate) static PIECE: &[ParamDef<Piece>] = &[
 ];
 
 /// 鼓件别名 → GM 鼓键。
-pub(crate) const PIECE_ALIASES: &[(&str, u8)] = &[
-    ("kick", 36), ("kick2", 35), ("side_stick", 37), ("rim", 37), ("snare", 38), ("clap", 39),
-    ("snare2", 40), ("floor_tom_low", 41), ("closed_hat", 42), ("floor_tom", 43),
-    ("pedal_hat", 44), ("tom_low", 45), ("open_hat", 46), ("tom_mid_low", 47), ("tom_mid", 48),
-    ("crash", 49), ("tom_high", 50), ("ride", 51), ("china", 52), ("ride_bell", 53),
-    ("tambourine", 54), ("splash", 55), ("cowbell", 56), ("crash2", 57), ("ride2", 59),
-    ("bongo_high", 60), ("bongo_low", 61), ("conga_mute", 62), ("conga_high", 63), ("conga_low", 64),
-    ("cabasa", 69), ("shaker", 70), ("maracas", 70), ("guiro_short", 73), ("guiro_long", 74), ("claves", 75),
-];
-
-pub(crate) fn piece_key(name: &str) -> Option<u8> {
-    let n = name.trim().to_ascii_lowercase();
-    n.parse::<u8>()
-        .ok()
-        .or_else(|| PIECE_ALIASES.iter().find(|(a, _)| *a == n).map(|(_, k)| *k))
-}
+pub(crate) use muser_core::grid::{drum_key as piece_key, DRUM_PIECES as PIECE_ALIASES};
 
 // ---------------------------------------------------------------------------
 // 通用逻辑

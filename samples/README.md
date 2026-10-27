@@ -10,7 +10,9 @@
 | [`effects/`](#effects) | 内置效果器 A/B 对比 |
 | [`automation/`](#automation) | 自动化：参数随时间变化 |
 | [`routing/`](#routing) | 混音路由：总线、发送、侧链（A/B 对比） |
-| [`plugins/`](#plugins) | 外置 VST 效果器与 VSTi 音源（需 `host` 特性 + 本机插件） |
+| [`plugins/`](#plugins) | 外置 VST 效果器与 VSTi 音源（需本机装好插件） |
+| [`abc/`](#abc) | ABC 记谱写旋律：吉格（反复与一二房）、三声部、记谱功能巡礼 |
+| [`sketches/`](#sketches) | 草稿 A/B：ABC 旋律 + grid 贝斯 + 鼓手 + humanize，几行 JSON 一段 |
 
 wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
 
@@ -96,7 +98,7 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 
 ## plugins
 
-需要 `cargo build -p muser-cli --features host` 构建的 muser，以及本机装好对应插件。插件路径写系统目录或 `~/`
+需要本机装好对应插件。插件路径写系统目录或 `~/`
 （主目录下的 `~/.clap`、`~/.vst3`），装在别处时改路径即可。
 插件参数按名称设置，值写插件显示的文字（流程见 [skills/plugins.md](../skills/plugins.md)）。
 
@@ -112,8 +114,38 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `plasma-grit` | Plasma：鼓总线并行 `drum_crush`；贝斯 `bass_grit` 前 4 小节 mix 为 0、第 5 小节起由 30 % 渐增到 60 %（后半段亮度约 3.4 倍）；supersaw 主音 `scream` 40 % |
 
 Surge XT 的振荡器默认自由相位；内置画像的 `setup` 会自动打开 `A Osc N Retrigger`，使结果可复现。
-未启用 `host` 特性时报 `HostDisabled`；路径不存在报 `PluginLoad`。
+插件路径不存在时报 `PluginLoad`。
 
 ---
 
 工程格式与编曲约定见仓库根目录的 [SKILLS.md](../SKILLS.md)。
+
+## sketches
+
+"先听后写"流程里的草稿示例：同一段旋律（ABC 写的 8 小节 A 小调）配两种律动，给人选方向。每轨只有几行 JSON：
+旋律与和弦用 `abc`，贝斯用音名行的 `grid`，鼓用 `drummer`（以 loop 为底，每小节有变化、每 4 小节过门），各轨带 `humanize`。
+
+| 工程 | 内容 |
+|---|---|
+| `sketch-a-lofi` | 82 BPM lo-fi：`drummer` 以 `lofi` 为底、电钢和弦、bell pluck 旋律、拖后摇摆的律动 |
+| `sketch-b-two-step` | 172 BPM liquid DnB：`drummer` 以 `dnb_two_step` 为底、pad 铺底、长音贝斯 |
+
+```bash
+muser play samples/sketches/sketch-a-lofi.muser.json          # 听一遍
+muser play samples/sketches/sketch-a-lofi.muser.json --seed 2 # 换一遍演奏（鼓手与 humanize 换一种）
+```
+
+## abc
+
+clip 的 `"abc"` 用 ABC 记谱写音符（写法见 [skills/notation.md](../skills/notation.md)）。每个声部一条音轨。
+
+| 工程 | 内容 |
+|---|---|
+| `kesh-jig` | 爱尔兰吉格 The Kesh：6/8、`K:G`、反复与一二房，长笛 + humanize |
+| `ode-to-joy-trio` | 欢乐颂三声部：旋律（附点 `F>E`）、和弦（`[DFA]`）、贝斯（低八度 `D,` 与休止），各一条音轨 |
+| `notation-tour` | 记谱功能巡礼：力度渐强 `!pp!`→`!ff!`、三连音 `(3cBA`、附点 `A>B`、断奏 `.e`、重音 `!>!`、和弦与连音线 `[A,CE]4-` |
+
+```bash
+muser play samples/abc/kesh-jig.muser.json
+```
+

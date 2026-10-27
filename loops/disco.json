@@ -1,0 +1,29 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "disco",
+  "style": "disco",
+  "description": "四踩底鼓 + 军鼓二四拍，16 分踩镲带反拍开镲",
+  "tags": [
+    "four_on_the_floor",
+    "groove"
+  ],
+  "tempo": [
+    112,
+    124
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.acoustic",
+  "grid": {
+    "kick": "x...x...x...x...",
+    "snare": "....x.......x...",
+    "hat": "xx.xxx.xxx.xxx.x",
+    "open_hat": "..x...x...x...x."
+  },
+  "humanize": {
+    "timing_ms": 4,
+    "drift": 0.6,
+    "velocity": 0.07
+  }
+}

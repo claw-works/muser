@@ -1,0 +1,28 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "dnb_amen",
+  "style": "dnb",
+  "description": "Amen break 风格的两小节切分，底鼓双击、军鼓切分与鬼音",
+  "tags": [
+    "breakbeat",
+    "jungle"
+  ],
+  "tempo": [
+    165,
+    176
+  ],
+  "bars": 2,
+  "meter": "4/4",
+  "kit": "drums.dnb",
+  "grid": {
+    "kick": "x.x.......xx....x.x.......x.....",
+    "snare": "....x..o.o..x..o....x..o.o....x.",
+    "ride": "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x."
+  },
+  "humanize": {
+    "timing_ms": 4,
+    "drift": 0.6,
+    "velocity": 0.08
+  }
+}

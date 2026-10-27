@@ -1,0 +1,31 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "afrobeat",
+  "style": "afrobeat",
+  "description": "afrobeat：切分底鼓、rim 打点、16 分沙锤与牛铃",
+  "tags": [
+    "groove",
+    "world"
+  ],
+  "tempo": [
+    100,
+    118
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.acoustic",
+  "grid": {
+    "kick": "x.....x...x..x..",
+    "rim": "....x..x....x...",
+    "shaker": "xoxoxoxoxoxoxoxo",
+    "cowbell": "x.x.xx.x.x.xx.x."
+  },
+  "humanize": {
+    "timing_ms": 6,
+    "drift": 0.6,
+    "velocity": 0.08,
+    "swing": 55,
+    "swing_unit": 0.25
+  }
+}

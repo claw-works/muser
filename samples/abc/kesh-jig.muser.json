@@ -1,0 +1,42 @@
+{
+  "name": "abc/kesh-jig",
+  "tempo": 120,
+  "time_signature": {
+    "numerator": 6,
+    "denominator": 8
+  },
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.0
+        }
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "name": "whistle",
+      "instrument": "wind.flute",
+      "sends": {
+        "verb": -12
+      },
+      "humanize": {
+        "timing_ms": 6,
+        "drift": 0.6,
+        "velocity": 0.06
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 48,
+          "abc": "X:1\nT:The Kesh\nM:6/8\nL:1/8\nK:G\n|:GAG GAB|ABA ABd|edd gdd|edB dBA|\nGAG GAB|ABA ABd|edd gdB|1 AGF G2A:|2 AGF G3|]"
+        }
+      ],
+      "gain_db": 12
+    }
+  ]
+}

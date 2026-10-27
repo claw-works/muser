@@ -230,7 +230,15 @@ impl Patch {
             return Ok(());
         }
         match self {
-            Patch::Poly(p) => params::apply(params::POLY, p, params),
+            Patch::Poly(p) => {
+                // `patch`：完整音色（见 poly_patch），先套上，再套常用参数；`sound`：音色来源，只作标注。
+                let mut rest = params.clone();
+                rest.remove("sound");
+                if let Some(patch) = rest.remove("patch") {
+                    crate::poly_patch::apply(p, &patch)?;
+                }
+                params::apply(params::POLY, p, &rest)
+            }
             Patch::Fm(p) => params::apply(params::FM, p, params),
             Patch::String(p, _) => params::apply(params::STRING, p, params),
             Patch::Acid(p) => params::apply(params::ACID, p, params),
@@ -268,7 +276,11 @@ impl Patch {
     /// 参数规格 + 当前值。
     fn param_info(&self) -> (Vec<ParamInfo>, String) {
         match self {
-            Patch::Poly(p) => (params::describe(params::POLY, p, &[]), String::new()),
+            Patch::Poly(p) => (
+                params::describe(params::POLY, p, &[]),
+                "完整音色（振荡器、滤波器、包络、LFO、调制矩阵）用 instrument_params 的 \"patch\" 写，结构见 `muser poly schema`；\
+                 本机音色库的音色用 `muser poly show <名字>` 取出完整 JSON。".into(),
+            ),
             Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
             Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
             Patch::Acid(p) => (
@@ -315,6 +327,14 @@ impl Patch {
             Patch::Choir(p, n) => tunable(Synth::with_voices(n, move || ChoirVoice::new(p)), p, params::CHOIR, |v, p| v.set_params(p)),
             Patch::Sfz(path, cc) => sfz_instrument(&path, &cc)?,
         })
+    }
+}
+
+/// 鼓组乐器（`drums.*`）有哪些鼓键；不是鼓组时为 `None`。
+pub fn drum_kit_keys(name: &str) -> Option<Vec<u8>> {
+    match lookup(name)?.1 {
+        Patch::Drums(kit) => Some(kit.keys().collect()),
+        _ => None,
     }
 }
 
@@ -480,7 +500,7 @@ static BUILTINS: &[Builtin] = &[
 ];
 
 /// 把 poly 预设名转成 `poly.` 后缀：小写，非字母数字变 `_`。
-fn slug(name: &str) -> String {
+pub(crate) fn slug(name: &str) -> String {
     let mut out = String::new();
     for ch in name.chars() {
         if ch.is_ascii_alphanumeric() {
@@ -688,7 +708,7 @@ pub enum InstrumentError {
     Param { detail: String },
     #[error("{detail}")]
     Load { detail: String },
-    #[error("插件乐器需要 `host` 特性：请用 `--features host` 构建")]
+    #[error("插件乐器不可用：这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它")]
     HostDisabled,
     #[error("加载插件乐器 '{path}' 失败: {detail}")]
     PluginLoad { path: String, detail: String },

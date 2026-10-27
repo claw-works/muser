@@ -23,6 +23,7 @@ use std::sync::Arc;
 use muser_core::routing::{self, Node, Plan};
 use muser_core::{Beats, Effect, Project};
 
+use manguebyte::analysis::LoudnessMeter;
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, WavFormat, decibels, wav};
 
 use crate::automate::{self, MasterLanes, TrackLanes};
@@ -87,39 +88,65 @@ impl Ctx {
 }
 
 /// 一条音轨的全部演奏动作（样本帧, 动作），按时间排序；同帧先 Off 后 On。
-fn schedule(track: &muser_core::Track, cx: &Ctx) -> Vec<(usize, Act)> {
+fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
+    let track = &project.tracks[ti];
     let (sr, tempo) = (cx.sr, cx.tempo);
     let mut acts: Vec<(usize, Act)> = Vec::new();
-    for clip in &track.clips {
+    for (ci, clip) in track.clips.iter().enumerate() {
+        // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
+        let all = crate::clip_notes(project, ti, ci).unwrap_or_default();
+        let notes: &[muser_core::Note] = &all;
         let clip_start = clip.start.to_seconds(tempo) * sr;
         let clip_len_frames = (clip.length.to_seconds(tempo) * sr) as usize;
         let clip_end_frame = clip_start as usize + clip_len_frames;
         // 连奏：延长到下一个不同音高的音之后约 40 ms（空隙超过 1/4 拍视为休止，不连）。
         let legato_len = |i: usize| -> Option<f64> {
-            let n = &clip.notes[i];
+            let n = &notes[i];
             let end = n.start.0 + n.length.0;
-            let next = clip.notes.iter().filter(|m| m.start.0 > n.start.0 + 1e-9).map(|m| m.start.0).fold(f64::INFINITY, f64::min);
+            let next = notes.iter().filter(|m| m.start.0 > n.start.0 + 1e-9).map(|m| m.start.0).fold(f64::INFINITY, f64::min);
             if !next.is_finite() || next - end > 0.25 {
                 return None;
             }
-            let at_next: Vec<&muser_core::Note> = clip.notes.iter().filter(|m| (m.start.0 - next).abs() < 1e-9).collect();
+            let at_next: Vec<&muser_core::Note> = notes.iter().filter(|m| (m.start.0 - next).abs() < 1e-9).collect();
             if at_next.iter().any(|m| m.pitch == n.pitch) {
                 return None;
             }
             let overlap = 0.04 * tempo / 60.0;
             Some((next - n.start.0 + overlap).max(n.length.0))
         };
-        for (ni, note) in clip.notes.iter().enumerate() {
-            let length = if clip.legato { legato_len(ni).map_or(note.length, Beats) } else { note.length };
-            let note = &muser_core::Note { length, ..note.clone() };
-            let on = (clip_start + note.start.to_seconds(tempo) * sr) as usize;
+        let lengths: Vec<Beats> =
+            (0..notes.len()).map(|ni| if clip.legato { legato_len(ni).map_or(notes[ni].length, Beats) } else { notes[ni].length }).collect();
+        // 人性化：clip 的覆盖音轨的；种子默认由工程 seed 与音轨、clip 位置推导。
+        // drummer 的 clip 没写 humanize 时用底子 loop 的律动。
+        let loop_feel = match (&clip.humanize, &clip.drummer) {
+            (None, Some(d)) => crate::loop_library::load(&d.base).ok().and_then(|l| l.humanize),
+            _ => None,
+        };
+        let clip_feel = clip.humanize.as_ref().or(loop_feel.as_ref());
+        let performed = muser_core::humanize::Humanize::merged(track.humanize.as_ref(), clip_feel).map(|h| {
+            let seed = h.seed.unwrap_or_else(|| muser_core::automation::derive_seed(project.seed, Some(ti), 0x4855_0000 + ci));
+            let lens: Vec<f64> = lengths.iter().map(|l| l.0).collect();
+            muser_core::humanize::perform(&h, notes, &lens, clip.start.0, seed)
+        });
+        for (ni, note) in notes.iter().enumerate() {
+            let (on, raw_off, velocity) = match &performed {
+                None => {
+                    let note = &muser_core::Note { length: lengths[ni], ..note.clone() };
+                    let on = (clip_start + note.start.to_seconds(tempo) * sr) as usize;
+                    (on, (clip_start + (note.start + note.length).to_seconds(tempo) * sr) as usize, note.velocity)
+                }
+                Some(p) => {
+                    let p = p[ni];
+                    let at = |beats: f64| (clip_start + (Beats(beats).to_seconds(tempo) + p.offset_s) * sr).max(0.0) as usize;
+                    (at(p.start), at(p.start + p.length), p.velocity)
+                }
+            };
             // 音符结束不超过 clip 边界（被裁剪）。
-            let raw_off = (clip_start + (note.start + note.length).to_seconds(tempo) * sr) as usize;
             let off = raw_off.min(clip_end_frame);
             if off <= on {
                 continue;
             }
-            acts.push((on, Act::On { key: note.pitch, velocity: note.velocity, accent: note.accent }));
+            acts.push((on, Act::On { key: note.pitch, velocity, accent: note.accent }));
             acts.push((off, Act::Off { key: note.pitch }));
         }
         for &(a, b) in &clip.pedal {
@@ -208,7 +235,7 @@ impl LiveInstrument {
         Ok(Self {
             channel: inst.channel(),
             inst,
-            acts: chase(schedule(track, cx), start),
+            acts: chase(schedule(project, ti, cx), start),
             next: 0,
             frame: start,
             lanes,
@@ -500,7 +527,7 @@ fn instrument_key(project: &Project, ti: usize, cx: &Ctx) -> u64 {
         .map(|m| format!("{m:?}"));
     let ts = project.time_signature;
     let key = serde_json::json!({
-        "i": t.instrument, "p": t.instrument_params, "c": t.clips, "a": autos.iter().map(|(i, a)| serde_json::json!([i, a])).collect::<Vec<_>>(),
+        "i": t.instrument, "p": t.instrument_params, "c": t.clips, "h": t.humanize, "a": autos.iter().map(|(i, a)| serde_json::json!([i, a])).collect::<Vec<_>>(),
         "ti": ti, "seed": project.seed, "tempo": project.tempo, "ts": [ts.numerator, ts.denominator],
         "sr": cx.settings.sample_rate, "bs": cx.settings.block_size, "n": cx.total_frames, "st": state_mtime,
     });
@@ -527,6 +554,66 @@ pub struct Meter {
 /// 同 [`render`]，复用 `cache` 里的乐器输出，并把本次的乐器输出存回。
 pub fn render_cached(project: &Project, settings: RenderSettings, cache: &mut RenderCache) -> Result<AudioBuffer<f32>, EngineError> {
     render_inner(project, settings, cache, None, None)
+}
+
+/// 一个测量点的响度（静音或没有信号时为 `None`）。
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct Level {
+    /// 积分响度（LUFS，EBU R128，门限去掉静音段）。
+    pub lufs: Option<f64>,
+    /// 短时（3 秒窗）响度的最大值（LUFS）：最响的段落有多响。
+    pub max_short_lufs: Option<f64>,
+    /// 峰值（dBFS）。
+    pub peak_db: Option<f64>,
+}
+
+/// 一个节点（音轨/总线；`node` 为 `None` 是主总线）整首的响度。
+#[derive(Debug, Clone)]
+pub struct NodeLoudness {
+    pub node: Option<Node>,
+    pub muted: bool,
+    /// 效果链之前：音轨是乐器干声，总线/主总线是送进来的信号之和。
+    pub input: Level,
+    /// 推子后（效果链、增益、声像之后），也就是送进混音的信号。静音节点为空。
+    pub output: Level,
+}
+
+/// 节点的响度表：效果链前一个、推子后一个。
+struct LoudMeters {
+    input: LoudnessMeter,
+    output: LoudnessMeter,
+    in_peak: f32,
+    out_peak: f32,
+}
+
+impl LoudMeters {
+    fn new(spec: &ProcessSpec) -> Box<Self> {
+        let mut m = Box::new(LoudMeters { input: LoudnessMeter::stereo(), output: LoudnessMeter::stereo(), in_peak: 0.0, out_peak: 0.0 });
+        m.input.prepare(spec);
+        m.output.prepare(spec);
+        m
+    }
+}
+
+fn level(meter: &LoudnessMeter, peak: f32) -> Level {
+    let finite = |x: f64| (x.is_finite()).then(|| (x * 10.0).round() / 10.0);
+    let r = meter.readings();
+    Level {
+        lufs: finite(r.integrated()),
+        max_short_lufs: finite(r.max_short_term()),
+        peak_db: (peak > 0.0).then(|| finite(decibels::gain_to_db(f64::from(peak)))).flatten(),
+    }
+}
+
+/// 渲染整首，给出每个节点的响度（按计划顺序，主总线在最后）。复用并更新 `cache` 里的乐器输出。
+pub fn render_loudness(project: &Project, settings: RenderSettings, cache: &mut RenderCache) -> Result<Vec<NodeLoudness>, EngineError> {
+    crate::validate(project)?;
+    let plan: Plan = routing::plan(project).map_err(invalid)?;
+    let mut r = Renderer::build(project, settings, plan, Some(cache), false, false, 0)?.recording().with_loudness();
+    let mut block = AudioBuffer::<f32>::new(2, 1 << 16);
+    while r.process(&mut block)? > 0 {}
+    r.store_instruments(cache);
+    Ok(r.loudness())
 }
 
 /// 同 [`render_cached`]，同时给出每个节点的电平（供播放界面的电平表）。
@@ -633,6 +720,8 @@ struct Strip {
     cache_key: Option<u64>,
     /// 录下的整首乐器输出（[`Renderer::recording`]）。
     record: Option<[Vec<f32>; 2]>,
+    /// 响度表（[`Renderer::with_loudness`]）。
+    loud: Option<Box<LoudMeters>>,
 }
 
 /// 主总线的"推子"：只有增益。
@@ -767,6 +856,7 @@ impl Renderer {
                 rank: rank(node),
                 cache_key,
                 record: None,
+                loud: None,
             });
         }
         let MasterLanes { effects: fx_lanes, gain } = automate::compile_master(project, beats).map_err(invalid)?;
@@ -792,6 +882,7 @@ impl Renderer {
             rank: (usize::MAX, usize::MAX),
             cache_key: None,
             record: None,
+            loud: None,
         });
 
         let master = strips.len() - 1;
@@ -928,6 +1019,10 @@ impl Renderer {
                     }
                 }
             }
+            if let Some(l) = st.loud.as_mut() {
+                l.input.measure(&buf);
+                l.in_peak = l.in_peak.max(buf.peak());
+            }
             effects::apply_chain(&mut st.chain, &mut buf, bs, &mut st.lanes.effects, &|f| cx.beat_at(a + f), &key_refs);
             st.wet.push(&buf, 0..n);
             st.pos = b;
@@ -956,6 +1051,10 @@ impl Renderer {
                             st.meter[w][c] = st.meter[w][c].max(o.channel(c)[i].abs());
                         }
                     }
+                }
+                if let (Some(l), false) = (st.loud.as_mut(), st.muted) {
+                    l.output.measure(&o);
+                    l.out_peak = l.out_peak.max(o.peak());
                 }
                 st.out.push(&o, 0..ready - from);
                 st.wet.trim(st.out.end() + lat);
@@ -993,6 +1092,28 @@ impl Renderer {
     pub fn with_meters(mut self) -> Self {
         self.meters = true;
         self
+    }
+
+    /// 同时测量各节点整首的响度（见 [`Renderer::loudness`]）。只对从头开始的渲染有意义。
+    pub fn with_loudness(mut self) -> Self {
+        let spec = self.cx.spec;
+        for s in self.strips.iter_mut().filter(|s| s.active) {
+            s.loud = Some(LoudMeters::new(&spec));
+        }
+        self
+    }
+
+    /// 到目前为止各节点的响度（需 [`Renderer::with_loudness`]），按计划顺序，主总线在最后。
+    pub fn loudness(&self) -> Vec<NodeLoudness> {
+        let mut v: Vec<&Strip> = self.strips.iter().collect();
+        v.sort_by_key(|s| s.rank);
+        let none = Level { lufs: None, max_short_lufs: None, peak_db: None };
+        v.into_iter()
+            .map(|s| {
+                let (input, output) = s.loud.as_ref().map_or((none, none), |l| (level(&l.input, l.in_peak), level(&l.output, l.out_peak)));
+                NodeLoudness { node: s.node, muted: s.muted, input, output: if s.muted { none } else { output } }
+            })
+            .collect()
     }
 
     /// 同时录下边演奏边出声的乐器输出，渲染到结尾后用 [`Renderer::store_instruments`] 存进缓存。
@@ -1176,6 +1297,31 @@ mod tests {
         let mut b = AudioBuffer::<f32>::new(2, 2400);
         r.process(&mut b).unwrap();
         assert!(b.peak() > 0.01, "按着的音应补发: {}", b.peak());
+    }
+
+    /// humanize：改变演奏；同一种子结果相同，换工程 seed（没写 humanize.seed 时）就换一遍。
+    #[test]
+    fn humanize_takes() {
+        let settings = RenderSettings { tail_seconds: 0.2, ..Default::default() };
+        let base = || {
+            let hits: Vec<_> = (0..8).map(|i| serde_json::json!({ "pitch": 42, "start": i as f64 * 0.5, "length": 0.1 })).collect();
+            serde_json::from_value::<Project>(serde_json::json!({ "tempo": 120,
+                "tracks": [{ "instrument": "drums.909", "clips": [{ "start": 0, "length": 4, "notes": hits }] }] })).unwrap()
+        };
+        let render_with = |h: Option<muser_core::humanize::Humanize>, seed: u64| {
+            let mut p = base();
+            p.seed = seed;
+            p.tracks[0].humanize = h;
+            render(&p, settings).unwrap().channel(0).to_vec()
+        };
+        let h = muser_core::humanize::Humanize { timing_ms: Some(12.0), velocity: Some(0.1), swing: Some(60.0), ..Default::default() };
+        let plain = render_with(None, 0);
+        let take1 = render_with(Some(h.clone()), 0);
+        assert_ne!(plain, take1);
+        assert_eq!(take1, render_with(Some(h.clone()), 0), "同一种子同一遍");
+        assert_ne!(take1, render_with(Some(h.clone()), 1), "换工程 seed 换一遍");
+        let fixed = muser_core::humanize::Humanize { seed: Some(42), ..h };
+        assert_eq!(render_with(Some(fixed.clone()), 0), render_with(Some(fixed), 1), "写了 humanize.seed 就不随工程 seed 变");
     }
 
     /// 乐器边演奏边出声、按任意块长流式推进，结果必须与离线渲染逐样本相同。

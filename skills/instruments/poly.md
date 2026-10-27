@@ -29,6 +29,24 @@
 | `filter_release` | 0 – 20 s | ✓ | 滤波包络释放时间 |
 | `glide` | 0 – 5 s | ✓ | 滑音时间；只在单音/连奏型预设上起作用（重叠的音符之间滑过去） |
 
+## 完整音色（patch）与本机音色库
+
+上面的参数只是在预设上微调。要改振荡器波形 / unison / 波表、滤波器模型、LFO、调制矩阵，写完整音色：
+`instrument_params` 的 `"patch"`（结构与每个字段的范围：`muser poly schema`）。只写要改的项，其余沿用所选预设；
+数组按下标覆盖（`oscillators[1]` 只改第二个振荡器），`matrix` 是在用的调制列表，整体替换。
+
+```json
+{ "instrument": "poly.reese", "instrument_params": { "patch": {
+    "oscillators": [{ "unison": 8, "detune": 0.4 }],
+    "filters": [{ "model": "ms20_lp", "cutoff": 400, "drive": 6 }],
+    "matrix": [{ "source": "lfo1", "destination": "cutoff", "amount": 1.5 }] } } }
+```
+
+用户在 `muser poly edit` 里调好的音色存在本机音色库（`~/.config/muser/poly/`）：
+- `muser poly list` 列出音色；`muser poly show <名字>` 输出写进音轨的 JSON（`instrument` + `instrument_params`，完整音色内嵌），
+  直接放进工程的音轨里。工程因此自带音色，换机器也能渲染；`sound` 字段只标注来源。
+- 用户说"用我那个 xxx 音色"时，先 `muser poly list` 找名字，再 `muser poly show xxx`。
+
 ### 调音示例
 
 - 把 moog bass 变得更亮更有'哇'声

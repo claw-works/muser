@@ -45,12 +45,10 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
-      # 插件宿主（CLAP/VST3/LV2）。CI 机器上没有装插件，依赖真实插件的测试会自动跳过。
-      - name: Build with plugin host
-        run: cargo build --workspace --locked --features muser-cli/host,muser-mcp/host
-
-      - name: Test with plugin host
-        run: cargo test -p muser-engine --locked --features host
+      # 上面的构建与测试已带插件宿主（muser-cli / muser-mcp 默认启用 host；CI 机器上没装插件，
+      # 依赖真实插件的测试会自动跳过）。引擎库本身 host 可选：单独测一遍不带 host 的错误路径。
+      - name: Test engine without plugin host
+        run: cargo test -p muser-engine --locked
 
       - name: Smoke test CLI
         shell: bash

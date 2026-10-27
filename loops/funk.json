@@ -1,0 +1,28 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "funk",
+  "style": "funk",
+  "description": "funk：切分底鼓、军鼓鬼音、16 分踩镲带重音",
+  "tags": [
+    "groove",
+    "ghost_notes"
+  ],
+  "tempo": [
+    95,
+    110
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.acoustic",
+  "grid": {
+    "kick": "x.x....x..x.....",
+    "snare": "....x..o.o..x..o",
+    "hat": "Xxxxxxxxxxxxxxxx"
+  },
+  "humanize": {
+    "timing_ms": 5,
+    "drift": 0.6,
+    "velocity": 0.09
+  }
+}

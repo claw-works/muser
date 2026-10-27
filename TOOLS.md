@@ -19,6 +19,7 @@ muser 的接口层以两种形态暴露给 AI：
 - `-o, --output <path>`：输出 WAV 路径（默认 `out.wav`）
 - `--sample-rate <hz>`：采样率（默认 48000）
 - `--tail <seconds>`：结尾余响秒数（默认 2.0）
+- `--seed <n>`：临时换工程的随机种子（不改文件）：`humanize` 与 random 自动化换一遍
 - **输出**：`已渲染 '<name>' → <out>: <时长>s, 峰值 <dBFS>`
 
 ```bash
@@ -42,7 +43,7 @@ muser render beat.muser.json -o beat.wav
 - `<name>`：显示该效果器的放置建议、每个参数的默认值/范围/单位/听感说明，以及 JSON 示例。
 - `--json`：机器可读输出（即代码中的效果器描述表）。
 
-### `muser plugin scan|info|params|values`（需 host 特性）
+### `muser plugin scan|info|params|values`
 - `scan [--kind instrument|effect] [--refresh]`：扫描本机标准插件目录（每个插件在独立进程读取，有缓存），给出 `path#id`。
 - `info <插件>`：名称、厂商、类型、是否接收音符、输入输出、参数总数与按名称分组统计、同文件其它插件。
 - `params <插件> [--filter 关键词] [--params JSON] [--limit N] [--all]`：参数名、范围、当前值与文字、id；
@@ -64,6 +65,12 @@ muser render beat.muser.json -o beat.wav
 
 打印信号流：处理顺序、每条音轨/总线的去向（output、发送量）、效果链与侧链关系。改完路由先看一眼。
 
+### `muser mix-report <project> [--json]`
+
+混音报告：渲染一遍整首，列出每条音轨/总线/主总线的响度——输入（效果链前，音轨即乐器干声）与输出（推子后）的
+积分 LUFS、短时最大 LUFS、峰值；音轨到主总线的估计响度（加上输出路径上各总线 gain_db）与相对最响音轨的差；
+以及没声音、过响、主总线过载、削波等提示。用来平衡各轨 `gain_db`，流程见 [skills/mixing.md](skills/mixing.md)。
+
 ### `muser view <project> [--port 8737] [--open]`
 
 给人听的播放页：在 `127.0.0.1` 起本地服务，浏览器打开 `http://127.0.0.1:8737/`（`--open` 自动打开）。
@@ -80,6 +87,31 @@ muser render beat.muser.json -o beat.wav
 
 改动 JSON 格式：`{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`。
 分享作品：分享工程 JSON（和插件状态文件）或渲染好的 WAV。
+
+### `muser poly edit|list|show|schema`
+
+poly 合成器的完整音色（振荡器、sub / 噪声、两个滤波器、四个包络、三个 LFO、16 槽调制矩阵）。
+- `edit [--port 8739] [--open]`：本地网页音色编辑器（只监听 127.0.0.1）。从预设或本机音色库开始，改参数后自动渲染一段
+  试听乐句（和弦、单音、贝斯线、琶音、连奏旋律，可选根音），存进本机音色库 `~/.config/muser/poly/<名字>.json`。
+- `list [--json]`：本机音色库里的音色。
+- `show <名字> [--sound]`：输出写进工程音轨的 JSON（`"instrument": "synth.poly"` + `instrument_params.patch` 完整音色）；
+  名字可以是音色库里的、`poly.<预设>` 或 `synth.poly`。`--sound` 输出音色文件本身。
+- `schema`：完整音色的结构（每个字段的类型、范围、选项、说明），`instrument_params.patch` 按它写。
+
+### `muser play <project> [--seed N] [--from 秒]`
+
+用本机声卡把工程从头放一遍，放完退出：给人快速试听草稿（不开网页）。`--seed` 临时换一遍演奏（humanize / drummer /
+random 自动化），不改文件。需要 device 特性（发行版都带；headless 版没有，用 `render` 再听）。
+
+### `muser loop list|show|play|save`
+
+节奏型库（内置 17 个常见风格 + 本机 `~/.config/muser/loops/`）。
+- `list [--style S] [--json]`：列出，按风格或标签筛。
+- `show <名字> [--start 拍] [--repeat N] [--file]`：输出写进工程的 clip（`grid` + `humanize` 内嵌，`from` 标注来源）；`--file` 输出 loop 文件。
+- `play <名字> [--kit drums.X] [--tempo BPM] [--repeat N]`：声卡试听。
+- `save <project> --track I [--clip J] --name N [--style S] [--description D] [--step 0.25] [--overwrite]`：
+  把工程里的 clip 存成 loop（clip 是 grid 时原样存，是音符时量化成网格）。
+clip 上的简写（`abc` / `grid` / `drummer`）与 `humanize` 见 [skills/notation.md](skills/notation.md)、[skills/humanize.md](skills/humanize.md)。
 
 ### `muser new [-o <path>]`
 生成一个示例工程 JSON（AI 可用来参考标准格式）。缺省打印到 stdout。
@@ -102,7 +134,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（34 个）
+### 已实现的 Tools（35 个）
 
 | tool | 作用 |
 |---|---|
@@ -126,7 +158,8 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `set_automation` | 设置某音轨（`track_index`）、总线（`bus`）或主总线的自动化（替换或追加），立即校验 |
 | `set_seed` | 设置工程随机种子（决定 random 自动化） |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
-| `scan_plugins` | 扫描本机外置插件（需 host 特性） |
+| `mix_report` | 混音报告：各轨/总线/主总线的干声与推子后响度、相对差与提示（乐器输出按工程缓存） |
+| `scan_plugins` | 扫描本机外置插件 |
 | `plugin_info` | 外置插件信息与参数分组 |
 | `list_plugin_params` | 搜索外置插件参数（filter 关键词，可先应用基础参数） |
 | `plugin_param_values` | 外置插件某参数可写的文字值 |

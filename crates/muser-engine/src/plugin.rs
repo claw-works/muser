@@ -154,7 +154,7 @@ pub use stub::*;
 mod stub {
     use super::*;
 
-    pub const HOST_DISABLED: &str = "插件功能需要 `host` 特性：请用 `cargo build -p muser-cli --features host` 构建";
+    pub const HOST_DISABLED: &str = "这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它";
 
     pub fn info(_spec: &str) -> Result<PluginInfo, String> {
         Err(HOST_DISABLED.into())

@@ -12,8 +12,11 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod abc;
 pub mod automation;
 pub mod effect;
+pub mod grid;
+pub mod humanize;
 pub mod routing;
 pub mod time;
 
@@ -137,7 +140,16 @@ impl Project {
                 e.validate()
                     .map_err(|m| CoreError::Invalid(format!("tracks[{ti}].effects[{i}]: {m}")))?;
             }
+            if let Some(h) = &track.humanize {
+                h.validate(&format!("tracks[{ti}].humanize")).map_err(CoreError::Invalid)?;
+            }
             for (ci, clip) in track.clips.iter().enumerate() {
+                if let Some(h) = &clip.humanize {
+                    h.validate(&format!("tracks[{ti}].clips[{ci}].humanize")).map_err(CoreError::Invalid)?;
+                }
+                if let Some(d) = &clip.drummer {
+                    d.validate(&format!("tracks[{ti}].clips[{ci}].drummer")).map_err(CoreError::Invalid)?;
+                }
                 if clip.start.0 < 0.0 {
                     return Err(CoreError::Invalid(format!(
                         "track[{ti}].clip[{ci}] start 为负: {}",
@@ -164,7 +176,8 @@ impl Project {
                     }
                     prev_end = b;
                 }
-                for (ni, note) in clip.notes.iter().enumerate() {
+                let notes = clip.all_notes().map_err(|e| CoreError::Invalid(format!("tracks[{ti}].clips[{ci}].{e}")))?;
+                for (ni, note) in notes.iter().enumerate() {
                     if note.pitch > 127 || note.start.0 < 0.0 || note.length.0 <= 0.0 {
                         return Err(CoreError::Invalid(format!(
                             "track[{ti}].clip[{ci}].note[{ni}] 无效: pitch 0-127、start ≥ 0、length > 0"
@@ -270,6 +283,9 @@ pub struct Track {
     /// 音轨自动化（目标 `instrument` / `effects[i]` / `gain_db` / `pan` / `sends.<总线>`），默认空。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<Automation>,
+    /// 人性化演奏（整轨默认；clip 上的同名字段覆盖它）。见 [`humanize`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub humanize: Option<humanize::Humanize>,
     /// 该音轨上的所有 clip。
     #[serde(default)]
     pub clips: Vec<Clip>,
@@ -288,6 +304,7 @@ impl Track {
             output: None,
             sends: std::collections::BTreeMap::new(),
             automation: Vec::new(),
+            humanize: None,
             clips: Vec::new(),
         }
     }
@@ -316,6 +333,21 @@ pub struct Clip {
     /// 或下一个音同音高（重新发音）时不连。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub legato: bool,
+    /// 人性化演奏，覆盖音轨 `humanize` 的同名字段。见 [`humanize`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub humanize: Option<humanize::Humanize>,
+    /// 用 ABC 记谱写的音符（相对 clip 起点），渲染时展开，与 `notes` 合在一起。见 [`abc`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abc: Option<String>,
+    /// 步进网格（鼓、贝斯线），在 clip 长度里循环展开，与 `notes` 合在一起。见 [`grid`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid: Option<grid::Grid>,
+    /// 生成式鼓手（以 loop 为底加变化与过门），由引擎展开（`muser_engine::clip_notes`）。见 [`grid::Drummer`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drummer: Option<grid::Drummer>,
+    /// 来源标注（如 `loop:house_basic`），只作记录，渲染不看。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
 }
 
 impl Clip {
@@ -325,8 +357,29 @@ impl Clip {
             length: length.into(),
             pedal: Vec::new(),
             legato: false,
+            humanize: None,
+            abc: None,
+            grid: None,
+            drummer: None,
+            from: None,
             notes: Vec::new(),
         }
+    }
+
+    /// 全部音符：`notes` 加上 `abc`、`grid` 文字写法展开的音符（相对 clip 起点）。写法有错时报错（校验时已检查）。
+    /// 不含 `drummer`（要读 loop 库，由引擎展开：`muser_engine::clip_notes`）。
+    pub fn all_notes(&self) -> Result<std::borrow::Cow<'_, [Note]>, String> {
+        if self.abc.is_none() && self.grid.is_none() {
+            return Ok(std::borrow::Cow::Borrowed(&self.notes));
+        }
+        let mut all = self.notes.clone();
+        if let Some(text) = self.abc.as_deref() {
+            all.extend(abc::parse(text).map_err(|e| format!("abc: {e}"))?);
+        }
+        if let Some(g) = &self.grid {
+            all.extend(g.expand(self.length.0)?);
+        }
+        Ok(std::borrow::Cow::Owned(all))
     }
 }
 

@@ -146,7 +146,7 @@ fn plugin_rule(path: &str, id: Option<&str>, base_params: &serde_json::Map<Strin
 
 #[cfg(not(feature = "host"))]
 fn plugin_rule(_path: &str, _id: Option<&str>, _base: &serde_json::Map<String, Value>, _param: &str) -> Result<Rule, String> {
-    Err("插件参数自动化需要 `host` 特性".into())
+    Err("插件参数自动化不可用：这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它".into())
 }
 
 fn effect_rule(effect: &Effect, param: &str) -> Result<Rule, String> {

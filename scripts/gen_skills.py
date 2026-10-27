@@ -140,7 +140,6 @@ EFFECT_EXTRA = {
     "plugin": {
         "presets": [],
         "tips": [
-            "需要用 `cargo build -p muser-cli --features host` 构建的 muser；未启用时渲染报 HostDisabled。",
             "path 是本机绝对路径，常见目录：/usr/lib/vst3、~/.vst3、/usr/lib/clap、~/.clap、/usr/lib/lv2。",
             "一个插件文件里有多个插件时，用 `id` 指定；不写则用第一个。",
             "`params` 用插件参数**名称**做键（大小写不敏感，也可写数字 id），值写插件显示的文字（如 \"2000 Hz\"、\"Reverb 2\"）、数字（插件自动化刻度）或 true/false。",
@@ -416,6 +415,25 @@ def poly_page():
     lines.append("\n## 可调参数（instrument_params，所有 poly.* 通用）\n\n在预设音色上覆盖，只写想改的项。各预设的当前值用 `muser instruments poly.<名称>` 查看。\n以下预设没有启用滤波器，`cutoff` / `resonance` / `filter_env` 对它们无效（校验会拒绝）：{nofilter}。\n\n| 参数 | 范围 | 自动化 | 说明 |\n|---|---|---|---|\n".replace("{nofilter}", "、".join(nofilter)))
     for p in rep["params"]:
         lines.append(f"| `{p['name']}` | {fmt_range(p)} | {AUTO_LABEL[p['automation']]} | {p['description']} |\n")
+    lines.append("""
+## 完整音色（patch）与本机音色库
+
+上面的参数只是在预设上微调。要改振荡器波形 / unison / 波表、滤波器模型、LFO、调制矩阵，写完整音色：
+`instrument_params` 的 `"patch"`（结构与每个字段的范围：`muser poly schema`）。只写要改的项，其余沿用所选预设；
+数组按下标覆盖（`oscillators[1]` 只改第二个振荡器），`matrix` 是在用的调制列表，整体替换。
+
+```json
+{ "instrument": "poly.reese", "instrument_params": { "patch": {
+    "oscillators": [{ "unison": 8, "detune": 0.4 }],
+    "filters": [{ "model": "ms20_lp", "cutoff": 400, "drive": 6 }],
+    "matrix": [{ "source": "lfo1", "destination": "cutoff", "amount": 1.5 }] } } }
+```
+
+用户在 `muser poly edit` 里调好的音色存在本机音色库（`~/.config/muser/poly/`）：
+- `muser poly list` 列出音色；`muser poly show <名字>` 输出写进音轨的 JSON（`instrument` + `instrument_params`，完整音色内嵌），
+  直接放进工程的音轨里。工程因此自带音色，换机器也能渲染；`sound` 字段只标注来源。
+- 用户说"用我那个 xxx 音色"时，先 `muser poly list` 找名字，再 `muser poly show xxx`。
+""")
     lines.append("\n### 调音示例\n\n")
     for title, inst, params in POLY_EXAMPLES:
         lines.append(f"- {title}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
@@ -669,7 +687,6 @@ def plugin_page():
 - 有画像的插件可写短别名（如 `"cutoff"`）与 `"@preset": "<预设>"`；画像 `setup` 自动应用（`"@setup": false` 关闭）；
   `"@state": "<文件>"` 加载 `muser plugin save-state` 保存的完整音色。见 [plugins.md](../plugins.md)。
 - 音符 `pitch` 是 MIDI 音高；插件自己决定音色与音域。`accent` 对插件无效。
-- 需要用 `cargo build -p muser-cli --features host` 构建的 muser，否则报 HostDisabled。
 - `muser validate` 会加载插件检查参数名与取值；渲染时插件以工程的采样率激活。
 - 加载插件会运行第三方代码，只使用可信的本机插件。
 
@@ -683,7 +700,6 @@ def plugins_guide_page():
 
 muser 不需要事先"适配"某个插件：任何 VST3 / CLAP / LV2 插件都能用同一套工具读出它的信息、
 搜索参数、试听参数的作用。下面是遇到一个陌生插件时的标准流程（括号里是 MCP tool 名）。
-所有命令需要 `--features host` 构建的 muser。
 
 ## 1. 找到插件（scan_plugins）
 

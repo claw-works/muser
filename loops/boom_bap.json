@@ -1,0 +1,30 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "boom_bap",
+  "style": "hiphop",
+  "description": "90 年代 boom bap：切分底鼓、二四拍军鼓、摇摆的八分踩镲",
+  "tags": [
+    "swing",
+    "hiphop"
+  ],
+  "tempo": [
+    85,
+    95
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.acoustic",
+  "grid": {
+    "kick": "x......xx.x.....",
+    "snare": "....x.......x...",
+    "hat": "x.x.x.x.x.x.x.x."
+  },
+  "humanize": {
+    "timing_ms": 9,
+    "drift": 0.7,
+    "velocity": 0.1,
+    "swing": 58,
+    "swing_unit": 0.25
+  }
+}

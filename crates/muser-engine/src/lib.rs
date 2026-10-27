@@ -5,9 +5,14 @@
 
 pub mod audition;
 pub mod automate;
+pub mod drummer;
 pub mod effects;
 pub mod instrument;
+pub mod loop_library;
+pub mod mix;
 pub mod params;
+pub mod poly_patch;
+pub mod poly_library;
 #[cfg(feature = "devices")]
 pub mod playback;
 pub mod plugin;
@@ -52,12 +57,32 @@ pub use instrument::{
 pub use params::Automatable;
 /// 渲染结果用的立体声缓冲（来自 manguebyte）。
 pub use manguebyte::prelude::AudioBuffer;
-pub use render::{render, render_cached, render_metered, render_to_wav, render_to_wav_with_progress, EngineError, Meter, RenderCache, RenderSettings, Renderer, METER_WINDOW};
+pub use mix::{mix_report, MixReport, NodeReport};
+pub use render::{render, render_cached, render_loudness, render_metered, Level, NodeLoudness, render_to_wav, render_to_wav_with_progress, EngineError, Meter, RenderCache, RenderSettings, Renderer, METER_WINDOW};
 
 /// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
 /// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。
+/// 一个 clip 的全部音符（相对 clip 起点）：`notes` 加上 `abc`、`grid`、`drummer` 展开的音符。
+/// `drummer` 没写种子时由工程 seed 与音轨、clip 位置推导。
+pub fn clip_notes(project: &muser_core::Project, ti: usize, ci: usize) -> Result<Vec<muser_core::Note>, String> {
+    let clip = &project.tracks[ti].clips[ci];
+    let mut notes = clip.all_notes()?.into_owned();
+    if let Some(d) = &clip.drummer {
+        let seed = d.seed.unwrap_or_else(|| muser_core::automation::derive_seed(project.seed, Some(ti), 0x4452_0000 + ci));
+        notes.extend(drummer::expand(d, clip.length.0, seed)?);
+    }
+    Ok(notes)
+}
+
 pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
     project.validate()?;
+    for (ti, track) in project.tracks.iter().enumerate() {
+        for (ci, clip) in track.clips.iter().enumerate() {
+            if clip.drummer.is_some() {
+                clip_notes(project, ti, ci).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(format!("tracks[{ti}].clips[{ci}].{e}"))))?;
+            }
+        }
+    }
     for (i, track) in project.tracks.iter().enumerate() {
         instrument::check(&track.instrument, &track.instrument_params).map_err(|e| {
             EngineError::Core(muser_core::CoreError::Invalid(format!(

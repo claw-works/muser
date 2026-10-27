@@ -8,9 +8,13 @@
 //! - `validate <project.json>`             校验工程 JSON 是否合法
 //! - `instruments [name] [--family F] [--json]`  列出乐器 / 查看某乐器详情
 //! - `effects [name] [--json]`              列出效果器 / 查看某效果器参数
+//! - `mix-report <project.json> [--json]`  各轨/总线/主总线响度，用来平衡音量
 //! - `new [-o project.json]`                生成一个示例工程 JSON（供 AI 参考格式）
 
+mod play;
+mod poly;
 mod view;
+mod web;
 
 use std::fs;
 
@@ -41,6 +45,9 @@ enum Command {
         /// 结尾余响秒数。
         #[arg(long, default_value_t = 2.0)]
         tail: f64,
+        /// 临时换工程的随机种子（不改文件）：humanize 与 random 自动化换一遍。
+        #[arg(long)]
+        seed: Option<u64>,
     },
     /// 校验工程 JSON 是否合法。
     Validate {
@@ -66,7 +73,28 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// 外置插件（VST3 / CLAP / LV2）：扫描本机、查看信息、列参数。需要 host 特性。
+    /// 用本机声卡把工程从头放一遍，放完退出：快速试听草稿（不开网页）。
+    Play {
+        /// 工程文件路径。
+        project: String,
+        /// 临时换工程的随机种子（humanize / random 自动化换一遍），不改文件。
+        #[arg(long)]
+        seed: Option<u64>,
+        /// 从第几秒开始。
+        #[arg(long, default_value_t = 0.0)]
+        from: f64,
+    },
+    /// loop 库：list 列出、show 取出写进工程的 clip、play 试听、save 把工程里的 clip 存成 loop。
+    Loop {
+        #[command(subcommand)]
+        command: play::LoopCommand,
+    },
+    /// poly 合成器音色：edit 打开音色编辑器，list / show 取音色库里的音色（给 agent 写进工程）。
+    Poly {
+        #[command(subcommand)]
+        command: poly::PolyCommand,
+    },
+    /// 外置插件（VST3 / CLAP / LV2）：扫描本机、查看信息、列参数。
     Plugin {
         #[command(subcommand)]
         command: PluginCommand,
@@ -138,6 +166,21 @@ enum Command {
         device: bool,
     },
 
+    /// 混音报告：渲染一遍整首，列出每条音轨/总线/主总线的响度（效果链前的干声、推子后），
+    /// 音轨相对最响音轨的差，主总线效果链压了多少峰值，以及需要注意的地方。用来平衡各轨 gain_db。
+    MixReport {
+        /// 工程文件路径。
+        project: String,
+        /// 采样率。
+        #[arg(long, default_value_t = 48_000)]
+        sample_rate: u32,
+        /// 结尾余响秒数。
+        #[arg(long, default_value_t = 2.0)]
+        tail: f64,
+        /// 以 JSON 输出（便于 AI 解析）。
+        #[arg(long)]
+        json: bool,
+    },
     /// 打印工程的信号流：每条音轨/总线送到哪里、发送量、侧链、处理顺序。
     Routing {
         /// 工程文件路径。
@@ -272,7 +315,8 @@ fn main() -> Result<()> {
             output,
             sample_rate,
             tail,
-        } => cmd_render(&project, &output, sample_rate, tail),
+            seed,
+        } => cmd_render(&project, &output, sample_rate, tail, seed),
         Command::Validate { project } => cmd_validate(&project),
         Command::Instruments { name, family, json } => {
             cmd_instruments(name.as_deref(), family.as_deref(), json)
@@ -280,11 +324,21 @@ fn main() -> Result<()> {
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::Routing { project } => cmd_routing(&project),
+        Command::MixReport { project, sample_rate, tail, json } => cmd_mix_report(&project, sample_rate, tail, json),
         Command::View { project, port, open, sample_rate, tail, device } => {
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
             view::serve(&project, settings, port, open, device)
         }
         Command::Plugin { command } => cmd_plugin(command),
+        Command::Poly { command } => poly::run(command),
+        Command::Loop { command } => play::run_loop(command),
+        Command::Play { project, seed, from } => {
+            let mut p = load_project(&project)?;
+            if let Some(s) = seed {
+                p.seed = s;
+            }
+            play::play(p, from)
+        }
         Command::Audition { instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json } => {
             cmd_audition(instrument, effect, source, params, param, values, pitch, velocity, hold, tail, out, record, json)
         }
@@ -297,8 +351,11 @@ fn load_project(path: &str) -> Result<Project> {
     Ok(project)
 }
 
-fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64) -> Result<()> {
-    let project = load_project(project_path)?;
+fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, seed: Option<u64>) -> Result<()> {
+    let mut project = load_project(project_path)?;
+    if let Some(s) = seed {
+        project.seed = s;
+    }
     let settings = RenderSettings {
         sample_rate,
         tail_seconds: tail,
@@ -416,7 +473,7 @@ fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Resu
         println!("  {:<28} {}", info.name, info.description);
     }
     println!(
-        "\n共 {} 个。另可用 sfz:/path/to.sfz 加载 SFZ 音色库，plugin:/path/to.vst3 加载第三方 VSTi（需 host 特性）。\n`muser instruments <名称>` 查看详情与可调参数。",
+        "\n共 {} 个。另可用 sfz:/path/to.sfz 加载 SFZ 音色库，plugin:/path/to.vst3 加载第三方 VSTi。\n`muser instruments <名称>` 查看详情与可调参数。",
         list.len()
     );
     Ok(())
@@ -764,6 +821,34 @@ fn cmd_audition(
         }
     }
     println!("\n重心越高越亮；余音带 + 表示被渲染长度截断（用 --tail 加长）。");
+    Ok(())
+}
+
+fn cmd_mix_report(path: &str, sample_rate: u32, tail: f64, json: bool) -> Result<()> {
+    let project = load_project(path)?;
+    let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
+    let r = muser_engine::mix_report(&project, settings, &mut muser_engine::RenderCache::new())?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&r)?);
+        return Ok(());
+    }
+    let f = |x: Option<f64>| x.map_or("-".to_string(), |v| format!("{v:.1}"));
+    println!("{:<12} {:<14} {:>7} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>7}",
+        "节点", "名称", "gain_db", "输入LUFS", "输入峰值", "输出LUFS", "短时最大", "输出峰值", "到主总线", "相对LU");
+    for n in r.tracks.iter().chain(&r.buses).chain(std::iter::once(&r.master)) {
+        let name = if n.muted { format!("{}（静音）", n.name) } else { n.name.clone() };
+        println!(
+            "{:<12} {:<14} {:>7.1} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>7}",
+            n.node, name, n.gain_db, f(n.input.lufs), f(n.input.peak_db), f(n.output.lufs), f(n.output.max_short_lufs),
+            f(n.output.peak_db), f(n.at_master_lufs), f(n.rel_lu)
+        );
+    }
+    println!("输入 = 效果链之前（音轨是乐器干声，总线/主总线是送进来的信号之和）；输出 = 推子后。");
+    println!("到主总线 = 输出 + 直接输出路径上各总线的 gain_db（估计，不计总线效果器与发送）；相对LU = 到主总线减最响音轨。");
+    println!("经过带压缩/EQ 的总线时估计可能差 2–5 LU：同一总线内比各轨的输出LUFS，组与组之间比各总线的输出LUFS。");
+    for w in &r.warnings {
+        println!("⚠ {w}");
+    }
     Ok(())
 }
 

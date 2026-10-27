@@ -23,6 +23,9 @@ use muser_engine::{render_to_wav, RenderSettings};
 struct Muser {
     sessions: Mutex<HashMap<String, Project>>,
     next_id: Mutex<u64>,
+    /// 最近一次 mix_report 的工程与它的乐器输出缓存：只改推子后再跑不用重算乐器。
+    /// 只留一个工程（整首乐器输出可能占几百 MB）。
+    mix_cache: Mutex<Option<(String, muser_engine::RenderCache)>>,
 }
 
 // —— 各工具的入参结构（派生 JsonSchema 以生成 MCP inputSchema）——
@@ -140,6 +143,17 @@ struct RenderParams {
     project_id: String,
     /// 输出 WAV 文件路径。
     output_path: String,
+    /// 采样率（可选，默认 48000）。
+    #[serde(default)]
+    sample_rate: Option<u32>,
+    /// 结尾余响秒数（可选，默认 2.0）。
+    #[serde(default)]
+    tail: Option<f64>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct MixReportParams {
+    project_id: String,
     /// 采样率（可选，默认 48000）。
     #[serde(default)]
     sample_rate: Option<u32>,
@@ -626,6 +640,31 @@ impl Muser {
         }
     }
 
+    #[tool(description = "混音报告：渲染一遍整首，返回 tracks / buses / master 三组节点与 warnings。每个节点有 input（效果链前：音轨是乐器干声，\
+总线/主总线是送进来的信号之和）与 output（推子后），各含 lufs（积分响度）、max_short_lufs（3 秒窗最大）、peak_db。\
+音轨另有 at_master_lufs（output 加上直接输出路径上各总线的 gain_db；路径上有静音的总线时为空）与 rel_lu（at_master_lufs 减最响音轨，0 为最响）。\
+at_master_lufs / rel_lu 不计总线效果器：经过带压缩、EQ 的总线时可能差 2–5 LU，这时同一总线内用各音轨的 output.lufs 比，组与组之间用各总线的 output.lufs 比。\
+warnings 列出没声音的轨、推子后峰值过 0、送进主总线过载、主输出削波。用来平衡各轨 gain_db：调完再跑一次（乐器输出有缓存，很快）。")]
+    fn mix_report(&self, Parameters(p): Parameters<MixReportParams>) -> Result<CallToolResult, McpError> {
+        let Some(proj) = self.sessions.lock().unwrap().get(&p.project_id).cloned() else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        let settings = RenderSettings {
+            sample_rate: p.sample_rate.unwrap_or(48_000),
+            tail_seconds: p.tail.unwrap_or(2.0),
+            ..RenderSettings::default()
+        };
+        let mut slot = self.mix_cache.lock().unwrap();
+        if slot.as_ref().is_none_or(|(id, _)| *id != p.project_id) {
+            *slot = Some((p.project_id.clone(), muser_engine::RenderCache::new()));
+        }
+        let cache = &mut slot.as_mut().expect("刚放进去").1;
+        match muser_engine::mix_report(&proj, settings, cache) {
+            Ok(r) => json_result(&r),
+            Err(e) => Ok(user_err(format!("渲染失败: {e}"))),
+        }
+    }
+
     #[tool(description = "删除一条音轨（后续音轨下标前移）。")]
     fn remove_track(
         &self,
@@ -747,8 +786,11 @@ impl Muser {
                 .clips
                 .get_mut(ci)
                 .ok_or_else(|| user_err(format!("clip_index {ci} 越界")))?;
-            let n = clip.notes.len();
+            let n = clip.all_notes().map_or(clip.notes.len(), |all| all.len());
             clip.notes.clear();
+            clip.abc = None;
+            clip.grid = None;
+            clip.drummer = None;
             Ok(ok_text(format!("已清空片段，移除 {n} 个音符")))
         })
     }
@@ -949,7 +991,7 @@ impl Muser {
         })
     }
 
-    #[tool(description = "扫描本机安装的外置插件（VST3/CLAP/LV2），返回名称、厂商、类型(instrument/effect)、path 与 id。乐器写 \"instrument\": \"plugin:<path>#<id>\"，效果器写 {\"type\":\"plugin\",\"path\":...,\"id\":...}。需 host 特性。")]
+    #[tool(description = "扫描本机安装的外置插件（VST3/CLAP/LV2），返回名称、厂商、类型(instrument/effect)、path 与 id。乐器写 \"instrument\": \"plugin:<path>#<id>\"，效果器写 {\"type\":\"plugin\",\"path\":...,\"id\":...}。")]
     fn scan_plugins(&self, Parameters(p): Parameters<ScanPluginsParams>) -> Result<CallToolResult, McpError> {
         match muser_engine::plugin::scan(p.refresh) {
             Ok((mut found, failures)) => {
@@ -1165,7 +1207,7 @@ fn json_result<T: serde::Serialize + ?Sized>(value: &T) -> Result<CallToolResult
 
 #[tool_handler(
     name = "muser",
-    version = "0.1.1",
+    version = "0.2.0",
     instructions = "muser：面向 AI 的无头编曲引擎。用 create_project 建工程得到 project_id，\
 再用 add_track / add_clip / add_notes 增量编排（或 set_project 一次性提交完整 JSON），\
 最后用 render 离线渲染为 WAV。时间单位是拍(beats)：1.0=四分音符。\

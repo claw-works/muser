@@ -389,7 +389,7 @@ pub static EFFECT_SPECS: &[EffectSpec] = &[
     },
     EffectSpec {
         name: "plugin",
-        summary: "第三方插件效果器（VST3/CLAP/LV2）。需要用 host 特性构建。",
+        summary: "第三方插件效果器（VST3/CLAP/LV2）。",
         placement: "与内置效果器一样串在链上。path 是本机插件的绝对路径；params 按插件参数名设置，值可写插件界面上的文字（如 \"2000 Hz\"）。用 `muser plugin params <path>` 查看参数。",
         params: &[],
         choices: &[],

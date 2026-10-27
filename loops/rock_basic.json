@@ -1,0 +1,28 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "rock_basic",
+  "style": "rock",
+  "description": "基础摇滚：一拍、三拍半底鼓，二四拍军鼓，八分踩镲",
+  "tags": [
+    "rock",
+    "pop"
+  ],
+  "tempo": [
+    100,
+    140
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.acoustic",
+  "grid": {
+    "kick": "x.......x.x.....",
+    "snare": "....x.......x...",
+    "hat": "x.x.x.x.x.x.x.x."
+  },
+  "humanize": {
+    "timing_ms": 6,
+    "drift": 0.6,
+    "velocity": 0.08
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "house_basic",
+  "style": "house",
+  "description": "四踩底鼓、二四拍拍手、反拍开镲，16 分闭镲铺底",
+  "tags": [
+    "four_on_the_floor",
+    "dance"
+  ],
+  "tempo": [
+    120,
+    128
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.house",
+  "grid": {
+    "kick": "x...x...x...x...",
+    "clap": "....x.......x...",
+    "open_hat": "..x...x...x...x.",
+    "hat": "o.o.o.o.o.o.o.o."
+  },
+  "humanize": {
+    "timing_ms": 2,
+    "velocity": 0.05,
+    "swing": 54,
+    "swing_unit": 0.25
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "lofi",
+  "style": "lofi",
+  "description": "lo-fi hip-hop：松弛、拖后的鼓，强弱分明的踩镲",
+  "tags": [
+    "swing",
+    "chill",
+    "hiphop"
+  ],
+  "tempo": [
+    70,
+    90
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.lofi",
+  "grid": {
+    "kick": "x.....x...x.....",
+    "snare": "....x.......x...",
+    "hat": "x.o.x.o.x.o.x.oo"
+  },
+  "humanize": {
+    "timing_ms": 12,
+    "drift": 0.75,
+    "velocity": 0.1,
+    "swing": 60,
+    "swing_unit": 0.25,
+    "push_ms": 6
+  }
+}

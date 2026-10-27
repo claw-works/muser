@@ -1,0 +1,28 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "breakbeat",
+  "style": "breakbeat",
+  "description": "big beat / breakbeat：底鼓切分、二四拍军鼓、八分踩镲",
+  "tags": [
+    "breakbeat"
+  ],
+  "tempo": [
+    120,
+    135
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.acoustic",
+  "grid": {
+    "kick": "x.....x...x.....",
+    "snare": "....x.......x...",
+    "hat": "x.x.x.x.x.x.x.x.",
+    "open_hat": "..............x."
+  },
+  "humanize": {
+    "timing_ms": 5,
+    "drift": 0.6,
+    "velocity": 0.08
+  }
+}

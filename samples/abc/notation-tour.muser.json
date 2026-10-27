@@ -1,0 +1,39 @@
+{
+  "name": "abc/notation-tour",
+  "tempo": 96,
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.0
+        }
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "name": "piano",
+      "instrument": "poly.wurly",
+      "sends": {
+        "verb": -10
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "abc": "L:1/8\nK:Am\n% 力度渐强\n!pp! A,B,CD !mp! EFGA | !f! (3cBA (3GFE !ff! A4 |\n% 附点、断奏、重音\nA>B c>d .e.e.e.e | !>!a2 g2 !>!e2 c2 |\n% 和弦与连音线\n[A,CE]4- [A,CE]2 [G,B,D]2 | [A,CEA]8 |]"
+        }
+      ],
+      "gain_db": -5
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ]
+}

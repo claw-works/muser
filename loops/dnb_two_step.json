@@ -1,0 +1,28 @@
+{
+  "format": "muser.loop",
+  "version": 1,
+  "name": "dnb_two_step",
+  "style": "dnb",
+  "description": "drum and bass 经典 two-step：一拍和三拍后半底鼓，二四拍军鼓，鬼音点缀",
+  "tags": [
+    "breakbeat",
+    "liquid"
+  ],
+  "tempo": [
+    170,
+    178
+  ],
+  "bars": 1,
+  "meter": "4/4",
+  "kit": "drums.dnb",
+  "grid": {
+    "kick": "x.........x.....",
+    "snare": "....x..o....x..o",
+    "hat": "x.x.x.x.x.x.x.x."
+  },
+  "humanize": {
+    "timing_ms": 3,
+    "drift": 0.5,
+    "velocity": 0.06
+  }
+}
