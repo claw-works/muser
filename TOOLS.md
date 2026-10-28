@@ -113,7 +113,8 @@ random 自动化），不改文件。需要 device 特性（发行版都带；he
 项目（工程旁的 `loops/`，没有工程时当前目录的 `loops/`）> 全局（`~/.config/muser/loops/`）> 内置（17 个常见鼓型）。
 各命令的 `--project <工程文件>` 指定项目目录。
 - `edit [名字] [--project P] [--port 8739] [--open]`：loop / 动机编辑器（本地网页，只听本机）。旋律用卷帘（点、拖、改长度、
-  力度、移调、撤销），鼓用步进网格；用 muser 的乐器渲染、循环试听；存到项目或全局，或把项目里的分享到全局。
+  力度、移调、撤销、对齐网格或自由时值），鼓用步进网格；用 muser 的乐器渲染、循环试听；「● 哼唱录音」用麦克风哼一段直接转成音符；
+  存到项目或全局，或把项目里的分享到全局。
   agent 改了 loop 文件，页面自动重新读入（有未保存的改动时提示）。
 - `list [--style S] [--json]`：列出（标出 项目 `+` / 全局 `*`），按风格或标签筛。
 - `show <名字> [--start 拍] [--repeat N] [--file | --abc]`：输出写进工程的 clip（`grid` / `notes` + `humanize` 内嵌，`from` 标注来源）；
@@ -122,6 +123,10 @@ random 自动化），不改文件。需要 device 特性（发行版都带；he
 - `save <project> --track I [--clip J] --name N [--style S] [--description D] [--step 0.25] [--global] [--overwrite]`：
   把工程里的 clip 存成 loop（鼓：grid，普通音符量化成网格；旋律：音符），缺省存到工程旁的 `loops/`。
 - `share <名字> [--overwrite]`：把项目里的 loop 复制到全局，别的项目也能用。
+- `hum <音频> [--name N] [--tempo 100] [--grid 1/16|1/8|1/8t|0.25|off] [--from-start] [--key Am] [--instrument X] [--global]`：
+  哼唱转谱（不用 AI）。单旋律录音（哼、唱、口哨、单音乐器）→ 音符，存成旋律 loop，并打印 ABC。McLeod 法测音高（每 10 ms），
+  中值滤波、整体音准校正，按停顿 / 音高跳变 / 同音高上的响度起伏切音，减掉整体的早晚后对齐网格，估计调。
+  `--from-start` 保留录音开头到第一个音的空白（跟着节拍器录时用）。编辑器里的「● 哼唱录音」是同一套（浏览器录麦克风，可带一小节预备拍与节拍器）。
 - loop 文件格式（`format: "muser.loop"`, `version: 2`）：`name` `bars` `tempo` `style` `description` `tags` `kit` / `instrument`
   `key` `chords` `grid` / `notes` `humanize`。drummer 的 `loop` 也能引用项目或全局里的鼓 loop。
 clip 上的简写（`abc` / `grid` / `drummer`）与 `humanize` 见 [skills/notation.md](skills/notation.md)、[skills/humanize.md](skills/humanize.md)。

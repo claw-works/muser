@@ -163,6 +163,15 @@ impl Loop {
 }
 
 impl Loop {
+    /// 一个旋律 loop（哼唱转谱、编辑器新建用）。
+    pub fn melody(name: &str, bars: u32, tempo: f64, instrument: Option<String>, key: Option<String>, notes: Vec<muser_core::Note>) -> Loop {
+        Loop {
+            format: FORMAT.into(), version: VERSION, name: name.into(), style: String::new(), description: String::new(), tags: Vec::new(),
+            tempo: Some([tempo, tempo]), bars, meter: "4/4".into(), kit: None, instrument, key, chords: None,
+            grid: Grid::default(), notes, humanize: None,
+        }
+    }
+
     /// 试听 / 导出用的一条音轨工程：乐器缺省用建议的（鼓：`kit` 或 drums.acoustic；旋律：`instrument` 或 poly.juno_keys），
     /// 速度缺省用速度范围的中间（没有时 120）。
     pub fn project(&self, instrument: Option<&str>, tempo: Option<f64>, repeat: u32) -> Result<muser_core::Project, String> {

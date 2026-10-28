@@ -11,6 +11,7 @@ pub mod audition;
 pub mod automate;
 pub mod drummer;
 pub mod effects;
+pub mod hum;
 pub mod instrument;
 pub mod loop_library;
 pub mod midi;

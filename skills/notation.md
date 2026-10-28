@@ -39,6 +39,7 @@ muser loop show hook --abc      # 旋律 loop 的 ABC
 muser loop edit --open          # 编辑器：人在卷帘 / 步进网格里画动机、鼓型
 muser loop save song.muser.json --track 0 --clip 2 --name my_break --style dnb   # 把工程里的 clip 存成 loop（存在项目里）
 muser loop share hook           # 项目里的分享到全局
+muser loop hum hum.m4a --tempo 96 --name hook   # 哼唱 / 口哨录音转成旋律 loop
 ```
 
 - 鼓 loop 存 `grid`，旋律 / 动机 / 和声音型存 `notes`，可带建议乐器、调（`key`）、和弦（`chords`）。
@@ -48,7 +49,8 @@ muser loop share hook           # 项目里的分享到全局
 
 ### 人给动机，agent 续写 / 扩写
 
-人在 `muser loop edit` 里画几小节动机（存到项目），agent 接着做：
+人在 `muser loop edit` 里画几小节动机，或点「● 哼唱录音」对着麦克风哼一段（自动转成音符，可在卷帘里修改），存到项目；
+已有录音文件时用 `muser loop hum hum.wav --tempo 96 --name hook`（不用 AI，纯信号处理；打印 ABC）。agent 接着做：
 1. `muser loop show <名字> --file`（或 `--abc`）读它：音高、节奏、调、和弦。
 2. 续写 / 扩写：用编曲层的 `transform` 发展它（`sequence` 模进、`fragment` 裁截、`vary`、`invert`、`stretch`，见 [arrange.md](arrange.md)），
    或写出接下来的乐句（问句 → 答句换终止；或动机 → 重复 / 模进 → 裁截加速 → 终止）。

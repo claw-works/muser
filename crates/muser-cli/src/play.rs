@@ -117,6 +117,36 @@ pub enum LoopCommand {
         #[arg(long)]
         overwrite: bool,
     },
+    /// 哼唱转谱：把一段单旋律录音（哼、唱、口哨、单音乐器）转成音符，存成旋律 loop（不用 AI）。
+    Hum {
+        /// 音频文件（WAV、AIFF、FLAC、Ogg、Opus、MP3 …）。
+        audio: String,
+        /// loop 名（缺省用音频文件名）。
+        #[arg(long)]
+        name: Option<String>,
+        /// 速度（BPM）：按它把秒换成拍。
+        #[arg(long, default_value_t = 100.0)]
+        tempo: f64,
+        /// 对齐网格：1/16、1/8、1/8t、0.25（拍），off 为不对齐。
+        #[arg(long, default_value = "1/16")]
+        grid: String,
+        /// 保留录音开头到第一个音的空白（跟着节拍器录时用），否则第一个音移到第 0 拍。
+        #[arg(long)]
+        from_start: bool,
+        /// 建议的乐器（缺省 poly.juno_keys）。
+        #[arg(long)]
+        instrument: Option<String>,
+        /// 调（如 Am）；缺省由音高估计。
+        #[arg(long)]
+        key: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        /// 存到全局，而不是项目。
+        #[arg(long)]
+        global: bool,
+        #[arg(long)]
+        overwrite: bool,
+    },
     /// 把项目里的 loop 复制到全局（别的项目也能用）。
     Share {
         name: String,
@@ -227,6 +257,31 @@ pub fn run_loop(command: LoopCommand) -> Result<()> {
             };
             let path = if global { loop_library::save(&l, overwrite) } else { loop_library::save_project(&l, p.base_dir.as_deref(), overwrite) }.map_err(fail)?;
             println!("已存 loop '{}' → {}", l.name, path.display());
+            Ok(())
+        }
+        LoopCommand::Hum { audio, name, tempo, grid, from_start, instrument, key, project, global, overwrite } => {
+            let step = muser_engine::hum::parse_grid(&grid).map_err(fail)?;
+            let path = std::path::Path::new(&audio);
+            let mut r = muser_engine::hum::transcribe_file(path, muser_engine::hum::HumOptions { tempo, step, from_start }).map_err(fail)?;
+            if let Some(k) = key {
+                r.key = k;
+            }
+            let name = name.unwrap_or_else(|| {
+                let stem = path.file_stem().map_or("hum".into(), |s| s.to_string_lossy().to_lowercase());
+                stem.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect()
+            });
+            let l = loop_library::Loop::melody(&name, r.bars, tempo, Some(instrument.unwrap_or_else(|| "poly.juno_keys".into())), Some(r.key.clone()), r.notes);
+            let base = base_of(&project);
+            let saved = if global { loop_library::save(&l, overwrite) } else { loop_library::save_project(&l, base.as_deref(), overwrite) }.map_err(fail)?;
+            println!("已转出 {} 个音，{} 小节，调 {}（音准整体偏 {:+} 音分，已校正）→ {}", l.notes.len(), l.bars, r.key, r.tuning_cents, saved.display());
+            let p = l.project(None, None, 1).map_err(fail)?;
+            let mut opts = muser_engine::abc_export::AbcOptions::new(muser_engine::abc_export::Dialect::Standard);
+            opts.key = Some(r.key);
+            if let Ok(abc) = muser_engine::abc_export::export(&p, &opts) {
+                print!("{}", abc.text.lines().skip_while(|l| !l.starts_with("K:")).collect::<Vec<_>>().join("\n"));
+                println!();
+            }
+            println!("`muser loop edit {}` 在卷帘里修改；`muser loop play {}` 试听。", l.name, l.name);
             Ok(())
         }
         LoopCommand::Share { name, project, overwrite } => {

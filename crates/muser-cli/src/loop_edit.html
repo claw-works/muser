@@ -26,6 +26,7 @@
   button.primary { color: #07130f; border-color: var(--accent); background: var(--accent); font-weight: 700; }
   button.primary:hover:not(:disabled) { border-color: #91efd4; background: #91efd4; }
   button.on { border-color: var(--accent); color: var(--accent); }
+  button.recording { border-color: var(--err); color: var(--err); background: rgba(255,124,139,.1); }
   button:disabled { opacity: .38; cursor: not-allowed; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   input[type=text], input[type=number], select { background: #0b0e17; border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; min-height: 32px; }
@@ -95,6 +96,8 @@
         <button id="play" class="primary" data-i18n="play">▶ 播放</button>
         <button id="loopBtn" class="on" data-i18n="loop">循环</button>
         <button id="undo" data-i18n="undo">撤销</button>
+        <button id="rec" data-i18n="rec">● 哼唱录音</button>
+        <label class="check"><input id="countin" type="checkbox" checked><span data-i18n="countin">预备拍 + 节拍器</span></label>
         <span style="flex:1"></span>
         <button id="saveProject" class="primary" data-i18n="saveProject">存到项目</button>
         <button id="saveGlobal" data-i18n="saveGlobal">存到全局</button>
@@ -121,7 +124,9 @@ const I18N = {
     hintDrums: "点格子：x → X（重音）→ o（轻）→ 空 · 右键清除 · 空格播放",
     saved: (p) => `已保存 → ${p}`, shared: (p) => `已复制到全局 → ${p}`, overwrite: (n) => `'${n}' 已存在，覆盖吗？`,
     reloaded: "文件被修改（agent？），已重新读入", changedDirty: "文件被修改了，但这里有未保存的改动。点这里重新读入（丢弃本地改动）",
-    rendering: "渲染中…", discard: "有未保存的改动，确定丢弃吗？", builtinRO: "内置 loop：改完请另存到项目或全局", needName: "名字只能用小写字母、数字、_、-" },
+    rendering: "渲染中…", rec: "● 哼唱录音", recStop: (s) => `■ 停止（${s}s）`, countin: "预备拍 + 节拍器", countdown: (n) => `预备… ${n}`,
+    transcribing: "转谱中…", hummed: (n, k, c) => `转出 ${n} 个音，调 ${k}（音准整体偏 ${c > 0 ? "+" : ""}${c} 音分，已校正）。在卷帘里修改后保存`,
+    micDenied: "没拿到麦克风：在浏览器里允许本页使用麦克风", discard: "有未保存的改动，确定丢弃吗？", builtinRO: "内置 loop：改完请另存到项目或全局", needName: "名字只能用小写字母、数字、_、-" },
   en: { brand: "motif & loop editor", newMelody: "+ Melody", newDrums: "+ Drums", name: "Name", bars: "Bars", tempo: "Tempo", grid: "Grid", instrument: "Instrument",
     key: "Key", chords: "Chords", snap: "Snap to grid", style: "Style", description: "Description", play: "▶ Play", stop: "■ Stop", loop: "Loop", undo: "Undo",
     saveProject: "Save to project", saveGlobal: "Save to global", share: "Share to global", project: "Project", user: "Global", builtin: "Built-in", unsaved: " (unsaved)",
@@ -129,7 +134,9 @@ const I18N = {
     hintDrums: "Click a cell: x → X (accent) → o (soft) → empty · right-click clears · Space plays",
     saved: (p) => `Saved → ${p}`, shared: (p) => `Copied to global → ${p}`, overwrite: (n) => `'${n}' already exists. Overwrite?`,
     reloaded: "The file changed on disk (an agent?) and was reloaded", changedDirty: "The file changed on disk, but you have unsaved edits. Click here to reload (discarding them)",
-    rendering: "Rendering…", discard: "Discard unsaved changes?", builtinRO: "Built-in loop: save it to the project or global library after editing", needName: "Names use lowercase letters, digits, _ and - only" },
+    rendering: "Rendering…", rec: "● Hum to notes", recStop: (s) => `■ Stop (${s}s)`, countin: "Count-in + metronome", countdown: (n) => `Get ready… ${n}`,
+    transcribing: "Transcribing…", hummed: (n, k, c) => `Got ${n} notes in ${k} (tuning ${c > 0 ? "+" : ""}${c} cents, corrected). Edit in the piano roll, then save`,
+    micDenied: "No microphone: allow this page to use the microphone", discard: "Discard unsaved changes?", builtinRO: "Built-in loop: save it to the project or global library after editing", needName: "Names use lowercase letters, digits, _ and - only" },
 };
 let lang = localStorage.getItem("muser-lang") || (navigator.language.startsWith("zh") ? "zh" : "en");
 const t = (k, ...a) => { const v = I18N[lang][k]; return typeof v === "function" ? v(...a) : v; };
@@ -534,11 +541,74 @@ function schedulePreview() {
 $("play").onclick = togglePlay;
 $("loopBtn").onclick = () => { looping = !looping; $("loopBtn").classList.toggle("on", looping); if (src) src.loop = looping; };
 
+// —— 哼唱录音：浏览器录单声道 PCM，服务器转成音符（不用 AI），结果放进一个新的旋律 loop ——
+let rec = null;
+function click(at, accent) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.frequency.value = accent ? 1760 : 1320; g.gain.setValueAtTime(0.25, at); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+  o.connect(g).connect(actx.destination); o.start(at); o.stop(at + 0.06);
+}
+async function startRec() {
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
+  catch (_) { status(t("micDenied"), "err"); return; }
+  if (src) stopPlay();
+  actx = actx || new AudioContext(); await actx.resume();
+  const tempo = +$("tempo").value || 100, spb = 60 / tempo, metro = $("countin").checked;
+  const input = actx.createMediaStreamSource(stream), proc = actx.createScriptProcessor(4096, 1, 1), mute = actx.createGain();
+  mute.gain.value = 0; input.connect(proc); proc.connect(mute).connect(actx.destination);
+  // 有预备拍时：一小节预备，之后节拍器继续；录音从预备拍结束开始算（保留第一个音之前的空白）。
+  const t0 = actx.currentTime + 0.1, begin = metro ? t0 + 4 * spb : t0;
+  rec = { stream, input, proc, chunks: [], begin, metro, sr: actx.sampleRate, timer: 0, clickUntil: 0 };
+  if (metro) for (let k = 0; k < 4; k++) click(t0 + k * spb, k === 0);
+  const schedule = () => { // 节拍器：提前排好下一秒的拍子
+    if (!rec || !rec.metro) return;
+    const until = actx.currentTime + 1;
+    for (let b = Math.max(rec.clickUntil, 0); begin + b * spb < until; b++) { click(begin + b * spb, b % 4 === 0); rec.clickUntil = b + 1; }
+  };
+  proc.onaudioprocess = (e) => {
+    const end = e.playbackTime + e.inputBuffer.duration;
+    if (end <= rec.begin) return;
+    const data = e.inputBuffer.getChannelData(0), skip = Math.max(0, Math.round((rec.begin - e.playbackTime) * rec.sr));
+    rec.chunks.push(new Float32Array(data.subarray(Math.min(skip, data.length))));
+  };
+  $("rec").classList.add("recording");
+  rec.timer = setInterval(() => {
+    schedule();
+    const s = actx.currentTime - begin;
+    $("rec").textContent = s < 0 ? t("countdown", Math.ceil(-s / spb)) : t("recStop", s.toFixed(1));
+  }, 100);
+}
+async function stopRec() {
+  const r = rec; rec = null;
+  clearInterval(r.timer); r.proc.disconnect(); r.input.disconnect(); r.stream.getTracks().forEach((tr) => tr.stop());
+  $("rec").classList.remove("recording"); $("rec").textContent = t("rec");
+  const n = r.chunks.reduce((a, c) => a + c.length, 0);
+  if (n < r.sr * 0.3) return;
+  const pcm = new Float32Array(n); let o = 0; for (const c of r.chunks) { pcm.set(c, o); o += c.length; }
+  status(t("transcribing"));
+  const grid = $("snap").checked ? +$("grid").value : 0, tempo = +$("tempo").value || 100;
+  try {
+    const res = await fetch(`/api/hum?sr=${r.sr}&tempo=${tempo}&grid=${grid}&from_start=${r.metro ? 1 : 0}`, { method: "POST", body: pcm.buffer });
+    const j = await res.json(); if (!res.ok) throw new Error(j.error);
+    if (dirty && !confirm(t("discard"))) return;
+    const inst = !isDrums() ? $("instrument").value : null;
+    cur = blank(false); cur.name = cur.name.replace("motif", "hum");
+    Object.assign(cur, { notes: j.notes, bars: Math.min(32, j.bars), key: j.key, tempo: [tempo, tempo] });
+    if (inst) cur.instrument = inst;
+    source = "new"; mtime = null; dirty = true; history = []; selected.clear(); step = grid || step;
+    fillForm(); range(); draw(); updateTitle(); scrollToNotes();
+    status(t("hummed", j.notes.length, j.key, j.tuning_cents), "warn");
+  } catch (e) { status(e.message, "err"); }
+}
+$("rec").onclick = () => (rec ? stopRec() : startRec());
+
 function applyLang() {
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
   for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
   $("lang").textContent = lang === "zh" ? "EN" : "中文";
   if (cur) { $("hint").textContent = t(isDrums() ? "hintDrums" : "hintMelody"); renderLists(); if (src) $("play").textContent = t("stop"); }
+  if (rec) $("rec").textContent = "…";
 }
 $("lang").onclick = () => { lang = lang === "zh" ? "en" : "zh"; localStorage.setItem("muser-lang", lang); applyLang(); };
 window.addEventListener("resize", () => cur && draw());

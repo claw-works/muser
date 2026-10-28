@@ -137,6 +137,25 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
             }
             Err(e) => err(req, e),
         },
+        (Method::Post, "/api/hum") => {
+            // 请求体：单声道 32 位浮点 PCM（小端）；查询串：sr、tempo、grid（拍，0 不对齐）、from_start。
+            let q = query(&url);
+            let num = |k: &str, d: f64| q.get(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(d);
+            let mut body = Vec::new();
+            // 上限 64 MB（48 kHz 约 5 分钟）。
+            if std::io::Read::read_to_end(&mut std::io::Read::take(req.as_reader(), 64 << 20), &mut body).is_err() || body.len() % 4 != 0 {
+                return err(req, "录音数据不完整".into());
+            }
+            let samples: Vec<f32> = body.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
+            let sr = num("sr", 48_000.0).clamp(8_000.0, 192_000.0) as u32;
+            let mut audio = muser_engine::AudioBuffer::<f32>::new(1, samples.len().max(1));
+            audio.channel_mut(0)[..samples.len()].copy_from_slice(&samples);
+            let opts = muser_engine::hum::HumOptions { tempo: num("tempo", 100.0).clamp(20.0, 300.0), step: num("grid", 0.25).max(0.0), from_start: q.get("from_start").is_some_and(|v| v == "1") };
+            match muser_engine::hum::transcribe(&audio, sr, opts) {
+                Ok(t) => respond_json(req, 200, &json!({ "notes": t.notes, "bars": t.bars, "key": t.key, "tuning_cents": t.tuning_cents })),
+                Err(e) => err(req, e),
+            }
+        }
         (Method::Post, "/api/share") => match read_body::<Value>(&mut req) {
             Ok(b) => match loop_library::share(b["name"].as_str().unwrap_or(""), base, b["overwrite"].as_bool().unwrap_or(false)) {
                 Ok(path) => respond_json(req, 200, &json!({ "ok": true, "path": path.display().to_string() })),

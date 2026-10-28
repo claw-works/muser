@@ -29,7 +29,7 @@
    贝斯、和声、琶音用 `chordal` 跟着和弦走，见 [skills/arrange.md](skills/arrange.md)），不要手算一个个 clip 的起点。
    写完跑 `muser analyze` 自查（能量曲线有没有起伏、副歌有没有起来、重复、掩蔽、冲突、"AI 味"检查），按建议改；最后 `mix-report` 平衡音量，`muser view` 交给人微调。
 
-人可以先给动机：`muser loop edit --open` 打开编辑器，人在卷帘里画几小节存到项目的 `loops/`，你读出来续写 / 扩写成几个版本
+人可以先给动机：`muser loop edit --open` 打开编辑器，人在卷帘里画几小节或对着麦克风哼一段（自动转成音符），存到项目的 `loops/`，你读出来续写 / 扩写成几个版本
 （存成新的 loop，编辑器里能直接试听、修改），见 [skills/notation.md](skills/notation.md) 的"人给动机，agent 续写"。
 
 用户这样说时进入草稿流程（不要直接改整首）："先听听""来几个版本""随便哼一段""感觉不对""这段再活泼点""换个感觉"。
@@ -51,7 +51,8 @@
 | 各轨音量是否均衡 | `muser mix-report <file>` | `mix_report` |
 | 编曲好不好：密度、音区、和弦、重复、冲突与建议 | `muser analyze <file> [--audio]` | `analyze` |
 | 有哪些现成的鼓型 / 动机（loop），拿一个放进工程 | `muser loop list [--style S]`、`muser loop show <名字> [--abc]` | — |
-| 让人画一段动机 / 鼓型（编辑器，存到项目） | `muser loop edit --open` | — |
+| 让人画一段动机 / 鼓型，或对着麦克风哼一段（编辑器，存到项目） | `muser loop edit --open` | — |
+| 把哼唱 / 口哨录音转成音符 | `muser loop hum <音频> --tempo T --name N` | — |
 | 本机音色库里的 poly 音色 | `muser poly list`、`muser poly show <名字>` | — |
 | 音频文件的格式、时长（换算成拍） | `muser audio <文件> [--tempo T]` | — |
 | 把编曲交给 DAW / 分析工具 | `muser midi <工程> [-o x.mid]` | `export_midi` |

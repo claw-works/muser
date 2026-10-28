@@ -32,7 +32,7 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 - 流式渲染引擎：逐块走完整张路由图，离线渲染为 WAV 与边渲染边播放共用同一份代码、结果逐样本一致（各音轨乐器并行演奏）
 - `muser view` 播放页：边渲染边播（开头一小段好了就能听），调音量/静音/独奏后从当前位置无缝换上新版本，可保存回工程，当前混音可下载为 WAV、MIDI 或 ABC；
   加 `--device` 直接用本机声卡出声，调音量/静音/独奏即时生效（远程经 SSH 端口转发时用默认的浏览器播放）
-- `muser loop edit` 动机 / loop 编辑器：在卷帘里画动机、在步进网格里画鼓型，用 muser 的乐器试听，存到项目的 `loops/` 或分享到全局库——之后 agent 可以直接续写、扩写或使用这些片段（`muser loop show <名字> [--abc]`）
+- `muser loop edit` 动机 / loop 编辑器：在卷帘里画动机（或对着麦克风哼一段，不用 AI 自动转成音符）、在步进网格里画鼓型，用 muser 的乐器试听，存到项目的 `loops/` 或分享到全局库——之后 agent 可以直接续写、扩写或使用这些片段（`muser loop show <名字> [--abc]`）
 - `muser poly edit` 音色编辑器：在本地网页里设计 poly 合成器音色（振荡器、滤波器、包络、LFO、调制矩阵），改完即时试听，存进本机音色库；agent 用 `muser poly show <名字>` 把音色写进工程
 - 给 agent 的简写音符：**ABC 记谱**写旋律（`"abc"`）、步进节奏（`"grid"`）、17 种常见律动的 **loop 库**（`muser loop`）、每小节有变化会打过门的**生成式鼓手**——几行 JSON 代替一长串音符
 - **人性化演奏（humanize）**：时间漂移、力度与时值变化、swing、整体提前/拖后，可写在音轨或 clip 上；种子留住喜欢的一遍，换种子再弹一遍
@@ -186,6 +186,7 @@ muser loop show dnb_two_step --repeat 8
 # 动机 / loop 编辑器（本地网页）：画、试听、存到项目或分享到全局
 muser loop edit --project song.muser.json --open
 muser loop show hook --abc
+muser loop hum hum.wav --tempo 96 --name hook     # 哼唱 / 口哨录音转成旋律 loop
 
 # poly 合成器音色编辑器（本地网页）与本机音色库
 muser poly edit --open
