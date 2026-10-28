@@ -5,7 +5,6 @@ use anyhow::{anyhow, bail, Result};
 use clap::Subcommand;
 use muser_core::Project;
 use muser_engine::{loop_library, RenderSettings};
-use serde_json::json;
 
 /// 放一遍工程（本机声卡）。`from` 秒起。
 pub fn play(project: Project, from: f64) -> Result<()> {
@@ -47,15 +46,18 @@ pub fn play(project: Project, from: f64) -> Result<()> {
 
 #[derive(Subcommand)]
 pub enum LoopCommand {
-    /// 列出 loop（内置 + 本机 loop 库）。
+    /// 列出 loop：项目（工程旁的 loops/）、全局（~/.config/muser/loops）、内置。
     List {
         /// 只列这个风格（house、dnb、hiphop …）。
         #[arg(long)]
         style: Option<String>,
+        /// 工程文件（找它旁边的 loops/；缺省当前目录）。
+        #[arg(long)]
+        project: Option<String>,
         #[arg(long)]
         json: bool,
     },
-    /// 输出写进工程音轨的 clip JSON（grid + humanize 内嵌，`from` 标注来源）。
+    /// 输出写进工程音轨的 clip JSON（grid / notes + humanize 内嵌，`from` 标注来源）。
     Show {
         name: String,
         /// clip 起点（拍）。
@@ -64,24 +66,31 @@ pub enum LoopCommand {
         /// 重复几遍（clip 长度 = 遍数 × loop 长度）。
         #[arg(long, default_value_t = 1)]
         repeat: u32,
-        /// 改为输出 loop 文件本身（含风格、速度范围、建议鼓组）。
-        #[arg(long)]
+        /// 改为输出 loop 文件本身（含风格、速度、建议乐器、调、和弦）。
+        #[arg(long, conflicts_with = "abc")]
         file: bool,
+        /// 改为输出 ABC 记谱（旋律 loop）。
+        #[arg(long)]
+        abc: bool,
+        #[arg(long)]
+        project: Option<String>,
     },
     /// 用本机声卡试听一个 loop。
     Play {
         name: String,
-        /// 用这个鼓组（默认 loop 建议的）。
-        #[arg(long)]
-        kit: Option<String>,
+        /// 用这个乐器 / 鼓组（默认 loop 建议的）。
+        #[arg(long, alias = "kit")]
+        instrument: Option<String>,
         /// 速度（默认 loop 速度范围的中间）。
         #[arg(long)]
         tempo: Option<f64>,
         /// 放几遍。
         #[arg(long, default_value_t = 4)]
         repeat: u32,
+        #[arg(long)]
+        project: Option<String>,
     },
-    /// 把工程里一个 clip 存成 loop（有 grid 时存 grid；否则把音符量化成网格）。
+    /// 把工程里一个 clip 存成 loop：鼓存 grid，旋律存音符。缺省存到工程旁的 loops/。
     Save {
         /// 工程文件。
         project: String,
@@ -98,20 +107,52 @@ pub enum LoopCommand {
         style: String,
         #[arg(long, default_value = "")]
         description: String,
-        /// 量化网格（拍），只在 clip 是普通音符时用。
+        /// 鼓的量化网格（拍），只在鼓的 clip 是普通音符时用。
         #[arg(long, default_value_t = 0.25)]
         step: f64,
+        /// 存到全局（~/.config/muser/loops），而不是项目。
+        #[arg(long)]
+        global: bool,
         /// 同名已存在时覆盖。
         #[arg(long)]
         overwrite: bool,
     },
+    /// 把项目里的 loop 复制到全局（别的项目也能用）。
+    Share {
+        name: String,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// 打开 loop / 动机编辑器（本地网页：旋律用卷帘，鼓用步进网格），存到项目或全局。
+    Edit {
+        /// 打开这个 loop（缺省新建）。
+        name: Option<String>,
+        /// 工程文件（loop 存在它旁边的 loops/；缺省当前目录）。
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long, default_value_t = 8739)]
+        port: u16,
+        /// 用系统浏览器打开。
+        #[arg(long)]
+        open: bool,
+        #[arg(long, default_value_t = 48_000)]
+        sample_rate: u32,
+    },
+}
+
+/// `--project` 的工程文件所在目录。
+fn base_of(project: &Option<String>) -> Option<std::path::PathBuf> {
+    project.as_ref().map(|p| std::path::Path::new(p).parent().map(std::path::Path::to_path_buf).unwrap_or_default())
 }
 
 pub fn run_loop(command: LoopCommand) -> Result<()> {
     let fail = |e: String| anyhow!(e);
     match command {
-        LoopCommand::List { style, json } => {
-            let mut all = loop_library::list();
+        LoopCommand::List { style, project, json } => {
+            let base = base_of(&project);
+            let mut all = loop_library::list_for(base.as_deref());
             if let Some(s) = &style {
                 all.retain(|e| e.item.style.eq_ignore_ascii_case(s) || e.item.tags.iter().any(|t| t.eq_ignore_ascii_case(s)));
             }
@@ -122,38 +163,48 @@ pub fn run_loop(command: LoopCommand) -> Result<()> {
             for e in &all {
                 let l = &e.item;
                 let tempo = l.tempo.map_or(String::new(), |[a, b]| format!("{a:.0}–{b:.0} BPM"));
-                let mark = if e.source == "user" { " *" } else { "" };
-                println!("{:<18} {:<10} {:>12}  {} 小节  {}{mark}", l.name, l.style, tempo, l.bars, l.description);
+                let mark = match e.source { "project" => " +", "user" => " *", _ => "" };
+                let kind = if l.is_drums() { "鼓" } else { "旋律" };
+                println!("{:<18} {:<4} {:<10} {:>12}  {} 小节  {}{mark}", l.name, kind, l.style, tempo, l.bars, l.description);
             }
             println!(
-                "\n共 {} 个（* 为本机 loop 库 {}）。`muser loop show <名字>` 取出写进工程的 clip；`muser loop play <名字>` 试听。",
+                "\n共 {} 个（+ 为项目 {}，* 为全局 {}）。`muser loop show <名字>` 取出写进工程的 clip；`muser loop play <名字>` 试听；`muser loop edit` 编辑。",
                 all.len(),
+                loop_library::project_dir(base.as_deref()).display(),
                 loop_library::dir().display()
             );
             Ok(())
         }
-        LoopCommand::Show { name, start, repeat, file } => {
-            let l = loop_library::load(&name).map_err(fail)?;
+        LoopCommand::Show { name, start, repeat, file, abc, project } => {
+            let l = loop_library::load_for(&name, base_of(&project).as_deref()).map_err(fail)?;
+            if abc {
+                let p = l.project(None, None, repeat).map_err(fail)?;
+                let mut opts = muser_engine::abc_export::AbcOptions::new(muser_engine::abc_export::Dialect::Standard);
+                opts.key = l.key.clone();
+                let out = muser_engine::abc_export::export(&p, &opts)?;
+                print!("{}", out.text);
+                return Ok(());
+            }
             let out = if file { serde_json::to_value(&l)? } else { l.clip(start, repeat) };
             println!("{}", serde_json::to_string_pretty(&out)?);
             Ok(())
         }
-        LoopCommand::Play { name, kit, tempo, repeat } => {
-            let l = loop_library::load(&name).map_err(fail)?;
-            let kit = kit.or(l.kit.clone()).unwrap_or_else(|| "drums.acoustic".into());
-            let tempo = tempo.or(l.tempo.map(|[a, b]| ((a + b) / 2.0).round())).unwrap_or(120.0);
-            eprintln!("{}：{kit}，{tempo} BPM，{repeat} 遍", l.name);
-            let project: Project = serde_json::from_value(json!({ "name": format!("loop:{}", l.name), "tempo": tempo,
-                "tracks": [{ "name": l.name, "instrument": kit, "clips": [l.clip(0.0, repeat)] }] }))?;
-            play(project, 0.0)
+        LoopCommand::Play { name, instrument, tempo, repeat, project } => {
+            let l = loop_library::load_for(&name, base_of(&project).as_deref()).map_err(fail)?;
+            let p = l.project(instrument.as_deref(), tempo, repeat).map_err(fail)?;
+            eprintln!("{}：{}，{} BPM，{repeat} 遍", l.name, p.tracks[0].instrument, p.tempo);
+            play(p, 0.0)
         }
-        LoopCommand::Save { project, track, clip, name, style, description, step, overwrite } => {
+        LoopCommand::Save { project, track, clip, name, style, description, step, global, overwrite } => {
             let p = crate::load_project(&project)?;
             let t = p.tracks.get(track).ok_or_else(|| anyhow!("没有 tracks[{track}]"))?;
             let c = t.clips.get(clip).ok_or_else(|| anyhow!("tracks[{track}] 没有 clips[{clip}]"))?;
-            let grid = match (&c.grid, c.notes.is_empty() && c.abc.is_none()) {
-                (Some(g), true) => g.clone(),
-                _ => loop_library::grid_from_notes(&c.all_notes().map_err(fail)?, c.length.0, step).map_err(fail)?,
+            let drums = t.instrument.trim().starts_with("drums.");
+            let notes = muser_engine::clip_notes(&p, track, clip).map_err(fail)?;
+            let grid = match (drums, &c.grid, c.notes.is_empty() && c.abc.is_none() && c.drummer.is_none()) {
+                (false, _, _) => muser_core::grid::Grid::default(),
+                (true, Some(g), true) => g.clone(),
+                (true, _, _) => loop_library::grid_from_notes(&notes, c.length.0, step).map_err(fail)?,
             };
             let bars = (c.length.0 / 4.0).ceil().max(1.0) as u32;
             let l = loop_library::Loop {
@@ -166,20 +217,31 @@ pub fn run_loop(command: LoopCommand) -> Result<()> {
                 tempo: Some([p.tempo, p.tempo]),
                 bars,
                 meter: "4/4".into(),
-                kit: t.instrument.starts_with("drums.").then(|| t.instrument.clone()),
+                kit: drums.then(|| t.instrument.clone()),
+                instrument: (!drums).then(|| t.instrument.clone()),
+                key: None,
+                chords: None,
                 grid,
+                notes: if drums { Vec::new() } else { notes.into_iter().filter(|n| n.start.0 < f64::from(bars) * 4.0).collect() },
                 humanize: muser_core::humanize::Humanize::merged(t.humanize.as_ref(), c.humanize.as_ref()),
             };
-            let path = loop_library::save(&l, overwrite).map_err(fail)?;
+            let path = if global { loop_library::save(&l, overwrite) } else { loop_library::save_project(&l, p.base_dir.as_deref(), overwrite) }.map_err(fail)?;
             println!("已存 loop '{}' → {}", l.name, path.display());
             Ok(())
         }
+        LoopCommand::Share { name, project, overwrite } => {
+            let path = loop_library::share(&name, base_of(&project).as_deref(), overwrite).map_err(fail)?;
+            println!("已复制到全局 → {}", path.display());
+            Ok(())
+        }
+        LoopCommand::Edit { name, project, port, open, sample_rate } => crate::loop_edit::serve(name, base_of(&project), port, open, sample_rate),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn show_produces_a_valid_clip() {

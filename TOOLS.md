@@ -107,14 +107,23 @@ poly 合成器的完整音色（振荡器、sub / 噪声、两个滤波器、四
 用本机声卡把工程从头放一遍，放完退出：给人快速试听草稿（不开网页）。`--seed` 临时换一遍演奏（humanize / drummer /
 random 自动化），不改文件。需要 device 特性（发行版都带；headless 版没有，用 `render` 再听）。
 
-### `muser loop list|show|play|save`
+### `muser loop edit|list|show|play|save|share`
 
-节奏型库（内置 17 个常见风格 + 本机 `~/.config/muser/loops/`）。
-- `list [--style S] [--json]`：列出，按风格或标签筛。
-- `show <名字> [--start 拍] [--repeat N] [--file]`：输出写进工程的 clip（`grid` + `humanize` 内嵌，`from` 标注来源）；`--file` 输出 loop 文件。
-- `play <名字> [--kit drums.X] [--tempo BPM] [--repeat N]`：声卡试听。
-- `save <project> --track I [--clip J] --name N [--style S] [--description D] [--step 0.25] [--overwrite]`：
-  把工程里的 clip 存成 loop（clip 是 grid 时原样存，是音符时量化成网格）。
+片段库：鼓的节奏型（`grid`）与旋律 / 动机 / 和声音型（`notes`）。三处，同名时近的优先：
+项目（工程旁的 `loops/`，没有工程时当前目录的 `loops/`）> 全局（`~/.config/muser/loops/`）> 内置（17 个常见鼓型）。
+各命令的 `--project <工程文件>` 指定项目目录。
+- `edit [名字] [--project P] [--port 8739] [--open]`：loop / 动机编辑器（本地网页，只听本机）。旋律用卷帘（点、拖、改长度、
+  力度、移调、撤销），鼓用步进网格；用 muser 的乐器渲染、循环试听；存到项目或全局，或把项目里的分享到全局。
+  agent 改了 loop 文件，页面自动重新读入（有未保存的改动时提示）。
+- `list [--style S] [--json]`：列出（标出 项目 `+` / 全局 `*`），按风格或标签筛。
+- `show <名字> [--start 拍] [--repeat N] [--file | --abc]`：输出写进工程的 clip（`grid` / `notes` + `humanize` 内嵌，`from` 标注来源）；
+  `--file` 输出 loop 文件（含建议乐器、调、和弦）；`--abc` 输出 ABC 记谱。
+- `play <名字> [--instrument X] [--tempo BPM] [--repeat N]`：声卡试听。
+- `save <project> --track I [--clip J] --name N [--style S] [--description D] [--step 0.25] [--global] [--overwrite]`：
+  把工程里的 clip 存成 loop（鼓：grid，普通音符量化成网格；旋律：音符），缺省存到工程旁的 `loops/`。
+- `share <名字> [--overwrite]`：把项目里的 loop 复制到全局，别的项目也能用。
+- loop 文件格式（`format: "muser.loop"`, `version: 2`）：`name` `bars` `tempo` `style` `description` `tags` `kit` / `instrument`
+  `key` `chords` `grid` / `notes` `humanize`。drummer 的 `loop` 也能引用项目或全局里的鼓 loop。
 clip 上的简写（`abc` / `grid` / `drummer`）与 `humanize` 见 [skills/notation.md](skills/notation.md)、[skills/humanize.md](skills/humanize.md)。
 
 ### `muser midi <project> [-o out.mid] [--seed N]`

@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muser loop · Motif & Loop Editor</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #070910; --surface: #10131e; --panel: rgba(18,22,35,.92); --panel-2: #0c0f18;
+    --line: #272d40; --line-hi: #394158; --text: #f4f6fb; --dim: #929aae; --faint: #60687c;
+    --accent: #72e5c2; --accent-2: #9588ff; --warn: #ffc46b; --err: #ff7c8b; --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { min-width: 820px; background: var(--bg); }
+  body {
+    margin: 0; color: var(--text); min-height: 100vh;
+    font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    background: radial-gradient(circle at 10% -10%, rgba(149,136,255,.15), transparent 32rem),
+      radial-gradient(circle at 90% 0, rgba(114,229,194,.09), transparent 28rem), linear-gradient(180deg,#0a0d16 0,var(--bg) 34rem);
+  }
+  button, input, select { font: inherit; color: var(--text); }
+  button { min-height: 32px; padding: 0 12px; background: #171b29; border: 1px solid var(--line-hi); border-radius: 9px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #5b647d; background: #1d2233; }
+  button.primary { color: #07130f; border-color: var(--accent); background: var(--accent); font-weight: 700; }
+  button.primary:hover:not(:disabled) { border-color: #91efd4; background: #91efd4; }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input[type=text], input[type=number], select { background: #0b0e17; border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; min-height: 32px; }
+  input[type=number] { width: 76px; }
+  label { display: grid; gap: 4px; color: var(--dim); font-size: 11px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; gap: 11px; align-items: center; }
+  .mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(145deg,var(--accent-2),var(--accent)); color: #07130f; font-weight: 900; }
+  .brand b { letter-spacing: .14em; }
+  .brand span { color: var(--dim); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; padding: 16px 22px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  aside { padding: 12px; align-self: start; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+  aside h3 { margin: 12px 4px 6px; font-size: 10px; letter-spacing: .14em; color: var(--faint); text-transform: uppercase; }
+  .item { display: flex; justify-content: space-between; gap: 6px; padding: 6px 8px; border-radius: 8px; cursor: pointer; color: var(--dim); }
+  .item:hover { background: #171b29; color: var(--text); }
+  .item.cur { background: rgba(114,229,194,.1); color: var(--accent); }
+  .item small { color: var(--faint); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+  main { display: grid; gap: 12px; min-width: 0; }
+  .bar { padding: 12px; }
+  .status { color: var(--dim); font-size: 12px; min-height: 18px; }
+  .status.err { color: var(--err); }
+  .status.warn { color: var(--warn); }
+  .roll { overflow: auto; max-height: 62vh; border-radius: var(--radius) var(--radius) 0 0; }
+  canvas { display: block; }
+  #vel { border-top: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); }
+  .hint { color: var(--faint); font-size: 11px; padding: 0 12px 10px; }
+  .grow { flex: 1; min-width: 160px; }
+  .grow input { width: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="mark">♪</div><div><b>MUSER</b><br><span data-i18n="brand">motif & loop editor</span></div></div>
+  <button id="lang">EN</button>
+</header>
+<div class="layout">
+  <aside class="panel">
+    <div class="row"><button id="newMelody" data-i18n="newMelody">+ 旋律</button><button id="newDrums" data-i18n="newDrums">+ 鼓</button></div>
+    <div id="lists"></div>
+  </aside>
+  <main>
+    <section class="panel bar">
+      <div class="row">
+        <label><span data-i18n="name">名字</span><input id="name" type="text" style="width:150px"></label>
+        <label><span data-i18n="bars">小节</span><input id="bars" type="number" min="1" max="32"></label>
+        <label><span data-i18n="tempo">速度</span><input id="tempo" type="number" min="20" max="300"></label>
+        <label><span data-i18n="grid">网格</span><select id="grid">
+          <option value="1">1/4</option><option value="0.5">1/8</option><option value="0.25">1/16</option><option value="0.125">1/32</option>
+          <option value="0.3333333333333333">1/8 T</option><option value="0.16666666666666666">1/16 T</option></select></label>
+        <label><span data-i18n="instrument">乐器</span><select id="instrument" style="width:190px"></select></label>
+        <label><span data-i18n="key">调</span><input id="key" type="text" style="width:64px" placeholder="Am"></label>
+        <label class="grow"><span data-i18n="chords">和弦</span><input id="chords" type="text" placeholder="Am7 F C G"></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label><span data-i18n="style">风格</span><input id="style" type="text" style="width:110px"></label>
+        <label class="grow"><span data-i18n="description">描述</span><input id="description" type="text"></label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="play" class="primary" data-i18n="play">▶ 播放</button>
+        <button id="loopBtn" class="on" data-i18n="loop">循环</button>
+        <button id="undo" data-i18n="undo">撤销</button>
+        <span style="flex:1"></span>
+        <button id="saveProject" class="primary" data-i18n="saveProject">存到项目</button>
+        <button id="saveGlobal" data-i18n="saveGlobal">存到全局</button>
+        <button id="share" data-i18n="share">分享到全局</button>
+      </div>
+      <div id="status" class="status" style="margin-top:8px"></div>
+    </section>
+    <section class="panel">
+      <div class="roll" id="rollWrap"><canvas id="roll"></canvas></div>
+      <canvas id="vel" height="64"></canvas>
+      <div class="hint" id="hint"></div>
+    </section>
+  </main>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const I18N = {
+  zh: { brand: "动机与 loop 编辑器", newMelody: "+ 旋律", newDrums: "+ 鼓", name: "名字", bars: "小节", tempo: "速度", grid: "网格", instrument: "乐器",
+    key: "调", chords: "和弦", style: "风格", description: "描述", play: "▶ 播放", stop: "■ 停止", loop: "循环", undo: "撤销",
+    saveProject: "存到项目", saveGlobal: "存到全局", share: "分享到全局", project: "项目", user: "全局", builtin: "内置", unsaved: "（未保存）",
+    hintMelody: "点空白处加音（拖动定长度）· 拖音符移动 · 拖右边缘改长度 · 右键或 Delete 删除 · ↑↓ 移调（Shift 一个八度）· ←→ 平移 · ⌘A 全选 · ⌘Z 撤销 · 下方拖动改力度 · 空格播放",
+    hintDrums: "点格子：x → X（重音）→ o（轻）→ 空 · 右键清除 · 空格播放",
+    saved: (p) => `已保存 → ${p}`, shared: (p) => `已复制到全局 → ${p}`, overwrite: (n) => `'${n}' 已存在，覆盖吗？`,
+    reloaded: "文件被修改（agent？），已重新读入", changedDirty: "文件被修改了，但这里有未保存的改动。点这里重新读入（丢弃本地改动）",
+    rendering: "渲染中…", discard: "有未保存的改动，确定丢弃吗？", builtinRO: "内置 loop：改完请另存到项目或全局", needName: "名字只能用小写字母、数字、_、-" },
+  en: { brand: "motif & loop editor", newMelody: "+ Melody", newDrums: "+ Drums", name: "Name", bars: "Bars", tempo: "Tempo", grid: "Grid", instrument: "Instrument",
+    key: "Key", chords: "Chords", style: "Style", description: "Description", play: "▶ Play", stop: "■ Stop", loop: "Loop", undo: "Undo",
+    saveProject: "Save to project", saveGlobal: "Save to global", share: "Share to global", project: "Project", user: "Global", builtin: "Built-in", unsaved: " (unsaved)",
+    hintMelody: "Click empty space to add a note (drag for length) · drag notes to move · drag the right edge to resize · right-click or Delete removes · ↑↓ transpose (Shift: octave) · ←→ shift · ⌘A select all · ⌘Z undo · drag in the lane below for velocity · Space plays",
+    hintDrums: "Click a cell: x → X (accent) → o (soft) → empty · right-click clears · Space plays",
+    saved: (p) => `Saved → ${p}`, shared: (p) => `Copied to global → ${p}`, overwrite: (n) => `'${n}' already exists. Overwrite?`,
+    reloaded: "The file changed on disk (an agent?) and was reloaded", changedDirty: "The file changed on disk, but you have unsaved edits. Click here to reload (discarding them)",
+    rendering: "Rendering…", discard: "Discard unsaved changes?", builtinRO: "Built-in loop: save it to the project or global library after editing", needName: "Names use lowercase letters, digits, _ and - only" },
+};
+let lang = localStorage.getItem("muser-lang") || (navigator.language.startsWith("zh") ? "zh" : "en");
+const t = (k, ...a) => { const v = I18N[lang][k]; return typeof v === "function" ? v(...a) : v; };
+
+const DRUM_ROWS = ["crash", "ride", "open_hat", "hat", "shaker", "tambourine", "cowbell", "clap", "snare", "rim", "tom_high", "tom_mid", "tom_low", "kick"];
+const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const noteName = (p) => NOTE[p % 12] + (Math.floor(p / 12) - 1);
+let cur = null, source = "new", mtime = null, dirty = false, history = [], selected = new Set();
+let instruments = [], info = null;
+let step = 0.25;
+
+function status(text, kind = "") { const s = $("status"); s.textContent = text || ""; s.className = "status " + kind; s.onclick = null; }
+function snapshot() { history.push(JSON.stringify(cur)); if (history.length > 200) history.shift(); }
+function changed() { dirty = true; updateTitle(); draw(); schedulePreview(); }
+function updateTitle() { document.title = `${cur.name}${dirty ? " •" : ""} · muser loop`; renderLists(); }
+const beats = () => cur.bars * 4;
+const isDrums = () => cur.notes.length === 0 && (cur._drums || Object.keys(cur.grid?.rows || {}).length > 0);
+
+function blank(drums) {
+  const used = new Set((info?.loops || []).map((l) => l.name));
+  let i = 1, base = drums ? "beat" : "motif";
+  while (used.has(`${base}-${i}`)) i++;
+  return { format: "muser.loop", version: 2, name: `${base}-${i}`, style: "", description: "", tags: [], tempo: [100, 100], bars: drums ? 1 : 2,
+    meter: "4/4", grid: { rows: {} }, notes: [], _drums: drums };
+}
+
+// —— 鼓：grid 的行 <-> 每格一个字符 ——
+function rowCells(str) { return [...(str || "")].filter((c) => c !== " " && c !== "|"); }
+function drumCells(name) {
+  const n = Math.round(beats() / step), src = rowCells(cur.grid.rows[name]), srcStep = cur.grid.step || 0.25;
+  const out = Array(n).fill(".");
+  if (!src.length) return out;
+  // 按原来的步长把每个打击点放回当前网格（落不到格上的丢掉）。
+  for (let k = 0; k * srcStep < beats() - 1e-9; k++) {
+    const c = src[k % src.length];
+    if (!"xXo123456789".includes(c)) continue;
+    const pos = (k * srcStep) / step;
+    if (Math.abs(pos - Math.round(pos)) < 1e-6 && Math.round(pos) < n) out[Math.round(pos)] = c;
+  }
+  return out;
+}
+function setDrumGrid(rows) {
+  const out = {};
+  for (const [name, cells] of Object.entries(rows)) if (cells.some((c) => c !== ".")) out[name] = cells.join("");
+  cur.grid = { rows: out };
+  if (Math.abs(step - 0.25) > 1e-9) cur.grid.step = step;
+}
+
+// —— 卷帘 ——
+const ROWH = 14;
+let KEYW = 46;
+let lo = 48, hi = 84;
+function range() {
+  const ps = cur.notes.map((n) => n.pitch);
+  lo = Math.min(48, ...ps.map((p) => p - 3)); hi = Math.max(84, ...ps.map((p) => p + 3));
+}
+function geom() {
+  const wrap = $("rollWrap"), W = Math.max(600, wrap.clientWidth);
+  const rows = isDrums() ? DRUM_ROWS.concat(Object.keys(cur.grid.rows).filter((r) => !DRUM_ROWS.includes(r))) : null;
+  const nrows = rows ? rows.length : hi - lo + 1, rh = rows ? 26 : ROWH;
+  KEYW = rows ? 84 : 46;
+  return { W, H: nrows * rh, rh, rows, pxb: (W - KEYW) / beats() };
+}
+function draw() {
+  const cv = $("roll"), g0 = geom(), dpr = devicePixelRatio || 1;
+  cv.width = g0.W * dpr; cv.height = g0.H * dpr; cv.style.width = g0.W + "px"; cv.style.height = g0.H + "px";
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = "#0b0e17"; g.fillRect(0, 0, g0.W, g0.H);
+  const x = (b) => KEYW + b * g0.pxb;
+  if (g0.rows) {
+    g0.rows.forEach((r, i) => {
+      g.fillStyle = i % 2 ? "#0d111b" : "#0f1320"; g.fillRect(KEYW, i * g0.rh, g0.W, g0.rh);
+      g.fillStyle = "#929aae"; g.font = "11px system-ui"; g.textBaseline = "middle"; g.fillText(r, 6, i * g0.rh + g0.rh / 2);
+      const cells = drumCells(r), cw = step * g0.pxb;
+      cells.forEach((c, k) => {
+        const cx = x(k * step);
+        g.fillStyle = (k * step) % 1 < 1e-9 ? "#1f2536" : "#161b28"; g.fillRect(cx + 1, i * g0.rh + 3, Math.max(1, cw - 2), g0.rh - 6);
+        if (c !== ".") {
+          g.fillStyle = c === "X" ? "#72e5c2" : c === "o" ? "rgba(114,229,194,.35)" : "rgba(114,229,194,.7)";
+          g.fillRect(cx + 2, i * g0.rh + 5, Math.max(1, cw - 4), g0.rh - 10);
+        }
+      });
+    });
+  } else {
+    for (let p = hi; p >= lo; p--) {
+      const y = (hi - p) * g0.rh, black = [1, 3, 6, 8, 10].includes(p % 12);
+      g.fillStyle = black ? "#0b0e16" : "#0f1320"; g.fillRect(KEYW, y, g0.W, g0.rh);
+      g.fillStyle = black ? "#1a1e2b" : "#dfe4ef"; g.fillRect(0, y, KEYW - 2, g0.rh - 1);
+      if (p % 12 === 0) { g.fillStyle = "#0b0e17"; g.font = "9px system-ui"; g.textBaseline = "middle"; g.fillText(noteName(p), 4, y + g0.rh / 2); }
+      g.fillStyle = "#151a26"; g.fillRect(KEYW, y + g0.rh - 1, g0.W, 1);
+    }
+    for (let b = 0; b <= beats() + 1e-9; b += step) {
+      g.fillStyle = Math.abs(b % 4) < 1e-9 ? "#3a4258" : Math.abs(b % 1) < 1e-9 ? "#242a3b" : "#171c29";
+      g.fillRect(x(b), 0, 1, g0.H);
+    }
+    for (const [i, n] of cur.notes.entries()) {
+      const y = (hi - n.pitch) * g0.rh, sel = selected.has(i);
+      g.fillStyle = sel ? "#f4f6fb" : `rgba(114,229,194,${0.45 + 0.55 * n.velocity})`;
+      g.fillRect(x(n.start) + 1, y + 1, Math.max(3, n.length * g0.pxb - 2), g0.rh - 2);
+    }
+  }
+  drawVel(); drawHead();
+}
+function drawVel() {
+  const cv = $("vel"), W = geom().W, H = 64, dpr = devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = "#0c0f18"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#60687c"; g.font = "10px system-ui"; g.fillText("vel", 8, 14);
+  if (isDrums()) return;
+  const pxb = (W - KEYW) / beats();
+  for (const [i, n] of cur.notes.entries()) {
+    const h = n.velocity * (H - 10);
+    g.fillStyle = selected.has(i) ? "#f4f6fb" : "#9588ff"; g.fillRect(KEYW + n.start * pxb, H - h - 2, 4, h);
+  }
+}
+let head = -1;
+function drawHead() {
+  if (head < 0) return;
+  const g = $("roll").getContext("2d"), g0 = geom();
+  g.fillStyle = "#ffc46b"; g.fillRect(KEYW + head * g0.pxb, 0, 1.5, g0.H);
+}
+
+function hit(ev) {
+  const r = $("roll").getBoundingClientRect(), g0 = geom();
+  const px = ev.clientX - r.left, py = ev.clientY - r.top;
+  return { g0, px, py, beat: Math.max(0, (px - KEYW) / g0.pxb), row: Math.floor(py / g0.rh) };
+}
+const snap = (b) => Math.round(b / step) * step;
+const snapDown = (b) => Math.floor(b / step + 1e-9) * step;
+function noteAt(beat, pitch) {
+  for (let i = cur.notes.length - 1; i >= 0; i--) { const n = cur.notes[i]; if (n.pitch === pitch && beat >= n.start && beat < n.start + n.length) return i; }
+  return -1;
+}
+let drag = null;
+$("roll").addEventListener("contextmenu", (e) => e.preventDefault());
+$("roll").addEventListener("mousedown", (ev) => {
+  const h = hit(ev);
+  if (h.px < KEYW) return;
+  if (isDrums()) {
+    const rowName = h.g0.rows[h.row]; if (!rowName) return;
+    const rows = Object.fromEntries(h.g0.rows.map((r) => [r, drumCells(r)]));
+    const k = Math.floor(h.beat / step + 1e-9); if (k >= rows[rowName].length) return;
+    snapshot();
+    const c = rows[rowName][k];
+    rows[rowName][k] = ev.button === 2 ? "." : ev.shiftKey ? "X" : ({ ".": "x", x: "X", X: "o", o: "." })[c] ?? ".";
+    setDrumGrid(rows); changed(); return;
+  }
+  const pitch = hi - h.row, i = noteAt(h.beat, pitch);
+  if (ev.button === 2) { if (i >= 0) { snapshot(); cur.notes.splice(i, 1); selected.clear(); changed(); } return; }
+  snapshot();
+  if (i < 0) {
+    const n = { pitch, start: snapDown(h.beat), length: step, velocity: 0.8 };
+    if (n.start >= beats()) return;
+    cur.notes.push(n); selected = new Set([cur.notes.length - 1]);
+    drag = { kind: "resize", from: h.beat, orig: [[cur.notes.length - 1, { ...n }]] };
+  } else {
+    if (!selected.has(i)) selected = ev.shiftKey ? new Set([...selected, i]) : new Set([i]);
+    const n = cur.notes[i], edge = (n.start + n.length) * h.g0.pxb + KEYW - h.px < 6;
+    drag = { kind: edge ? "resize" : "move", from: h.beat, pitch, orig: [...selected].map((j) => [j, { ...cur.notes[j] }]) };
+  }
+  changed();
+});
+window.addEventListener("mousemove", (ev) => {
+  if (!drag) return;
+  const h = hit(ev), d = h.beat - drag.from;
+  for (const [j, o] of drag.orig) {
+    const n = cur.notes[j];
+    if (drag.kind === "resize") n.length = Math.max(step, snap(o.length + d));
+    else { n.start = Math.min(beats() - step, Math.max(0, snap(o.start + d))); n.pitch = Math.min(127, Math.max(0, o.pitch + (hi - h.row) - drag.pitch)); }
+    n.length = Math.min(n.length, beats() - n.start);
+  }
+  dirty = true; draw();
+});
+window.addEventListener("mouseup", () => { if (drag) { drag = null; changed(); } });
+// 力度：在下方拖动。
+let velDrag = false;
+function setVel(ev) {
+  const r = $("vel").getBoundingClientRect(), pxb = (geom().W - KEYW) / beats();
+  const beat = (ev.clientX - r.left - KEYW) / pxb, v = Math.min(1, Math.max(0.05, 1 - (ev.clientY - r.top) / (r.height - 8)));
+  const targets = cur.notes.map((n, i) => i).filter((i) => Math.abs(cur.notes[i].start - beat) < step * 0.6 || (selected.has(i) && ev.altKey));
+  for (const i of targets) cur.notes[i].velocity = Math.round(v * 100) / 100;
+  if (targets.length) { dirty = true; draw(); }
+}
+$("vel").addEventListener("mousedown", (ev) => { if (isDrums()) return; snapshot(); velDrag = true; setVel(ev); });
+window.addEventListener("mousemove", (ev) => velDrag && setVel(ev));
+window.addEventListener("mouseup", () => { if (velDrag) { velDrag = false; changed(); } });
+
+const typing = (el) => el && (el.tagName === "INPUT" || el.tagName === "SELECT");
+window.addEventListener("keydown", (ev) => {
+  if (typing(document.activeElement)) return;
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (ev.code === "Space") { ev.preventDefault(); togglePlay(); return; }
+  if (mod && ev.key === "z") { ev.preventDefault(); undo(); return; }
+  if (mod && ev.key === "a") { ev.preventDefault(); selected = new Set(cur.notes.map((_, i) => i)); draw(); return; }
+  if (!selected.size || isDrums()) return;
+  const sel = [...selected].map((i) => cur.notes[i]);
+  if (ev.key === "Delete" || ev.key === "Backspace") { snapshot(); cur.notes = cur.notes.filter((_, i) => !selected.has(i)); selected.clear(); changed(); }
+  else if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
+    ev.preventDefault(); snapshot(); const d = (ev.key === "ArrowUp" ? 1 : -1) * (ev.shiftKey ? 12 : 1);
+    for (const n of sel) n.pitch = Math.min(127, Math.max(0, n.pitch + d)); range(); changed();
+  } else if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
+    ev.preventDefault(); snapshot(); const d = (ev.key === "ArrowRight" ? 1 : -1) * step;
+    for (const n of sel) n.start = Math.min(beats() - n.length, Math.max(0, n.start + d)); changed();
+  }
+});
+function undo() { if (!history.length) return; cur = JSON.parse(history.pop()); selected.clear(); fillForm(); range(); changed(); }
+
+// —— 表单 ——
+function fillForm() {
+  $("name").value = cur.name; $("bars").value = cur.bars; $("tempo").value = cur.tempo ? Math.round((cur.tempo[0] + cur.tempo[1]) / 2) : 120;
+  $("key").value = cur.key || ""; $("chords").value = cur.chords || ""; $("style").value = cur.style || ""; $("description").value = cur.description || "";
+  if (isDrums()) step = cur.grid.step || 0.25;
+  $("grid").value = [...$("grid").options].find((o) => Math.abs(+o.value - step) < 1e-6)?.value ?? "0.25";
+  const want = isDrums() ? (cur.kit || "drums.acoustic") : (cur.instrument || "poly.juno_keys");
+  $("instrument").innerHTML = instruments.filter((i) => isDrums() === i.name.startsWith("drums.")).map((i) => `<option>${i.name}</option>`).join("");
+  $("instrument").value = want;
+  $("hint").textContent = t(isDrums() ? "hintDrums" : "hintMelody");
+}
+const field = (id, fn) => $(id).addEventListener("change", () => { snapshot(); fn($(id).value.trim()); changed(); });
+field("name", (v) => (cur.name = v));
+field("bars", (v) => {
+  const rows = isDrums() ? Object.fromEntries(Object.keys(cur.grid.rows).map((r) => [r, drumCells(r)])) : null;
+  cur.bars = Math.min(32, Math.max(1, Math.round(+v || 1)));
+  if (rows) { const n = Math.round(beats() / step); for (const r in rows) rows[r] = Array.from({ length: n }, (_, k) => rows[r][k % rows[r].length]); setDrumGrid(rows); }
+  cur.notes = cur.notes.filter((n) => n.start < beats()).map((n) => ({ ...n, length: Math.min(n.length, beats() - n.start) }));
+});
+field("tempo", (v) => { const x = Math.min(300, Math.max(20, +v || 120)); cur.tempo = [x, x]; });
+field("key", (v) => (v ? (cur.key = v) : delete cur.key));
+field("chords", (v) => (v ? (cur.chords = v) : delete cur.chords));
+field("style", (v) => (cur.style = v));
+field("description", (v) => (cur.description = v));
+field("instrument", (v) => (isDrums() ? (cur.kit = v) : (cur.instrument = v)));
+$("grid").addEventListener("change", () => {
+  if (isDrums()) { snapshot(); const rows = Object.fromEntries(Object.keys(cur.grid.rows).map((r) => [r, drumCells(r)])); const old = step; step = +$("grid").value;
+    // 换步长：先按旧步长展开成打击点，再放到新网格上。
+    const hits = {}; for (const [r, cells] of Object.entries(rows)) hits[r] = cells.map((c, k) => [k * old, c]).filter(([, c]) => c !== ".");
+    const n = Math.round(beats() / step), out = {};
+    for (const [r, hs] of Object.entries(hits)) { out[r] = Array(n).fill("."); for (const [b, c] of hs) { const p = b / step; if (Math.abs(p - Math.round(p)) < 1e-6) out[r][Math.round(p)] = c; } }
+    setDrumGrid(out); changed();
+  } else { step = +$("grid").value; draw(); }
+});
+
+// —— 列表、读入、保存 ——
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  const ct = r.headers.get("Content-Type") || "";
+  if (ct.includes("json")) { const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { status: r.status }); return j; }
+  if (!r.ok) throw new Error(r.statusText);
+  return r;
+}
+async function refreshList() { info = await api("/api/list"); renderLists(); }
+function renderLists() {
+  if (!info) return;
+  const groups = { project: [], user: [], builtin: [] };
+  for (const l of info.loops) groups[l.source]?.push(l);
+  $("lists").innerHTML = Object.entries(groups).filter(([, ls]) => ls.length || true).map(([src, ls]) =>
+    `<h3>${t(src)}${src === "project" ? ` <small title="${info.project_dir}">${info.project_dir.split("/").slice(-2).join("/")}</small>` : ""}</h3>` +
+    ls.map((l) => `<div class="item${cur && l.name === cur.name && src === source ? " cur" : ""}" data-name="${l.name}" title="${l.description || ""}">` +
+      `<span>${l.drums ? "🥁" : "♪"} ${l.name}</span><small>${l.bars}</small></div>`).join("")).join("") +
+    (cur && source === "new" ? `<h3>${t("unsaved").replace(/[()（）]/g, "")}</h3><div class="item cur"><span>${isDrums() ? "🥁" : "♪"} ${cur.name}</span></div>` : "");
+  for (const el of document.querySelectorAll(".item[data-name]")) el.onclick = () => open(el.dataset.name);
+}
+async function open(name, quiet) {
+  if (!quiet && dirty && !confirm(t("discard"))) return;
+  const r = await api("/api/loop?name=" + encodeURIComponent(name));
+  cur = r.loop; cur.notes = cur.notes || [];
+  // muser 的 grid 是扁平的（{ step, kick: "x..." }），页面里用 { step, rows }。
+  const { step: gs, ...rows } = cur.grid || {};
+  cur.grid = { rows }; if (gs) cur.grid.step = gs;
+  cur._drums = cur.notes.length === 0;
+  source = r.source; mtime = r.mtime; dirty = false; history = []; selected.clear();
+  fillForm(); range(); draw(); updateTitle();
+  status(source === "builtin" ? t("builtinRO") : r.path || "");
+}
+function fresh(drums) {
+  if (dirty && !confirm(t("discard"))) return;
+  cur = blank(drums); source = "new"; mtime = null; dirty = false; history = []; selected.clear(); step = 0.25;
+  fillForm(); range(); draw(); updateTitle(); status("");
+}
+$("newMelody").onclick = () => fresh(false);
+$("newDrums").onclick = () => fresh(true);
+function payload() {
+  const l = JSON.parse(JSON.stringify(cur)); delete l._drums;
+  if (Object.keys(l.grid.rows).length) l.grid = { ...(l.grid.step ? { step: l.grid.step } : {}), ...l.grid.rows }; else delete l.grid;
+  return l;
+}
+async function save(scope, overwrite = false) {
+  if (!/^[a-z0-9_-]+$/.test(cur.name)) { status(t("needName"), "err"); return; }
+  try {
+    const r = await api("/api/save", { loop: payload(), scope, overwrite });
+    dirty = false; if (scope === "project") { source = "project"; mtime = r.mtime; } else if (source !== "project") { source = "user"; mtime = r.mtime; }
+    status(t("saved", r.path)); await refreshList(); updateTitle();
+  } catch (e) {
+    if (e.status === 409 && confirm(t("overwrite", cur.name))) return save(scope, true);
+    status(e.message, "err");
+  }
+}
+$("saveProject").onclick = () => save("project");
+$("saveGlobal").onclick = () => save("global");
+$("share").onclick = async () => {
+  const go = async (overwrite) => {
+    try { const r = await api("/api/share", { name: cur.name, overwrite }); status(t("shared", r.path)); await refreshList(); }
+    catch (e) { if (e.status === 409 && confirm(t("overwrite", cur.name))) return go(true); status(e.message, "err"); }
+  };
+  if (dirty) await save("project"); go(false);
+};
+$("undo").onclick = undo;
+
+// 文件被外部（agent）修改：没有本地改动就重新读入，有就提示。
+setInterval(async () => {
+  if (!cur || (source !== "project" && source !== "user")) return;
+  try {
+    const r = await api("/api/mtime?name=" + encodeURIComponent(cur.name));
+    if (r.mtime && mtime && r.mtime > mtime + 1e-3) {
+      if (!dirty) { await open(cur.name, true); status(t("reloaded"), "warn"); }
+      else { const s = $("status"); s.textContent = t("changedDirty"); s.className = "status warn"; s.style.cursor = "pointer"; s.onclick = () => { dirty = false; open(cur.name, true); }; mtime = r.mtime; }
+    }
+  } catch (_) {}
+}, 1500);
+window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+// —— 试听：服务器用 muser 的乐器渲染，浏览器循环播放 ——
+let actx = null, src = null, buf = null, startedAt = 0, looping = true, previewTimer = null, raf = 0;
+async function render() {
+  status(t("rendering"));
+  const r = await api("/api/preview", { loop: payload(), instrument: $("instrument").value, tempo: +$("tempo").value || 120, repeat: 1 });
+  const sr = +r.headers.get("X-Sample-Rate"), pcm = new Int16Array(await r.arrayBuffer()), n = pcm.length / 2;
+  actx = actx || new AudioContext();
+  const b = actx.createBuffer(2, Math.max(1, n), sr);
+  const l = b.getChannelData(0), rr = b.getChannelData(1);
+  for (let i = 0; i < n; i++) { l[i] = pcm[2 * i] / 32768; rr[i] = pcm[2 * i + 1] / 32768; }
+  status(""); return b;
+}
+function startAt(offset) {
+  stopSource();
+  src = actx.createBufferSource(); src.buffer = buf; src.loop = looping; src.connect(actx.destination);
+  src.onended = () => { if (!looping && src) { stopPlay(); } };
+  src.start(0, offset % buf.duration); startedAt = actx.currentTime - offset;
+  $("play").textContent = t("stop"); tick();
+}
+function stopSource() { if (src) { src.onended = null; try { src.stop(); } catch (_) {} src = null; } }
+function stopPlay() { stopSource(); head = -1; cancelAnimationFrame(raf); $("play").textContent = t("play"); draw(); }
+async function togglePlay() {
+  if (src) { stopPlay(); return; }
+  try { buf = await render(); await actx.resume(); startAt(0); } catch (e) { status(e.message, "err"); }
+}
+function tick() {
+  if (!src) return;
+  const sec = (actx.currentTime - startedAt) % buf.duration;
+  head = sec / buf.duration * beats(); draw();
+  raf = requestAnimationFrame(tick);
+}
+// 播放中改了：稍等一下重新渲染，从当前位置接着放。
+function schedulePreview() {
+  if (!src) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(async () => {
+    try { const off = (actx.currentTime - startedAt) % buf.duration; buf = await render(); if (src) startAt(off); } catch (e) { status(e.message, "err"); }
+  }, 350);
+}
+$("play").onclick = togglePlay;
+$("loopBtn").onclick = () => { looping = !looping; $("loopBtn").classList.toggle("on", looping); if (src) src.loop = looping; };
+
+function applyLang() {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  $("lang").textContent = lang === "zh" ? "EN" : "中文";
+  if (cur) { $("hint").textContent = t(isDrums() ? "hintDrums" : "hintMelody"); renderLists(); if (src) $("play").textContent = t("stop"); }
+}
+$("lang").onclick = () => { lang = lang === "zh" ? "en" : "zh"; localStorage.setItem("muser-lang", lang); applyLang(); };
+window.addEventListener("resize", () => cur && draw());
+
+(async () => {
+  applyLang();
+  instruments = await api("/api/instruments");
+  await refreshList();
+  if (info.initial && info.loops.some((l) => l.name === info.initial)) await open(info.initial, true);
+  else { cur = blank(false); if (info.initial) cur.name = info.initial; fillForm(); range(); draw(); updateTitle(); }
+})();
+</script>
+</body>
+</html>

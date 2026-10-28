@@ -1,9 +1,14 @@
-//! loop 库：可复用的鼓（或任何步进）节奏型。muser 自带一批（仓库的 `loops/`，编译进二进制），
-//! 用户 / agent 攒下的放在 `~/.config/muser/loops/<名字>.json`（同名时用户的优先）。
+//! loop 库：可复用的片段——鼓的节奏型（`grid`），或旋律 / 动机 / 和声音型（`notes`）。
 //!
-//! 每个 loop 是一段 [`Grid`] 加元数据（风格、速度范围、小节数、建议鼓组、律动 `humanize`）。鼓件用名字写
-//! （kick / snare / hat …），换任意 `drums.*` 鼓组都能播。用进工程时**内嵌内容**：`muser loop show <名字>`
-//! 输出一个 clip（`grid` + `humanize` + `"from": "loop:<名字>"`），工程因此自足，内置 loop 以后改了也不影响旧工程。
+//! 三处，近的优先（同名时）：
+//! - 项目：工程文件旁边的 `loops/<名字>.json`（没有工程时是当前目录的 `loops/`）。
+//! - 全局：`~/.config/muser/loops/<名字>.json`（`muser loop share` 把项目里的复制过去）。
+//! - 内置：仓库的 `loops/`，编译进二进制。
+//!
+//! 每个 loop 是一段 [`Grid`] 和 / 或音符，加元数据（风格、速度范围、小节数、建议鼓组 / 乐器、调、和弦、律动 `humanize`）。
+//! 鼓件用名字写（kick / snare / hat …），换任意 `drums.*` 鼓组都能播。用进工程时**内嵌内容**：`muser loop show <名字>`
+//! 输出一个 clip（`grid` / `notes` + `humanize` + `"from": "loop:<名字>"`），工程因此自足，loop 以后改了也不影响旧工程。
+//! 编辑：`muser loop edit`（本地网页：旋律用卷帘，鼓用步进网格）。
 
 use std::path::{Path, PathBuf};
 
@@ -13,7 +18,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub const FORMAT: &str = "muser.loop";
-pub const VERSION: u32 = 1;
+/// 2：加入 `notes`、`instrument`、`key`、`chords`（1 版只有 grid，照样能读）。
+pub const VERSION: u32 = 2;
 
 /// 一个 loop。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,7 +45,21 @@ pub struct Loop {
     /// 建议的鼓组（如 `drums.909`）；用别的也行。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kit: Option<String>,
+    /// 建议的乐器（旋律片段，如 `poly.juno_keys`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument: Option<String>,
+    /// 调（如 `Am`、`Eb`），给续写 / 扩写的 agent 参考。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// 和弦进行（写法同段落的 `chords`，如 `"Am7 F C G"`），给续写 / 扩写的 agent 参考。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chords: Option<String>,
+    /// 步进网格（鼓）。
+    #[serde(default, skip_serializing_if = "grid_is_empty")]
     pub grid: Grid,
+    /// 音符（旋律、动机、和声；拍，相对 loop 起点）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<muser_core::Note>,
     /// 这个节奏型的律动（swing、随机偏移）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub humanize: Option<Humanize>,
@@ -47,6 +67,10 @@ pub struct Loop {
 
 fn default_meter() -> String {
     "4/4".into()
+}
+
+fn grid_is_empty(g: &Grid) -> bool {
+    g.rows.is_empty()
 }
 
 /// 内置 loop。
@@ -98,16 +122,55 @@ impl Loop {
         if let Some(h) = &self.humanize {
             h.validate("humanize")?;
         }
-        self.grid.expand(self.beats()).map(|_| ())
+        if self.grid.rows.is_empty() && self.notes.is_empty() {
+            return Err("loop 是空的：写 grid（鼓）或 notes（旋律）".into());
+        }
+        for (i, n) in self.notes.iter().enumerate() {
+            if n.pitch > 127 || n.start.0 < 0.0 || n.start.0 >= self.beats() || n.length.0 <= 0.0 || !(0.0..=1.0).contains(&n.velocity) {
+                return Err(format!("notes[{i}] 无效：pitch 0–127、0 ≤ start < {}（loop 长度）、length > 0、velocity 0–1", self.beats()));
+            }
+        }
+        if let Some(c) = &self.chords {
+            muser_core::chord::progression(c, self.bars, 4.0).map_err(|e| format!("chords: {e}"))?;
+        }
+        if self.grid.rows.is_empty() { Ok(()) } else { self.grid.expand(self.beats()).map(|_| ()) }
+    }
+
+    /// 是鼓的节奏型（只有 grid）。
+    pub fn is_drums(&self) -> bool {
+        self.notes.is_empty()
     }
 
     /// 写进工程的 clip：从 `start` 拍开始，`repeat` 遍（grid 在 clip 长度里循环）。
     pub fn clip(&self, start: f64, repeat: u32) -> Value {
-        let mut clip = json!({ "start": start, "length": self.beats() * f64::from(repeat.max(1)), "grid": self.grid, "from": format!("loop:{}", self.name) });
+        let reps = repeat.max(1);
+        let mut clip = json!({ "start": start, "length": self.beats() * f64::from(reps), "from": format!("loop:{}", self.name) });
+        if !self.grid.rows.is_empty() {
+            clip["grid"] = json!(self.grid);
+        }
+        if !self.notes.is_empty() {
+            // 音符不会自己循环：按遍数铺开。
+            let notes: Vec<muser_core::Note> = (0..reps)
+                .flat_map(|k| self.notes.iter().map(move |n| muser_core::Note { start: muser_core::Beats(n.start.0 + f64::from(k) * self.beats()), ..n.clone() }))
+                .collect();
+            clip["notes"] = json!(notes);
+        }
         if let Some(h) = &self.humanize {
             clip["humanize"] = json!(h);
         }
         clip
+    }
+}
+
+impl Loop {
+    /// 试听 / 导出用的一条音轨工程：乐器缺省用建议的（鼓：`kit` 或 drums.acoustic；旋律：`instrument` 或 poly.juno_keys），
+    /// 速度缺省用速度范围的中间（没有时 120）。
+    pub fn project(&self, instrument: Option<&str>, tempo: Option<f64>, repeat: u32) -> Result<muser_core::Project, String> {
+        let fallback = if self.is_drums() { self.kit.as_deref().unwrap_or("drums.acoustic") } else { self.instrument.as_deref().unwrap_or("poly.juno_keys") };
+        let tempo = tempo.or(self.tempo.map(|[a, b]| ((a + b) / 2.0).round())).unwrap_or(120.0);
+        serde_json::from_value(json!({ "name": format!("loop:{}", self.name), "tempo": tempo,
+            "tracks": [{ "name": self.name, "instrument": instrument.unwrap_or(fallback), "clips": [self.clip(0.0, repeat)] }] }))
+        .map_err(|e| e.to_string())
     }
 }
 
@@ -116,9 +179,14 @@ fn parse(text: &str) -> Result<Loop, String> {
     l.check().map(|_| l)
 }
 
-/// 用户 loop 目录。
+/// 全局 loop 目录。
 pub fn dir() -> PathBuf {
     crate::profile::config_dir().join("loops")
+}
+
+/// 项目 loop 目录：工程文件所在目录（没有时当前目录）下的 `loops/`。
+pub fn project_dir(base: Option<&Path>) -> PathBuf {
+    base.filter(|b| !b.as_os_str().is_empty()).unwrap_or(Path::new(".")).join("loops")
 }
 
 fn builtin() -> Vec<Loop> {
@@ -143,34 +211,64 @@ fn user_in(dir: &Path) -> Vec<Loop> {
     out
 }
 
-fn list_in(dir: &Path) -> Vec<Entry> {
-    let user = user_in(dir);
-    let mut out: Vec<Entry> = builtin()
-        .into_iter()
-        .filter(|b| !user.iter().any(|u| u.name == b.name))
-        .map(|item| Entry { item, source: "builtin" })
-        .collect();
-    out.extend(user.into_iter().map(|item| Entry { item, source: "user" }));
+/// 内置 + 全局（`user`）+ 项目（`project`），同名时近的优先。
+fn list_in(user_dir: &Path, project: Option<&Path>) -> Vec<Entry> {
+    let mut out: Vec<Entry> = builtin().into_iter().map(|item| Entry { item, source: "builtin" }).collect();
+    let layers = [(Some(user_dir), "user"), (project, "project")];
+    for (dir, source) in layers {
+        let Some(dir) = dir else { continue };
+        for item in user_in(dir) {
+            out.retain(|e| e.item.name != item.name);
+            out.push(Entry { item, source });
+        }
+    }
     out.sort_by(|a, b| (a.item.style.as_str(), a.item.name.as_str()).cmp(&(b.item.style.as_str(), b.item.name.as_str())));
     out
 }
 
-/// 全部 loop（内置 + 用户，同名时用户的优先），按风格、名字排序。
-pub fn list() -> Vec<Entry> {
-    list_in(&dir())
+/// 全部 loop（内置、全局、`base` 的项目目录），按风格、名字排序。`base` 是工程文件所在目录（None：当前目录）。
+pub fn list_for(base: Option<&Path>) -> Vec<Entry> {
+    list_in(&dir(), Some(&project_dir(base)))
 }
 
-pub fn load(name: &str) -> Result<Loop, String> {
-    list()
+/// 同 [`list_for`]，项目目录取当前目录。
+pub fn list() -> Vec<Entry> {
+    list_for(None)
+}
+
+/// 找 loop：项目 > 全局 > 内置。
+pub fn load_for(name: &str, base: Option<&Path>) -> Result<Loop, String> {
+    list_for(base)
         .into_iter()
         .find(|e| e.item.name == name.trim())
         .map(|e| e.item)
         .ok_or_else(|| format!("没有叫 '{name}' 的 loop（muser loop list 查看全部）"))
 }
 
-/// 保存到用户目录。`overwrite` 为假时同名的用户 loop 已存在则报错（与内置同名会覆盖内置的显示）。
+pub fn load(name: &str) -> Result<Loop, String> {
+    load_for(name, None)
+}
+
+/// 保存到全局目录。`overwrite` 为假时同名的已存在则报错（与内置同名会覆盖内置的显示）。
 pub fn save(l: &Loop, overwrite: bool) -> Result<PathBuf, String> {
     save_in(&dir(), l, overwrite)
+}
+
+/// 保存到项目目录。
+pub fn save_project(l: &Loop, base: Option<&Path>, overwrite: bool) -> Result<PathBuf, String> {
+    save_in(&project_dir(base), l, overwrite)
+}
+
+/// 把项目里的 loop 复制到全局。
+pub fn share(name: &str, base: Option<&Path>, overwrite: bool) -> Result<PathBuf, String> {
+    let l = user_in(&project_dir(base)).into_iter().find(|l| l.name == name.trim()).ok_or_else(|| format!("项目里没有叫 '{name}' 的 loop（{}）", project_dir(base).display()))?;
+    save(&l, overwrite)
+}
+
+/// loop 文件的路径与来源（内置的没有文件）。
+pub fn locate(name: &str, base: Option<&Path>) -> Option<(PathBuf, &'static str)> {
+    let name = name.trim();
+    [(project_dir(base), "project"), (dir(), "user")].into_iter().map(|(d, s)| (d.join(format!("{name}.json")), s)).find(|(p, _)| p.is_file())
 }
 
 fn save_in(dir: &Path, l: &Loop, overwrite: bool) -> Result<PathBuf, String> {
@@ -252,10 +350,26 @@ mod tests {
         l.description = "我的版本".into();
         save_in(&dir, &l, false).unwrap();
         assert!(save_in(&dir, &l, false).unwrap_err().contains("已存在"));
-        let list = list_in(&dir);
+        let list = list_in(&dir, None);
         let house: Vec<_> = list.iter().filter(|e| e.item.name == "house_basic").collect();
         assert_eq!((house.len(), house[0].source, house[0].item.description.as_str()), (1, "user", "我的版本"));
         assert_eq!(list.len(), BUILTIN.len());
+        // 项目里的同名 loop 优先于全局；旋律 loop（notes）能存、能展开成 clip。
+        let proj = dir.join("proj");
+        let mut m = l.clone();
+        m.description = "项目版".into();
+        save_in(&proj, &m, false).unwrap();
+        let motif: Loop = serde_json::from_value(json!({ "format": FORMAT, "version": VERSION, "name": "motif", "bars": 1, "instrument": "wind.flute", "key": "Am",
+            "notes": [{ "pitch": 69, "start": 0, "length": 1 }, { "pitch": 72, "start": 2, "length": 2 }] })).unwrap();
+        save_in(&proj, &motif, false).unwrap();
+        let list = list_in(&dir, Some(&proj));
+        let house: Vec<_> = list.iter().filter(|e| e.item.name == "house_basic").collect();
+        assert_eq!((house.len(), house[0].source, house[0].item.description.as_str()), (1, "project", "项目版"));
+        let clip = list.iter().find(|e| e.item.name == "motif").unwrap().item.clip(4.0, 2);
+        assert_eq!((clip["length"].as_f64(), clip["notes"].as_array().map(Vec::len), clip.get("grid").is_none()), (Some(8.0), Some(4), true));
+        assert_eq!(clip["notes"][3]["start"].as_f64(), Some(6.0));
+        let empty: Loop = serde_json::from_value(json!({ "format": FORMAT, "version": VERSION, "name": "e", "bars": 1 })).unwrap();
+        assert!(empty.check().unwrap_err().contains("空"));
         std::fs::remove_dir_all(&dir).ok();
     }
 

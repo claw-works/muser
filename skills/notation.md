@@ -29,18 +29,32 @@ grid、loop、drummer 会在这个长度里循环。
   `shaker` `cowbell` …）、MIDI 数字（`"36"`）或音名（`"c2"` `"eb3"`，C4 = 60，用于贝斯线等有音高的乐器）。
 - `x` 敲（0.8）、`X` 重音（1.0）、`o` 轻 / 鬼音（0.45）、`1`–`9` 力度 0.1–0.9；`=` 或 `~` 延长上一个音一步；`.` `-` 休止；空格、`|` 忽略。
 
-## loop 库：拿来就用的节奏型
+## loop 库：节奏型与动机
 
 ```bash
-muser loop list                 # 全部（内置 + 本机 loop 库），--style dnb 筛
-muser loop play dnb_two_step    # 用声卡试听（--kit drums.909 换鼓组，--tempo 170）
+muser loop list                 # 全部（项目 + 全局 + 内置），--style dnb 筛
+muser loop play dnb_two_step    # 用声卡试听（--instrument drums.909 换鼓组，--tempo 170）
 muser loop show dnb_two_step --start 16 --repeat 8   # 输出 clip JSON，直接放进鼓轨的 clips
-muser loop save song.muser.json --track 0 --clip 2 --name my_break --style dnb   # 把工程里的 clip 存成 loop
+muser loop show hook --abc      # 旋律 loop 的 ABC
+muser loop edit --open          # 编辑器：人在卷帘 / 步进网格里画动机、鼓型
+muser loop save song.muser.json --track 0 --clip 2 --name my_break --style dnb   # 把工程里的 clip 存成 loop（存在项目里）
+muser loop share hook           # 项目里的分享到全局
 ```
 
-- `show` 输出的 clip 内嵌 `grid` 和这个节奏型的律动 `humanize`，并标注 `"from": "loop:<名字>"`。工程因此自足，
-  内置 loop 以后改了也不影响旧工程。鼓件按名字写，换任意 `drums.*` 鼓组都能播（`kit` 只是建议）。
-- 用户存的 loop 在 `~/.config/muser/loops/`；和内置同名时用户的优先。
+- 鼓 loop 存 `grid`，旋律 / 动机 / 和声音型存 `notes`，可带建议乐器、调（`key`）、和弦（`chords`）。
+- `show` 输出的 clip 内嵌内容和律动 `humanize`，并标注 `"from": "loop:<名字>"`。工程因此自足，loop 以后改了也不影响旧工程。
+  鼓件按名字写，换任意 `drums.*` 鼓组都能播（`kit` 只是建议）。
+- 三处，同名时近的优先：项目（工程旁的 `loops/`）> 全局（`~/.config/muser/loops/`）> 内置。
+
+### 人给动机，agent 续写 / 扩写
+
+人在 `muser loop edit` 里画几小节动机（存到项目），agent 接着做：
+1. `muser loop show <名字> --file`（或 `--abc`）读它：音高、节奏、调、和弦。
+2. 续写 / 扩写：用编曲层的 `transform` 发展它（`sequence` 模进、`fragment` 裁截、`vary`、`invert`、`stretch`，见 [arrange.md](arrange.md)），
+   或写出接下来的乐句（问句 → 答句换终止；或动机 → 重复 / 模进 → 裁截加速 → 终止）。
+3. 一次给 2–3 个版本，各存成项目里的 loop（如 `hook-a`、`hook-b`），文件写进 `loops/` 后编辑器会自动出现、可以试听和修改；
+   告诉人每版用了什么手法，让人挑。
+4. 定下来的用进工程：`loop show` 的音符放进 parts / clips，`chords` 写进 sections。
 
 ## drummer：会变化、会打过门的鼓手（`"drummer"`）
 

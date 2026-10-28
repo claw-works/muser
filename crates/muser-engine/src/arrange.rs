@@ -177,7 +177,7 @@ impl Ctx<'_> {
         }
         if let Some(d) = &part.drummer {
             let seed = d.seed.unwrap_or_else(|| SplitMix64(self.seed ^ 0x4452 ^ k as u64).next_u64());
-            notes.extend(crate::drummer::expand(d, len, seed).map_err(|e| format!("{at}.{e}"))?);
+            notes.extend(crate::drummer::expand(d, len, seed, self.project.base_dir.as_deref()).map_err(|e| format!("{at}.{e}"))?);
         }
         let _ = self.project;
         notes.retain(|n| n.start.0 < len - 1e-9);

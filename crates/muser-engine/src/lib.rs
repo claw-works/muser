@@ -75,7 +75,7 @@ pub fn clip_notes(project: &muser_core::Project, ti: usize, ci: usize) -> Result
     let mut notes = clip.all_notes()?.into_owned();
     if let Some(d) = &clip.drummer {
         let seed = d.seed.unwrap_or_else(|| muser_core::automation::derive_seed(project.seed, Some(ti), 0x4452_0000 + ci));
-        notes.extend(drummer::expand(d, clip.length.0, seed)?);
+        notes.extend(drummer::expand(d, clip.length.0, seed, project.base_dir.as_deref())?);
     }
     if !clip.transform.is_empty() {
         let seed = muser_core::automation::derive_seed(project.seed, Some(ti), 0x5452_0000 + ci);

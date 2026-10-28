@@ -25,9 +25,9 @@ fn chance(rng: &mut SplitMix64, p: f64) -> bool {
     rng.unit() < p
 }
 
-/// 在 `length` 拍里展开（相对 clip 起点，按 4/4）。
-pub fn expand(d: &Drummer, length: f64, seed: u64) -> Result<Vec<Note>, String> {
-    let base = loop_library::load(&d.base).map_err(|e| format!("drummer.loop: {e}"))?;
+/// 在 `length` 拍里展开（相对 clip 起点，按 4/4）。`dir` 是工程文件所在目录（找项目里的 loop）。
+pub fn expand(d: &Drummer, length: f64, seed: u64, dir: Option<&std::path::Path>) -> Result<Vec<Note>, String> {
+    let base = loop_library::load_for(&d.base, dir).map_err(|e| format!("drummer.loop: {e}"))?;
     let cycle = base.grid.expand(base.beats())?;
     let step = base.grid.step.unwrap_or(0.25).min(0.25);
     let bars = (length / 4.0 - 1e-9).ceil().max(0.0) as u32;
@@ -148,7 +148,7 @@ mod tests {
     fn auto_fills_vary() {
         let d: Drummer = serde_json::from_value(serde_json::json!({ "loop": "rock_basic", "complexity": 0.5 })).unwrap();
         let fill_bars = |seed: u64| -> Vec<u32> {
-            let n = expand(&d, 32.0 * 4.0, seed).unwrap();
+            let n = expand(&d, 32.0 * 4.0, seed, None).unwrap();
             (0..32).filter(|&b| n.iter().any(|x| TOMS.contains(&x.pitch) && x.start.0 >= f64::from(b) * 4.0 && x.start.0 < f64::from(b + 1) * 4.0)
                 || n.iter().filter(|x| x.pitch == SNARE && x.start.0 >= f64::from(b) * 4.0 + 3.0 && x.start.0 < f64::from(b + 1) * 4.0).count() >= 3).collect()
         };
@@ -162,14 +162,14 @@ mod tests {
     fn plain_at_zero_complexity_except_fills() {
         let base = loop_library::load("rock_basic").unwrap();
         let one = base.grid.expand(4.0).unwrap();
-        let notes = expand(&drummer(0.0), 12.0, 1).unwrap();
+        let notes = expand(&drummer(0.0), 12.0, 1, None).unwrap();
         // 前三小节照着 loop 打（没有过门）。
         assert_eq!(notes.len(), one.len() * 3);
     }
 
     #[test]
     fn fills_crashes_and_variation() {
-        let notes = expand(&drummer(0.8), 32.0, 7).unwrap();
+        let notes = expand(&drummer(0.8), 32.0, 7, None).unwrap();
         let toms_or_snare_in_bar4 = notes.iter().filter(|n| n.start.0 >= 14.0 && n.start.0 < 16.0 && (n.pitch == SNARE || TOMS.contains(&n.pitch))).count();
         assert!(toms_or_snare_in_bar4 >= 6, "第 4 小节末有过门：{toms_or_snare_in_bar4}");
         assert!(notes.iter().any(|n| n.pitch == CRASH && n.start.0 == 16.0), "过门后第一拍有镲");
@@ -177,17 +177,17 @@ mod tests {
         let bar = |b: f64| notes.iter().filter(|n| n.start.0 >= b * 4.0 && n.start.0 < b * 4.0 + 4.0).map(|n| (n.pitch, ((n.start.0 - b * 4.0) * 4.0).round() as i64)).collect::<Vec<_>>();
         assert!(bar(0.0) != bar(1.0) || bar(1.0) != bar(2.0));
         // 同种子相同，换种子不同。
-        assert_eq!(notes, expand(&drummer(0.8), 32.0, 7).unwrap());
-        assert_ne!(notes, expand(&drummer(0.8), 32.0, 8).unwrap());
+        assert_eq!(notes, expand(&drummer(0.8), 32.0, 7, None).unwrap());
+        assert_ne!(notes, expand(&drummer(0.8), 32.0, 8, None).unwrap());
     }
 
     #[test]
     fn intensity_scales_velocity_and_unknown_loop_errors() {
         let soft: Drummer = serde_json::from_value(serde_json::json!({ "loop": "rock_basic", "intensity": 0.0, "complexity": 0, "fill_every": 0 })).unwrap();
         let loud = Drummer { intensity: 1.0, ..soft.clone() };
-        let (a, b) = (expand(&soft, 4.0, 1).unwrap(), expand(&loud, 4.0, 1).unwrap());
+        let (a, b) = (expand(&soft, 4.0, 1, None).unwrap(), expand(&loud, 4.0, 1, None).unwrap());
         assert!(a.iter().zip(&b).all(|(x, y)| x.velocity < y.velocity || y.velocity == 1.0));
         let bad = Drummer { base: "nope".into(), ..soft };
-        assert!(expand(&bad, 4.0, 1).unwrap_err().contains("drummer.loop"));
+        assert!(expand(&bad, 4.0, 1, None).unwrap_err().contains("drummer.loop"));
     }
 }

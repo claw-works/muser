@@ -112,7 +112,7 @@ fn preview(patch: &Value, phrase_name: &str, root: i64, sample_rate: u32) -> Res
     Ok((pcm16(&audio), 20.0 * f64::from(audio.peak().max(1e-9)).log10()))
 }
 
-fn pcm16(audio: &AudioBuffer<f32>) -> Vec<u8> {
+pub(crate) fn pcm16(audio: &AudioBuffer<f32>) -> Vec<u8> {
     let (l, r) = (audio.channel(0), audio.channel(1));
     let mut out = Vec::with_capacity(l.len() * 4);
     for f in 0..l.len() {
@@ -253,7 +253,7 @@ fn handle(mut req: tiny_http::Request, port: u16, sample_rate: u32) {
 }
 
 /// 查询串里的 `%XX` 与 `+`。
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;

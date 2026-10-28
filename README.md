@@ -32,6 +32,7 @@ vendored as a git submodule.
 - Streaming render engine: walks the whole routing graph block by block; offline WAV rendering and render-while-playing share the same code and are sample-identical (instruments of different tracks play in parallel)
 - `muser view` player page: playback starts as soon as the first bit is rendered; after changing volume/mute/solo the new version swaps in seamlessly at the current position; changes can be saved back to the project, and the current mix can be downloaded as a WAV, MIDI or ABC file.
   Add `--device` to play through this machine's sound card, with volume/mute/solo taking effect instantly (when working remotely over an SSH port forward, use the default in-browser playback)
+- `muser loop edit` motif & loop editor: draw a motif in a piano roll or a beat in a step grid, preview it with muser's instruments, and save it to the project's `loops/` or share it to your global library — agents then continue, develop or reuse these snippets (`muser loop show <name> [--abc]`)
 - `muser poly edit` sound editor: design poly-synth sounds (oscillators, filters, envelopes, LFOs, modulation matrix) in a local web page with instant previews, and save them to your sound library; agents put them into projects with `muser poly show <name>`
 - Shorthand notes for agents: melodies in **ABC notation** (`"abc"`), step patterns (`"grid"`), a **loop library** of 17 common grooves (`muser loop`), and a **generative drummer** that varies each bar and plays fills — a few lines of JSON instead of long note lists
 - **Humanize**: timing drift, velocity and length variation, swing and push/lay-back per track or clip; a seed keeps a take you like, a new seed plays it again differently
@@ -182,6 +183,10 @@ muser abc song.muser.json --yue2 --vocal lead --sections verse:8,chorus:8 -o sco
 muser loop list --style dnb
 muser loop play dnb_two_step
 muser loop show dnb_two_step --repeat 8
+
+# Motif / loop editor (local web page): draw, preview, save to the project or share globally
+muser loop edit --project song.muser.json --open
+muser loop show hook --abc
 
 # Poly-synth sound editor (local web page) and your sound library
 muser poly edit --open

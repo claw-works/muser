@@ -11,6 +11,7 @@
 //! - `mix-report <project.json> [--json]`  各轨/总线/主总线响度，用来平衡音量
 //! - `new [-o project.json]`                生成一个示例工程 JSON（供 AI 参考格式）
 
+mod loop_edit;
 mod play;
 mod poly;
 mod view;
@@ -141,7 +142,7 @@ enum Command {
         #[arg(long, default_value_t = 0.0)]
         from: f64,
     },
-    /// loop 库：list 列出、show 取出写进工程的 clip、play 试听、save 把工程里的 clip 存成 loop。
+    /// loop / 动机库：edit 打开编辑器，list 列出，show 取出写进工程的 clip，play 试听，save 把工程里的 clip 存成 loop，share 复制到全局。
     Loop {
         #[command(subcommand)]
         command: play::LoopCommand,
