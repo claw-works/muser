@@ -139,6 +139,52 @@ struct AddNotesParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct AnalyzeParams {
+    project_id: String,
+    /// 渲染一遍，加上每段的响度（LUFS）、频谱重心与低 / 中 / 高频占比（慢一些）。
+    #[serde(default)]
+    audio: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ExportAbcParams {
+    project_id: String,
+    /// 输出 .abc 文件路径。
+    output_path: String,
+    /// 写法："standard"（ABC 2.1 多声部，默认）或 "yue2"（YuE2 原生：Vocal / Ins 两个单音声部，和弦记号在 Vocal）。
+    #[serde(default)]
+    dialect: Option<String>,
+    /// 写和弦记号（按伴奏分析）。标准写法默认 false，yue2 默认 true（cot=full）；yue2 的 cot=melody 传 false。
+    #[serde(default)]
+    chords: Option<bool>,
+    /// 标准写法：只导出这些音轨（名字）。
+    #[serde(default)]
+    tracks: Vec<String>,
+    /// yue2：唱旋律的音轨（可几条，合并后每个时刻取最高音）；缺省自动选。
+    #[serde(default)]
+    vocal: Vec<String>,
+    /// yue2：器乐旋律声部的音轨；缺省全休止。
+    #[serde(default)]
+    ins: Vec<String>,
+    /// 段落（写成 % 注释）：[["verse", 8], ["chorus", 8]]（小节数）。
+    #[serde(default)]
+    sections: Vec<(String, u32)>,
+    /// 调号（如 "G"、"F#m"）；缺省用 clip 里 ABC 的 K:，否则估计。
+    #[serde(default)]
+    key: Option<String>,
+    /// yue2：Vocal 声部整体移几个八度（如 1：写到小写音名区）。
+    #[serde(default)]
+    vocal_octave: i32,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ExportMidiParams {
+    project_id: String,
+    /// 输出 .mid 文件路径。
+    output_path: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RenderParams {
     project_id: String,
     /// 输出 WAV 文件路径。
@@ -616,6 +662,63 @@ impl Muser {
         })
     }
 
+    #[tool(description = "听感报告（给听不到声音的 agent 自我检查编曲）：按段落（有 form 时按曲式每一遍，否则每 8 小节）给出 density（每小节起音数）、\
+各音轨 onsets_per_bar / sounding（发声占比）/ range（音区）、chords 与 chord_changes_per_bar（和声节奏；估计的带 ~）、repeated（与前面某小节完全相同的比例）、\
+clashes（强拍长音不是和弦音且差半音、或两轨成小二度 / 小九度），audio=true 时加每段 lufs / centroid_hz / low_pct / mid_pct / high_pct。\
+findings 是一句句建议（副歌没起来、重复太多、只有一个和弦、音区掩蔽、冲突、动态太平、发闷 / 发暗）。改完再跑一次对比。")]
+    fn analyze(&self, Parameters(p): Parameters<AnalyzeParams>) -> Result<CallToolResult, McpError> {
+        let Some(proj) = self.sessions.lock().unwrap().get(&p.project_id).cloned() else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        match muser_engine::analyze::analyze(&proj, p.audio, RenderSettings::default()) {
+            Ok(r) => Ok(ok_text(serde_json::to_string_pretty(&r).unwrap_or_default())),
+            Err(e) => Ok(user_err(format!("分析失败: {e}"))),
+        }
+    }
+
+    #[tool(description = "导出 ABC 记谱，给能读 ABC 的模型或记谱软件。dialect=standard：ABC 2.1 多声部，每条乐器音轨一个 V:。\
+dialect=yue2：YuE2 原生写法（Vocal / Ins 两个单音声部、和弦记号在 Vocal、时值只用 YuE2 支持的长度），chords=true 给 cot=full，false 给 cot=melody。\
+写谱面上的音（humanize 之前），鼓组与 audio 音轨不导出；调号由 clip 的 ABC 或音高估计，和弦记号按伴奏音估计（可能要人工改）。返回提示（自动选的 Vocal、量化等）。")]
+    fn export_abc(&self, Parameters(p): Parameters<ExportAbcParams>) -> Result<CallToolResult, McpError> {
+        use muser_engine::abc_export::{AbcOptions, Dialect};
+        let Some(proj) = self.sessions.lock().unwrap().get(&p.project_id).cloned() else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        let dialect = match p.dialect.as_deref().unwrap_or("standard") {
+            "standard" => Dialect::Standard,
+            "yue2" => Dialect::Yue2,
+            other => return Ok(user_err(format!("dialect '{other}' 不认识：standard 或 yue2"))),
+        };
+        let mut opts = AbcOptions::new(dialect);
+        opts.chords = p.chords.unwrap_or(opts.chords);
+        (opts.tracks, opts.vocal, opts.ins, opts.sections, opts.key, opts.vocal_octave) = (p.tracks, p.vocal, p.ins, p.sections, p.key, p.vocal_octave);
+        let out = match muser_engine::abc_export::export(&proj, &opts) {
+            Ok(o) => o,
+            Err(e) => return Ok(user_err(format!("导出失败: {e}"))),
+        };
+        if let Err(e) = std::fs::write(&p.output_path, &out.text) {
+            return Ok(user_err(format!("写出 '{}' 失败: {e}", p.output_path)));
+        }
+        let notes = if out.notes.is_empty() { String::new() } else { format!("\n{}", out.notes.join("\n")) };
+        Ok(ok_text(format!("已导出 → {}{notes}", p.output_path)))
+    }
+
+    #[tool(description = "导出标准 MIDI 文件（format 1，每条乐器音轨一条 MIDI 轨，鼓组在通道 10）。音符与渲染一致：含 humanize、连奏、abc/grid/drummer 展开；踏板为 CC64，gain_db/pan 为 CC7/CC10。audio 音轨不导出。")]
+    fn export_midi(&self, Parameters(p): Parameters<ExportMidiParams>) -> Result<CallToolResult, McpError> {
+        let Some(proj) = self.sessions.lock().unwrap().get(&p.project_id).cloned() else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        let m = match muser_engine::midi::export(&proj) {
+            Ok(m) => m,
+            Err(e) => return Ok(user_err(format!("导出失败: {e}"))),
+        };
+        if let Err(e) = std::fs::write(&p.output_path, &m.bytes) {
+            return Ok(user_err(format!("写出 '{}' 失败: {e}", p.output_path)));
+        }
+        let skipped = if m.skipped.is_empty() { String::new() } else { format!("；没有导出的 audio 音轨: {}", m.skipped.join(", ")) };
+        Ok(ok_text(format!("已导出 → {}: {} 字节{skipped}", p.output_path, m.bytes.len())))
+    }
+
     #[tool(description = "把工程离线渲染为 WAV 文件，返回时长与峰值。")]
     fn render(
         &self,
@@ -805,7 +908,7 @@ warnings 列出没声音的轨、推子后峰值过 0、送进主总线过载、
             Err(e) => return Ok(user_err(format!("读取 '{}' 失败: {e}", p.path))),
         };
         let project = match Project::from_json(&text) {
-            Ok(proj) => proj,
+            Ok(proj) => proj.at_file(&p.path),
             Err(e) => return Ok(user_err(format!("解析工程 JSON 失败: {e}"))),
         };
         if let Err(e) = muser_engine::validate(&project) {

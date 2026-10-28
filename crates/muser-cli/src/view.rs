@@ -38,6 +38,33 @@ fn pcm16(audio: &AudioBuffer<f32>, n: usize, out: &mut Vec<u8>) {
     }
 }
 
+/// 交错的 16-bit 立体声 PCM → WAV 文件。
+fn wav16(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(44 + pcm.len());
+    let len = pcm.len() as u32;
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&sample_rate.to_le_bytes());
+    out.extend_from_slice(&(sample_rate * 4).to_le_bytes());
+    out.extend_from_slice(&4u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(pcm);
+    out
+}
+
+/// 下载用的 Content-Disposition：ASCII 文件名兜底，`filename*` 给出 UTF-8 原名。
+fn attachment(name: &str) -> String {
+    let ascii: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
+    let encoded: String = name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
+    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
+}
+
 /// 波形：整首分成 [`PEAKS`] 段，每段每 4 帧取一个样本的峰值。`audio` 的前 `n` 帧是整首的第 `at` 帧起。
 fn add_peaks(peaks: &mut [f32], total: usize, audio: &AudioBuffer<f32>, at: usize, n: usize) {
     let per = total.max(1).div_ceil(PEAKS).max(1);
@@ -274,6 +301,16 @@ fn with_solo(p: &Project, solo: &BTreeSet<String>) -> Project {
 
 /// 页面需要的工程摘要（不含音频）。
 fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
+    let sections: Vec<Value> = muser_engine::arrange::timeline(working)
+        .unwrap_or_default()
+        .iter()
+        .map(|s| json!({ "name": s.name, "occurrence": s.occurrence, "start": s.start, "length": s.length }))
+        .collect();
+    let arranged = muser_engine::arrange::arranged(working);
+    let working: &Project = match &arranged {
+        Ok(a) => a,
+        Err(_) => working,
+    };
     let fx = |list: &[muser_core::Effect]| list.iter().map(|e| e.type_name()).collect::<Vec<_>>();
     let mut nodes = Vec::new();
     for (i, t) in working.tracks.iter().enumerate() {
@@ -284,7 +321,16 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
             .enumerate()
             .map(|(ci, c)| {
                 let notes: Vec<Value> = muser_engine::clip_notes(working, i, ci).unwrap_or_default().iter().map(|n| json!([n.start.0, n.length.0, n.pitch])).collect();
-                json!({ "start": c.start.0, "length": c.length.0, "notes": notes })
+                let mut v = json!({ "start": c.start.0, "length": c.length.0, "notes": notes });
+                if let Some(a) = &c.audio {
+                    let name = std::path::Path::new(&a.file).file_name().map_or(a.file.clone(), |n| n.to_string_lossy().into_owned());
+                    v["audio"] = json!(name);
+                    if let Some((wave, beats)) = muser_engine::audio::clip_wave(working, c, 400) {
+                        v["wave"] = json!(wave.iter().map(|x| (x * 100.0).round() / 100.0).collect::<Vec<_>>());
+                        v["wave_beats"] = json!(beats);
+                    }
+                }
+                v
             })
             .collect();
         nodes.push(json!({
@@ -309,7 +355,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
         "duration_beats": working.duration_beats().0,
         "master_gain_db": working.master_gain_db, "master_effects": fx(&working.master_effects),
         "master_chain": chain(&working.master_effects),
-        "nodes": nodes,
+        "nodes": nodes, "sections": sections,
     })
 }
 
@@ -405,7 +451,7 @@ impl Shared {
         let m = mtime(&self.path);
         let loaded = std::fs::read_to_string(&self.path)
             .map_err(|e| format!("读取失败: {e}"))
-            .and_then(|t| Project::from_json(&t).map_err(|e| format!("解析失败: {e}")));
+            .and_then(|t| Project::from_json(&t).map(|p| p.at_file(&self.path)).map_err(|e| format!("解析失败: {e}")));
         let mut st = self.state.lock().unwrap();
         st.file_mtime = m;
         match loaded {
@@ -680,6 +726,37 @@ impl Shared {
         Err("没有用 --device 启动，声音在浏览器里播放".into())
     }
 
+    /// 导出文件名的主干：工程文件名去掉 `.muser.json` / `.json`。
+    fn export_stem(&self) -> String {
+        let name = self.path.file_name().map_or("muser".into(), |n| n.to_string_lossy().into_owned());
+        let stem = name.strip_suffix(".json").unwrap_or(&name);
+        stem.strip_suffix(".muser").unwrap_or(stem).to_string()
+    }
+
+    /// 当前混音（含页面上的推子、静音、独奏）导出成 MIDI。
+    fn export_midi(&self) -> Result<Vec<u8>, String> {
+        let working = self.state.lock().unwrap().working.clone().ok_or("工程还没有读入")?;
+        muser_engine::midi::export(&working).map(|m| m.bytes).map_err(|e| e.to_string())
+    }
+
+    /// 当前工程导出成 ABC（标准写法或 YuE2 写法，选项都用缺省）。
+    fn export_abc(&self, yue2: bool) -> Result<Vec<u8>, String> {
+        use muser_engine::abc_export::{AbcOptions, Dialect};
+        let working = self.state.lock().unwrap().working.clone().ok_or("工程还没有读入")?;
+        let opts = AbcOptions::new(if yue2 { Dialect::Yue2 } else { Dialect::Standard });
+        muser_engine::abc_export::export(&working, &opts).map(|o| o.text.into_bytes()).map_err(|e| e.to_string())
+    }
+
+    /// 当前版本（正在听的混音）整首的 16-bit WAV。还在渲染时等它渲染完。
+    fn export_wav(&self) -> Result<Vec<u8>, String> {
+        let v = self.state.lock().unwrap().current.clone().ok_or("还没有渲染好的版本")?;
+        let (pr, _) = v.grown.wait_timeout_while(v.progress.lock().unwrap(), Duration::from_secs(600), |pr| !pr.done).unwrap();
+        if pr.rendered < v.frames {
+            return Err("这一版没有渲染完（失败了，或被新的改动取代），稍后再导出".into());
+        }
+        Ok(wav16(&pr.pcm[..v.frames * 4], self.settings.sample_rate))
+    }
+
     /// 某版本的一段 PCM。还没渲染到的部分最多等 2 秒，返回已有的（可能为空）。
     /// 版本不在了返回 None（页面会重新取状态）。
     fn pcm(&self, version: u64, from: usize, frames: usize) -> Option<(Vec<u8>, usize)> {
@@ -736,6 +813,25 @@ fn handle(shared: &Shared, mut req: tiny_http::Request, port: u16) {
                     let _ = req.respond(r);
                 }
                 None => respond_json(req, 410, &json!({ "error": "版本已过期" })),
+            }
+        }
+        (Method::Get, "/api/export.mid" | "/api/export.wav" | "/api/export.abc" | "/api/export.yue2.abc") => {
+            let (result, suffix, mime) = match path.as_str() {
+                "/api/export.wav" => (shared.export_wav(), "wav", "audio/wav"),
+                "/api/export.mid" => (shared.export_midi(), "mid", "audio/midi"),
+                "/api/export.abc" => (shared.export_abc(false), "abc", "text/vnd.abc; charset=utf-8"),
+                _ => (shared.export_abc(true), "yue2.abc", "text/vnd.abc; charset=utf-8"),
+            };
+            match result {
+                Ok(bytes) => {
+                    let name = format!("{}.{suffix}", shared.export_stem());
+                    let r = tiny_http::Response::from_data(bytes)
+                        .with_header(header("Content-Type", mime))
+                        .with_header(header("Content-Disposition", &attachment(&name)))
+                        .with_header(header("Cache-Control", "no-store"));
+                    let _ = req.respond(r);
+                }
+                Err(e) => respond_json(req, 409, &json!({ "error": e })),
             }
         }
         (Method::Post, "/api/mix") => match read_body::<MixBody>(&mut req).and_then(|b| shared.mix(b)) {

@@ -10,7 +10,7 @@
 #
 # 插件状态文件（.muserstate）与插件版本、平台绑定，不入库：每个 *.state.json
 # 描述 {"plugin", "params", "output"}，渲染前先用 `muser plugin save-state` 现场生成。
-# 工程里的相对路径都相对仓库根目录。
+# 工程里的相对路径都相对仓库根目录（音频片段的 file 除外：相对工程文件所在目录）。
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MUSER="${MUSER:-$ROOT/target/debug/muser}"
@@ -51,4 +51,4 @@ for f in samples/${GROUP:-*}/*.muser.json; do
     fail=$((fail + 1)); echo "FAIL  $f"; echo "$msg" | grep -v '^\[muser\]\|^\[surge' | tail -2 | sed 's/^/      /'
   fi
 done
-echo "完成：成功 $ok，失败 $fail"
+echo "完成：成功 ${ok}，失败 ${fail}"

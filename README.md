@@ -19,6 +19,7 @@ vendored as a git submodule.
 
 - Multi-track arrangement: drums + synths + bass, multiple clips and notes
 - 115 built-in instruments: 10 drum kits, 68 synth presets, plus guitars, basses, organs, mallets (marimba etc.), strings, winds and choirs — all synthesized by manguebyte in real time, no system MIDI synth needed; each one is tweakable via `instrument_params`
+- **Audio tracks**: put recordings, samples, loops and sound effects straight on a track (`"instrument": "audio"`) — WAV, AIFF, FLAC, Ogg Vorbis, Opus, MP3 (plus AAC/ALAC on macOS and Windows); they go through effects, buses, sends and sidechains like any track
 - Built-in SFZ sampler: `sfz:/path/to.sfz` (or a path relative to a sound-library folder on `MUSER_SFZ_PATH`) loads SFZ libraries directly
 - Effect chains (reverb / delay / compressor / chorus / eq / limiter / phaser / flanger) on tracks, buses or the master bus
 - Mix routing: bus groups, sends to shared reverbs/delays, nested buses, compressor sidechains (kick pumping the bass), automatic latency compensation
@@ -29,11 +30,15 @@ vendored as a git submodule.
 - Plugin profiles: store plugin know-how (aliases, presets, audition findings) as shareable data files; plugin sounds can be saved as state files
 - Built-in profiles and English skills for open-source plugins: Surge XT / Surge XT Effects, Vital (wavetable synth, with wavetables and mod matrix), Airwindows Consolidated (~470 effects, picked by name), Plasma (distortion) — install the plugin and use it by name, alias or preset
 - Streaming render engine: walks the whole routing graph block by block; offline WAV rendering and render-while-playing share the same code and are sample-identical (instruments of different tracks play in parallel)
-- `muser view` player page: playback starts as soon as the first bit is rendered; after changing volume/mute/solo the new version swaps in seamlessly at the current position; changes can be saved back to the project.
+- `muser view` player page: playback starts as soon as the first bit is rendered; after changing volume/mute/solo the new version swaps in seamlessly at the current position; changes can be saved back to the project, and the current mix can be downloaded as a WAV, MIDI or ABC file.
   Add `--device` to play through this machine's sound card, with volume/mute/solo taking effect instantly (when working remotely over an SSH port forward, use the default in-browser playback)
 - `muser poly edit` sound editor: design poly-synth sounds (oscillators, filters, envelopes, LFOs, modulation matrix) in a local web page with instant previews, and save them to your sound library; agents put them into projects with `muser poly show <name>`
 - Shorthand notes for agents: melodies in **ABC notation** (`"abc"`), step patterns (`"grid"`), a **loop library** of 17 common grooves (`muser loop`), and a **generative drummer** that varies each bar and plays fills — a few lines of JSON instead of long note lists
 - **Humanize**: timing drift, velocity and length variation, swing and push/lay-back per track or clip; a seed keeps a take you like, a new seed plays it again differently
+- **Arrangement layer for agents**: define `sections` once (bars + chord progression), order them in a `form` (with per-pass transpose / mute / seed), and give each track `parts` per section; `chordal` patterns (`"1 . 5 . 8 . 5 3"`, `"c - - -"`) follow the chords with automatic voice leading, `end` swaps in a fill, and `transform` adds transpose / reverse / invert / stretch / shift / every-N / seeded variation. A full song takes about 40 lines
+- **`muser analyze`**: a listening report for agents that cannot hear — per-section density, registers, harmonic rhythm, repetition, avoid notes and minor-second clashes, optional loudness and brightness, an energy curve, checks for "AI tells" (energy that never drops, instrumentation that never changes, one chord loop, fills every 4 bars, everything on the grid, identical choruses), and plain-language suggestions ("the chorus doesn't lift", "two tracks mask each other")
+- **MIDI export**: `muser midi song.muser.json` writes a standard MIDI file (one track per instrument track, drums on channel 10) with exactly the notes muser plays — humanize, legato, ABC/grid/drummer expanded, sustain pedal as CC64 — for opening in a DAW or analysis tools
+- **ABC export**: `muser abc song.muser.json` writes the score as standard multi-voice ABC 2.1 for models and notation tools that read ABC; `--yue2` writes the native score dialect of [YuE2](https://github.com/multimodal-art-projection/YuE) (Vocal/Ins melodies with chord symbols) for its `full` / `melody` modes. The key is taken from the clips' ABC or estimated, and chord symbols are estimated from the accompaniment
 - `muser play`: play a project through the sound card and exit — quick listening for the sketch-first workflow
 - Two AI interfaces: **CLI** (shell calls) and **MCP server** (direct tool calls from the agent)
 
@@ -162,6 +167,17 @@ muser view song.muser.json --open --device
 # Quick listen: play once through the sound card and exit (--seed N plays humanize/drummer differently)
 muser play song.muser.json
 
+# Listening report: density, registers, chords, repetition, clashes and suggestions (--audio adds loudness/brightness)
+muser analyze song.muser.json --audio
+
+# Audio files: format and length (in beats at a tempo), for writing an audio clip
+muser audio vocal.wav --tempo 92
+
+# Export: MIDI for a DAW, ABC for models and notation tools (--yue2 for YuE2's score format)
+muser midi song.muser.json -o song.mid
+muser abc song.muser.json -o song.abc
+muser abc song.muser.json --yue2 --vocal lead --sections verse:8,chorus:8 -o score.abc
+
 # Groove library: list, audition, and get a clip to paste into a project
 muser loop list --style dnb
 muser loop play dnb_two_step
@@ -177,7 +193,7 @@ muser poly show my_reese          # the track JSON with the full sound embedded
 ### Run as an MCP server (for agents)
 
 ```bash
-muser-mcp          # stdio MCP server exposing 35 tools
+muser-mcp          # stdio MCP server exposing 38 tools
 ```
 
 Register this executable as a stdio server in an MCP client (such as Claude Desktop),
@@ -245,11 +261,30 @@ Instead of listing notes one by one, a clip can use shorthand that expands at re
 { "instrument": "poly.wurly", "humanize": { "timing_ms": 8, "drift": 0.6, "velocity": 0.07 },
   "clips": [{ "start": 0, "length": 8, "abc": "L:1/8\nK:Am\nA2 cB e2 dc | B4 z4 |" }] },
 { "instrument": "drums.lofi",
-  "clips": [{ "start": 0, "length": 16, "drummer": { "loop": "lofi", "complexity": 0.5, "fill_every": 4 } },
+  "clips": [{ "start": 0, "length": 16, "drummer": { "loop": "lofi", "complexity": 0.5 } },
             { "start": 16, "length": 4, "grid": { "kick": "x.....x...x.....", "snare": "....x.......x...", "hat": "x.o.x.o.x.o.x.oo" } }] }
 ```
 
 `abc` is ABC notation, `grid` a step pattern, `drummer` a generative drummer built on a loop; see [skills/notation.md](skills/notation.md) and [skills/humanize.md](skills/humanize.md) (in Chinese).
+
+Audio files go on `audio` tracks; `file` is relative to the project file, `offset` and fades are in seconds, and the audio plays at its own speed (no time-stretching). `muser audio vocal.wav --tempo 92` shows its length in beats:
+
+```json
+{ "name": "vocal", "instrument": "audio", "clips": [{ "start": 8, "length": 16, "audio": { "file": "vocal.wav", "offset": 1.5, "fade_out": 0.5 } }] }
+```
+
+See [skills/audio.md](skills/audio.md) (in Chinese).
+
+A whole song is easier to write with the arrangement layer — sections, form, chords, chord-following parts:
+
+```json
+"sections": { "verse": { "bars": 8, "chords": "Am7 Fmaj7 C G" }, "chorus": { "bars": 8, "chords": "F G | Em Am" } },
+"form": ["verse", "chorus", "verse", { "section": "chorus", "transpose": 2 }],
+"tracks": [{ "name": "bass", "instrument": "bass.finger", "parts": {
+    "verse": { "chordal": "1 . . 1 . 5 8 .", "octave": 2 }, "chorus": { "chordal": "1 1 5 5 8 8 5 5", "octave": 2 } } }]
+```
+
+See [skills/arrange.md](skills/arrange.md) (in Chinese) and [samples/arrange/night-drive](samples/arrange/night-drive.muser.json).
 
 ## Build features
 

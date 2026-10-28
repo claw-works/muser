@@ -1,8 +1,9 @@
 //! 生成式鼓手（[`Drummer`]）：以 loop 库里的节奏型为底，每小节按复杂度加变化，每隔几小节打过门。
 //!
 //! - 变化（复杂度越高越多）：军鼓鬼音、底鼓切分、踩镲加花（加 16 分、偶尔开镲）。
-//! - 过门：每 `fill_every` 小节一组，组的最后一小节末尾 1 拍（复杂度 > 0.6 时 2 拍）换成过门：
-//!   军鼓滚奏 / 通鼓下行 / 军鼓与通鼓交替（按种子选），力度渐强；下一组第一拍加镲。
+//! - 过门：缺省自动——clip 最后一小节一定打；中间每个 4 小节乐句的末尾按种子约三分之一的概率打，长度 1 或 2 拍不等
+//!   （真实编曲的过门落在乐句末尾，但不会每 4 小节一次、一样长）。写 `fill_every: N` 则每 N 小节一组、组末一定打，
+//!   长 1 拍（复杂度 > 0.6 时 2 拍）。过门是军鼓滚奏 / 通鼓下行 / 军鼓与通鼓交替（按种子选），力度渐强；过门后的下一小节第一拍加镲。
 //! - 力度：整体乘 `0.6 + 0.8 × intensity`（0.5 时不变）。
 //! - 每小节用自己的种子（工程 seed、音轨、clip、小节号推导），所以小节之间不完全一样；同一种子结果相同。
 
@@ -38,12 +39,26 @@ pub fn expand(d: &Drummer, length: f64, seed: u64) -> Result<Vec<Note>, String> 
     let mut out: Vec<Note> = Vec::new();
     let note = |pitch: u8, start: f64, velocity: f64| Note { pitch, start: Beats(start), length: Beats(step), velocity: velocity as f32, accent: false };
 
+    // 哪些小节打过门、打几拍。
+    let fills: Vec<Option<f64>> = (0..bars)
+        .map(|bar| {
+            let mut r = SplitMix64(seed ^ u64::from(bar).wrapping_mul(0xD6E8_FEB8_6659_FD93) ^ 0x4649_4c4c);
+            match d.fill_every {
+                Some(n) => (n > 0 && (bar + 1) % n == 0).then_some(if c > 0.6 { 2.0 } else { 1.0 }),
+                None => {
+                    let last = bar + 1 == bars && bars >= 2;
+                    let phrase_end = (bar + 1) % 4 == 0 && r.unit() < 0.35;
+                    (last || phrase_end).then(|| if r.unit() < 0.3 + 0.4 * c { 2.0 } else { 1.0 })
+                }
+            }
+        })
+        .collect();
     for bar in 0..bars {
         let mut rng = SplitMix64(seed ^ u64::from(bar).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0x6472_756D);
         let bar_start = f64::from(bar) * 4.0;
         let in_loop = f64::from(bar % base.bars) * 4.0;
-        let fill_bar = d.fill_every > 0 && (bar + 1) % d.fill_every == 0;
-        let fill_len = if c > 0.6 { 2.0 } else { 1.0 };
+        let fill_bar = fills[bar as usize].is_some();
+        let fill_len = fills[bar as usize].unwrap_or(1.0);
         let fill_from = 4.0 - fill_len;
         let mut bar_notes: Vec<Note> = cycle
             .iter()
@@ -104,7 +119,7 @@ pub fn expand(d: &Drummer, length: f64, seed: u64) -> Result<Vec<Note>, String> 
                 bar_notes.push(note(KICK, fill_from, 0.8));
             }
         }
-        if d.crash && d.fill_every > 0 && bar > 0 && bar % d.fill_every == 0 {
+        if d.crash && bar > 0 && fills[bar as usize - 1].is_some() {
             bar_notes.push(note(CRASH, 0.0, 0.9));
         }
         for mut n in bar_notes {
@@ -126,6 +141,21 @@ mod tests {
 
     fn drummer(c: f64) -> Drummer {
         serde_json::from_value(serde_json::json!({ "loop": "rock_basic", "complexity": c, "fill_every": 4 })).unwrap()
+    }
+
+    /// 自动过门：最后一小节一定有；不是每个 4 小节都有；换种子位置不同。
+    #[test]
+    fn auto_fills_vary() {
+        let d: Drummer = serde_json::from_value(serde_json::json!({ "loop": "rock_basic", "complexity": 0.5 })).unwrap();
+        let fill_bars = |seed: u64| -> Vec<u32> {
+            let n = expand(&d, 32.0 * 4.0, seed).unwrap();
+            (0..32).filter(|&b| n.iter().any(|x| TOMS.contains(&x.pitch) && x.start.0 >= f64::from(b) * 4.0 && x.start.0 < f64::from(b + 1) * 4.0)
+                || n.iter().filter(|x| x.pitch == SNARE && x.start.0 >= f64::from(b) * 4.0 + 3.0 && x.start.0 < f64::from(b + 1) * 4.0).count() >= 3).collect()
+        };
+        let (a, b) = (fill_bars(1), fill_bars(2));
+        assert!(a.contains(&31) && b.contains(&31), "最后一小节有过门：{a:?}");
+        assert!(a.len() < 8, "不是每 4 小节都打：{a:?}");
+        assert_ne!(a, b);
     }
 
     #[test]

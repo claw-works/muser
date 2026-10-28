@@ -138,9 +138,10 @@ pub struct Drummer {
     /// 力度 0–1：整体打多重（0.5 适中）。
     #[serde(default = "half")]
     pub intensity: f64,
-    /// 每几小节一个过门（在这一组的最后一小节末尾），0 不打。
-    #[serde(default = "four")]
-    pub fill_every: u32,
+    /// 过门：缺省自动——clip 最后一小节一定打，中间每个 4 小节乐句末尾随机打（约三分之一），长短不一，
+    /// 不会机械地每 4 小节一次（"AI 味"）。写数字 N 则每 N 小节一个（这一组最后一小节末尾），0 不打。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_every: Option<u32>,
     /// 过门之后的下一小节第一拍加镲（crash）。
     #[serde(default = "yes")]
     pub crash: bool,
@@ -150,9 +151,6 @@ pub struct Drummer {
 
 fn half() -> f64 {
     0.5
-}
-fn four() -> u32 {
-    4
 }
 fn yes() -> bool {
     true
@@ -165,8 +163,8 @@ impl Drummer {
                 return Err(format!("{at}.{name} = {v} 超出范围 [0, 1]"));
             }
         }
-        if self.fill_every > 64 {
-            return Err(format!("{at}.fill_every = {} 超出范围 [0, 64]", self.fill_every));
+        if let Some(n) = self.fill_every.filter(|&n| n > 64) {
+            return Err(format!("{at}.fill_every = {n} 超出范围 [0, 64]"));
         }
         Ok(())
     }

@@ -12,6 +12,8 @@
 | [`routing/`](#routing) | 混音路由：总线、发送、侧链（A/B 对比） |
 | [`plugins/`](#plugins) | 外置 VST 效果器与 VSTi 音源（需本机装好插件） |
 | [`abc/`](#abc) | ABC 记谱写旋律：吉格（反复与一二房）、三声部、记谱功能巡礼 |
+| [`arrange/`](#arrange) | 编曲层写的完整歌曲：段落、曲式、和弦、跟着和弦走的声部、变换 |
+| [`audio/`](#audio) | 音频音轨：AWS Polly 合成的人声对到节拍上，和鼓、贝斯、电钢一起混音 |
 | [`sketches/`](#sketches) | 草稿 A/B：ABC 旋律 + grid 贝斯 + 鼓手 + humanize，几行 JSON 一段 |
 
 wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
@@ -119,6 +121,33 @@ Surge XT 的振荡器默认自由相位；内置画像的 `setup` 会自动打�
 ---
 
 工程格式与编曲约定见仓库根目录的 [SKILLS.md](../SKILLS.md)。
+
+## arrange
+
+用编曲层（[skills/arrange.md](../skills/arrange.md)）写的整首：段落定义一次、曲式按名字排，和弦写在段落上，贝斯 / 和声 / 琶音用 `chordal` 跟着和弦走。
+
+| 工程 | 内容 |
+|---|---|
+| `night-drive` | 100 BPM A 小调流行，56 小节约 2 分 16 秒：intro → verse → pre → chorus → verse（换种子）→ pre → chorus → chorus（升全音）→ outro。鼓手每段换复杂度与力度、pre 打过门；贝斯 `chordal` 每段不同、pre 结尾 `end` 换成 5-4-3-2 级进、副歌每 4 遍 `vary`；电钢按段落换节奏型与音区；副歌琶音隔遍逆行 + `vary`；旋律 ABC，pre 里一个 4 音动机用 `sequence` 逐小节上行模进推向副歌。约 45 行 JSON。写完用 `muser analyze` 自查：按建议改了副歌里的避免音、电钢与旋律的音区重叠、尾声 Fmaj7 的小九度，再按 `mix-report` 平衡音量 |
+
+```bash
+muser analyze samples/arrange/night-drive.muser.json --audio
+muser play samples/arrange/night-drive.muser.json
+```
+
+## audio
+
+音频音轨（`"instrument": "audio"`，见 [skills/audio.md](../skills/audio.md)）：`voice/` 里是 AWS Polly（Stephen，generative）合成的几句英文，
+放在一条音频轨的 10 个 clip 上。每个 clip 的 `offset` 裁掉文件开头的静音（0.1–0.15 秒），让第一个辅音正好落在拍上（实测都在拍后 4–12 ms）。
+
+| 工程 | 内容 |
+|---|---|
+| `spoken-groove` | 90 BPM boom bap，10 小节：第 1 小节 rim 点拍 + 人声数 "One. Two. Three. Four!"，之后 `drummer` 鼓、ABC 贝斯与电钢，每两小节一句 "Write it in JSON." / "Play it like a human." / "Mix it with your agent."，军鼓上的 "Hey!"，最后 "This is muser." 落在收尾的镲上。人声轨 highpass + 压缩、送混响总线，与其它轨按 `mix-report` 平衡。**单句效果**：要单独处理的句子放在各自的音频轨上——"Hey!" 附点八分回声（`voice-echo`）、"Play it like a human." 镶边机器人声（`voice-robot`）、"Mix it with your agent." 收音机音色（`voice-radio`，highpass + lowpass + 1.6 kHz 提升）；最后一句用发送量自动化在句尾把混响甩大 |
+
+```bash
+muser audio samples/audio/voice/write.mp3 --tempo 90   # 看文件多长（秒、拍）
+muser play samples/audio/spoken-groove.muser.json
+```
 
 ## sketches
 

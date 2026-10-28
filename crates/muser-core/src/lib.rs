@@ -13,6 +13,9 @@
 use serde::{Deserialize, Serialize};
 
 pub mod abc;
+pub mod arrange;
+pub mod chord;
+pub mod audio;
 pub mod automation;
 pub mod effect;
 pub mod grid;
@@ -57,6 +60,15 @@ pub struct Project {
     /// 所有音轨。
     #[serde(default)]
     pub tracks: Vec<Track>,
+    /// 段落定义：名字 → 小节数与和弦进行。见 [`arrange`]。
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub sections: std::collections::BTreeMap<String, arrange::Section>,
+    /// 曲式：段落按顺序演奏（从工程开头起），各音轨在每段里演奏自己的 `parts`。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub form: Vec<arrange::FormEntry>,
+    /// 工程文件所在目录（不写进 JSON）：音频片段的相对路径相对它。读工程文件时由调用方设置。
+    #[serde(skip)]
+    pub base_dir: Option<std::path::PathBuf>,
 }
 
 fn default_schema_version() -> u32 {
@@ -77,16 +89,35 @@ impl Project {
             seed: 0,
             buses: Vec::new(),
             tracks: Vec::new(),
+            sections: Default::default(),
+            form: Vec::new(),
+            base_dir: None,
         }
     }
 
-    /// 工程的总时长（beats）：所有 clip 结束位置的最大值。
+    /// 工程的总时长（beats）：所有 clip 结束位置与曲式长度的最大值。
     pub fn duration_beats(&self) -> Beats {
         self.tracks
             .iter()
             .flat_map(|t| t.clips.iter())
             .map(|c| c.start + c.length)
-            .fold(Beats(0.0), |acc, b| if b.0 > acc.0 { b } else { acc })
+            .fold(Beats(self.form_beats()), |acc, b| if b.0 > acc.0 { b } else { acc })
+    }
+
+    /// 一小节多少拍（四分音符为一拍）。
+    pub fn bar_beats(&self) -> f64 {
+        f64::from(self.time_signature.numerator) * 4.0 / f64::from(self.time_signature.denominator)
+    }
+
+    /// 曲式的总长（拍）。段落名不存在时不计（校验会报错）。
+    pub fn form_beats(&self) -> f64 {
+        self.form.iter().filter_map(|e| self.sections.get(e.section())).map(|s| f64::from(s.bars) * self.bar_beats()).sum()
+    }
+
+    /// 记下工程文件的位置（音频片段的相对路径相对它所在目录）。
+    pub fn at_file(mut self, file: impl AsRef<std::path::Path>) -> Self {
+        self.base_dir = file.as_ref().parent().map(std::path::Path::to_path_buf);
+        self
     }
 
     /// 从 JSON 字符串解析工程。
@@ -108,6 +139,7 @@ impl Project {
             )));
         }
         routing::plan(self).map_err(CoreError::Invalid)?;
+        self.validate_arrangement().map_err(CoreError::Invalid)?;
         for (i, a) in self.automation.iter().enumerate() {
             check_automation(a, Layer::Master, self.master_effects.len(), &[], &format!("automation[{i}]"))?;
         }
@@ -143,9 +175,27 @@ impl Project {
             if let Some(h) = &track.humanize {
                 h.validate(&format!("tracks[{ti}].humanize")).map_err(CoreError::Invalid)?;
             }
+            let audio_track = track.instrument.trim() == audio::INSTRUMENT;
             for (ci, clip) in track.clips.iter().enumerate() {
+                let at = format!("tracks[{ti}].clips[{ci}]");
+                match (&clip.audio, audio_track) {
+                    (Some(a), true) => {
+                        a.validate(&format!("{at}.audio")).map_err(CoreError::Invalid)?;
+                        if !clip.notes.is_empty() || clip.abc.is_some() || clip.grid.is_some() || clip.drummer.is_some() || !clip.pedal.is_empty() {
+                            return Err(CoreError::Invalid(format!("{at}: 音频片段不能再写音符（notes / abc / grid / drummer / pedal）")));
+                        }
+                    }
+                    (Some(_), false) => {
+                        return Err(CoreError::Invalid(format!("{at}.audio: 音频片段要放在 \"instrument\": \"audio\" 的音轨上")));
+                    }
+                    (None, true) => return Err(CoreError::Invalid(format!("{at}: audio 音轨的 clip 要写 audio（音频文件）"))),
+                    (None, false) => {}
+                }
                 if let Some(h) = &clip.humanize {
                     h.validate(&format!("tracks[{ti}].clips[{ci}].humanize")).map_err(CoreError::Invalid)?;
+                }
+                for (i, t) in clip.transform.iter().enumerate() {
+                    t.validate(&format!("tracks[{ti}].clips[{ci}].transform[{i}]")).map_err(CoreError::Invalid)?;
                 }
                 if let Some(d) = &clip.drummer {
                     d.validate(&format!("tracks[{ti}].clips[{ci}].drummer")).map_err(CoreError::Invalid)?;
@@ -195,6 +245,60 @@ impl Project {
         Ok(())
     }
 }
+
+impl Project {
+    /// 段落、曲式、parts 的写法。
+    fn validate_arrangement(&self) -> Result<(), String> {
+        for (name, sec) in &self.sections {
+            if sec.bars == 0 || sec.bars > 1024 {
+                return Err(format!("sections.{name}.bars = {} 应在 1–1024", sec.bars));
+            }
+            if name.contains('#') || name == "*" {
+                return Err(format!("sections.{name}: 段落名不能含 # 或是 *"));
+            }
+            if let Some(c) = &sec.chords {
+                chord::progression(c, sec.bars, self.bar_beats()).map_err(|e| format!("sections.{name}.chords: {e}"))?;
+            }
+        }
+        for (i, e) in self.form.iter().enumerate() {
+            if !self.sections.contains_key(e.section()) {
+                let names: Vec<&str> = self.sections.keys().map(String::as_str).collect();
+                return Err(format!("form[{i}]: 没有段落 '{}'（sections 里有: {}）", e.section(), names.join(", ")));
+            }
+            if let FormEntry::Detail(d) = e {
+                for m in &d.mute {
+                    if !self.tracks.iter().any(|t| &t.name == m) {
+                        return Err(format!("form[{i}].mute: 没有叫 '{m}' 的音轨"));
+                    }
+                }
+            }
+        }
+        for (ti, t) in self.tracks.iter().enumerate() {
+            if t.parts.is_empty() {
+                continue;
+            }
+            if self.form.is_empty() {
+                return Err(format!("tracks[{ti}].parts: 要先写 form（段落顺序）与 sections"));
+            }
+            if t.instrument.trim() == audio::INSTRUMENT {
+                return Err(format!("tracks[{ti}].parts: audio 音轨用 clips 放音频，不用 parts"));
+            }
+            for (key, part) in &t.parts {
+                let (name, k) = arrange::part_key(key);
+                if name != "*" && !self.sections.contains_key(name) {
+                    return Err(format!("tracks[{ti}].parts.{key}: 没有段落 '{name}'"));
+                }
+                if k == Some(0) {
+                    return Err(format!("tracks[{ti}].parts.{key}: 第几次从 1 起"));
+                }
+                part.validate(&format!("tracks[{ti}].parts.{key}"), false)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+use arrange::FormEntry;
 
 /// 自动化写在哪一层。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,6 +393,9 @@ pub struct Track {
     /// 该音轨上的所有 clip。
     #[serde(default)]
     pub clips: Vec<Clip>,
+    /// 在各段落里演奏什么：段落名（`"verse"`、`"verse#2"`、`"*"`）→ 内容。见 [`arrange`]。
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub parts: std::collections::BTreeMap<String, arrange::Part>,
 }
 
 impl Track {
@@ -306,6 +413,7 @@ impl Track {
             automation: Vec::new(),
             humanize: None,
             clips: Vec::new(),
+            parts: Default::default(),
         }
     }
 }
@@ -348,6 +456,12 @@ pub struct Clip {
     /// 来源标注（如 `loop:house_basic`），只作记录，渲染不看。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+    /// 音频文件（只在 `"instrument": "audio"` 的音轨上）。见 [`audio`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<audio::AudioClip>,
+    /// 变换（移调、逆行、错位、随机变奏…），施加在这个 clip 展开后的音符上。见 [`arrange::Transform`]。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transform: Vec<arrange::Transform>,
 }
 
 impl Clip {
@@ -362,6 +476,8 @@ impl Clip {
             grid: None,
             drummer: None,
             from: None,
+            audio: None,
+            transform: Vec::new(),
             notes: Vec::new(),
         }
     }

@@ -66,7 +66,7 @@ pub enum EngineError {
 
 /// 时间线上一个样本精确的演奏动作。
 #[derive(Debug, Clone, Copy)]
-enum Act {
+pub(crate) enum Act {
     On { key: u8, velocity: f32, accent: bool },
     Off { key: u8 },
     Pedal { down: bool },
@@ -169,6 +169,16 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
         (frame, order)
     });
     acts
+}
+
+/// 一条音轨的演奏动作，以 MIDI tick（每四分音符 `tpq` 个）计时。与渲染用的完全相同
+/// （humanize、连奏、clip 裁剪、踏板），只是把"每秒多少帧"换成"每秒多少 tick"。
+pub(crate) fn schedule_ticks(project: &Project, ti: usize, tpq: u16) -> Vec<(usize, Act)> {
+    // 渲染按帧截断取整；拍 → 秒 → tick 的浮点误差可能让整拍落成 479.9999 → 479，放大一点点避免少一 tick。
+    let sr = f64::from(tpq) * project.tempo / 60.0 * (1.0 + 1e-9);
+    let settings = RenderSettings::default();
+    let spec = ProcessSpec { sample_rate: sr, max_block_size: settings.block_size, num_channels: 2 };
+    schedule(project, ti, &Ctx { tempo: project.tempo, sr, settings, total_frames: 0, spec })
 }
 
 /// 从 `start` 帧开始演奏时的动作：之前的都去掉，那时还按着的音与踏板在 `start` 补发。
@@ -525,8 +535,15 @@ fn instrument_key(project: &Project, ti: usize, cx: &Ctx) -> u64 {
         .and_then(|v| v.as_str())
         .and_then(|p| std::fs::metadata(&*crate::plugin::expand_home(p)).and_then(|m| m.modified()).ok())
         .map(|m| format!("{m:?}"));
+    // 音频文件可能被替换：计入修改时间。
+    let audio_mtimes: Vec<String> = t
+        .clips
+        .iter()
+        .filter_map(|c| c.audio.as_ref())
+        .map(|a| format!("{:?}", std::fs::metadata(crate::audio::resolve(project, &a.file)).and_then(|m| m.modified()).ok()))
+        .collect();
     let ts = project.time_signature;
-    let key = serde_json::json!({
+    let key = serde_json::json!({ "am": audio_mtimes,
         "i": t.instrument, "p": t.instrument_params, "c": t.clips, "h": t.humanize, "a": autos.iter().map(|(i, a)| serde_json::json!([i, a])).collect::<Vec<_>>(),
         "ti": ti, "seed": project.seed, "tempo": project.tempo, "ts": [ts.numerator, ts.denominator],
         "sr": cx.settings.sample_rate, "bs": cx.settings.block_size, "n": cx.total_frames, "st": state_mtime,
@@ -775,6 +792,9 @@ impl Renderer {
         meters: bool,
         start: usize,
     ) -> Result<Self, EngineError> {
+        // 编曲层（form / parts）展开成普通 clip，之后只看展开后的工程。
+        let arranged = crate::arrange::arranged(project).map_err(invalid)?;
+        let project = &*arranged;
         let ts = project.time_signature;
         let _transport = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
         let cx = Ctx::new(project, settings);
@@ -823,6 +843,11 @@ impl Renderer {
                     let cached = cache.and_then(|c| c.map.get(&cache_key.unwrap()));
                     Some(match cached {
                         Some(c) => Source::Cached(c.clone()),
+                        // 音频音轨：整轨干声一次铺好（同一工程再次渲染时取自缓存，不再解码）。
+                        None if project.tracks[i].instrument.trim() == muser_core::audio::INSTRUMENT => {
+                            let audio = crate::audio::track_buffer(project, i, settings.sample_rate, cx.total_frames).map_err(invalid)?;
+                            Source::Cached(Arc::new(Cached::new(audio)))
+                        }
                         None if project.tracks[i].instrument.trim().starts_with("plugin:") => {
                             Source::Live(Box::new(LiveInstrument::new(project, i, &cx, beats, start)?))
                         }
@@ -1143,6 +1168,9 @@ impl Renderer {
             return;
         }
         for s in &mut self.strips {
+            if let (Some(key), Some(Source::Cached(c))) = (s.cache_key, &s.source) {
+                cache.map.insert(key, c.clone());
+            }
             if let (Some(key), Some(rec)) = (s.cache_key, s.record.take()) {
                 let mut full = AudioBuffer::<f32>::new(2, rec[0].len());
                 for (c, r) in rec.iter().enumerate() {

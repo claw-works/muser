@@ -3,12 +3,17 @@
 //! 把 [`muser_core::Project`] 编译成 manguebyte 的乐器/合成器并离线渲染为音频/WAV。
 //! 这是「领域模型 → 声音」的翻译层，是三层架构的中间层。
 
+pub mod abc_export;
+pub mod analyze;
+pub mod arrange;
+pub mod audio;
 pub mod audition;
 pub mod automate;
 pub mod drummer;
 pub mod effects;
 pub mod instrument;
 pub mod loop_library;
+pub mod midi;
 pub mod mix;
 pub mod params;
 pub mod poly_patch;
@@ -65,21 +70,49 @@ pub use render::{render, render_cached, render_loudness, render_metered, Level, 
 /// 一个 clip 的全部音符（相对 clip 起点）：`notes` 加上 `abc`、`grid`、`drummer` 展开的音符。
 /// `drummer` 没写种子时由工程 seed 与音轨、clip 位置推导。
 pub fn clip_notes(project: &muser_core::Project, ti: usize, ci: usize) -> Result<Vec<muser_core::Note>, String> {
-    let clip = &project.tracks[ti].clips[ci];
+    let track = &project.tracks[ti];
+    let clip = &track.clips[ci];
     let mut notes = clip.all_notes()?.into_owned();
     if let Some(d) = &clip.drummer {
         let seed = d.seed.unwrap_or_else(|| muser_core::automation::derive_seed(project.seed, Some(ti), 0x4452_0000 + ci));
         notes.extend(drummer::expand(d, clip.length.0, seed)?);
     }
+    if !clip.transform.is_empty() {
+        let seed = muser_core::automation::derive_seed(project.seed, Some(ti), 0x5452_0000 + ci);
+        let drums = track.instrument.trim().starts_with("drums.");
+        arrange::apply(&clip.transform, &mut notes, &mut clip.length.0.clone(), 0, &[], drums, seed);
+    }
     Ok(notes)
 }
 
-pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
+/// 只校验谱面（工程结构、音符写法、鼓手展开），不加载乐器、插件、音频文件。导出 MIDI / ABC 用：
+/// 本机没有装工程用到的 SFZ 音色库或插件时也能导出。
+pub fn validate_score(project: &muser_core::Project) -> Result<(), EngineError> {
     project.validate()?;
+    // 编曲层能展开（和弦、chordal、鼓手都写对了）。
+    let project = &*arrange::arranged(project).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(e)))?;
     for (ti, track) in project.tracks.iter().enumerate() {
         for (ci, clip) in track.clips.iter().enumerate() {
             if clip.drummer.is_some() {
                 clip_notes(project, ti, ci).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(format!("tracks[{ti}].clips[{ci}].{e}"))))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
+    validate_score(project)?;
+    for (ti, track) in project.tracks.iter().enumerate() {
+        for (ci, clip) in track.clips.iter().enumerate() {
+            if let Some(a) = &clip.audio {
+                let path = audio::resolve(project, &a.file);
+                if !path.is_file() {
+                    return Err(EngineError::Core(muser_core::CoreError::Invalid(format!(
+                        "tracks[{ti}].clips[{ci}].audio: 找不到音频文件 '{}'（相对路径相对工程文件所在目录）",
+                        path.display()
+                    ))));
+                }
             }
         }
     }

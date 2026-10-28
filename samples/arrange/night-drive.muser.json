@@ -1,0 +1,46 @@
+{
+  "name": "night-drive",
+  "tempo": 100,
+  "seed": 4,
+  "sections": {
+    "intro":  { "bars": 4, "chords": "Am7 Fmaj7" },
+    "verse":  { "bars": 8, "chords": "Am7 Fmaj7 C G" },
+    "pre":    { "bars": 4, "chords": "Dm7 Em7 | Fmaj7 G" },
+    "chorus": { "bars": 8, "chords": "F G Em Am" },
+    "outro":  { "bars": 4, "chords": "Am7 F" }
+  },
+  "form": ["intro", "verse", "pre", "chorus", { "section": "verse", "seed": 7 }, "pre", "chorus",
+           { "section": "chorus", "transpose": 2, "seed": 3 }, "outro"],
+  "buses": [{ "name": "verb", "effects": [{ "type": "eq", "shape": "highpass", "frequency": 300 }, { "type": "reverb", "mix": 1.0, "decay_seconds": 2.4 }] }],
+  "master_effects": [{ "type": "compressor", "threshold_db": -16, "ratio": 2 }, { "type": "limiter", "ceiling_db": -1 }],
+  "tracks": [
+    { "name": "drums", "instrument": "drums.acoustic", "gain_db": 4, "parts": {
+        "intro":  { "grid": { "hat": "x.o.x.o.x.o.x.o." } },
+        "verse":  { "drummer": { "loop": "rock_basic", "complexity": 0.3, "intensity": 0.45 } },
+        "pre":    { "drummer": { "loop": "rock_basic", "complexity": 0.5, "intensity": 0.6 } },
+        "chorus": { "drummer": { "loop": "rock_basic", "complexity": 0.6, "intensity": 0.8 } },
+        "outro":  { "grid": { "kick": "x...............", "crash": "x..............." }, "length": 16 } } },
+    { "name": "bass", "instrument": "bass.finger", "gain_db": -2, "humanize": { "timing_ms": 5, "velocity": 0.06 }, "parts": {
+        "verse":  { "chordal": "1 . . 1 . 5 8 .", "octave": 2 },
+        "pre":    { "chordal": "1 1 1 1 1 1 1 1", "octave": 2, "end": { "beats": 2, "chordal": "5 4 3 2", "octave": 2 } },
+        "chorus": { "chordal": "1 . 1 5 8 . 5 3", "octave": 2, "transform": [{ "every": 4, "then": [{ "vary": 0.25 }] }] },
+        "outro":  { "chordal": "1 - - - - - - -", "octave": 2 } } },
+    { "name": "keys", "instrument": "poly.juno_keys", "gain_db": -8, "sends": { "verb": -12 },
+      "humanize": { "timing_ms": 7, "velocity": 0.08 }, "parts": {
+        "intro":  { "chordal": "c - - - - - - -", "octave": 4 },
+        "verse":  { "chordal": "c . . c . c . .", "octave": 4 },
+        "pre":    { "chordal": "c . c . c . c c", "octave": 4 },
+        "chorus": { "chordal": "c . c . c . c .", "octave": 3 },
+        "outro":  { "chordal": "c - - - - - - -", "octave": 3, "velocity": 0.5 } } },
+    { "name": "pad", "instrument": "poly.warm_analog_pad", "gain_db": -12, "sends": { "verb": -8 }, "parts": {
+        "outro":  { "chordal": "c - - -", "step": 1, "octave": 5 } } },
+    { "name": "arp", "instrument": "poly.bell_pluck", "gain_db": -13, "pan": 0.3, "sends": { "verb": -6 }, "parts": {
+        "chorus": { "chordal": "1 5 8 3' 5' 3' 8 5", "step": 0.25, "octave": 4,
+                    "transform": [{ "every": 2, "then": [{ "reverse": true }] }, { "vary": 0.15 }] } } },
+    { "name": "lead", "instrument": "wind.flute", "gain_db": 8, "sends": { "verb": -10 },
+      "humanize": { "timing_ms": 8, "drift": 0.5, "velocity": 0.07 }, "parts": {
+        "pre":    { "abc": "L:1/8\nK:Am\nd2e2g2e2 |", "length": 4, "transform": [{ "sequence": [0, 1, 2, 4] }] },
+        "verse":  { "legato": true, "abc": "L:1/8\nK:Am\nE2A2c2B2 | A4z2G2 | E2G2c2d2 | B6z2 | c2B2A2G2 | A3G F2E2 | G2E2C2D2 | E8 |" },
+        "chorus": { "legato": true, "abc": "L:1/8\nK:Am\nc4A2c2 | d4B2G2 | e4d2B2 | c6B2 | c4A2F2 | G4B2d2 | e2d2B2G2 | A8 |" } } }
+  ]
+}

@@ -18,6 +18,7 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 
 - 多轨编曲：鼓组 + 合成器 + 贝斯，多 clip、多音符
 - 115 个内置音源：10 套鼓组、68 个合成器预设，以及吉他、贝斯、风琴、马林巴等打击旋律乐器、弦乐、管乐、合唱（全部由 manguebyte 实时合成，不依赖系统 MIDI 音源），每个都可用 `instrument_params` 调音色
+- **音频音轨**：录音、采样、loop、音效直接放在音轨上（`"instrument": "audio"`）——WAV、AIFF、FLAC、Ogg Vorbis、Opus、MP3（macOS / Windows 上还有 AAC、ALAC），和其它音轨一样走效果器、总线、发送、侧链
 - 内置 SFZ 采样器：`sfz:/path/to.sfz`（或相对 `MUSER_SFZ_PATH` 音色库目录的路径）直接加载 SFZ 音色库
 - 效果器链（reverb / delay / compressor / chorus / eq / limiter / phaser / flanger），挂在轨级、总线或主总线
 - 混音路由：总线编组、发送到共用混响/延迟、总线套总线、压缩器侧链（底鼓压贝斯的泵感），自动延迟补偿
@@ -29,11 +30,15 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 - 内置开源插件的画像与英文 skill：Surge XT / Surge XT Effects、Vital（波表合成器，可设波表与调制矩阵）、
   Airwindows Consolidated（约 470 个效果，按名称选择）、Plasma（失真）——装好插件即可按名称、别名、预设使用
 - 流式渲染引擎：逐块走完整张路由图，离线渲染为 WAV 与边渲染边播放共用同一份代码、结果逐样本一致（各音轨乐器并行演奏）
-- `muser view` 播放页：边渲染边播（开头一小段好了就能听），调音量/静音/独奏后从当前位置无缝换上新版本，可保存回工程；
+- `muser view` 播放页：边渲染边播（开头一小段好了就能听），调音量/静音/独奏后从当前位置无缝换上新版本，可保存回工程，当前混音可下载为 WAV、MIDI 或 ABC；
   加 `--device` 直接用本机声卡出声，调音量/静音/独奏即时生效（远程经 SSH 端口转发时用默认的浏览器播放）
 - `muser poly edit` 音色编辑器：在本地网页里设计 poly 合成器音色（振荡器、滤波器、包络、LFO、调制矩阵），改完即时试听，存进本机音色库；agent 用 `muser poly show <名字>` 把音色写进工程
 - 给 agent 的简写音符：**ABC 记谱**写旋律（`"abc"`）、步进节奏（`"grid"`）、17 种常见律动的 **loop 库**（`muser loop`）、每小节有变化会打过门的**生成式鼓手**——几行 JSON 代替一长串音符
 - **人性化演奏（humanize）**：时间漂移、力度与时值变化、swing、整体提前/拖后，可写在音轨或 clip 上；种子留住喜欢的一遍，换种子再弹一遍
+- **给 agent 的编曲层**：`sections` 定义段落（小节数 + 和弦进行），`form` 按名字排曲式（每一遍可移调 / 静音 / 换种子），各轨用 `parts` 写每个段落演奏什么；`chordal` 音型（`"1 . 5 . 8 . 5 3"`、`"c - - -"`）跟着和弦走、自动声部进行，`end` 换上过门，`transform` 做移调 / 逆行 / 倒影 / 伸缩 / 错位 / 每 N 遍 / 带种子的随机变奏。一首完整的歌约 40 行
+- **`muser analyze`**：给听不到声音的 agent 的听感报告——按段落的密度、音区、和声节奏、重复度、避免音与小二度冲突，可选响度与明暗，加上能量曲线与"AI 味"检查（能量只升不降、编制不变、一个和弦循环、过门每 4 小节一次、全部对齐网格、副歌每遍一样），最后用一句句话给建议（"副歌没有起来""两条轨互相掩蔽"）
+- **MIDI 导出**：`muser midi song.muser.json` 写出标准 MIDI 文件（每条乐器音轨一条 MIDI 轨，鼓组在通道 10），音符与 muser 演奏的完全一致——含 humanize、连奏、ABC / grid / 鼓手展开，延音踏板为 CC64——可在 DAW 或分析工具里打开
+- **ABC 导出**：`muser abc song.muser.json` 把乐谱写成标准的多声部 ABC 2.1，给能读 ABC 的模型与记谱软件；`--yue2` 写成 [YuE2](https://github.com/multimodal-art-projection/YuE) 的原生谱面（Vocal / Ins 旋律加和弦记号），给它的 `full` / `melody` 模式。调号取 clip 里 ABC 写的或由音高估计，和弦记号由伴奏估计
 - `muser play`：用声卡把工程放一遍就退出，配合"先听后写"的草稿流程
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 
@@ -161,6 +166,17 @@ muser view song.muser.json --open --device
 # 快速试听：用声卡放一遍就退出（--seed N 让 humanize / 鼓手换一遍）
 muser play song.muser.json
 
+# 听感报告：密度、音区、和弦、重复、冲突与建议（--audio 加响度与明暗）
+muser analyze song.muser.json --audio
+
+# 音频文件：格式与时长（按速度换算成拍），写音频 clip 用
+muser audio vocal.wav --tempo 92
+
+# 导出：MIDI 给 DAW，ABC 给模型与记谱软件（--yue2 是 YuE2 的谱面格式）
+muser midi song.muser.json -o song.mid
+muser abc song.muser.json -o song.abc
+muser abc song.muser.json --yue2 --vocal lead --sections verse:8,chorus:8 -o score.abc
+
 # 律动库：列出、试听、取出写进工程的 clip
 muser loop list --style dnb
 muser loop play dnb_two_step
@@ -176,7 +192,7 @@ muser poly show my_reese          # 写进音轨的 JSON，完整音色内嵌
 ### 以 MCP server 运行（给 agent 用）
 
 ```bash
-muser-mcp          # stdio MCP server，暴露 35 个 tools
+muser-mcp          # stdio MCP server，暴露 38 个 tools
 ```
 
 在 MCP 客户端（如 Claude Desktop）中把该可执行文件注册为一个 stdio server，
@@ -244,11 +260,30 @@ SFZ 的控制器与奏法用 `instrument_params` 的 `cc` / `keyswitch` 设置�
 { "instrument": "poly.wurly", "humanize": { "timing_ms": 8, "drift": 0.6, "velocity": 0.07 },
   "clips": [{ "start": 0, "length": 8, "abc": "L:1/8\nK:Am\nA2 cB e2 dc | B4 z4 |" }] },
 { "instrument": "drums.lofi",
-  "clips": [{ "start": 0, "length": 16, "drummer": { "loop": "lofi", "complexity": 0.5, "fill_every": 4 } },
+  "clips": [{ "start": 0, "length": 16, "drummer": { "loop": "lofi", "complexity": 0.5 } },
             { "start": 16, "length": 4, "grid": { "kick": "x.....x...x.....", "snare": "....x.......x...", "hat": "x.o.x.o.x.o.x.oo" } }] }
 ```
 
 `abc` 是 ABC 记谱、`grid` 是步进节奏、`drummer` 是以 loop 为底的生成式鼓手，写法见 [skills/notation.md](skills/notation.md)、[skills/humanize.md](skills/humanize.md)。
+
+音频文件放在 `audio` 音轨上：`file` 相对工程文件所在目录，`offset` 与淡入淡出单位是秒，按原速播放（不拉伸）。`muser audio vocal.wav --tempo 92` 给出它有多少拍：
+
+```json
+{ "name": "vocal", "instrument": "audio", "clips": [{ "start": 8, "length": 16, "audio": { "file": "vocal.wav", "offset": 1.5, "fade_out": 0.5 } }] }
+```
+
+见 [skills/audio.md](skills/audio.md)。
+
+写整首用编曲层更省事——段落、曲式、和弦、跟着和弦走的声部：
+
+```json
+"sections": { "verse": { "bars": 8, "chords": "Am7 Fmaj7 C G" }, "chorus": { "bars": 8, "chords": "F G | Em Am" } },
+"form": ["verse", "chorus", "verse", { "section": "chorus", "transpose": 2 }],
+"tracks": [{ "name": "bass", "instrument": "bass.finger", "parts": {
+    "verse": { "chordal": "1 . . 1 . 5 8 .", "octave": 2 }, "chorus": { "chordal": "1 1 5 5 8 8 5 5", "octave": 2 } } }]
+```
+
+见 [skills/arrange.md](skills/arrange.md) 与 [samples/arrange/night-drive](samples/arrange/night-drive.muser.json)。
 
 ## 构建特性
 

@@ -49,6 +49,63 @@ enum Command {
         #[arg(long)]
         seed: Option<u64>,
     },
+    /// 导出标准 MIDI 文件（每条乐器音轨一条 MIDI 轨；音符含 humanize、连奏、鼓手展开，踏板为 CC64）。
+    Midi {
+        /// 工程文件路径。
+        project: String,
+        /// 输出 .mid 路径；缺省为工程同名的 .mid。
+        #[arg(short, long)]
+        output: Option<String>,
+        /// 临时换工程的随机种子（不改文件）：humanize 与鼓手换一遍。
+        #[arg(long)]
+        seed: Option<u64>,
+    },
+    /// 导出 ABC 记谱（给能读 ABC 的模型、记谱软件）：标准 ABC 2.1 多声部，或 --yue2 的 YuE2 原生写法。
+    Abc {
+        /// 工程文件路径。
+        project: String,
+        /// 输出 .abc 路径；缺省打印到 stdout。
+        #[arg(short, long)]
+        output: Option<String>,
+        /// YuE2 原生写法：Vocal / Ins 两个单音声部，和弦记号写在 Vocal（给 cot=full；加 --no-chords 给 cot=melody）。
+        #[arg(long)]
+        yue2: bool,
+        /// 写和弦记号（按伴奏音分析；标准写法默认不写，YuE2 默认写）。
+        #[arg(long, conflicts_with = "no_chords")]
+        chords: bool,
+        /// 不写和弦记号。
+        #[arg(long)]
+        no_chords: bool,
+        /// 标准写法：只导出这条音轨（可重复）；缺省全部乐器音轨。
+        #[arg(long = "track")]
+        tracks: Vec<String>,
+        /// YuE2：唱旋律的音轨，旋律在几件乐器间传递时用逗号写几条（每个时刻取最高的音）。
+        /// 缺省按名字（vocal / lead / melody…），否则取偏高音区里发声最久的。
+        #[arg(long, value_delimiter = ',')]
+        vocal: Vec<String>,
+        /// YuE2：器乐旋律声部的音轨（可用逗号写几条；缺省全休止）。
+        #[arg(long, value_delimiter = ',')]
+        ins: Vec<String>,
+        /// 段落，写成 % 注释：如 intro:4,verse:8,chorus:8（小节数）。
+        #[arg(long)]
+        sections: Option<String>,
+        /// 调号（如 G、F#m）；缺省用 clip 里 ABC 的 K:，否则由音高估计。
+        #[arg(long)]
+        key: Option<String>,
+        /// YuE2：Vocal 声部整体移几个八度（如 1：写到小写音名区）。
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        vocal_octave: i32,
+    },
+    /// 听感报告：按段落给出密度、音区、和弦、重复度、冲突与建议；--audio 再渲染一遍给响度与频段占比。
+    Analyze {
+        /// 工程文件路径。
+        project: String,
+        /// 渲染一遍，加上每段的响度、频谱重心与低 / 中 / 高频占比（慢一些）。
+        #[arg(long)]
+        audio: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// 校验工程 JSON 是否合法。
     Validate {
         /// 工程文件路径。
@@ -178,6 +235,16 @@ enum Command {
         #[arg(long, default_value_t = 2.0)]
         tail: f64,
         /// 以 JSON 输出（便于 AI 解析）。
+        #[arg(long)]
+        json: bool,
+    },
+    /// 看一个音频文件：格式、时长、采样率、声道；给了 --tempo 时换算成拍（写音频 clip 的 length 用）。
+    Audio {
+        /// 音频文件（WAV、AIFF、FLAC、Ogg Vorbis、Opus、MP3；macOS / Windows 上还有 AAC、ALAC）。
+        file: String,
+        /// 按这个速度换算时长（拍）。
+        #[arg(long)]
+        tempo: Option<f64>,
         #[arg(long)]
         json: bool,
     },
@@ -324,6 +391,25 @@ fn main() -> Result<()> {
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::Routing { project } => cmd_routing(&project),
+        Command::Analyze { project, audio, json } => cmd_analyze(&project, audio, json),
+        Command::Abc { project, output, yue2, chords, no_chords, tracks, vocal, ins, sections, key, vocal_octave } => {
+            use muser_engine::abc_export::{AbcOptions, Dialect};
+            let mut opts = AbcOptions::new(if yue2 { Dialect::Yue2 } else { Dialect::Standard });
+            opts.chords = (opts.chords || chords) && !no_chords;
+            (opts.tracks, opts.vocal, opts.ins, opts.key, opts.vocal_octave) = (tracks, vocal, ins, key, vocal_octave);
+            if let Some(s) = sections {
+                opts.sections = s
+                    .split(',')
+                    .map(|part| {
+                        let (name, bars) = part.trim().rsplit_once(':').ok_or_else(|| anyhow::anyhow!("--sections 写成 名字:小节数，用逗号分开，如 verse:8,chorus:8"))?;
+                        Ok((name.trim().to_string(), bars.trim().parse::<u32>().with_context(|| format!("'{part}' 的小节数不是整数"))?))
+                    })
+                    .collect::<Result<_>>()?;
+            }
+            cmd_abc(&project, output.as_deref(), &opts)
+        }
+        Command::Midi { project, output, seed } => cmd_midi(&project, output, seed),
+        Command::Audio { file, tempo, json } => cmd_audio(&file, tempo, json),
         Command::MixReport { project, sample_rate, tail, json } => cmd_mix_report(&project, sample_rate, tail, json),
         Command::View { project, port, open, sample_rate, tail, device } => {
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
@@ -345,10 +431,116 @@ fn main() -> Result<()> {
     }
 }
 
+fn cmd_analyze(project_path: &str, audio: bool, json: bool) -> Result<()> {
+    let project = load_project(project_path)?;
+    let r = muser_engine::analyze::analyze(&project, audio, RenderSettings::default())?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&r)?);
+        return Ok(());
+    }
+    println!("{} bpm，{} 小节，调 {}", r.tempo, r.bars, r.key);
+    // 能量曲线：每段一格。
+    const BLOCKS: [char; 11] = [' ', '▁', '▂', '▃', '▃', '▄', '▅', '▆', '▆', '▇', '█'];
+    let curve: String = r.sections.iter().map(|s| BLOCKS[usize::from(s.energy.min(10))]).collect();
+    let labels: Vec<String> = r.sections.iter().map(|s| format!("{}{} {}", s.name, if s.occurrence > 1 { format!("#{}", s.occurrence) } else { String::new() }, s.energy)).collect();
+    println!("能量 |{curve}|  {}", labels.join(" · "));
+    for s in &r.sections {
+        let label = if s.occurrence > 1 { format!("{} #{}", s.name, s.occurrence) } else { s.name.clone() };
+        println!();
+        print!("[{label}] 第 {}–{} 小节  能量 {}  密度 {} 音/小节  重复 {:.0}%  和弦 {}/小节", s.bar, s.bar + s.bars - 1, s.energy, s.density, s.repeated * 100.0, s.chord_changes_per_bar);
+        match &s.audio {
+            Some(a) => println!("  {:.1} LUFS  重心 {} Hz  低/中/高 {}/{}/{}%", a.lufs, a.centroid_hz, a.low_pct, a.mid_pct, a.high_pct),
+            None => println!(),
+        }
+        let mut chords = s.chords.clone();
+        chords.dedup();
+        if !chords.is_empty() {
+            println!("  和弦: {}", chords.join(" "));
+        }
+        for t in &s.tracks {
+            println!("  {:<14} {:>5} 音/小节  发声 {:>3.0}%  {}", t.name, t.onsets_per_bar, t.sounding * 100.0, t.range.as_deref().unwrap_or(""));
+        }
+        for c in &s.clashes {
+            println!("  ! 第 {} 小节第 {} 拍：{}", c.bar, c.beat, c.what);
+        }
+    }
+    if !r.tells.is_empty() {
+        println!();
+        let hits = r.tells.iter().filter(|t| t.hit).count();
+        println!("AI 味检查（{hits} / {} 条命中）:", r.tells.len());
+        for t in &r.tells {
+            println!("  {} #{:<2} {}{}", if t.hit { "✗" } else { "✓" }, t.id, t.name, if t.hit { String::new() } else { format!("：{}", t.detail) });
+        }
+    }
+    println!();
+    println!("建议:");
+    for f in &r.findings {
+        println!("  - {f}");
+    }
+    Ok(())
+}
+
+fn cmd_abc(project_path: &str, output: Option<&str>, opts: &muser_engine::abc_export::AbcOptions) -> Result<()> {
+    let project = load_project(project_path)?;
+    let out = muser_engine::abc_export::export(&project, opts)?;
+    match output {
+        Some(path) => {
+            fs::write(path, &out.text).with_context(|| format!("写出 ABC 失败: {path}"))?;
+            println!("已导出 '{}' → {path}", project.name);
+            for n in &out.notes {
+                println!("  {n}");
+            }
+        }
+        None => {
+            print!("{}", out.text);
+            for n in &out.notes {
+                eprintln!("{n}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_midi(project_path: &str, output: Option<String>, seed: Option<u64>) -> Result<()> {
+    let mut project = load_project(project_path)?;
+    if let Some(s) = seed {
+        project.seed = s;
+    }
+    let out = output.unwrap_or_else(|| {
+        let stem = project_path.strip_suffix(".json").unwrap_or(project_path);
+        format!("{}.mid", stem.strip_suffix(".muser").unwrap_or(stem))
+    });
+    let m = muser_engine::midi::export(&project)?;
+    fs::write(&out, &m.bytes).with_context(|| format!("写出 MIDI 失败: {out}"))?;
+    let n = project.tracks.len() - m.skipped.len();
+    println!("已导出 '{}' → {out}: {n} 条 MIDI 轨，{} 字节", project.name, m.bytes.len());
+    if !m.skipped.is_empty() {
+        println!("没有导出的 audio 音轨（音频不能放进 MIDI）: {}", m.skipped.join(", "));
+    }
+    Ok(())
+}
+
+fn cmd_audio(file: &str, tempo: Option<f64>, json: bool) -> Result<()> {
+    let path = std::path::PathBuf::from(&*muser_engine::plugin::expand_home(file));
+    let (format, seconds, sample_rate, channels) = muser_engine::audio::info(&path).map_err(|e| anyhow::anyhow!(e))?;
+    let beats = tempo.map(|t| seconds * t / 60.0);
+    if json {
+        let v = serde_json::json!({ "file": file, "format": format, "seconds": seconds, "sample_rate": sample_rate, "channels": channels, "beats": beats });
+        println!("{}", serde_json::to_string_pretty(&v)?);
+    } else {
+        print!("{file}: {format}，{seconds:.3} 秒，{sample_rate} Hz，{channels} 声道");
+        match (beats, tempo) {
+            (Some(b), Some(t)) => println!("，{t} bpm 下 {b:.3} 拍"),
+            _ => println!(),
+        }
+    }
+    Ok(())
+}
+
 fn load_project(path: &str) -> Result<Project> {
     let text = fs::read_to_string(path).with_context(|| format!("读取工程文件失败: {path}"))?;
     let project = Project::from_json(&text).with_context(|| format!("解析工程 JSON 失败: {path}"))?;
-    Ok(project)
+    Ok(project.at_file(path))
 }
 
 fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, seed: Option<u64>) -> Result<()> {

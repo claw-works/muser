@@ -607,6 +607,13 @@ pub fn available() -> Vec<String> {
 /// `plugin:` 只检查语法；`sfz:` 检查文件存在。
 pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentError> {
     let trimmed = name.trim();
+    // 音频音轨：没有乐器，声音来自 clip 上的音频文件（crate::audio）。
+    if trimmed == muser_core::audio::INSTRUMENT {
+        return match params.is_empty() {
+            true => Ok(()),
+            false => Err(InstrumentError::Param { detail: "audio 音轨没有乐器参数（音量用 gain_db 或 clip 的 audio.gain_db）".into() }),
+        };
+    }
     if let Some(rest) = trimmed.strip_prefix("plugin:") {
         if rest.trim().is_empty() {
             return Err(InstrumentError::PluginLoad { path: String::new(), detail: "plugin: 后缺少插件路径".into() });
@@ -631,6 +638,9 @@ pub(crate) fn automation_param(
     param: &str,
 ) -> Result<(params::InstParamSpec, params::Automatable, f64), String> {
     let trimmed = name.trim();
+    if trimmed == muser_core::audio::INSTRUMENT {
+        return Err("audio 音轨没有乐器参数可自动化（音量用 target gain_db）".into());
+    }
     if trimmed.starts_with("sfz:") {
         return Err("sfz 乐器的参数自动化尚未支持".into());
     }

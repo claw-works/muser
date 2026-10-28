@@ -25,8 +25,9 @@
 3. **问具体的问题**，而不是"你觉得怎么样"：快一点还是慢一点？旋律更跳还是更平？鼓更满还是更空？更亮还是更暗？
    要不要换一种乐器？哪个版本最接近？
 4. **按反馈改草稿**，再听；同一个版本"换一遍演奏"：`muser play sketch-a.muser.json --seed 2`。
-5. **满意了再展开**：在定下来的草稿上编配整首（段落、过门、加声部），最后 `mix-report` 平衡音量，
-   `muser view` 交给人微调。
+5. **满意了再展开**：在定下来的草稿上编配整首——用编曲层写（`sections` + `form` + 各轨 `parts`，和弦写在段落上，
+   贝斯、和声、琶音用 `chordal` 跟着和弦走，见 [skills/arrange.md](skills/arrange.md)），不要手算一个个 clip 的起点。
+   写完跑 `muser analyze` 自查（能量曲线有没有起伏、副歌有没有起来、重复、掩蔽、冲突、"AI 味"检查），按建议改；最后 `mix-report` 平衡音量，`muser view` 交给人微调。
 
 用户这样说时进入草稿流程（不要直接改整首）："先听听""来几个版本""随便哼一段""感觉不对""这段再活泼点""换个感觉"。
 
@@ -45,8 +46,12 @@
 | 插件的参数、选项文字 | `muser plugin params <插件> --filter <词>`、`muser plugin values <插件> <参数>` | `list_plugin_params`、`plugin_param_values` |
 | 某个参数到底起什么作用 | `muser audition ... --param <名> --values ...` | `audition` |
 | 各轨音量是否均衡 | `muser mix-report <file>` | `mix_report` |
+| 编曲好不好：密度、音区、和弦、重复、冲突与建议 | `muser analyze <file> [--audio]` | `analyze` |
 | 有哪些现成的鼓型（loop），拿一个放进工程 | `muser loop list [--style S]`、`muser loop show <名字>` | — |
 | 本机音色库里的 poly 音色 | `muser poly list`、`muser poly show <名字>` | — |
+| 音频文件的格式、时长（换算成拍） | `muser audio <文件> [--tempo T]` | — |
+| 把编曲交给 DAW / 分析工具 | `muser midi <工程> [-o x.mid]` | `export_midi` |
+| 把乐谱交给读 ABC 的模型（如 YuE2） | `muser abc <工程> [--yue2 --vocal 旋律轨 --sections verse:8,chorus:8]` | `export_abc` |
 | 让人快速听一下草稿 | `muser play <file> [--seed N]`、`muser loop play <名字>` | — |
 | 插件有没有现成的使用经验（别名、预设） | `muser plugin profile show <插件> --markdown` | `get_profile` / `list_profiles` |
 
@@ -90,6 +95,7 @@
 | 弦乐 | [strings.md](skills/instruments/strings.md) | `strings.violin` `strings.cello` `strings.ensemble` `*_pizz` … |
 | 管乐 | [wind.md](skills/instruments/wind.md) | `wind.flute` `wind.sax` `wind.trumpet` … |
 | 人声 | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
+| 音频文件（录音、采样、loop） | [audio.md](skills/audio.md) | `"instrument": "audio"`，clip 写 `"audio": { "file": "vocal.wav" }` |
 | SFZ 音色库 | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz` 或相对 `MUSER_SFZ_PATH` 的路径（内置采样器，无需插件） |
 | 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 
@@ -126,6 +132,33 @@ clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`
 音轨或 clip 上写 `"humanize": { "timing_ms": 6, "drift": 0.6, "velocity": 0.08, "swing": 58 }`，时间、力度、时值像真人一样有偏移，
 再加 swing、整体提前/拖后。同一种子每次渲染一样；换工程 `seed`（或 `muser render --seed N`）就换一遍。
 - 字段、量化含义与各风格的起点：[skills/humanize.md](skills/humanize.md)。
+
+## 写整首：段落、曲式、和弦（编曲层）
+
+```json
+"sections": { "verse": { "bars": 8, "chords": "Am7 Fmaj7 C G" }, "chorus": { "bars": 8, "chords": "F G | Em Am" } },
+"form": ["verse", "chorus", "verse", { "section": "chorus", "transpose": 2 }],
+"tracks": [{ "name": "bass", "instrument": "bass.finger", "parts": {
+    "verse": { "chordal": "1 . . 1 . 5 8 .", "octave": 2 }, "chorus": { "chordal": "1 1 5 5 8 8 5 5", "octave": 2 } } }]
+```
+
+- `sections` 定义段落（小节数、和弦进行），`form` 按名字排顺序（可带 `transpose` / `mute` / `seed`），
+  每条轨的 `parts` 写它在各段落里演奏什么（`"verse#2"` 只第 2 次、`"*"` 其余段落），`end` 替换段落最后几拍（过门）。
+- `chordal` 按当前和弦取音：`1 3 5 7` 和弦音、`8` 八度、`c` 整个和弦（自动转位）、`B` 低音、`.` 休止、`-` 延长。改和弦只改 `chords`。
+- `transform`：`transpose` `octave` `reverse` `invert` `stretch` `shift` `sequence`（模进）`fragment`（裁截）`every`+`then` `vary`（带种子的随机变奏）。
+- 写完 `muser analyze` 看建议。完整写法：[skills/arrange.md](skills/arrange.md)。
+
+## 直接放音频：audio 音轨
+
+人声、录音、现成的 loop、音效直接放在音轨上：音轨写 `"instrument": "audio"`，clip 写 `audio` 而不是音符。
+
+```json
+{ "name": "vocal", "instrument": "audio", "clips": [{ "start": 8, "length": 16, "audio": { "file": "vocal.wav", "offset": 1.5, "fade_out": 0.5 } }] }
+```
+
+- `file` 相对工程文件所在目录；`offset`、淡入淡出单位是秒；clip 的 `start` / `length` 仍是拍。
+- 按原速播放，不随 tempo 拉伸、不变调。先 `muser audio <文件> --tempo T` 看时长（拍）再写 `length`。
+- 之后效果器、推子、总线、发送、侧链、`mix-report` 照常用。字段与格式：[skills/audio.md](skills/audio.md)。
 
 ## 调音色：instrument_params
 

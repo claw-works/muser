@@ -6,7 +6,7 @@
 //! - 音高：`C` = 中央 C（MIDI 60），`c` 高八度；`'` 升八度、`,` 降八度；`^` 升、`_` 降、`=` 还原（`^^` `__` 重升重降）。
 //!   临时记号在本小节内持续，调号按 `K:` 自动生效。
 //! - 时值：`A2`、`A/2`、`A/`、`A3/2`、`A//`；休止 `z` / `x`，整小节休止 `Z`（`Z4` 四小节）。
-//! - 和弦 `[CEG]2`，连音线 `A2-A`，附点节奏 `A>B` / `A<B`，连音 `(3abc`（`(2`–`(9`）。
+//! - 和弦 `[CEG]2`，连音线 `A2-A`（和弦里单个音 `[C-EG]`），附点节奏 `A>B` / `A<B`，连音 `(3abc`（`(2`–`(9`）。
 //! - 反复 `|: … :|`，一二房 `[1 … :|[2 …`（或 `|1` / `:|2`）。
 //! - 力度 `!ppp!` … `!fff!`（之后的音都用这个力度），重音 `!>!` / `!accent!`，断奏 `.`（时值减半）。
 //! - 和弦标记 `"Am"`、装饰音 `{…}`、其它装饰 `!…!` `+…+`、`~` `H` `L` `M` `O` `P` `S` `T` `u` `v`、注释 `%` 忽略。
@@ -101,7 +101,10 @@ struct Parser<'a> {
 struct Pending {
     pitches: Vec<i32>,
     length: f64,
+    /// 整个音（和弦）连到下一个。
     tie: bool,
+    /// 和弦里单个音的连音线（`[C-EG]` 只连 C），与 `pitches` 一一对应。
+    tied: Vec<bool>,
 }
 
 impl<'a> Parser<'a> {
@@ -183,20 +186,21 @@ impl<'a> Parser<'a> {
                     let mut l = p.length * self.unit;
                     self.scale(&mut l, &mut tuplet, &mut broken);
                     let mut next_tied = Vec::new();
-                    for &spec in &p.pitches {
+                    for (k, &spec) in p.pitches.iter().enumerate() {
+                        let tie = p.tie || p.tied[k];
                         let pitch = self.pitch(spec, &mut accidentals).ok_or_else(|| at("音高超出 MIDI 范围 0–127"))?;
                         // 连音线：前面同音高的音延长，不新起一个。
                         if let Some(pos) = tied.iter().position(|&j| notes[j].pitch == pitch) {
                             let j = tied.remove(pos);
                             notes[j].length = Beats(notes[j].length.0 + l);
-                            if p.tie {
+                            if tie {
                                 next_tied.push(j);
                             }
                             continue;
                         }
                         let length = if staccato { l * 0.5 } else { l };
                         notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent });
-                        if p.tie {
+                        if tie {
                             next_tied.push(notes.len() - 1);
                         }
                     }
@@ -316,6 +320,7 @@ impl<'a> Parser<'a> {
                         let end = text[i..].find(']').ok_or_else(|| at(i, "和弦 [ 没有闭合"))?;
                         let inner = &text[i + 1..i + end];
                         let mut pitches = Vec::new();
+                        let mut tied = Vec::new();
                         let mut j = 0;
                         let ib = inner.as_bytes();
                         let mut inner_len = None;
@@ -328,6 +333,10 @@ impl<'a> Parser<'a> {
                             pitches.push(spec);
                             inner_len.get_or_insert(l);
                             j += n;
+                            tied.push(ib.get(j) == Some(&b'-'));
+                            if tied.last() == Some(&true) {
+                                j += 1;
+                            }
                         }
                         if pitches.is_empty() {
                             return Err(at(i, "空和弦 []"));
@@ -339,7 +348,7 @@ impl<'a> Parser<'a> {
                         if tie {
                             i += 1;
                         }
-                        out.push((line, Tok::Notes(Pending { pitches, length: inner_len.unwrap_or(1.0) * mult, tie })));
+                        out.push((line, Tok::Notes(Pending { pitches, length: inner_len.unwrap_or(1.0) * mult, tie, tied })));
                     }
                     'z' | 'x' => {
                         let (l, n) = length(text, i + 1);
@@ -361,7 +370,7 @@ impl<'a> Parser<'a> {
                         if tie {
                             i += 1;
                         }
-                        out.push((line, Tok::Notes(Pending { pitches: vec![spec], length: l, tie })));
+                        out.push((line, Tok::Notes(Pending { pitches: vec![spec], length: l, tie, tied: vec![false] })));
                     }
                 }
             }
@@ -581,6 +590,10 @@ mod tests {
         assert_eq!((n[0].length.0, n[1].start.0, n[1].length.0), (0.75, 0.75, 0.25));
         let n = parse("L:1/8\nK:C\n(3ABc d").unwrap();
         assert!((n[1].start.0 - 1.0 / 3.0).abs() < 1e-9 && (n[3].start.0 - 1.0).abs() < 1e-9);
+        // 和弦里单个音的连音线：只有 C 连到下一个和弦。
+        let n = parse("L:1/4\nK:C\n[C-EG] [CF]").unwrap();
+        let c: Vec<_> = n.iter().filter(|n| n.pitch == 60).map(|n| n.length.0).collect();
+        assert_eq!((n.len(), c), (4, vec![2.0]));
     }
 
     #[test]

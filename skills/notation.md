@@ -45,7 +45,7 @@ muser loop save song.muser.json --track 0 --clip 2 --name my_break --style dnb  
 ## drummer：会变化、会打过门的鼓手（`"drummer"`）
 
 ```json
-{ "start": 0, "length": 32, "drummer": { "loop": "rock_basic", "complexity": 0.6, "intensity": 0.6, "fill_every": 4 } }
+{ "start": 0, "length": 32, "drummer": { "loop": "rock_basic", "complexity": 0.6, "intensity": 0.6 } }
 ```
 
 | 字段 | 含义 |
@@ -53,14 +53,27 @@ muser loop save song.muser.json --track 0 --clip 2 --name my_break --style dnb  
 | `loop` | 底子（`muser loop list` 里的名字） |
 | `complexity` | 0–1：0 照着 loop 打；越高军鼓鬼音、底鼓切分、踩镲加花越多，过门越长 |
 | `intensity` | 0–1：打多重（0.5 不变） |
-| `fill_every` | 每几小节一个过门（这一组最后一小节末尾），0 不打；默认 4 |
+| `fill_every` | 缺省自动：clip 最后一小节一定打，中间的 4 小节乐句末尾随机打（约三分之一），长 1 或 2 拍不等——不会机械地每 4 小节一次；写 N 则每 N 小节一个，0 不打 |
 | `crash` | 过门后下一小节第一拍加镲，默认 true |
 | `seed` | 不写时由工程 seed 推导；换 seed 换一种打法 |
 
 - 每小节都不完全一样；没写 `humanize` 时用底子 loop 的律动。
 - 需要逐个音精确控制时用 `grid`；要"像个鼓手一样打一段"时用 `drummer`。
 
+## 跟着和弦走：chordal
+
+旋律用 `abc`；贝斯、和弦、琶音这些"跟着和弦走"的声部，在编曲层里用 `chordal`（`"1 . 5 . 8 . 5 3"`、`"c - - -"`），
+和弦写在段落的 `chords` 上，改和弦时一起变。见 [arrange.md](arrange.md)。
+
 ## 混用
 
 同一个 clip 里 `notes`、`abc`、`grid`、`drummer` 可以同时写，音符合在一起：比如 `drummer` 打底，`grid` 再加一行 `shaker`。
 `muser view` 的时间线显示展开后的音符。
+
+## 反过来：导出 ABC / MIDI
+
+- `muser abc <工程>`：整首写成标准多声部 ABC（每条乐器音轨一个声部），给能读 ABC 的模型做分析、续写、改编。
+- `muser abc <工程> --yue2 --vocal <旋律轨> --sections verse:8,chorus:8`：YuE2 的原生谱面（Vocal / Ins + 和弦记号），
+  直接作为它的 `--abc-file`（`--cot full`；加 `--no-chords` 给 `--cot melody`）。
+- `muser midi <工程>`：标准 MIDI 文件，交给 DAW。
+- 导出写谱面上的音（humanize 之前），鼓组与 audio 音轨不导出；和弦记号是估计的，交出去之前看一眼。详见 [TOOLS.md](../TOOLS.md)。

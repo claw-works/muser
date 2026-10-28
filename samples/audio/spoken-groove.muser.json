@@ -1,0 +1,359 @@
+{
+  "name": "spoken-groove",
+  "tempo": 90,
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 300
+        },
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 1.6,
+          "size": 0.5
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "compressor",
+      "threshold_db": -16,
+      "ratio": 2,
+      "makeup_db": 1
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1.0
+    }
+  ],
+  "tracks": [
+    {
+      "name": "voice",
+      "instrument": "audio",
+      "gain_db": 9,
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 110
+        },
+        {
+          "type": "compressor",
+          "threshold_db": -22,
+          "ratio": 3,
+          "attack_ms": 5,
+          "release_ms": 120
+        }
+      ],
+      "sends": {
+        "verb": -14
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 1,
+          "audio": {
+            "file": "voice/one.mp3",
+            "offset": 0.09
+          }
+        },
+        {
+          "start": 1,
+          "length": 1,
+          "audio": {
+            "file": "voice/two.mp3",
+            "offset": 0.088
+          }
+        },
+        {
+          "start": 2,
+          "length": 1,
+          "audio": {
+            "file": "voice/three.mp3",
+            "offset": 0.118
+          }
+        },
+        {
+          "start": 3,
+          "length": 1,
+          "audio": {
+            "file": "voice/four.mp3",
+            "offset": 0.146
+          }
+        },
+        {
+          "start": 8,
+          "length": 4,
+          "audio": {
+            "file": "voice/write.mp3",
+            "offset": 0.088
+          }
+        },
+        {
+          "start": 32,
+          "length": 4,
+          "audio": {
+            "file": "voice/name.mp3",
+            "offset": 0.087,
+            "fade_out": 0.05
+          }
+        }
+      ],
+      "automation": [
+        {
+          "target": "sends.verb",
+          "shape": "points",
+          "points": [
+            [
+              0,
+              -14
+            ],
+            [
+              33.4,
+              -14
+            ],
+            [
+              33.6,
+              -2
+            ],
+            [
+              38,
+              -2
+            ],
+            [
+              40,
+              -14
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "voice-echo",
+      "instrument": "audio",
+      "gain_db": 11,
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 110
+        },
+        {
+          "type": "delay",
+          "time_seconds": 0.5,
+          "feedback": 0.45,
+          "mix": 0.4
+        },
+        {
+          "type": "compressor",
+          "threshold_db": -22,
+          "ratio": 3,
+          "attack_ms": 5,
+          "release_ms": 120
+        }
+      ],
+      "clips": [
+        {
+          "start": 15,
+          "length": 1,
+          "audio": {
+            "file": "voice/hey.mp3",
+            "offset": 0.103
+          }
+        },
+        {
+          "start": 23,
+          "length": 1,
+          "audio": {
+            "file": "voice/hey.mp3",
+            "offset": 0.103
+          }
+        }
+      ],
+      "sends": {
+        "verb": -10
+      }
+    },
+    {
+      "name": "voice-robot",
+      "instrument": "audio",
+      "gain_db": 11,
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 110
+        },
+        {
+          "type": "flanger",
+          "rate_hz": 0.6,
+          "feedback": 0.85,
+          "mix": 0.5
+        },
+        {
+          "type": "compressor",
+          "threshold_db": -22,
+          "ratio": 3,
+          "attack_ms": 5,
+          "release_ms": 120
+        }
+      ],
+      "clips": [
+        {
+          "start": 16,
+          "length": 4,
+          "audio": {
+            "file": "voice/play.mp3",
+            "offset": 0.112
+          }
+        }
+      ],
+      "sends": {
+        "verb": -14
+      }
+    },
+    {
+      "name": "voice-radio",
+      "instrument": "audio",
+      "gain_db": 12,
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 110
+        },
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 600,
+          "q": 0.9
+        },
+        {
+          "type": "eq",
+          "shape": "lowpass",
+          "frequency": 3200,
+          "q": 0.9
+        },
+        {
+          "type": "eq",
+          "shape": "peak",
+          "frequency": 1600,
+          "q": 1.2,
+          "gain_db": 6
+        },
+        {
+          "type": "compressor",
+          "threshold_db": -22,
+          "ratio": 3,
+          "attack_ms": 5,
+          "release_ms": 120
+        }
+      ],
+      "clips": [
+        {
+          "start": 24,
+          "length": 4,
+          "audio": {
+            "file": "voice/mix.mp3",
+            "offset": 0.089
+          }
+        }
+      ]
+    },
+    {
+      "name": "click",
+      "instrument": "drums.lofi",
+      "gain_db": -2,
+      "clips": [
+        {
+          "start": 0,
+          "length": 4,
+          "grid": {
+            "rim": "x...x...x...x..."
+          }
+        }
+      ]
+    },
+    {
+      "name": "drums",
+      "instrument": "drums.lofi",
+      "gain_db": 6,
+      "clips": [
+        {
+          "start": 4,
+          "length": 32,
+          "drummer": {
+            "loop": "boom_bap",
+            "complexity": 0.4
+          }
+        },
+        {
+          "start": 36,
+          "length": 4,
+          "grid": {
+            "kick": "x...............",
+            "crash": "x..............."
+          }
+        }
+      ]
+    },
+    {
+      "name": "bass",
+      "instrument": "bass.finger",
+      "gain_db": -5,
+      "clips": [
+        {
+          "start": 4,
+          "length": 32,
+          "abc": "L:1/8\nK:Am\nA,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |A,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |A,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |A,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |A,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |A,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |A,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |A,,2 z A,, z2 C,E, | D,,2 z D,, z F,G,A, |"
+        },
+        {
+          "start": 36,
+          "length": 4,
+          "abc": "L:1/4\nK:Am\nA,,4 |"
+        }
+      ]
+    },
+    {
+      "name": "keys",
+      "instrument": "poly.juno_keys",
+      "gain_db": -11,
+      "sends": {
+        "verb": -10
+      },
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 180
+        }
+      ],
+      "humanize": {
+        "timing_ms": 6,
+        "velocity": 0.06
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 4,
+          "abc": "L:1/4\nK:Am\n[A,CEG]4 |"
+        },
+        {
+          "start": 4,
+          "length": 32,
+          "abc": "L:1/4\nK:Am\n[A,CEG]4 | [D,FAc]4 |[A,CEG]4 | [D,FAc]4 |[A,CEG]4 | [D,FAc]4 |[A,CEG]4 | [D,FAc]4 |"
+        },
+        {
+          "start": 36,
+          "length": 4,
+          "abc": "L:1/4\nK:Am\n[A,CEA]4 |"
+        }
+      ]
+    }
+  ]
+}

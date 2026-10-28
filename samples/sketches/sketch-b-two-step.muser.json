@@ -26,8 +26,7 @@
           "drummer": {
             "loop": "dnb_two_step",
             "complexity": 0.45,
-            "intensity": 0.55,
-            "fill_every": 4
+            "intensity": 0.55
           }
         }
       ]

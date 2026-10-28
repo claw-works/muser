@@ -10,7 +10,7 @@ description = "muser 引擎适配层：把 core 模型编译成 manguebyte 的 S
 [dependencies]
 muser-core = { workspace = true }
 # 默认只用 manguebyte 的离线能力（dsp/formats/graph），不开 devices，保持纯离线。
-manguebyte = { workspace = true, default-features = false, features = ["sampler", "analysis"] }
+manguebyte = { workspace = true, default-features = false, features = ["sampler", "analysis", "platform-codecs"] }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

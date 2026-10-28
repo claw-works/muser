@@ -61,6 +61,10 @@ muser render beat.muser.json -o beat.wav
 报告峰值、RMS、LUFS、频谱重心、低/中/高频占比、起音时间、余音长度。内置与外置都可用。
 `--record` 把结果记进该插件的用户画像。
 
+### `muser audio <file> [--tempo T] [--json]`
+
+音频文件的格式、时长、采样率、声道；给了 `--tempo` 时换算成拍（写 audio 音轨 clip 的 `length` 用）。见 [skills/audio.md](skills/audio.md)。
+
 ### `muser routing <project>`
 
 打印信号流：处理顺序、每条音轨/总线的去向（output、发送量）、效果链与侧链关系。改完路由先看一眼。
@@ -113,6 +117,44 @@ random 自动化），不改文件。需要 device 特性（发行版都带；he
   把工程里的 clip 存成 loop（clip 是 grid 时原样存，是音符时量化成网格）。
 clip 上的简写（`abc` / `grid` / `drummer`）与 `humanize` 见 [skills/notation.md](skills/notation.md)、[skills/humanize.md](skills/humanize.md)。
 
+### `muser midi <project> [-o out.mid] [--seed N]`
+
+导出标准 MIDI 文件（format 1，480 tick/四分音符）：第一条轨放速度与拍号，之后每条乐器音轨一条 MIDI 轨。
+音符与渲染完全一致：humanize 后的时间与力度、连奏延长、clip 裁剪、abc / grid / drummer 展开；延音踏板写成 CC64，
+`gain_db` / `pan` 写成 CC7 / CC10。鼓组在通道 10，其它音轨按乐器名猜一个 GM 音色。静音音轨照常导出（轨名标 "(muted)"），
+audio 音轨不导出。缺省输出为工程同名的 `.mid`。`muser view` 页面的「导出」也能下载 MIDI 与整首混音 WAV。
+
+### `muser analyze <project> [--audio] [--json]`
+
+听感报告，给听不到声音的 agent 自查编曲。按段落（有 `form` 时按曲式的每一遍，否则每 8 小节）列出：
+密度（每小节起音数）、各轨每小节起音数 / 发声占比 / 音区、和弦与和声节奏（写好的 `chords`，没写时估计、带 `~`）、
+重复度（与前面某小节完全相同的比例）、冲突（拍点长音是避免音；两轨同时长音成小二度 / 小九度）。
+`--audio` 渲染一遍，加每段的响度、频谱重心与低 / 中 / 高频能量占比。最后是建议：副歌没起来、重复太多、只有一个和弦、
+音区掩蔽、冲突、各段响度太平、偏暗 / 偏亮。最上面是能量曲线（每段 0–10）；还有一组"AI 味"检查（`tells`）：
+段落全是 8 小节的倍数、能量只升不降、编制不变、一个和声循环 / 不离调、过门每 4 小节一次、全部对齐网格、副歌每遍一样、
+（`--audio`）动态与明暗不变。见 [skills/arrange.md](skills/arrange.md)。
+
+### `muser abc <project> [-o out.abc] [--yue2] [options]`
+
+导出 ABC 记谱（缺省打印到 stdout），写谱面上的音（humanize 之前、clip 裁剪之后；abc / grid / drummer 展开的都算），
+鼓组与 audio 音轨不导出。起点与时值量化到 1/16（需要时 1/32、1/64）音符网格，三连音等就近取整（会提示）。
+
+- 标准写法（缺省）：ABC 2.1 多声部，每条乐器音轨一个 `V:`（低音区用低音谱号），复音写成 `[CEG]`、跨小节用连音线。
+  `--track <名>`（可重复）只导出这几条；`--chords` 加和弦记号。
+- `--yue2`：[YuE2](https://github.com/multimodal-art-projection/YuE) 的原生谱面——`Vocal` / `Ins` 两个单音声部，
+  和弦记号写在 `Vocal`（只用它支持的 15 种和弦），时值只用 1 2 3 4 6 8 12 16 24 32 48 个单位、其它用连音线拼，
+  每组 1–4 小节一个 `V: Vocal` 块接一个 `V: Ins` 块。给 `--cot full` 用；加 `--no-chords` 给 `--cot melody`（翻唱/改编）。
+  - `--vocal a,b,c`：唱旋律的音轨，旋律在几件乐器间传递时写几条（合并后每个时刻取最高的音）；缺省按名字
+    （vocal / lead / melody…），否则取偏高音区里发声最久的。`--ins <名>`：器乐旋律声部（缺省全休止）。
+  - `--sections intro:4,verse:8,chorus:8`：段落写成 `% verse` 等注释，与歌词里的 `[Verse]` 标签对应。
+  - 网格至少用 `L:1/32`（YuE2 原生导出常用 1/32；第三方实测 `L:1/16` 的谱会生成到一半停）。
+  - `--vocal-octave 1`：Vocal 整体升八度，写到小写音名区（第三方实测这样咬字更清楚，官方没有说明）。
+  - 导出结果用 YuE2 的 `abc_tools.py inspect` 校验通过。
+- `--key G` / `--key F#m`：指定调号；缺省用 clip 里 ABC 写的 `K:`（都一样时），否则由整首的音高估计。
+- 和弦记号是按每小节（必要时半小节）的伴奏音估计的：伴奏清楚时可靠，只有一条低音线时只是猜测，交给模型前可以人工改。
+
+`muser view` 页面的「导出」也能下载 ABC 与 ABC（YuE2）（选项都用缺省）。
+
 ### `muser new [-o <path>]`
 生成一个示例工程 JSON（AI 可用来参考标准格式）。缺省打印到 stdout。
 
@@ -134,7 +176,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（35 个）
+### 已实现的 Tools（38 个）
 
 | tool | 作用 |
 |---|---|
@@ -158,6 +200,9 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `set_automation` | 设置某音轨（`track_index`）、总线（`bus`）或主总线的自动化（替换或追加），立即校验 |
 | `set_seed` | 设置工程随机种子（决定 random 自动化） |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
+| `export_midi` | 导出标准 MIDI 文件（音符与渲染一致，audio 音轨不导出） |
+| `analyze` | 听感报告：按段落的密度、音区、和弦、重复度、冲突与建议（`audio` 加响度与频谱重心） |
+| `export_abc` | 导出 ABC 记谱：`standard`（ABC 2.1 多声部）或 `yue2`（YuE2 原生谱面） |
 | `mix_report` | 混音报告：各轨/总线/主总线的干声与推子后响度、相对差与提示（乐器输出按工程缓存） |
 | `scan_plugins` | 扫描本机外置插件 |
 | `plugin_info` | 外置插件信息与参数分组 |
