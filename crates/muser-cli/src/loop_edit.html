@@ -49,9 +49,13 @@
   .status { color: var(--dim); font-size: 12px; min-height: 18px; }
   .status.err { color: var(--err); }
   .status.warn { color: var(--warn); }
-  .roll { overflow: auto; max-height: 62vh; border-radius: var(--radius) var(--radius) 0 0; }
+  .roll { overflow-y: auto; overflow-x: hidden; max-height: 58vh; border-radius: var(--radius) var(--radius) 0 0; }
   canvas { display: block; }
-  #vel { border-top: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); }
+  #roll { cursor: crosshair; }
+  #velHandle { height: 7px; cursor: ns-resize; background: linear-gradient(var(--line),var(--line)) center/100% 1px no-repeat; }
+  #velHandle:hover { background-color: rgba(114,229,194,.12); }
+  #vel { border-radius: 0 0 var(--radius) var(--radius); }
+  .check { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 12px; min-height: 32px; }
   .hint { color: var(--faint); font-size: 11px; padding: 0 12px 10px; }
   .grow { flex: 1; min-width: 160px; }
   .grow input { width: 100%; }
@@ -76,6 +80,7 @@
         <label><span data-i18n="grid">网格</span><select id="grid">
           <option value="1">1/4</option><option value="0.5">1/8</option><option value="0.25">1/16</option><option value="0.125">1/32</option>
           <option value="0.3333333333333333">1/8 T</option><option value="0.16666666666666666">1/16 T</option></select></label>
+        <label class="check"><input id="snap" type="checkbox" checked><span data-i18n="snap">对齐网格</span></label>
         <label><span data-i18n="instrument">乐器</span><select id="instrument" style="width:190px"></select></label>
         <label><span data-i18n="key">调</span><input id="key" type="text" style="width:64px" placeholder="Am"></label>
         <label class="grow"><span data-i18n="chords">和弦</span><input id="chords" type="text" placeholder="Am7 F C G"></label>
@@ -97,6 +102,7 @@
     </section>
     <section class="panel">
       <div class="roll" id="rollWrap"><canvas id="roll"></canvas></div>
+      <div id="velHandle" title="drag to resize"></div>
       <canvas id="vel" height="64"></canvas>
       <div class="hint" id="hint"></div>
     </section>
@@ -107,17 +113,17 @@
 const $ = (id) => document.getElementById(id);
 const I18N = {
   zh: { brand: "动机与 loop 编辑器", newMelody: "+ 旋律", newDrums: "+ 鼓", name: "名字", bars: "小节", tempo: "速度", grid: "网格", instrument: "乐器",
-    key: "调", chords: "和弦", style: "风格", description: "描述", play: "▶ 播放", stop: "■ 停止", loop: "循环", undo: "撤销",
+    key: "调", chords: "和弦", snap: "对齐网格", style: "风格", description: "描述", play: "▶ 播放", stop: "■ 停止", loop: "循环", undo: "撤销",
     saveProject: "存到项目", saveGlobal: "存到全局", share: "分享到全局", project: "项目", user: "全局", builtin: "内置", unsaved: "（未保存）",
-    hintMelody: "点空白处加音（拖动定长度）· 拖音符移动 · 拖右边缘改长度 · 右键或 Delete 删除 · ↑↓ 移调（Shift 一个八度）· ←→ 平移 · ⌘A 全选 · ⌘Z 撤销 · 下方拖动改力度 · 空格播放",
+    hintMelody: "点空白处加音（拖动定长度）· 拖音符移动 · 拖右边缘改长度 · 不勾「对齐网格」时位置、时值自由（拖动时按住 Alt 临时切换）· 上下滚动看全部音域 · 拖力度栏上沿改高度 · 右键或 Delete 删除 · ↑↓ 移调（Shift 一个八度）· ←→ 平移 · ⌘A 全选 · ⌘Z 撤销 · 下方拖动改力度 · 空格播放",
     hintDrums: "点格子：x → X（重音）→ o（轻）→ 空 · 右键清除 · 空格播放",
     saved: (p) => `已保存 → ${p}`, shared: (p) => `已复制到全局 → ${p}`, overwrite: (n) => `'${n}' 已存在，覆盖吗？`,
     reloaded: "文件被修改（agent？），已重新读入", changedDirty: "文件被修改了，但这里有未保存的改动。点这里重新读入（丢弃本地改动）",
     rendering: "渲染中…", discard: "有未保存的改动，确定丢弃吗？", builtinRO: "内置 loop：改完请另存到项目或全局", needName: "名字只能用小写字母、数字、_、-" },
   en: { brand: "motif & loop editor", newMelody: "+ Melody", newDrums: "+ Drums", name: "Name", bars: "Bars", tempo: "Tempo", grid: "Grid", instrument: "Instrument",
-    key: "Key", chords: "Chords", style: "Style", description: "Description", play: "▶ Play", stop: "■ Stop", loop: "Loop", undo: "Undo",
+    key: "Key", chords: "Chords", snap: "Snap to grid", style: "Style", description: "Description", play: "▶ Play", stop: "■ Stop", loop: "Loop", undo: "Undo",
     saveProject: "Save to project", saveGlobal: "Save to global", share: "Share to global", project: "Project", user: "Global", builtin: "Built-in", unsaved: " (unsaved)",
-    hintMelody: "Click empty space to add a note (drag for length) · drag notes to move · drag the right edge to resize · right-click or Delete removes · ↑↓ transpose (Shift: octave) · ←→ shift · ⌘A select all · ⌘Z undo · drag in the lane below for velocity · Space plays",
+    hintMelody: "Click empty space to add a note (drag for length) · drag notes to move · drag the right edge to resize · uncheck ‘Snap to grid’ for free timing (hold Alt while dragging to toggle) · scroll for the full range · drag the top of the velocity lane to resize it · right-click or Delete removes · ↑↓ transpose (Shift: octave) · ←→ shift · ⌘A select all · ⌘Z undo · drag in the lane below for velocity · Space plays",
     hintDrums: "Click a cell: x → X (accent) → o (soft) → empty · right-click clears · Space plays",
     saved: (p) => `Saved → ${p}`, shared: (p) => `Copied to global → ${p}`, overwrite: (n) => `'${n}' already exists. Overwrite?`,
     reloaded: "The file changed on disk (an agent?) and was reloaded", changedDirty: "The file changed on disk, but you have unsaved edits. Click here to reload (discarding them)",
@@ -173,10 +179,18 @@ function setDrumGrid(rows) {
 // —— 卷帘 ——
 const ROWH = 14;
 let KEYW = 46;
-let lo = 48, hi = 84;
+// 完整钢琴音域 A0–C8（有更低 / 更高的音时扩开），上下滚动。
+let lo = 21, hi = 108;
 function range() {
   const ps = cur.notes.map((n) => n.pitch);
-  lo = Math.min(48, ...ps.map((p) => p - 3)); hi = Math.max(84, ...ps.map((p) => p + 3));
+  lo = Math.min(21, ...ps); hi = Math.max(108, ...ps);
+}
+// 滚到音符所在的音区（没有音符时 C4–C6）。
+function scrollToNotes() {
+  if (isDrums()) return;
+  const ps = cur.notes.map((n) => n.pitch), mid = ps.length ? (Math.min(...ps) + Math.max(...ps)) / 2 : 66;
+  const wrap = $("rollWrap");
+  wrap.scrollTop = Math.max(0, (hi - mid) * ROWH - wrap.clientHeight / 2);
 }
 function geom() {
   const wrap = $("rollWrap"), W = Math.max(600, wrap.clientWidth);
@@ -225,8 +239,9 @@ function draw() {
   }
   drawVel(); drawHead();
 }
+let velH = Math.min(320, Math.max(36, +localStorage.getItem("muser-loop-velh") || 72));
 function drawVel() {
-  const cv = $("vel"), W = geom().W, H = 64, dpr = devicePixelRatio || 1;
+  const cv = $("vel"), W = geom().W, H = velH, dpr = devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.fillStyle = "#0c0f18"; g.fillRect(0, 0, W, H);
@@ -235,6 +250,7 @@ function drawVel() {
   const pxb = (W - KEYW) / beats();
   for (const [i, n] of cur.notes.entries()) {
     const h = n.velocity * (H - 10);
+    g.fillStyle = "rgba(149,136,255,.18)"; g.fillRect(KEYW + n.start * pxb, H - h - 2, Math.max(4, n.length * pxb - 2), h);
     g.fillStyle = selected.has(i) ? "#f4f6fb" : "#9588ff"; g.fillRect(KEYW + n.start * pxb, H - h - 2, 4, h);
   }
 }
@@ -250,8 +266,14 @@ function hit(ev) {
   const px = ev.clientX - r.left, py = ev.clientY - r.top;
   return { g0, px, py, beat: Math.max(0, (px - KEYW) / g0.pxb), row: Math.floor(py / g0.rh) };
 }
-const snap = (b) => Math.round(b / step) * step;
-const snapDown = (b) => Math.floor(b / step + 1e-9) * step;
+// 对齐网格：勾选时按网格；不勾时自由（精确到 1/480 拍，即 MIDI 的一个 tick）。拖动时按住 Alt 临时反过来。
+const TICK = 1 / 480;
+let altHeld = false;
+const snapping = () => $("snap").checked !== altHeld;
+const free = (b) => Math.round(b / TICK) * TICK;
+const snap = (b) => (snapping() ? Math.round(b / step) * step : free(b));
+const snapDown = (b) => (snapping() ? Math.floor(b / step + 1e-9) * step : free(b));
+const minLen = () => (snapping() ? step : 1 / 32);
 function noteAt(beat, pitch) {
   for (let i = cur.notes.length - 1; i >= 0; i--) { const n = cur.notes[i]; if (n.pitch === pitch && beat >= n.start && beat < n.start + n.length) return i; }
   return -1;
@@ -270,6 +292,7 @@ $("roll").addEventListener("mousedown", (ev) => {
     rows[rowName][k] = ev.button === 2 ? "." : ev.shiftKey ? "X" : ({ ".": "x", x: "X", X: "o", o: "." })[c] ?? ".";
     setDrumGrid(rows); changed(); return;
   }
+  altHeld = ev.altKey;
   const pitch = hi - h.row, i = noteAt(h.beat, pitch);
   if (ev.button === 2) { if (i >= 0) { snapshot(); cur.notes.splice(i, 1); selected.clear(); changed(); } return; }
   snapshot();
@@ -280,7 +303,7 @@ $("roll").addEventListener("mousedown", (ev) => {
     drag = { kind: "resize", from: h.beat, orig: [[cur.notes.length - 1, { ...n }]] };
   } else {
     if (!selected.has(i)) selected = ev.shiftKey ? new Set([...selected, i]) : new Set([i]);
-    const n = cur.notes[i], edge = (n.start + n.length) * h.g0.pxb + KEYW - h.px < 6;
+    const n = cur.notes[i], edge = (n.start + n.length) * h.g0.pxb + KEYW - h.px < EDGE;
     drag = { kind: edge ? "resize" : "move", from: h.beat, pitch, orig: [...selected].map((j) => [j, { ...cur.notes[j] }]) };
   }
   changed();
@@ -290,13 +313,27 @@ window.addEventListener("mousemove", (ev) => {
   const h = hit(ev), d = h.beat - drag.from;
   for (const [j, o] of drag.orig) {
     const n = cur.notes[j];
-    if (drag.kind === "resize") n.length = Math.max(step, snap(o.length + d));
-    else { n.start = Math.min(beats() - step, Math.max(0, snap(o.start + d))); n.pitch = Math.min(127, Math.max(0, o.pitch + (hi - h.row) - drag.pitch)); }
+    altHeld = ev.altKey;
+    if (drag.kind === "resize") n.length = Math.max(minLen(), snap(o.start + o.length + d) - o.start);
+    else { n.start = Math.min(beats() - minLen(), Math.max(0, snap(o.start + d))); n.pitch = Math.min(127, Math.max(0, o.pitch + (hi - h.row) - drag.pitch)); }
     n.length = Math.min(n.length, beats() - n.start);
   }
   dirty = true; draw();
 });
 window.addEventListener("mouseup", () => { if (drag) { drag = null; changed(); } });
+// 指针：音符右边缘 = 改时值，音符上 = 移动，空白 = 加音。
+const EDGE = 6;
+$("roll").addEventListener("mousemove", (ev) => {
+  const cv = $("roll");
+  if (drag) { cv.style.cursor = drag.kind === "resize" ? "ew-resize" : "grabbing"; return; }
+  const h = hit(ev);
+  if (h.px < KEYW) { cv.style.cursor = "default"; return; }
+  if (isDrums()) { cv.style.cursor = "pointer"; return; }
+  const i = noteAt(h.beat, hi - h.row);
+  if (i < 0) { cv.style.cursor = "crosshair"; return; }
+  const n = cur.notes[i], right = KEYW + (n.start + n.length) * h.g0.pxb;
+  cv.style.cursor = right - h.px < EDGE ? "ew-resize" : "grab";
+});
 // 力度：在下方拖动。
 let velDrag = false;
 function setVel(ev) {
@@ -307,6 +344,14 @@ function setVel(ev) {
   if (targets.length) { dirty = true; draw(); }
 }
 $("vel").addEventListener("mousedown", (ev) => { if (isDrums()) return; snapshot(); velDrag = true; setVel(ev); });
+// 拖分隔线改力度栏高度。
+let velResize = null;
+$("velHandle").addEventListener("mousedown", (ev) => { ev.preventDefault(); velResize = { y: ev.clientY, h: velH }; document.body.style.cursor = "ns-resize"; });
+window.addEventListener("mousemove", (ev) => {
+  if (!velResize) return;
+  velH = Math.min(320, Math.max(36, velResize.h - (ev.clientY - velResize.y))); drawVel();
+});
+window.addEventListener("mouseup", () => { if (velResize) { velResize = null; document.body.style.cursor = ""; localStorage.setItem("muser-loop-velh", velH); } });
 window.addEventListener("mousemove", (ev) => velDrag && setVel(ev));
 window.addEventListener("mouseup", () => { if (velDrag) { velDrag = false; changed(); } });
 
@@ -340,6 +385,7 @@ function fillForm() {
   $("instrument").innerHTML = instruments.filter((i) => isDrums() === i.name.startsWith("drums.")).map((i) => `<option>${i.name}</option>`).join("");
   $("instrument").value = want;
   $("hint").textContent = t(isDrums() ? "hintDrums" : "hintMelody");
+  $("snap").disabled = isDrums();
 }
 const field = (id, fn) => $(id).addEventListener("change", () => { snapshot(); fn($(id).value.trim()); changed(); });
 field("name", (v) => (cur.name = v));
@@ -394,13 +440,13 @@ async function open(name, quiet) {
   cur.grid = { rows }; if (gs) cur.grid.step = gs;
   cur._drums = cur.notes.length === 0;
   source = r.source; mtime = r.mtime; dirty = false; history = []; selected.clear();
-  fillForm(); range(); draw(); updateTitle();
+  fillForm(); range(); draw(); updateTitle(); scrollToNotes();
   status(source === "builtin" ? t("builtinRO") : r.path || "");
 }
 function fresh(drums) {
   if (dirty && !confirm(t("discard"))) return;
   cur = blank(drums); source = "new"; mtime = null; dirty = false; history = []; selected.clear(); step = 0.25;
-  fillForm(); range(); draw(); updateTitle(); status("");
+  fillForm(); range(); draw(); updateTitle(); scrollToNotes(); status("");
 }
 $("newMelody").onclick = () => fresh(false);
 $("newDrums").onclick = () => fresh(true);
@@ -500,7 +546,7 @@ window.addEventListener("resize", () => cur && draw());
   instruments = await api("/api/instruments");
   await refreshList();
   if (info.initial && info.loops.some((l) => l.name === info.initial)) await open(info.initial, true);
-  else { cur = blank(false); if (info.initial) cur.name = info.initial; fillForm(); range(); draw(); updateTitle(); }
+  else { cur = blank(false); if (info.initial) cur.name = info.initial; fillForm(); range(); draw(); updateTitle(); scrollToNotes(); }
 })();
 </script>
 </body>
