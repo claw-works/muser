@@ -28,6 +28,10 @@ pub fn controls(sfz: &Sfz) -> BTreeMap<u8, (String, u8)> {
             } else if let Some(n) = name.strip_prefix("set_cc").and_then(|n| n.parse::<u8>().ok()) {
                 let v = value.trim().parse::<f64>().unwrap_or(0.0).clamp(0.0, 127.0) as u8;
                 out.entry(n).or_insert((String::new(), 0)).1 = v;
+            } else if let Some(n) = name.strip_prefix("set_hdcc").and_then(|n| n.parse::<u8>().ok()) {
+                // 高精度写法：0–1。
+                let v = (value.trim().parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0) * 127.0).round() as u8;
+                out.entry(n).or_insert((String::new(), 0)).1 = v;
             }
         }
     }
@@ -198,6 +202,80 @@ pub fn load_shared(path: &Path, opts: &Options) -> Result<std::sync::Arc<Loaded>
     Ok(l)
 }
 
+/// `<base>_oncc<N>`、`<base>_cc<N>`、`<base>cc<N>`（SFZ 1 的写法，如 `pitchlfo_depthcc1`）→ (base, N)。
+fn cc_suffix(name: &str) -> Option<(&str, u8)> {
+    let digits = name.bytes().rev().take_while(u8::is_ascii_digit).count();
+    let (head, n) = name.split_at(name.len() - digits);
+    let n: u8 = n.parse().ok().filter(|n| *n < 128)?;
+    let base = head.strip_suffix("_oncc").or_else(|| head.strip_suffix("_cc")).or_else(|| head.strip_suffix("cc"))?;
+    (!base.is_empty()).then_some((base, n))
+}
+
+/// LFO 的 opcode 名 → (槽位, 字段)：amplfo_ / pitchlfo_ / fillfo_ 是 0–2 号，lfo1–lfo4 是 3–6 号（与采样器一致）。
+fn lfo(name: &str) -> Option<(usize, &str)> {
+    for (prefix, slot) in [("amplfo_", 0), ("pitchlfo_", 1), ("fillfo_", 2)] {
+        if let Some(f) = name.strip_prefix(prefix) {
+            return Some((slot, f));
+        }
+    }
+    let rest = name.strip_prefix("lfo")?;
+    let d = rest.bytes().take_while(u8::is_ascii_digit).count();
+    let k: usize = rest[..d].parse().ok()?;
+    (1..=4).contains(&k).then(|| rest[d..].strip_prefix('_').map(|f| (2 + k, f))).flatten()
+}
+
+/// 把按控制器调制的量（已按当前控制器值折算成 `delta`）加到区域的对应 opcode 上。
+/// 采样器不认识的 base 返回 false（留给"不支持"的提示）。
+fn fold_cc(r: &mut manguebyte::sampler::Region, base: &str, delta: f64) -> bool {
+    let eg = |e: &mut manguebyte::sampler::EnvelopeSpec, f: &str| -> bool {
+        let field = match f {
+            "delay" => &mut e.delay,
+            "start" => &mut e.start,
+            "attack" => &mut e.attack,
+            "hold" => &mut e.hold,
+            "decay" => &mut e.decay,
+            "sustain" => &mut e.sustain,
+            "release" => &mut e.release,
+            _ => return false,
+        };
+        *field = (*field + delta).max(0.0);
+        true
+    };
+    match base {
+        "tune" | "pitch" => r.tune += delta,
+        "offset" => r.offset = (r.offset as f64 + delta).max(0.0) as u64,
+        // cutoff 的调制量是音分。
+        "cutoff" => r.filter.cutoff = r.filter.cutoff.map(|c| c * 2f64.powf(delta / 1_200.0)),
+        "resonance" => r.filter.resonance = (r.filter.resonance + delta).clamp(0.0, 40.0),
+        "fileg_depth" => r.fileg_depth += delta,
+        "pitcheg_depth" => r.pitcheg_depth += delta,
+        b if b.starts_with("ampeg_") => return eg(&mut r.ampeg, &b[6..]),
+        b if b.starts_with("fileg_") => return eg(&mut r.fileg, &b[6..]),
+        b if b.starts_with("pitcheg_") => return eg(&mut r.pitcheg, &b[8..]),
+        b => {
+            let Some((slot, f)) = lfo(b) else { return false };
+            let l = &mut r.lfos[slot];
+            let field = match (slot, f) {
+                (_, "freq") => &mut l.freq,
+                (_, "delay") => &mut l.delay,
+                (_, "fade") => &mut l.fade,
+                (0, "depth") | (3.., "volume") => &mut l.volume,
+                (1, "depth") | (3.., "pitch") => &mut l.pitch,
+                (2, "depth") | (3.., "cutoff") => &mut l.cutoff,
+                (3.., "amplitude") => &mut l.amplitude,
+                (3.., "pan") => &mut l.pan,
+                (3.., "phase") => &mut l.phase,
+                _ => return false,
+            };
+            *field += delta;
+            if f == "freq" {
+                l.freq = l.freq.max(0.0);
+            }
+        }
+    }
+    true
+}
+
 /// 按控制器值展开后加载乐器。返回 (乐器, 去掉的区域数, 不支持的内容)。
 pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<String, usize>), String> {
     let overrides = &opts.cc;
@@ -243,7 +321,8 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<
         let mut pan_mod: BTreeMap<u8, f64> = BTreeMap::new();
         let mut keep: Vec<Opcode> = Vec::new();
         let num = |o: &Opcode| o.value.trim().parse::<f64>().ok();
-        for o in r.unknown.drain(..) {
+        let mut folds: Vec<(Opcode, String, f64)> = Vec::new();
+        for o in std::mem::take(&mut r.unknown) {
             let n = &*o.name;
             let mut used = true;
             if let Some(c) = cc_num(n, "locc") {
@@ -275,11 +354,23 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<
                 // 已在上面按键位切换选好奏法。
             } else if let Some(c) = cc_num(n, "pan_oncc") {
                 pan_mod.insert(c, num(&o).unwrap_or(0.0));
+            } else if let Some((base, c)) = cc_suffix(n) {
+                // 循环之后再折算（这时还在遍历区域的 opcode）。
+                let delta = num(&o).unwrap_or(0.0) * cc(c) / 127.0;
+                folds.push((o.clone(), base.to_string(), delta));
+                continue;
             } else {
                 used = false;
             }
             if used {
                 handled.insert(n.to_string());
+            } else {
+                keep.push(o);
+            }
+        }
+        for (o, base, delta) in folds {
+            if fold_cc(r, &base, delta) {
+                handled.insert(o.name.to_string());
             } else {
                 keep.push(o);
             }
@@ -321,7 +412,7 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<
     // 已经处理掉的 opcode、以及控制器声明不再算"不支持"。
     sfz.warnings.retain(|w| match &w.kind {
         WarningKind::UnknownOpcode { name, .. } => {
-            !handled.contains(&**name) && !name.starts_with("label_cc") && !name.starts_with("set_cc")
+            !handled.contains(&**name) && !name.starts_with("label_cc") && !name.starts_with("set_cc") && !name.starts_with("set_hdcc")
         }
         _ => true,
     });
@@ -344,6 +435,33 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 按控制器调制的包络、LFO、滤波、音高按当前控制器值折算进去；控制器为 0 时不变。
+    #[test]
+    fn folds_cc_modulation_into_the_new_opcodes() {
+        let text = "<region> sample=*sine cutoff=500 lfo1_freq=5 lfo1_pitch_oncc1=100 pitchlfo_freq=4 pitchlfo_depthcc1=50
+            ampeg_attack_oncc11=0.5 cutoff_cc1=1200 tune_oncc2=20 fileg_decay_oncc1=1";
+        let fold = |cc1: f64, cc11: f64| {
+            let mut sfz = manguebyte::sampler::Sfz::parse(text).unwrap();
+            let r = &mut sfz.regions[0];
+            let ops: Vec<Opcode> = r.unknown.drain(..).collect();
+            for o in &ops {
+                let (base, c) = cc_suffix(&o.name).unwrap();
+                let v: f64 = o.value.parse().unwrap();
+                let cc = match c { 1 => cc1, 11 => cc11, _ => 0.0 };
+                assert!(fold_cc(r, base, v * cc / 127.0), "{}", o.name);
+            }
+            r.clone()
+        };
+        let r = fold(127.0, 127.0);
+        assert_eq!((r.lfos[3].pitch, r.lfos[1].pitch, r.ampeg.attack, r.tune, r.fileg.decay), (100.0, 50.0, 0.5, 0.0, 1.0));
+        assert!((r.filter.cutoff.unwrap() - 1000.0).abs() < 1e-6);
+        let r = fold(0.0, 0.0);
+        assert_eq!((r.lfos[3].pitch, r.ampeg.attack, r.filter.cutoff), (0.0, 0.0, Some(500.0)));
+        assert_eq!(cc_suffix("pitchlfo_depthcc1"), Some(("pitchlfo_depth", 1)));
+        assert_eq!(cc_suffix("lfo2_freq_lfo1_oncc3"), Some(("lfo2_freq_lfo1", 3)));
+        assert!(!fold_cc(&mut fold(0.0, 0.0), "lfo2_freq_lfo1", 1.0), "LFO 调 LFO 不支持");
+    }
 
     #[test]
     fn cc_selects_regions_and_scales() {
@@ -378,7 +496,7 @@ mod tests {
         .unwrap();
         assert_eq!(read_keyswitches(&ks).unwrap(), (BTreeMap::from([(12, "Sustain".into()), (14, "Staccato".into())]), Some(12)));
         let (i, _, w) = load(&ks, &Options::default()).unwrap();
-        assert_eq!((i.num_regions(), w), (1, 0));
+        assert_eq!((i.num_regions(), w.len()), (1, 0));
         let (i, _, _) = load(&ks, &Options { keyswitch: Some("staccato".into()), ..Default::default() }).unwrap();
         assert_eq!(i.num_regions(), 1);
         assert!(load(&ks, &Options { keyswitch: Some("e5".into()), ..Default::default() }).unwrap_err().contains("Staccato"));
