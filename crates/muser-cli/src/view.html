@@ -265,18 +265,39 @@
     .shared-item { grid-template-columns: 224px minmax(160px,1fr) 62px 30px; }
     .shared-item .chain-cell { grid-column: 2 / -1; padding: 4px 0 5px; }
   }
-  .sound-panel { position: fixed; z-index: 30; top: 90px; right: 28px; width: 340px; padding: 16px 18px 14px; background: #121624;
-    border: 1px solid var(--line-hi); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
-  .sound-panel h3 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px; font-size: 14px; }
-  .sound-panel h3 button { min-height: 26px; padding: 0 8px; }
-  .sound-panel label { display: block; margin: 10px 0 4px; color: var(--dim); font-size: 11px; }
-  .sound-panel select, .sound-panel input { box-sizing: border-box; width: 100%; min-height: 32px; padding: 0 8px; color: var(--text);
-    background: #0c0f19; border: 1px solid var(--line-hi); border-radius: 8px; font: inherit; }
-  .sound-panel .row { display: flex; gap: 8px; margin-top: 14px; }
-  .sound-panel .row button { flex: 1; }
-  .sound-panel [hidden] { display: none !important; }
-  .sound-panel .note { margin: 10px 0 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
-  .sound-panel .sync { color: var(--accent); }
+  .drawer { position: fixed; z-index: 30; top: 0; right: 0; bottom: 0; width: 400px; max-width: 92vw; display: flex; flex-direction: column;
+    background: #10131f; border-left: 1px solid var(--line-hi); box-shadow: -24px 0 60px rgba(0,0,0,.45);
+    transform: translateX(105%); transition: transform .22s ease; }
+  .drawer.open { transform: none; }
+  .drawer [hidden] { display: none !important; }
+  .drawer-head { display: flex; align-items: center; gap: 8px; padding: 16px 18px 6px; }
+  .drawer-head h3 { flex: 1; margin: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+  .drawer .ghost { min-height: 30px; padding: 0 10px; background: transparent; border-color: transparent; font-size: 18px; }
+  .drawer-sub { padding: 0 18px 12px; color: var(--dim); font-size: 11px; border-bottom: 1px solid var(--line); }
+  .drawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; overflow: auto; }
+  .drawer label { display: block; margin: 4px 0 6px; color: var(--dim); font-size: 11px; }
+  .drawer input { box-sizing: border-box; width: 100%; min-height: 34px; padding: 0 10px; color: var(--text);
+    background: #0b0e18; border: 1px solid var(--line-hi); border-radius: 8px; font: inherit; }
+  .drawer .row { display: flex; gap: 8px; margin-top: 14px; }
+  .drawer .row button { flex: 1; }
+  .drawer .note { margin: 12px 0 0; color: var(--dim); font-size: 11px; line-height: 1.55; }
+  .drawer .sync { color: var(--accent); }
+  .instrument-card { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; margin-bottom: 8px; padding: 10px 12px;
+    text-align: left; background: #151a29; border: 1px solid var(--line); border-radius: 12px; }
+  .instrument-card .icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: #1f2538; font-size: 17px; }
+  .instrument-card .what { flex: 1; min-width: 0; }
+  .instrument-card .name { font-weight: 700; }
+  .instrument-card .meta { margin-top: 2px; color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .instrument-card .tag { padding: 2px 7px; color: var(--dim); background: #0b0e18; border: 1px solid var(--line); border-radius: 999px; font-size: 10px; }
+  .instrument-card.current { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-soft); }
+  .drawer-count { margin: 8px 0 6px; color: var(--faint); font-size: 11px; }
+  .sound-list { flex: 1; min-height: 0; overflow: auto; margin: 0 -6px; }
+  .sound-item { display: block; width: 100%; min-height: 0; padding: 7px 8px; text-align: left; background: transparent; border: 0; border-radius: 8px; }
+  .sound-item:hover:not(:disabled) { background: #1a2032; }
+  .sound-item .name { font-size: 12px; }
+  .sound-item .meta { color: var(--faint); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sound-item.current { background: var(--accent-soft); }
+  .sound-item.current .name { color: var(--accent); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -365,17 +386,23 @@
     </section>
   </div>
 </div>
-<div class="sound-panel" id="sound-panel" hidden>
-  <h3><span id="sp-title"></span><button id="sp-close" aria-label="Close">×</button></h3>
-  <div class="note" id="sp-current"></div>
-  <label for="sp-plugin" id="sp-plugin-label"></label>
-  <select id="sp-plugin"></select>
-  <label for="sp-label" id="sp-label-label"></label>
-  <input id="sp-label" type="text">
-  <div class="row" id="sp-idle"><button class="primary" id="sp-open"></button></div>
-  <div class="row" id="sp-live" hidden><button id="sp-play"></button><button class="primary" id="sp-done"></button><button id="sp-cancel"></button></div>
-  <p class="note" id="sp-note"></p>
-</div>
+<aside class="drawer" id="sound-drawer" aria-hidden="true">
+  <header class="drawer-head"><button id="sd-back" class="ghost" hidden>‹</button><h3 id="sd-title"></h3><button id="sd-close" class="ghost" aria-label="Close">×</button></header>
+  <div class="drawer-sub" id="sd-current"></div>
+  <div class="drawer-body" id="sd-instruments"></div>
+  <div class="drawer-body" id="sd-sfz" hidden>
+    <input id="sd-search" type="search" autocomplete="off">
+    <div class="drawer-count" id="sd-count"></div>
+    <div class="sound-list" id="sd-sfz-list"></div>
+  </div>
+  <div class="drawer-body" id="sd-plugin" hidden>
+    <label for="sd-label" id="sd-label-label"></label>
+    <input id="sd-label" type="text">
+    <div class="row" id="sd-idle"><button class="primary" id="sd-open"></button></div>
+    <div class="row" id="sd-live" hidden><button id="sd-play"></button><button class="primary" id="sd-done"></button><button id="sd-cancel"></button></div>
+    <p class="note" id="sd-note"></p>
+  </div>
+</aside>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -412,7 +439,9 @@ const I18N = {
     exportMidiHint: "Notes of every instrument track as a standard MIDI file (audio tracks are not included)",
     soundHint: "Choose this track's sound in an instrument plugin", sound: "Sound", soundPlugin: "Instrument plugin",
     soundName: "Name (saved as @label)", soundOpen: "Open plugin window", soundAudition: "▶ Audition track", soundStopAudition: "■ Stop",
-    soundDone: "Done", soundCancel: "Discard", soundUse: "Use this sound", soundUsed: (s) => `Switched to ${s}; re-rendering`,
+    soundDone: "Done", soundCancel: "Discard", soundUsed: (s) => `Switched to ${s}; re-rendering`,
+    sfzSampler: "SFZ sampler", sfzCount: (n) => `Built-in sampler · ${n} sounds in MUSER_SFZ_PATH`, sfzSearch: "Search sounds (name, library, path)…",
+    sfzShown: (a, b) => (a === b ? `${b} sounds` : `${a} of ${b} sounds`),
     soundGroupSfz: "SFZ (built-in sampler, MUSER_SFZ_PATH)", soundGroupPlugin: "Instrument plugins (pick the sound in the plugin window)", soundScanning: "Scanning plugins…", soundNoPlugins: "No SFZ files (set MUSER_SFZ_PATH) or VST3 / CLAP instrument plugins found",
     soundCurrent: (i) => `Current: ${i}`, soundEditing: "Window open — pick and tweak the sound there; you can play it on the plugin's keyboard, or audition this track.",
     soundSynced: (time) => `Synced to the project at ${time}; re-rendering`, soundNotYet: "No changes yet",
@@ -451,7 +480,9 @@ const I18N = {
     exportMidiHint: "各乐器音轨的音符，标准 MIDI 文件（audio 音轨不包含）",
     soundHint: "在乐器插件里给这条轨选音色", sound: "音色", soundPlugin: "乐器插件",
     soundName: "名字（写进 @label）", soundOpen: "打开插件窗口", soundAudition: "▶ 试听本轨", soundStopAudition: "■ 停止",
-    soundDone: "完成", soundCancel: "放弃", soundUse: "使用这个音色", soundUsed: (s) => `已换成 ${s}，正在重新渲染`,
+    soundDone: "完成", soundCancel: "放弃", soundUsed: (s) => `已换成 ${s}，正在重新渲染`,
+    sfzSampler: "SFZ 采样器", sfzCount: (n) => `内置采样器 · MUSER_SFZ_PATH 里 ${n} 个音色`, sfzSearch: "搜索音色（名字、音色库、路径）…",
+    sfzShown: (a, b) => (a === b ? `${b} 个音色` : `${b} 个里的 ${a} 个`),
     soundGroupSfz: "SFZ（内置采样器，MUSER_SFZ_PATH）", soundGroupPlugin: "乐器插件（在插件窗口里选音色）", soundScanning: "正在扫描插件…", soundNoPlugins: "没有找到 SFZ（设置 MUSER_SFZ_PATH）或 VST3 / CLAP 乐器插件",
     soundCurrent: (i) => `现在：${i}`, soundEditing: "窗口已打开：在里面选音色、调参数；可以在插件的键盘上弹，或试听这条轨。",
     soundSynced: (time) => `${time} 已同步到工程，正在重新渲染`, soundNotYet: "还没有改动",
@@ -758,90 +789,123 @@ async function post(url, body) {
   return out;
 }
 
-// ---------- 音色（插件界面） ----------
-let soundTrack = null, soundPlugins = null, soundTimer = 0, auditioning = false;
-async function openSoundPanel(n) {
-  soundTrack = n; auditioning = false;
-  $("sound-panel").hidden = false;
-  $("sp-title").textContent = `${t("sound")} · ${n.name}`;
-  $("sp-current").textContent = t("soundCurrent", shortInstrument(n.instrument) + (n.label ? " · " + n.label : ""));
-  $("sp-plugin-label").textContent = t("soundPlugin"); $("sp-label-label").textContent = t("soundName");
-  $("sp-open").textContent = t("soundOpen"); $("sp-play").textContent = t("soundAudition");
-  $("sp-done").textContent = t("soundDone"); $("sp-cancel").textContent = t("soundCancel");
-  $("sp-label").value = n.label || "";
-  const sel = $("sp-plugin");
-  if (!soundPlugins) {
-    sel.innerHTML = `<option>${t("soundScanning")}</option>`; sel.disabled = true; $("sp-open").disabled = true;
-    try { soundPlugins = await (await fetch("/api/sound/choices")).json(); } catch (_) { soundPlugins = []; }
-    if (!Array.isArray(soundPlugins)) soundPlugins = [];
-  }
-  sel.disabled = false; sel.innerHTML = "";
-  const groups = [["sfz", t("soundGroupSfz")], ["plugin", t("soundGroupPlugin")]];
-  const list = soundPlugins.slice();
-  // 现在的音色不在列表里（如绝对路径的 SFZ）也放进去，选回它就是改回原样。
-  if (!list.some((p) => sameSound(p.spec, n.instrument)) && /^(sfz|plugin):/.test(n.instrument || ""))
-    list.unshift({ spec: n.instrument, name: shortInstrument(n.instrument), vendor: "", format: n.instrument.startsWith("sfz:") ? "sfz" : "plugin" });
-  for (const [kind, title] of groups) {
-    const items = list.filter((p) => (p.format === "sfz") === (kind === "sfz"));
-    if (!items.length) continue;
-    const g = document.createElement("optgroup"); g.label = title;
-    for (const p of items) {
-      const o = document.createElement("option"); o.value = p.spec;
-      o.textContent = p.format === "sfz" ? `${p.name}${p.vendor ? " — " + p.vendor : ""}` : `${p.name} (${p.format.toUpperCase()}${p.vendor ? ", " + p.vendor : ""})`;
-      g.appendChild(o);
-    }
-    sel.appendChild(g);
-  }
-  const m = list.find((p) => sameSound(p.spec, n.instrument)); if (m) sel.value = m.spec;
-  sel.onchange = soundButton; soundButton();
-  $("sp-open").disabled = !soundPlugins.length;
-  $("sp-note").textContent = soundPlugins.length ? "" : t("soundNoPlugins");
-  soundPoll();
-}
+// ---------- 音色抽屉：SFZ 采样器（虚拟乐器，搜索后选音色）与乐器插件（在插件窗口里选） ----------
+let soundTrack = null, soundChoices = null, soundPlugin = null, soundTimer = 0, auditioning = false;
+const trackIndex = (n) => +/\d+/.exec(n.id)[0];
 function sameSound(a, b) {
   if (!a || !b) return false;
   if (a === b) return true;
   return a.startsWith("plugin:") && b.startsWith("plugin:") && a.split("#")[0] === b.split("#")[0];
 }
-function soundButton() { $("sp-open").textContent = $("sp-plugin").value.startsWith("plugin:") ? t("soundOpen") : t("soundUse"); }
+function drawerPage(page) {
+  for (const id of ["sd-instruments", "sd-sfz", "sd-plugin"]) $(id).hidden = id !== page;
+  $("sd-back").hidden = page === "sd-instruments";
+}
+async function openSoundPanel(n) {
+  soundTrack = n; auditioning = false;
+  $("sound-drawer").classList.add("open"); $("sound-drawer").setAttribute("aria-hidden", "false");
+  $("sd-title").textContent = `${t("sound")} · ${n.name}`;
+  $("sd-current").textContent = t("soundCurrent", shortInstrument(n.instrument) + (n.label ? " · " + n.label : ""));
+  drawerPage("sd-instruments");
+  if (!soundChoices) {
+    $("sd-instruments").textContent = t("soundScanning");
+    try { soundChoices = await (await fetch("/api/sound/choices")).json(); } catch (_) {}
+    if (!Array.isArray(soundChoices)) soundChoices = [];
+  }
+  renderInstruments();
+  soundPoll();
+}
+function card(icon, name, meta, tag, current, onclick) {
+  const b = document.createElement("button"); b.type = "button"; b.className = "instrument-card" + (current ? " current" : "");
+  b.innerHTML = `<span class="icon"></span><span class="what"><div class="name"></div><div class="meta"></div></span><span class="tag"></span>`;
+  b.querySelector(".icon").textContent = icon; b.querySelector(".name").textContent = name;
+  b.querySelector(".meta").textContent = meta; b.querySelector(".tag").textContent = tag; b.onclick = onclick;
+  return b;
+}
+function renderInstruments() {
+  const box = $("sd-instruments"); box.innerHTML = "";
+  const sfz = soundChoices.filter((p) => p.format === "sfz"), plugins = soundChoices.filter((p) => p.format !== "sfz");
+  const cur = soundTrack.instrument || "";
+  box.appendChild(card("🎹", t("sfzSampler"), t("sfzCount", sfz.length), "SFZ", cur.startsWith("sfz:"), () => openSfz()));
+  for (const p of plugins) {
+    box.appendChild(card("🎛", p.name, p.vendor || "", p.format.toUpperCase(), sameSound(p.spec, cur), () => openPlugin(p)));
+  }
+  if (!soundChoices.length) { const e = document.createElement("p"); e.className = "note"; e.textContent = t("soundNoPlugins"); box.appendChild(e); }
+}
+function openSfz() {
+  drawerPage("sd-sfz");
+  $("sd-search").placeholder = t("sfzSearch"); $("sd-search").value = "";
+  renderSfz(); setTimeout(() => $("sd-search").focus(), 50);
+}
+function renderSfz() {
+  const terms = $("sd-search").value.toLowerCase().split(/\s+/).filter(Boolean);
+  const cur = soundTrack.instrument || "";
+  let list = soundChoices.filter((p) => p.format === "sfz");
+  if (cur.startsWith("sfz:") && !list.some((p) => p.spec === cur)) list = [{ spec: cur, name: shortInstrument(cur), vendor: "" }, ...list];
+  const shown = list.filter((p) => terms.every((w) => `${p.name} ${p.vendor} ${p.spec}`.toLowerCase().includes(w)));
+  $("sd-count").textContent = t("sfzShown", shown.length, list.length);
+  const box = $("sd-sfz-list"); box.innerHTML = "";
+  for (const p of shown.slice(0, 300)) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "sound-item" + (p.spec === cur ? " current" : "");
+    b.innerHTML = `<div class="name"></div><div class="meta"></div>`;
+    b.querySelector(".name").textContent = p.name; b.querySelector(".meta").textContent = p.spec.slice(4);
+    b.onclick = async () => {
+      try {
+        await post("/api/sound/open", { track: trackIndex(soundTrack), spec: p.spec, label: "" });
+        soundTrack.instrument = p.spec; soundTrack.label = null;
+        $("sd-current").textContent = t("soundCurrent", shortInstrument(p.spec));
+        banner(t("soundUsed", p.name), "info"); renderSfz();
+      } catch (_) {}
+    };
+    box.appendChild(b);
+  }
+}
+$("sd-search").oninput = renderSfz;
+function openPlugin(p) {
+  soundPlugin = p; drawerPage("sd-plugin");
+  $("sd-title").textContent = `${t("sound")} · ${soundTrack.name} · ${p.name}`;
+  $("sd-label-label").textContent = t("soundName");
+  $("sd-label").value = sameSound(p.spec, soundTrack.instrument) && soundTrack.label ? soundTrack.label : "";
+  $("sd-label").placeholder = p.name;
+  $("sd-open").textContent = t("soundOpen"); $("sd-play").textContent = t("soundAudition");
+  $("sd-done").textContent = t("soundDone"); $("sd-cancel").textContent = t("soundCancel");
+  soundPoll();
+}
 async function soundPoll() {
   clearTimeout(soundTimer);
-  if ($("sound-panel").hidden) return;
+  if (!$("sound-drawer").classList.contains("open")) return;
   let s = { open: false };
   try { s = await (await fetch("/api/sound/status")).json(); } catch (_) {}
-  const mine = s.open && soundTrack && s.track === +/\d+/.exec(soundTrack.id)[0];
-  $("sp-idle").hidden = mine; $("sp-live").hidden = !mine;
-  $("sp-plugin").disabled = mine;
+  const mine = s.open && soundTrack && s.track === trackIndex(soundTrack);
+  $("sd-idle").hidden = mine; $("sd-live").hidden = !mine;
   if (mine) {
-    $("sp-note").innerHTML = "";
+    $("sd-note").innerHTML = "";
     const time = s.synced ? new Date(s.synced * 1000).toLocaleTimeString() : null;
-    $("sp-note").append(t("soundEditing"), document.createElement("br"));
+    $("sd-note").append(t("soundEditing"), document.createElement("br"));
     const sync = document.createElement("span"); sync.className = "sync"; sync.textContent = time ? t("soundSynced", time) : t("soundNotYet");
-    $("sp-note").append(sync);
-  } else if (s.open) {
-    $("sp-note").textContent = t("soundOther", s.track + 1); $("sp-open").disabled = true;
+    $("sd-note").append(sync);
   } else {
-    $("sp-open").disabled = !(soundPlugins || []).length;
-    if (auditioning) { auditioning = false; $("sp-play").textContent = t("soundAudition"); }
+    $("sd-open").disabled = !!s.open;
+    $("sd-note").textContent = s.open ? t("soundOther", s.track + 1) : "";
+    if (auditioning) { auditioning = false; $("sd-play").textContent = t("soundAudition"); }
   }
   soundTimer = setTimeout(soundPoll, 1000);
 }
-$("sp-open").onclick = async () => {
-  const track = +/\d+/.exec(soundTrack.id)[0], spec = $("sp-plugin").value;
-  try {
-    await post("/api/sound/open", { track, spec, label: $("sp-label").value });
-    if (!spec.startsWith("plugin:")) { banner(t("soundUsed", spec), "info"); $("sound-panel").hidden = true; return; }
-  } catch (_) {}
+$("sd-open").onclick = async () => {
+  await post("/api/sound/open", { track: trackIndex(soundTrack), spec: soundPlugin.spec, label: $("sd-label").value }).catch(() => {});
   soundPoll();
 };
-$("sp-play").onclick = async () => {
+$("sd-play").onclick = async () => {
   auditioning = !auditioning;
   await post("/api/sound/cmd", { cmd: auditioning ? "play" : "stop" }).catch(() => { auditioning = false; });
-  $("sp-play").textContent = auditioning ? t("soundStopAudition") : t("soundAudition");
+  $("sd-play").textContent = auditioning ? t("soundStopAudition") : t("soundAudition");
 };
-$("sp-done").onclick = async () => { await post("/api/sound/cmd", { cmd: "done", label: $("sp-label").value }).catch(() => {}); banner(t("soundClosed"), "info"); soundPoll(); };
-$("sp-cancel").onclick = async () => { await post("/api/sound/cmd", { cmd: "cancel" }).catch(() => {}); soundPoll(); };
-$("sp-close").onclick = () => { $("sound-panel").hidden = true; clearTimeout(soundTimer); };
+$("sd-done").onclick = async () => { await post("/api/sound/cmd", { cmd: "done", label: $("sd-label").value }).catch(() => {}); banner(t("soundClosed"), "info"); soundPoll(); };
+$("sd-cancel").onclick = async () => { await post("/api/sound/cmd", { cmd: "cancel" }).catch(() => {}); soundPoll(); };
+$("sd-back").onclick = () => { $("sd-title").textContent = `${t("sound")} · ${soundTrack.name}`; renderInstruments(); drawerPage("sd-instruments"); };
+function closeDrawer() { $("sound-drawer").classList.remove("open"); $("sound-drawer").setAttribute("aria-hidden", "true"); clearTimeout(soundTimer); }
+$("sd-close").onclick = closeDrawer;
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("sound-drawer").classList.contains("open")) closeDrawer(); });
 
 // ---------- 界面 ----------
 function renderHeader() {
