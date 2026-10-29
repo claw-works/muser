@@ -453,6 +453,8 @@ struct State {
     /// 声卡播放器当前载入的工程（去掉推子、静音后的 JSON；变了要重新载入）。
     #[cfg(feature = "device")]
     player_shape: Option<String>,
+    /// 结构变了的工程：等这一版渲染完、乐器输出进了缓存再交给声卡播放器（声卡线程不现场载入乐器，换音色时不卡）。
+    player_pending: Option<Project>,
 }
 
 struct Shared {
@@ -515,10 +517,13 @@ impl Shared {
             shape.master_gain_db = 0.0;
             let shape = serde_json::to_string(&shape).unwrap_or_default();
             if st.player_shape.as_deref() == Some(shape.as_str()) {
-                player.set_mix(p);
+                match st.player_pending.as_mut() {
+                    Some(pending) => *pending = p,
+                    None => player.set_mix(p),
+                }
             } else {
                 st.player_shape = Some(shape);
-                player.load(p);
+                st.player_pending = Some(p);
             }
         }
     }
@@ -648,6 +653,7 @@ impl Shared {
                     let mut cache = self.cache.lock().unwrap();
                     r.store_instruments(&mut cache);
                     let mut st = self.state.lock().unwrap();
+                    self.hand_to_player(&mut st);
                     st.rendering = st.requested;
                     st.error = None;
                     eprintln!(
@@ -674,9 +680,20 @@ impl Shared {
         st.current = Some(Arc::clone(v));
     }
 
+    /// 把等着的工程交给声卡播放器（在当前位置换上）。
+    fn hand_to_player(&self, st: &mut State) {
+        #[cfg(feature = "device")]
+        if let (Some(player), Some(p)) = (&self.player, st.player_pending.take()) {
+            player.load(p);
+        }
+        let _ = st;
+    }
+
     fn fail(&self, msg: String) {
         eprintln!("[view] 渲染失败：{msg}");
         let mut st = self.state.lock().unwrap();
+        // 渲染失败也交过去：声卡那边报出同样的错误，或用能渲染的部分。
+        self.hand_to_player(&mut st);
         st.rendering = st.requested;
         st.error = Some(msg);
     }
@@ -1215,6 +1232,7 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
             fetching_at: 0,
             #[cfg(feature = "device")]
             player_shape: None,
+            player_pending: None,
         }),
         wake: Condvar::new(),
     });

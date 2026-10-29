@@ -269,6 +269,10 @@
     background: #10131f; border-left: 1px solid var(--line-hi); box-shadow: -24px 0 60px rgba(0,0,0,.45);
     transform: translateX(105%); transition: transform .22s ease; }
   .drawer.open { transform: none; }
+  /* 正在渲染：盖住乐器与音色列表（播放、推子照常可用，继续听旧音色）。 */
+  .drawer-busy { position: absolute; z-index: 2; inset: 96px 0 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    color: var(--dim); background: rgba(16,19,31,.82); backdrop-filter: blur(2px); font-size: 12px; text-align: center; padding: 0 30px; }
+  .drawer-busy .spin { width: 22px; height: 22px; border: 2px solid var(--line-hi); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
   .drawer [hidden] { display: none !important; }
   .drawer-head { display: flex; align-items: center; gap: 8px; padding: 16px 18px 6px; }
   .drawer-head h3 { flex: 1; margin: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
@@ -389,6 +393,7 @@
 <aside class="drawer" id="sound-drawer" aria-hidden="true">
   <header class="drawer-head"><button id="sd-back" class="ghost" hidden>‹</button><h3 id="sd-title"></h3><button id="sd-close" class="ghost" aria-label="Close">×</button></header>
   <div class="drawer-sub" id="sd-current"></div>
+  <div class="drawer-busy" id="sd-busy" hidden><span class="spin"></span><span id="sd-busy-text"></span></div>
   <div class="drawer-body" id="sd-instruments"></div>
   <div class="drawer-body" id="sd-sfz" hidden>
     <input id="sd-search" type="search" autocomplete="off">
@@ -442,6 +447,8 @@ const I18N = {
     soundDone: "Done", soundCancel: "Discard", soundUsed: (s) => `Switched to ${s}; re-rendering`,
     sfzSampler: "SFZ sampler", sfzCount: (n) => `Built-in sampler · ${n} sounds in MUSER_SFZ_PATH`, sfzSearch: "Search sounds (name, library, path)…",
     sfzShown: (a, b) => (a === b ? `${b} sounds` : `${a} of ${b} sounds`),
+    soundBusy: "Loading the new sound and re-rendering… keep listening — playback switches over when it's ready",
+    soundBusyPct: (p) => `Re-rendering ${p}%… playback switches to the new sound at the same spot`,
     soundGroupSfz: "SFZ (built-in sampler, MUSER_SFZ_PATH)", soundGroupPlugin: "Instrument plugins (pick the sound in the plugin window)", soundScanning: "Scanning plugins…", soundNoPlugins: "No SFZ files (set MUSER_SFZ_PATH) or VST3 / CLAP instrument plugins found",
     soundCurrent: (i) => `Current: ${i}`, soundEditing: "Window open — pick and tweak the sound there; you can play it on the plugin's keyboard, or audition this track.",
     soundSynced: (time) => `Synced to the project at ${time}; re-rendering`, soundNotYet: "No changes yet",
@@ -483,6 +490,8 @@ const I18N = {
     soundDone: "完成", soundCancel: "放弃", soundUsed: (s) => `已换成 ${s}，正在重新渲染`,
     sfzSampler: "SFZ 采样器", sfzCount: (n) => `内置采样器 · MUSER_SFZ_PATH 里 ${n} 个音色`, sfzSearch: "搜索音色（名字、音色库、路径）…",
     sfzShown: (a, b) => (a === b ? `${b} 个音色` : `${b} 个里的 ${a} 个`),
+    soundBusy: "正在载入新音色并重新渲染……可以继续听，好了会自动换上",
+    soundBusyPct: (p) => `正在重新渲染 ${p}%……好了在同一位置换成新音色`,
     soundGroupSfz: "SFZ（内置采样器，MUSER_SFZ_PATH）", soundGroupPlugin: "乐器插件（在插件窗口里选音色）", soundScanning: "正在扫描插件…", soundNoPlugins: "没有找到 SFZ（设置 MUSER_SFZ_PATH）或 VST3 / CLAP 乐器插件",
     soundCurrent: (i) => `现在：${i}`, soundEditing: "窗口已打开：在里面选音色、调参数；可以在插件的键盘上弹，或试听这条轨。",
     soundSynced: (time) => `${time} 已同步到工程，正在重新渲染`, soundNotYet: "还没有改动",
@@ -764,7 +773,14 @@ async function poll1() {
   }
   return s;
 }
+// 渲染进行中时锁住抽屉里会再触发渲染的操作（乐器卡片、SFZ 列表）；插件编辑页不锁（同步本身就会触发渲染）。
+function drawerBusy(s) {
+  const busy = !!(s && (s.rendering || s.progress < 1)) && $("sound-drawer").classList.contains("open") && $("sd-plugin").hidden;
+  $("sd-busy").hidden = !busy;
+  if (busy) $("sd-busy-text").textContent = s.progress < 1 ? t("soundBusyPct", Math.floor(s.progress * 100)) : t("soundBusy");
+}
 function renderStatus(s) {
+  drawerBusy(s);
   const badge = $("badge"), partial = s.progress < 1;
   badge.textContent = partial ? t("renderingPct", Math.floor(s.progress * 100)) : s.rendering ? t("rendering") : t("linkedVersion", s.version);
   badge.className = "badge " + (s.rendering || partial ? "busy" : "live");
@@ -800,6 +816,7 @@ function sameSound(a, b) {
 function drawerPage(page) {
   for (const id of ["sd-instruments", "sd-sfz", "sd-plugin"]) $(id).hidden = id !== page;
   $("sd-back").hidden = page === "sd-instruments";
+  drawerBusy(lastStatus);
 }
 async function openSoundPanel(n) {
   soundTrack = n; auditioning = false;
@@ -855,6 +872,7 @@ function renderSfz() {
         soundTrack.instrument = p.spec; soundTrack.label = null;
         $("sd-current").textContent = t("soundCurrent", shortInstrument(p.spec));
         banner(t("soundUsed", p.name), "info"); renderSfz();
+        drawerBusy({ rendering: true, progress: 1 }); // 文件监视还没触发重新渲染前就先锁上
       } catch (_) {}
     };
     box.appendChild(b);
