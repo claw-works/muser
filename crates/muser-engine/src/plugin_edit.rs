@@ -32,8 +32,9 @@ pub enum Outcome {
     Unchanged,
 }
 
-/// 状态多久检查一次有没有变化。
-const SYNC_EVERY: Duration = Duration::from_secs(2);
+/// 最后一次操作之后多久存盘。插件的状态没法逐字节比较（Kontakt 每次保存都写进新的随机 id），
+/// 所以以"有人动过"为准：在窗口里松开鼠标、按键，或插件报告改了参数 / 状态。
+const SYNC_AFTER: Duration = Duration::from_millis(1500);
 
 /// 声卡上的循环试听（音频线程里排音符）。
 #[cfg(feature = "devices")]
@@ -175,32 +176,48 @@ pub fn run(
     #[allow(deprecated)]
     app.activateIgnoringOtherApps(true);
 
-    let mut last = o.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
     let header = || {
         let e = o.plugin.entry();
         StateHeader { plugin_id: e.id.clone(), plugin_name: e.name.clone(), version: e.version.clone(), format: format!("{:?}", e.format).to_lowercase() }
     };
     let header = header();
     let mut saved = false;
-    let mut next_sync = Instant::now() + SYNC_EVERY;
+    // 最后一次改动的时间（存盘后清空）。
+    let mut touched: Option<Instant> = None;
+    // 刚载入时插件自己报的改动（载入音色、重建参数表）不算。
+    let settled = Instant::now() + Duration::from_secs(3);
     let mut cancel = false;
     while window.isVisible() {
         // SAFETY: AppKit 的默认运行循环模式常量。
         let mode = unsafe { NSDefaultRunLoopMode };
         let until = NSDate::dateWithTimeIntervalSinceNow(0.01);
         while let Some(ev) = app.nextEventMatchingMask_untilDate_inMode_dequeue(NSEventMask::Any, Some(&until), mode, true) {
+            use objc2_app_kit::NSEventType as T;
+            if matches!(ev.r#type(), T::LeftMouseUp | T::RightMouseUp | T::OtherMouseUp | T::KeyUp) {
+                touched = Some(Instant::now());
+            }
             app.sendEvent(&ev);
         }
         // 插件界面的请求：改窗口大小、自己关掉。
         let mut requests = Vec::new();
         if let Some(p) = o.plugin.as_vst3_mut() {
+            use manguebyte::host::vst3::HostEvent as E;
             requests.extend(p.pump().into_iter().filter_map(|e| match e {
-                manguebyte::host::vst3::HostEvent::Editor(r) => Some(r),
+                E::Editor(r) => Some(r),
+                E::GestureEnd { .. } | E::StateDirty | E::ParamsRescanned { .. } => {
+                    touched = (Instant::now() > settled).then(Instant::now).or(touched);
+                    None
+                }
                 _ => None,
             }));
         } else if let Some(p) = o.plugin.as_clap_mut() {
+            use manguebyte::host::clap::HostEvent as E;
             requests.extend(p.pump().into_iter().filter_map(|e| match e {
-                manguebyte::host::clap::HostEvent::Editor(r) => Some(r),
+                E::Editor(r) => Some(r),
+                E::GestureEnd { .. } | E::StateDirty | E::ParamsRescanned(_) => {
+                    touched = (Instant::now() > settled).then(Instant::now).or(touched);
+                    None
+                }
                 _ => None,
             }));
         }
@@ -253,23 +270,21 @@ pub fn run(
                 }
             }
         }
-        if Instant::now() >= next_sync && !cancel {
-            next_sync = Instant::now() + SYNC_EVERY;
+        if !cancel && touched.is_some_and(|t| t.elapsed() >= SYNC_AFTER) {
+            touched = None;
             if let Ok(data) = o.plugin.save_state() {
-                if data != last {
-                    write_state_file(out, &header, &data)?;
-                    last = data;
-                    saved = true;
-                    on_saved();
-                }
+                write_state_file(out, &header, &data)?;
+                saved = true;
+                on_saved();
             }
         }
     }
     #[cfg(feature = "devices")]
     drop(stream);
     if !cancel {
-        let data = o.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
-        if data != last || (!saved && !out.is_file()) {
+        // 还没存的改动；换了插件（状态文件还不存在）时也要存一份初始音色。
+        if touched.is_some() || (!saved && !out.is_file()) {
+            let data = o.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
             write_state_file(out, &header, &data)?;
             saved = true;
             on_saved();

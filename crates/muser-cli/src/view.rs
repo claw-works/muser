@@ -667,18 +667,57 @@ impl Shared {
         Ok(changes.len())
     }
 
-    /// 可选的乐器插件（扫描缓存里的 VST3 / CLAP 乐器）。
-    fn instrument_plugins() -> Result<Vec<Value>, String> {
-        let (list, _) = muser_engine::plugin::scan(false)?;
-        Ok(list
+    /// 可选的音色：`$MUSER_SFZ_PATH` 里的 SFZ（内置采样器，直接换）与扫描到的 VST3 / CLAP 乐器插件（在插件窗口里选）。
+    fn sound_choices() -> Vec<Value> {
+        let mut out: Vec<Value> = muser_engine::sfz::library()
             .into_iter()
-            .filter(|p| p.kind == "instrument" && (p.format == "vst3" || p.format == "clap"))
-            .map(|p| json!({ "spec": format!("{}#{}", p.path, p.id), "name": p.name, "vendor": p.vendor, "format": p.format }))
-            .collect())
+            .map(|(rel, path)| {
+                let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| rel.clone());
+                let group = rel.split('/').next().filter(|g| *g != rel).unwrap_or("").to_string();
+                json!({ "spec": format!("sfz:{rel}"), "name": name, "vendor": group, "format": "sfz" })
+            })
+            .collect();
+        if cfg!(all(target_os = "macos", feature = "host")) {
+            if let Ok((list, _)) = muser_engine::plugin::scan(false) {
+                out.extend(
+                    list.into_iter()
+                        .filter(|p| p.kind == "instrument" && (p.format == "vst3" || p.format == "clap"))
+                        .map(|p| json!({ "spec": format!("plugin:{}#{}", p.path, p.id), "name": p.name, "vendor": p.vendor, "format": p.format })),
+                );
+            }
+        }
+        out
+    }
+
+    /// 直接换成一个不需要插件窗口的音色（`sfz:…`）：写进工程文件（文件监视会重新渲染）。
+    fn sound_use(&self, ti: usize, instrument: &str, label: &str) -> Result<(), String> {
+        if self.edit.lock().unwrap().as_ref().is_some_and(|e| e.open && e.track == ti) {
+            return Err("这条轨的插件窗口还开着，先完成或放弃它".into());
+        }
+        let write = || -> Result<()> {
+            let text = std::fs::read_to_string(&self.path)?;
+            let mut v: Value = serde_json::from_str(&text)?;
+            let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {ti} 条音轨"))?;
+            if t.get("instrument").and_then(Value::as_str) != Some(instrument) {
+                t.insert("instrument".into(), json!(instrument));
+                t.remove("instrument_params");
+            }
+            let label = label.trim();
+            if !label.is_empty() {
+                let p = t.entry("instrument_params").or_insert_with(|| json!({}));
+                if let Some(p) = p.as_object_mut() {
+                    p.insert("@label".into(), json!(label));
+                }
+            }
+            std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
+            Ok(())
+        };
+        write().map_err(|e| format!("写回工程失败: {e:#}"))
     }
 
     /// 打开第 `ti` 条音轨的音色编辑：`spec` 是要用的乐器插件（和现在的不同就换乐器，从插件的初始音色开始）。
     fn edit_open(self: &Arc<Self>, ti: usize, spec: &str, label: &str) -> Result<(), String> {
+        let spec = spec.strip_prefix("plugin:").unwrap_or(spec);
         if !cfg!(target_os = "macos") {
             return Err("插件界面目前只支持 macOS".into());
         }
@@ -708,6 +747,10 @@ impl Shared {
         let text = std::fs::read_to_string(&self.path).map_err(|e| format!("读取工程失败: {e}"))?;
         let v: Value = serde_json::from_str(&text).map_err(|e| format!("解析工程失败: {e}"))?;
         let backup = (v["tracks"][ti].clone(), std::fs::read(&out).ok());
+        if !keep {
+            // 换插件：旧插件的状态文件不能沿用（放弃时从 backup 恢复）。
+            let _ = std::fs::remove_file(&out);
+        }
         let plugin_name = muser_engine::plugin::split_spec(spec).0.rsplit('/').next().unwrap_or(spec).trim_end_matches(".vst3").trim_end_matches(".clap").to_string();
         let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
             .args(["plugin", "edit", spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &format!("{plugin_name} — {name} · muser"), "-o"])
@@ -1051,15 +1094,17 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
             Err(e) => respond_json(req, 400, &json!({ "error": e })),
         },
-        (Method::Get, "/api/sound/plugins") => match Shared::instrument_plugins() {
-            Ok(list) => respond_json(req, 200, &json!(list)),
-            Err(e) => respond_json(req, 400, &json!({ "error": e })),
-        },
+        (Method::Get, "/api/sound/choices") => respond_json(req, 200, &json!(Shared::sound_choices())),
         (Method::Get, "/api/sound/status") => respond_json(req, 200, &shared.edit_status()),
         (Method::Post, "/api/sound/open") => {
             let r = read_body::<Value>(&mut req).and_then(|b| {
                 let ti = b["track"].as_u64().ok_or("需要 track")? as usize;
-                shared.edit_open(ti, b["spec"].as_str().ok_or("需要 spec")?, b["label"].as_str().unwrap_or(""))
+                let (spec, label) = (b["spec"].as_str().ok_or("需要 spec")?, b["label"].as_str().unwrap_or(""));
+                if spec.starts_with("plugin:") {
+                    shared.edit_open(ti, spec, label)
+                } else {
+                    shared.sound_use(ti, spec, label)
+                }
             });
             match r {
                 Ok(()) => respond_json(req, 200, &json!({ "ok": true })),

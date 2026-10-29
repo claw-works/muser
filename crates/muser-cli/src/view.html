@@ -69,9 +69,11 @@
   .meta { max-width: 800px; margin-top: 9px; color: var(--dim); font-size: 12px; }
   .shortcut { color: var(--faint); font-size: 11px; white-space: nowrap; }
   kbd { margin-left: 6px; padding: 3px 7px; color: var(--dim); background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 6px; font: 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }
-  .banner { display: none; margin: 0 0 14px; padding: 11px 14px; border-radius: 10px; white-space: pre-wrap; border: 1px solid transparent; }
-  .banner.err { display: block; color: #ffadb6; background: rgba(113,30,44,.22); border-color: rgba(255,124,139,.23); }
-  .banner.info { display: block; color: var(--warn); background: rgba(92,65,24,.2); border-color: rgba(255,196,107,.2); }
+  /* 固定在底部：页面滚到哪里都看得到。 */
+  .banner { display: none; position: fixed; z-index: 40; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: min(760px, 86vw);
+    padding: 11px 16px; border-radius: 10px; white-space: pre-wrap; border: 1px solid transparent; box-shadow: 0 16px 40px rgba(0,0,0,.45); }
+  .banner.err { display: block; color: #ffd0d6; background: #3a1620; border-color: rgba(255,124,139,.45); }
+  .banner.info { display: block; color: var(--warn); background: #2b2312; border-color: rgba(255,196,107,.35); }
   #loading {
     height: 44px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
     color: var(--dim); background: rgba(18,22,35,.7); border: 1px solid var(--line); border-radius: 12px; font-size: 11px;
@@ -407,7 +409,8 @@ const I18N = {
     exportMidiHint: "Notes of every instrument track as a standard MIDI file (audio tracks are not included)",
     soundHint: "Choose this track's sound in an instrument plugin", sound: "Sound", soundPlugin: "Instrument plugin",
     soundName: "Name (saved as @label)", soundOpen: "Open plugin window", soundAudition: "▶ Audition track", soundStopAudition: "■ Stop",
-    soundDone: "Done", soundCancel: "Discard", soundScanning: "Scanning plugins…", soundNoPlugins: "No VST3 / CLAP instrument plugins found",
+    soundDone: "Done", soundCancel: "Discard", soundUse: "Use this sound", soundUsed: (s) => `Switched to ${s}; re-rendering`,
+    soundGroupSfz: "SFZ (built-in sampler, MUSER_SFZ_PATH)", soundGroupPlugin: "Instrument plugins (pick the sound in the plugin window)", soundScanning: "Scanning plugins…", soundNoPlugins: "No SFZ files (set MUSER_SFZ_PATH) or VST3 / CLAP instrument plugins found",
     soundCurrent: (i) => `Current: ${i}`, soundEditing: "Window open — pick and tweak the sound there; you can play it on the plugin's keyboard, or audition this track.",
     soundSynced: (time) => `Synced to the project at ${time}; re-rendering`, soundNotYet: "No changes yet",
     soundClosed: "Plugin window closed", soundOther: (n) => `A plugin window is already open (track ${n}).`,
@@ -444,7 +447,8 @@ const I18N = {
     exportMidiHint: "各乐器音轨的音符，标准 MIDI 文件（audio 音轨不包含）",
     soundHint: "在乐器插件里给这条轨选音色", sound: "音色", soundPlugin: "乐器插件",
     soundName: "名字（写进 @label）", soundOpen: "打开插件窗口", soundAudition: "▶ 试听本轨", soundStopAudition: "■ 停止",
-    soundDone: "完成", soundCancel: "放弃", soundScanning: "正在扫描插件…", soundNoPlugins: "本机没有找到 VST3 / CLAP 乐器插件",
+    soundDone: "完成", soundCancel: "放弃", soundUse: "使用这个音色", soundUsed: (s) => `已换成 ${s}，正在重新渲染`,
+    soundGroupSfz: "SFZ（内置采样器，MUSER_SFZ_PATH）", soundGroupPlugin: "乐器插件（在插件窗口里选音色）", soundScanning: "正在扫描插件…", soundNoPlugins: "没有找到 SFZ（设置 MUSER_SFZ_PATH）或 VST3 / CLAP 乐器插件",
     soundCurrent: (i) => `现在：${i}`, soundEditing: "窗口已打开：在里面选音色、调参数；可以在插件的键盘上弹，或试听这条轨。",
     soundSynced: (time) => `${time} 已同步到工程，正在重新渲染`, soundNotYet: "还没有改动",
     soundClosed: "插件窗口已关闭", soundOther: (n) => `已经有一个插件窗口开着（音轨 ${n}）。`,
@@ -757,20 +761,38 @@ async function openSoundPanel(n) {
   const sel = $("sp-plugin");
   if (!soundPlugins) {
     sel.innerHTML = `<option>${t("soundScanning")}</option>`; sel.disabled = true; $("sp-open").disabled = true;
-    try { soundPlugins = await (await fetch("/api/sound/plugins")).json(); } catch (_) { soundPlugins = []; }
+    try { soundPlugins = await (await fetch("/api/sound/choices")).json(); } catch (_) { soundPlugins = []; }
     if (!Array.isArray(soundPlugins)) soundPlugins = [];
   }
   sel.disabled = false; sel.innerHTML = "";
-  for (const p of soundPlugins) {
-    const o = document.createElement("option"); o.value = p.spec; o.textContent = `${p.name} (${p.format.toUpperCase()}${p.vendor ? ", " + p.vendor : ""})`;
-    sel.appendChild(o);
+  const groups = [["sfz", t("soundGroupSfz")], ["plugin", t("soundGroupPlugin")]];
+  const list = soundPlugins.slice();
+  // 现在的音色不在列表里（如绝对路径的 SFZ）也放进去，选回它就是改回原样。
+  if (!list.some((p) => sameSound(p.spec, n.instrument)) && /^(sfz|plugin):/.test(n.instrument || ""))
+    list.unshift({ spec: n.instrument, name: shortInstrument(n.instrument), vendor: "", format: n.instrument.startsWith("sfz:") ? "sfz" : "plugin" });
+  for (const [kind, title] of groups) {
+    const items = list.filter((p) => (p.format === "sfz") === (kind === "sfz"));
+    if (!items.length) continue;
+    const g = document.createElement("optgroup"); g.label = title;
+    for (const p of items) {
+      const o = document.createElement("option"); o.value = p.spec;
+      o.textContent = p.format === "sfz" ? `${p.name}${p.vendor ? " — " + p.vendor : ""}` : `${p.name} (${p.format.toUpperCase()}${p.vendor ? ", " + p.vendor : ""})`;
+      g.appendChild(o);
+    }
+    sel.appendChild(g);
   }
-  const cur = /^plugin:(.*)$/.exec(n.instrument || "");
-  if (cur) { const m = soundPlugins.find((p) => p.spec === cur[1] || p.spec.split("#")[0] === cur[1].split("#")[0]); if (m) sel.value = m.spec; }
+  const m = list.find((p) => sameSound(p.spec, n.instrument)); if (m) sel.value = m.spec;
+  sel.onchange = soundButton; soundButton();
   $("sp-open").disabled = !soundPlugins.length;
   $("sp-note").textContent = soundPlugins.length ? "" : t("soundNoPlugins");
   soundPoll();
 }
+function sameSound(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a.startsWith("plugin:") && b.startsWith("plugin:") && a.split("#")[0] === b.split("#")[0];
+}
+function soundButton() { $("sp-open").textContent = $("sp-plugin").value.startsWith("plugin:") ? t("soundOpen") : t("soundUse"); }
 async function soundPoll() {
   clearTimeout(soundTimer);
   if ($("sound-panel").hidden) return;
@@ -794,8 +816,11 @@ async function soundPoll() {
   soundTimer = setTimeout(soundPoll, 1000);
 }
 $("sp-open").onclick = async () => {
-  const track = +/\d+/.exec(soundTrack.id)[0];
-  await post("/api/sound/open", { track, spec: $("sp-plugin").value, label: $("sp-label").value }).catch(() => {});
+  const track = +/\d+/.exec(soundTrack.id)[0], spec = $("sp-plugin").value;
+  try {
+    await post("/api/sound/open", { track, spec, label: $("sp-label").value });
+    if (!spec.startsWith("plugin:")) { banner(t("soundUsed", spec), "info"); $("sound-panel").hidden = true; return; }
+  } catch (_) {}
   soundPoll();
 };
 $("sp-play").onclick = async () => {
@@ -855,7 +880,7 @@ function channelItem(n, number, isChanged) {
   item.querySelector(".expand-button").setAttribute("aria-label", t("expand", n.name));
   const instrument = item.querySelector(".track-instrument");
   instrument.textContent = sub + (n.label ? " · " + n.label : ""); if (n.kind === "track") instrument.title = n.instrument;
-  if (n.kind === "track" && data.sound_edit && n.instrument !== "audio") {
+  if (n.kind === "track" && n.instrument !== "audio") {
     const b = document.createElement("button");
     b.className = "expand-button sound-button"; b.textContent = "🎛"; b.title = t("soundHint"); b.setAttribute("aria-label", t("soundHint"));
     b.onclick = (e) => { e.stopPropagation(); openSoundPanel(n); };

@@ -39,6 +39,34 @@ pub fn controls(sfz: &Sfz) -> BTreeMap<u8, (String, u8)> {
     out
 }
 
+/// `$MUSER_SFZ_PATH` 里的 .sfz 文件（根下最多 5 层，最多 500 个，按路径排序）：(相对根的路径, 文件)。
+/// 相对路径就是工程里写的 `sfz:<路径>`。
+pub fn library() -> Vec<(String, std::path::PathBuf)> {
+    fn walk(root: &std::path::Path, dir: &std::path::Path, depth: usize, out: &mut Vec<(String, std::path::PathBuf)>) {
+        let Ok(it) = std::fs::read_dir(dir) else { return };
+        let mut entries: Vec<_> = it.flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for p in entries {
+            if out.len() >= 500 {
+                return;
+            }
+            if p.is_dir() && depth < 5 {
+                walk(root, &p, depth + 1, out);
+            } else if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("sfz")) {
+                if let Ok(rel) = p.strip_prefix(root) {
+                    out.push((rel.to_string_lossy().replace('\\', "/"), p.clone()));
+                }
+            }
+        }
+    }
+    let roots = std::env::var_os("MUSER_SFZ_PATH").map(|v| std::env::split_paths(&v).collect::<Vec<_>>()).unwrap_or_default();
+    let mut out = Vec::new();
+    for r in roots.iter().filter(|r| !r.as_os_str().is_empty()) {
+        walk(r, r, 0, &mut out);
+    }
+    out
+}
+
 /// `sfz:` 后的路径 → 实际文件。绝对路径或相对当前目录已存在的原样使用；否则在 `$MUSER_SFZ_PATH`
 /// （路径分隔符分隔的音色库根目录）里找：`根/路径`，以及根下两层以内的子目录 `根/a/路径`、`根/a/b/路径`，
 /// 这样同一份工程在音色库目录层级不同的机器上也能用。都找不到时原样返回（由调用方报"找不到"）。
