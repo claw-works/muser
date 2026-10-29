@@ -166,7 +166,7 @@ mod tests {
     use crate::Beats;
 
     fn notes(n: usize, step: f64) -> Vec<Note> {
-        (0..n).map(|i| Note { pitch: 60, start: Beats(i as f64 * step), length: Beats(step * 0.9), velocity: 0.7, accent: false }).collect()
+        (0..n).map(|i| Note { pitch: 60, start: Beats(i as f64 * step), length: Beats(step * 0.9), velocity: 0.7, accent: false, bend: Vec::new() }).collect()
     }
 
     fn lengths(n: &[Note]) -> Vec<f64> {

@@ -127,6 +127,9 @@ struct NoteSpec {
     /// 重音（可选）。鼓组、acid 贝斯等会让重音更响更亮。
     #[serde(default)]
     accent: Option<bool>,
+    /// 弯音（吉他推弦等，可选）：`[[拍, 半音], ...]`，拍相对音符起点、递增，半音 ±2 之内。推弦 `[[0, 0], [0.25, 2]]`。
+    #[serde(default)]
+    bend: Vec<(f64, f64)>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -656,6 +659,7 @@ impl Muser {
                     note.velocity = v;
                 }
                 note.accent = n.accent.unwrap_or(false);
+                note.bend = n.bend;
                 clip.notes.push(note);
             }
             Ok(ok_text(format!("已加入 {count} 个音符")))

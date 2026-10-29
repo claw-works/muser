@@ -95,8 +95,10 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
                 Act::On { key, velocity, .. } => {
                     MidiMessage::NoteOn { channel, note: key, velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8 }
                 }
-                Act::Off { key } => MidiMessage::NoteOff { channel, note: key, velocity: 0 },
+                Act::Off { key, .. } => MidiMessage::NoteOff { channel, note: key, velocity: 0 },
                 Act::Pedal { down } => MidiMessage::ControlChange { channel, controller: 64, value: if down { 127 } else { 0 } },
+                // shortcut: 一个音轨一个通道，弯音会带上同时响着的其它音；要分开得按 MPE 每音一个通道导出。
+                Act::Bend { value, .. } => MidiMessage::PitchBend { channel, value },
             };
             track.push_midi(tick, message);
         }

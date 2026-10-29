@@ -115,7 +115,7 @@ impl Grid {
                         continue;
                     }
                 };
-                notes.push(Note { pitch, start: Beats(k as f64 * step), length: Beats(step), velocity, accent: c == 'X' });
+                notes.push(Note { pitch, start: Beats(k as f64 * step), length: Beats(step), velocity, accent: c == 'X', bend: Vec::new() });
                 last = Some(notes.len() - 1);
             }
         }

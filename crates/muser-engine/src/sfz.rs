@@ -540,6 +540,26 @@ mod tests {
     }
 
     #[test]
+    fn note_bend_moves_only_its_own_note() {
+        let dir = std::env::temp_dir().join(format!("muser-sfzbend-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("b.sfz");
+        std::fs::write(&path, "<region> sample=*sine").unwrap();
+        // 60 bpm：推弦 0–0.5 s 推上两个半音并保持；之后一个不弯的音不受影响。
+        let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 60, "tracks": [{ "instrument": format!("sfz:{}", path.display()),
+            "clips": [{ "start": 0, "length": 3, "notes": [{ "pitch": 57, "start": 0, "length": 1.0, "bend": [[0, 0], [0.5, 2]] }, { "pitch": 57, "start": 1.5, "length": 1.0 }] }] }] })).unwrap();
+        let a = crate::render(&p, crate::RenderSettings { tail_seconds: 0.2, ..Default::default() }).unwrap();
+        let freq = |from: f64| {
+            let x = &a.channel(0)[(from * 48_000.0) as usize..((from + 0.4) * 48_000.0) as usize];
+            x.windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count() as f64 / 0.4
+        };
+        let (bent, plain) = (freq(0.55), freq(1.55));
+        assert!((bent / 220.0 - 2f64.powf(2.0 / 12.0)).abs() < 0.02, "推弦后 {bent}");
+        assert!((plain / 220.0 - 1.0).abs() < 0.02, "不弯的音 {plain}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn legato_trigger_uses_legato_regions() {
         // first 区域是 1 号正弦音高，legato 区域移高一个八度：重叠的第二个音应走 legato。
         let dir = std::env::temp_dir().join(format!("muser-sfzleg-{}", std::process::id()));

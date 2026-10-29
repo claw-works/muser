@@ -199,7 +199,7 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                         let length = if staccato { l * 0.5 } else { l };
-                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent });
+                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, bend: Vec::new() });
                         if tie {
                             next_tied.push(notes.len() - 1);
                         }

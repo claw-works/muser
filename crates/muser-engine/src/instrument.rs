@@ -17,6 +17,7 @@ use manguebyte::dsp::instruments::{
     DrumKitVoice, FmParams, FmVoice, MalletParams, MalletVoice, OrganParams, OrganVoice,
     PluckedString, PolySynthParams, PolySynthVoice, StringParams, WindParams, WindVoice,
 };
+use manguebyte::midi::MidiMessage;
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Processor, Synth, Voice};
 use serde::Serialize;
 
@@ -33,20 +34,19 @@ trait Playable {
     fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool);
     fn note_off(&mut self, note: NoteRef, velocity: f32);
     fn process(&mut self, buffer: &mut AudioBuffer<f32>);
-    /// 延音踏板（CC64）踩下/抬起。默认忽略（鼓组）。
-    fn pedal(&mut self, _channel: u8, _down: bool) {}
+    /// 通道消息：延音踏板（CC64）、弯音轮。默认忽略（鼓组）。
+    fn midi(&mut self, _message: MidiMessage) {}
     /// 自动化：运行中改一个参数（名称与 `instrument_params` 相同，鼓组为 `鼓件.参数`）。
     fn set_param(&mut self, _name: &str, _value: f64) {}
 }
 
-/// 给 Synth 发一条 CC64。
-fn sustain_event(channel: u8, down: bool) -> manguebyte::prelude::Event {
-    manguebyte::prelude::Event::from_midi(0, manguebyte::midi::MidiMessage::ControlChange { channel, controller: 64, value: if down { 127 } else { 0 } })
+fn midi_event(message: MidiMessage) -> manguebyte::prelude::Event {
+    manguebyte::prelude::Event::from_midi(0, message)
 }
 
 impl<V: Voice<f32>> Playable for Synth<V, f32> {
-    fn pedal(&mut self, channel: u8, down: bool) {
-        self.handle_event(&sustain_event(channel, down));
+    fn midi(&mut self, message: MidiMessage) {
+        self.handle_event(&midi_event(message));
     }
     fn prepare(&mut self, spec: &ProcessSpec) {
         Processor::prepare(self, spec);
@@ -86,9 +86,13 @@ impl TrackInstrument {
     pub fn note_off(&mut self, note: NoteRef, velocity: f32) {
         self.inner.note_off(note, velocity);
     }
-    /// 延音踏板踩下/抬起。
-    pub fn pedal(&mut self, down: bool) {
-        self.inner.pedal(self.channel, down);
+    /// 延音踏板踩下/抬起（`channel` 缺省为乐器的通道）。
+    pub fn pedal(&mut self, channel: Option<u8>, down: bool) {
+        self.inner.midi(MidiMessage::ControlChange { channel: channel.unwrap_or(self.channel), controller: 64, value: if down { 127 } else { 0 } });
+    }
+    /// 弯音轮（-8192 – 8191，满偏 ±2 半音）。
+    pub fn bend(&mut self, channel: Option<u8>, value: i16) {
+        self.inner.midi(MidiMessage::PitchBend { channel: channel.unwrap_or(self.channel), value });
     }
     pub fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         self.inner.process(buffer);
@@ -107,8 +111,8 @@ struct Tunable<V: Voice<f32>, P: Copy + 'static> {
 }
 
 impl<V: Voice<f32>, P: Copy + 'static> Playable for Tunable<V, P> {
-    fn pedal(&mut self, channel: u8, down: bool) {
-        self.synth.handle_event(&sustain_event(channel, down));
+    fn midi(&mut self, message: MidiMessage) {
+        self.synth.handle_event(&midi_event(message));
     }
     fn prepare(&mut self, spec: &ProcessSpec) {
         Processor::prepare(&mut self.synth, spec);
@@ -401,8 +405,8 @@ impl Playable for SfzSampler {
     fn note_off(&mut self, note: NoteRef, velocity: f32) {
         self.sampler.note_off(note, velocity);
     }
-    fn pedal(&mut self, channel: u8, down: bool) {
-        self.sampler.handle_event(&sustain_event(channel, down));
+    fn midi(&mut self, message: MidiMessage) {
+        self.sampler.handle_event(&midi_event(message));
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         Processor::process(&mut self.sampler, buffer);
@@ -784,8 +788,8 @@ impl Playable for PluginInstrument {
         use manguebyte::prelude::{Event, EventKind};
         let _ = self.pending.push(Event { offset: 0, kind: EventKind::NoteOff { note, velocity } });
     }
-    fn pedal(&mut self, channel: u8, down: bool) {
-        let _ = self.pending.push(sustain_event(channel, down));
+    fn midi(&mut self, message: MidiMessage) {
+        let _ = self.pending.push(midi_event(message));
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         use manguebyte::prelude::ProcessContext;

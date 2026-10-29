@@ -37,7 +37,7 @@ pub fn expand(d: &Drummer, length: f64, seed: u64, dir: Option<&std::path::Path>
     let scale = 0.6 + 0.8 * d.intensity;
     let c = d.complexity;
     let mut out: Vec<Note> = Vec::new();
-    let note = |pitch: u8, start: f64, velocity: f64| Note { pitch, start: Beats(start), length: Beats(step), velocity: velocity as f32, accent: false };
+    let note = |pitch: u8, start: f64, velocity: f64| Note { pitch, start: Beats(start), length: Beats(step), velocity: velocity as f32, accent: false, bend: Vec::new() };
 
     // 哪些小节打过门、打几拍。
     let fills: Vec<Option<f64>> = (0..bars)

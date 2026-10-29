@@ -239,6 +239,15 @@ impl Project {
                             note.velocity
                         )));
                     }
+                    let mut last = 0.0;
+                    for &(at, semis) in &note.bend {
+                        if !(at >= last && semis.abs() <= 2.0) {
+                            return Err(CoreError::Invalid(format!(
+                                "track[{ti}].clip[{ci}].note[{ni}].bend: 点 [{at}, {semis}] 无效：拍 ≥ 0 且递增，半音在 ±2 之内"
+                            )));
+                        }
+                        last = at;
+                    }
                 }
             }
         }
@@ -515,6 +524,11 @@ pub struct Note {
     /// 强度由乐器参数（如 acid 的 `accent`）决定。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub accent: bool,
+    /// 弯音（吉他推弦、滑进音、尾音下滑）：`[拍, 半音]` 折线，拍相对音符起点、递增，半音在 ±2 之内
+    /// （MIDI 弯音轮的标准范围）。第一个点之前取第一个点的值，点与点之间直线过渡。
+    /// 推弦：`[[0, 0], [0.25, 2]]`；预推再放：`[[0, 2], [0.5, 2], [1, 0]]`。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bend: Vec<(f64, f64)>,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -537,6 +551,7 @@ impl Note {
             length: length.into(),
             velocity: default_velocity(),
             accent: false,
+            bend: Vec::new(),
         }
     }
 }

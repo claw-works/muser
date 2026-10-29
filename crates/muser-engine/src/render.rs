@@ -67,9 +67,27 @@ pub enum EngineError {
 /// 时间线上一个样本精确的演奏动作。
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Act {
-    On { key: u8, velocity: f32, accent: bool },
-    Off { key: u8 },
+    /// `ch`：带弯音的音符各占一个通道（弯音轮是整个通道的），其余为 None（乐器的通道）。
+    On { key: u8, velocity: f32, accent: bool, ch: Option<u8> },
+    Off { key: u8, ch: Option<u8> },
     Pedal { down: bool },
+    /// 弯音轮，-8192 – 8191（±2 半音）。
+    Bend { value: i16, ch: Option<u8> },
+}
+
+/// 带弯音的音符轮流用的通道（避开鼓的 9 和旋律乐器的 0）。
+pub(crate) const BEND_CHANNELS: [u8; 14] = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15];
+
+/// `bend` 折线在音符起点后 `beats` 拍的弯音轮值。
+fn bend_value(bend: &[(f64, f64)], beats: f64) -> i16 {
+    let i = bend.partition_point(|p| p.0 <= beats);
+    let semis = match (i.checked_sub(1).map(|k| bend[k]), bend.get(i)) {
+        (Some(a), Some(b)) => a.1 + (b.1 - a.1) * (beats - a.0) / (b.0 - a.0),
+        (Some(a), None) => a.1,
+        (None, Some(b)) => b.1,
+        (None, None) => 0.0,
+    };
+    (semis / 2.0 * 8192.0).round().clamp(-8192.0, 8191.0) as i16
 }
 
 #[derive(Clone)]
@@ -92,6 +110,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
     let track = &project.tracks[ti];
     let (sr, tempo) = (cx.sr, cx.tempo);
     let mut acts: Vec<(usize, Act)> = Vec::new();
+    let mut bent = 0usize;
     for (ci, clip) in track.clips.iter().enumerate() {
         // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
         let all = crate::clip_notes(project, ti, ci).unwrap_or_default();
@@ -146,8 +165,24 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             if off <= on {
                 continue;
             }
-            acts.push((on, Act::On { key: note.pitch, velocity, accent: note.accent }));
-            acts.push((off, Act::Off { key: note.pitch }));
+            let ch = (!note.bend.is_empty()).then(|| {
+                bent += 1;
+                BEND_CHANNELS[(bent - 1) % BEND_CHANNELS.len()]
+            });
+            if ch.is_some() {
+                // 每 ~5 ms 一个点，值不变就不发。
+                let step = ((sr * 0.005) as usize).max(1);
+                let mut last = None;
+                for f in (on..off).step_by(step) {
+                    let v = bend_value(&note.bend, (f - on) as f64 / sr * tempo / 60.0);
+                    if last != Some(v) {
+                        acts.push((f, Act::Bend { value: v, ch }));
+                        last = Some(v);
+                    }
+                }
+            }
+            acts.push((on, Act::On { key: note.pitch, velocity, accent: note.accent, ch }));
+            acts.push((off, Act::Off { key: note.pitch, ch }));
         }
         for &(a, b) in &clip.pedal {
             let down = (clip_start + Beats(a).to_seconds(tempo) * sr) as usize;
@@ -164,7 +199,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             Act::Off { .. } => 0,
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
-            Act::On { .. } => 3,
+            Act::Bend { .. } => 3,
+            Act::On { .. } => 4,
         };
         (frame, order)
     });
@@ -187,22 +223,26 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
         return acts;
     }
     let split = acts.partition_point(|&(at, _)| at < start);
-    let (mut held, mut pedal) = (Vec::new(), false);
+    let (mut held, mut pedal, mut wheels) = (Vec::new(), false, Vec::<Act>::new());
     for &(_, act) in &acts[..split] {
         match act {
             Act::On { .. } => held.push(act),
-            Act::Off { key } => {
-                if let Some(i) = held.iter().position(|a| matches!(a, Act::On { key: k, .. } if *k == key)) {
+            Act::Off { key, ch } => {
+                if let Some(i) = held.iter().position(|a| matches!(a, Act::On { key: k, ch: c, .. } if *k == key && *c == ch)) {
                     held.remove(i);
                 }
             }
             Act::Pedal { down } => pedal = down,
+            Act::Bend { ch, .. } => {
+                wheels.retain(|w| !matches!(w, Act::Bend { ch: c, .. } if *c == ch));
+                wheels.push(act);
+            }
         }
     }
     let mut rest: Vec<(usize, Act)> = acts[split..].to_vec();
     // 恰好在 `start` 松开的音不补发。
     rest.retain(|&(at, act)| match act {
-        Act::Off { key } if at == start => match held.iter().position(|a| matches!(a, Act::On { key: k, .. } if *k == key)) {
+        Act::Off { key, ch } if at == start => match held.iter().position(|a| matches!(a, Act::On { key: k, ch: c, .. } if *k == key && *c == ch)) {
             Some(i) => {
                 held.remove(i);
                 false
@@ -215,6 +255,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
     if pedal {
         out.push((start, Act::Pedal { down: true }));
     }
+    out.extend(wheels.into_iter().map(|a| (start, a)));
     out.extend(held.into_iter().map(|a| (start, a)));
     out.extend(rest);
     out
@@ -225,6 +266,8 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
 struct LiveInstrument {
     inst: instrument::TrackInstrument,
     channel: u8,
+    /// 有带弯音的音符：踏板也发到它们的通道。
+    bends: bool,
     acts: Vec<(usize, Act)>,
     next: usize,
     frame: usize,
@@ -242,10 +285,12 @@ impl LiveInstrument {
         let mut inst = instrument::resolve_for(&track.instrument, &track.instrument_params, &cx.spec)?;
         inst.prepare(&cx.spec);
         let lanes = automate::compile_track(project, ti, beats).map_err(invalid)?.instrument;
+        let acts = chase(schedule(project, ti, cx), start);
         Ok(Self {
             channel: inst.channel(),
+            bends: acts.iter().any(|a| matches!(a.1, Act::Bend { .. })),
             inst,
-            acts: chase(schedule(project, ti, cx), start),
+            acts,
             next: 0,
             frame: start,
             lanes,
@@ -267,9 +312,15 @@ impl LiveInstrument {
                     break;
                 }
                 match act {
-                    Act::On { key, velocity, accent } => self.inst.note_on(NoteRef::new(self.channel, key), velocity, accent),
-                    Act::Off { key } => self.inst.note_off(NoteRef::new(self.channel, key), 0.0),
-                    Act::Pedal { down } => self.inst.pedal(down),
+                    Act::On { key, velocity, accent, ch } => self.inst.note_on(NoteRef::new(ch.unwrap_or(self.channel), key), velocity, accent),
+                    Act::Off { key, ch } => self.inst.note_off(NoteRef::new(ch.unwrap_or(self.channel), key), 0.0),
+                    Act::Pedal { down } => {
+                        self.inst.pedal(None, down);
+                        if self.bends {
+                            BEND_CHANNELS.iter().for_each(|&c| self.inst.pedal(Some(c), down));
+                        }
+                    }
+                    Act::Bend { value, ch } => self.inst.bend(ch, value),
                 }
                 self.next += 1;
             }
@@ -1285,15 +1336,15 @@ mod tests {
 
     #[test]
     fn chase_resends_held_notes_and_pedal() {
-        let on = |key| Act::On { key, velocity: 0.8, accent: false };
+        let on = |key| Act::On { key, velocity: 0.8, accent: false, ch: None };
         let acts = vec![
             (0, Act::Pedal { down: true }),
             (0, on(60)),
             (10, on(64)),
-            (20, Act::Off { key: 60 }),
-            (50, Act::Off { key: 64 }),
+            (20, Act::Off { key: 60, ch: None }),
+            (50, Act::Off { key: 64, ch: None }),
             (50, on(67)),
-            (90, Act::Off { key: 67 }),
+            (90, Act::Off { key: 67, ch: None }),
         ];
         let keys = |v: &[(usize, Act)]| v.iter().map(|(at, a)| format!("{at}:{a:?}")).collect::<Vec<_>>().join(" ");
         // 30：60 已松开，64 还按着，踏板踩着。
@@ -1302,7 +1353,7 @@ mod tests {
         assert_eq!(c.len(), 2 + 3);
         // 恰好在 50 松开的 64 不补发；50 新按的 67 照常。
         let c = chase(acts.clone(), 50);
-        assert_eq!(keys(&c), keys(&[(50, Act::Pedal { down: true }), (50, on(67)), (90, Act::Off { key: 67 })]));
+        assert_eq!(keys(&c), keys(&[(50, Act::Pedal { down: true }), (50, on(67)), (90, Act::Off { key: 67, ch: None })]));
         assert_eq!(chase(acts.clone(), 0).len(), acts.len());
     }
 

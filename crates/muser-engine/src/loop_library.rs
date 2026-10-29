@@ -389,7 +389,7 @@ mod tests {
         let g = grid_from_notes(&notes, l.beats(), 0.25).unwrap();
         let back = g.expand(l.beats()).unwrap();
         assert_eq!(back.iter().map(|n| (n.pitch, n.start.0)).collect::<Vec<_>>(), notes.iter().map(|n| (n.pitch, n.start.0)).collect::<Vec<_>>());
-        let off = [muser_core::Note { pitch: 36, start: muser_core::Beats(0.1), length: muser_core::Beats(0.1), velocity: 0.8, accent: false }];
+        let off = [muser_core::Note { pitch: 36, start: muser_core::Beats(0.1), length: muser_core::Beats(0.1), velocity: 0.8, accent: false, bend: Vec::new() }];
         assert!(grid_from_notes(&off, 1.0, 0.25).unwrap_err().contains("网格"));
     }
 }
