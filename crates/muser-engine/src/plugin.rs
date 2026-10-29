@@ -149,6 +149,35 @@ pub use imp::*;
 
 static LOADED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// 在后台线程运行 `work`（如网页服务），主线程留给插件：macOS 上主线程跑系统消息循环。
+/// 有的插件（Kontakt）在别的线程加载状态时会把一部分工作派到主线程并等待它完成，
+/// 主线程不处理消息就会一直卡住。`work` 返回后进程以它的结果退出。
+pub fn run_with_main_loop(work: impl FnOnce() -> i32 + Send + 'static) -> ! {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(work());
+    });
+    loop {
+        #[cfg(target_os = "macos")]
+        {
+            #[link(name = "CoreFoundation", kind = "framework")]
+            extern "C" {
+                static kCFRunLoopDefaultMode: *const std::ffi::c_void;
+                fn CFRunLoopRunInMode(mode: *const std::ffi::c_void, seconds: f64, return_after_source_handled: u8) -> i32;
+            }
+            // SAFETY: CoreFoundation 的常量与函数，在主线程上运行主运行循环。没有任何事件源时立即返回（1 = finished），稍等再来。
+            if unsafe { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, 0) } == 1 {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if let Ok(code) = rx.try_recv() {
+            exit(code);
+        }
+    }
+}
+
 /// 结束进程。加载过插件时跳过 C/C++ 的退出析构：插件实例按设计不销毁（见 `defer_release`），
 /// 有的插件（Kontakt）的全局 `std::thread` 析构时还在运行，会让进程在文件都写完之后中止（SIGABRT）。
 pub fn exit(code: i32) -> ! {

@@ -442,7 +442,14 @@ fn run() -> Result<()> {
         Command::MixReport { project, sample_rate, tail, json } => cmd_mix_report(&project, sample_rate, tail, json),
         Command::View { project, port, open, sample_rate, tail, device } => {
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
-            view::serve(&project, settings, port, open, device)
+            // 网页服务在后台线程，主线程留给插件（见 run_with_main_loop）。
+            muser_engine::plugin::run_with_main_loop(move || match view::serve(&project, settings, port, open, device) {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("Error: {e:?}");
+                    1
+                }
+            })
         }
         Command::Plugin { command } => cmd_plugin(command),
         Command::Poly { command } => poly::run(command),

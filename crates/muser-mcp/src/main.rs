@@ -1335,15 +1335,17 @@ impl ServerHandler for Muser {}
 fn main() {
     // 本进程被插件扫描器以子进程方式启动时，读完插件即退出。
     muser_engine::plugin::serve_scanner_if_asked();
-    let r = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(anyhow::Error::from).and_then(|rt| rt.block_on(serve()));
-    let code = match r {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("Error: {e:?}");
-            1
+    // MCP 服务在后台线程，主线程留给插件（见 run_with_main_loop）。
+    muser_engine::plugin::run_with_main_loop(|| {
+        let r = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(anyhow::Error::from).and_then(|rt| rt.block_on(serve()));
+        match r {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("Error: {e:?}");
+                1
+            }
         }
-    };
-    muser_engine::plugin::exit(code)
+    })
 }
 
 async fn serve() -> anyhow::Result<()> {
