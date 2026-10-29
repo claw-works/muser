@@ -15,11 +15,17 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# 插件界面窗口（`muser plugin edit`，只在 macOS 上）。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", optional = true }
+objc2-foundation = { version = "0.3", optional = true }
+objc2-app-kit = { version = "0.3", optional = true }
+
 [features]
 default = []
 ## 插件宿主：加载第三方 CLAP/VST3/LV2 作为效果器。
 ## 开启后需要相应格式的系统环境，编译也更重，故默认关闭。
-host = ["manguebyte/host", "manguebyte/clap", "manguebyte/vst3", "manguebyte/lv2"]
+host = ["manguebyte/host", "manguebyte/clap", "manguebyte/vst3", "manguebyte/lv2", "dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit"]
 ## 本机声卡播放（muser view --device）。Linux 上需要 ALSA 开发包（libasound2-dev）。
 devices = ["manguebyte/devices"]
 

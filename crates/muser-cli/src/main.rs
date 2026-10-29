@@ -317,6 +317,17 @@ enum PluginCommand {
         #[arg(short, long)]
         output: String,
     },
+    /// 打开插件自己的界面（macOS，VST3），在里面选音色、调参数，关窗口时保存状态到文件。
+    Edit {
+        /// 插件路径，可带 #插件id。
+        plugin: String,
+        /// 先应用的参数（JSON 对象）。
+        #[arg(long)]
+        params: Option<String>,
+        /// 输出文件（建议扩展名 .muserstate）。
+        #[arg(short, long)]
+        output: String,
+    },
     /// 列出某个参数可写的文字值（选项类参数即全部选项，如滤波类型、波形）。
     Values {
         /// 插件路径，可带 #插件id。
@@ -900,6 +911,20 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
             let h = plugin::save_state(&spec, &base, std::path::Path::new(&output)).map_err(fail)?;
             println!("已保存 {} {} 的状态 → {output}", h.plugin_name, h.version);
             println!("工程里写 \"instrument_params\": {{ \"@state\": \"{output}\" }}（效果器写在 params 里）。");
+        }
+        PluginCommand::Edit { plugin: spec, params, output } => {
+            #[cfg(target_os = "macos")]
+            {
+                let base = parse_map(params.as_deref())?;
+                let h = plugin::edit_state(&spec, &base, std::path::Path::new(&output)).map_err(fail)?;
+                println!("已保存 {} {} 的状态 → {output}", h.plugin_name, h.version);
+                println!("工程里写 \"instrument_params\": {{ \"@state\": \"{output}\" }}。");
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = (spec, params, output);
+                return Err(anyhow::anyhow!("插件界面目前只支持 macOS"));
+            }
         }
         PluginCommand::Profile { command } => cmd_profile(command)?,
         PluginCommand::Values { plugin: spec, param, samples, params, json } => {
