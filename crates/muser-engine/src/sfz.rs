@@ -409,11 +409,12 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<
         })
     });
     let dropped = before - sfz.regions.len();
-    // 已经处理掉的 opcode、以及控制器声明不再算"不支持"。
+    // 只报留下来、会发声的区域里还剩的 opcode：已经处理掉的、控制器声明、只出现在被去掉的区域
+    // （别的奏法、控制器范围外）里的都不算"不支持"。
+    let remaining: std::collections::HashSet<&str> = sfz.regions.iter().flat_map(|r| r.unknown.iter().map(|o| &*o.name)).collect();
+    let remaining: std::collections::HashSet<String> = remaining.into_iter().map(str::to_string).collect();
     sfz.warnings.retain(|w| match &w.kind {
-        WarningKind::UnknownOpcode { name, .. } => {
-            !handled.contains(&**name) && !name.starts_with("label_cc") && !name.starts_with("set_cc") && !name.starts_with("set_hdcc")
-        }
+        WarningKind::UnknownOpcode { name, .. } => remaining.contains(&**name) && !handled.contains(&**name),
         _ => true,
     });
     let mut warnings: BTreeMap<String, usize> = BTreeMap::new();
