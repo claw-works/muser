@@ -159,8 +159,19 @@ pub struct Loaded {
     pub instrument: Instrument,
     /// 按控制器去掉的区域数。
     pub dropped: usize,
-    /// 剩下的不支持 opcode 提示数。
-    pub warnings: usize,
+    /// 不支持的内容：opcode 名（或 `<header>`、`取值越界: opcode`）→ 出现次数。
+    pub warnings: BTreeMap<String, usize>,
+}
+
+/// 不支持内容的一行摘要，按次数从多到少，最多列 12 项。
+pub fn summary(w: &BTreeMap<String, usize>) -> String {
+    let mut v: Vec<(&String, &usize)> = w.iter().collect();
+    v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let mut s: Vec<String> = v.iter().take(12).map(|(k, n)| format!("{k} ×{n}")).collect();
+    if v.len() > 12 {
+        s.push(format!("…另 {} 项", v.len() - 12));
+    }
+    s.join("、")
 }
 
 type Slot = std::sync::Arc<std::sync::Mutex<std::sync::Weak<Loaded>>>;
@@ -187,8 +198,8 @@ pub fn load_shared(path: &Path, opts: &Options) -> Result<std::sync::Arc<Loaded>
     Ok(l)
 }
 
-/// 按控制器值展开后加载乐器。返回 (乐器, 去掉的区域数, 剩下的不支持 opcode 提示数)。
-pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, usize), String> {
+/// 按控制器值展开后加载乐器。返回 (乐器, 去掉的区域数, 不支持的内容)。
+pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<String, usize>), String> {
     let overrides = &opts.cc;
     let (mut sfz, mut source) = parse(path)?;
     // 键位切换：选定奏法，去掉其它奏法的区域。
@@ -314,7 +325,18 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, usize), S
         }
         _ => true,
     });
-    let warnings = sfz.warnings.len();
+    let mut warnings: BTreeMap<String, usize> = BTreeMap::new();
+    for w in &sfz.warnings {
+        let k = match &w.kind {
+            WarningKind::UnknownOpcode { name, .. } => name.to_string(),
+            WarningKind::UnsupportedHeader(h) => format!("<{h}>"),
+            WarningKind::OutOfRange { opcode, .. } => format!("取值越界: {opcode}"),
+            WarningKind::OpcodeOutsideHeader(o) => format!("header 之外: {o}"),
+            WarningKind::RegionWithoutSample => "没有 sample 的 region".into(),
+            _ => "其它".into(),
+        };
+        *warnings.entry(k).or_default() += 1;
+    }
     let inst = Instrument::load(&sfz, &mut source).map_err(|e| format!("加载 SFZ '{}' 失败: {e}", path.display()))?;
     Ok((inst, dropped, warnings))
 }
@@ -340,7 +362,7 @@ mod tests {
         assert_eq!(ctl[&105], ("Mono".to_string(), 0));
         assert_eq!(ctl[&100].0, "Unison");
         let (inst, dropped, warnings) = load(&path, &Options::default()).unwrap();
-        assert_eq!((inst.num_regions(), dropped, warnings), (2, 1, 0));
+        assert_eq!((inst.num_regions(), dropped, warnings.len()), (2, 1, 0));
         let (_, dropped, _) = load(&path, &Options { cc: BTreeMap::from([(105, 127)]), keyswitch: None }).unwrap();
         assert_eq!(dropped, 1);
         assert!(parse_params(&serde_json::from_str(r#"{ "cc": { "105": 127 } }"#).unwrap()).is_ok());

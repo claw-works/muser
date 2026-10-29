@@ -774,6 +774,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "manguebyte-au"
+version = "0.1.0"
+dependencies = [
+ "manguebyte-core",
+ "manguebyte-dsp",
+ "manguebyte-midi",
+ "manguebyte-params",
+ "manguebyte-plugin",
+]
+
+[[package]]
 name = "manguebyte-clap"
 version = "0.1.0"
 dependencies = [
@@ -831,9 +842,11 @@ version = "0.1.0"
 dependencies = [
  "clap-sys",
  "libloading 0.8.9",
+ "manguebyte-au",
  "manguebyte-core",
  "manguebyte-dsp",
  "manguebyte-midi",
+ "manguebyte-plugin",
  "vst3",
 ]
 

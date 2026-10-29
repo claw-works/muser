@@ -370,11 +370,11 @@ fn sfz_instrument(path: &std::path::Path, cc: &crate::sfz::Options) -> Result<Tr
     use manguebyte::sampler::Sampler;
     let loaded = crate::sfz::load_shared(path, cc)?;
     // 刚加载（不是共用已有的）时提示一次。
-    if loaded.warnings > 0 && std::sync::Arc::strong_count(&loaded) == 1 {
+    if !loaded.warnings.is_empty() && std::sync::Arc::strong_count(&loaded) == 1 {
         eprintln!(
-            "[muser] sfz '{}': {} 条提示（部分 opcode 不支持或被修正），音色可能与原设计略有差异",
+            "[muser] sfz '{}': 采样器不支持（被忽略）的 opcode：{}。音色可能与原设计略有差异",
             path.display(),
-            loaded.warnings
+            crate::sfz::summary(&loaded.warnings)
         );
     }
     let (sampler, loader) = Sampler::with_instrument(loaded.instrument.clone(), SFZ_VOICES);
