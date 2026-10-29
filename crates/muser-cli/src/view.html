@@ -73,7 +73,8 @@
   .banner { display: none; position: fixed; z-index: 40; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: min(760px, 86vw);
     padding: 11px 16px; border-radius: 10px; white-space: pre-wrap; border: 1px solid transparent; box-shadow: 0 16px 40px rgba(0,0,0,.45); }
   .banner.err { display: block; color: #ffd0d6; background: #3a1620; border-color: rgba(255,124,139,.45); }
-  .banner.info { display: block; color: var(--warn); background: #2b2312; border-color: rgba(255,196,107,.35); }
+  .banner.info { display: block; color: var(--warn); background: #2b2312; border-color: rgba(255,196,107,.35); pointer-events: none; }
+  .banner.err { cursor: pointer; }
   #loading {
     height: 44px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
     color: var(--dim); background: rgba(18,22,35,.7); border: 1px solid var(--line); border-radius: 12px; font-size: 11px;
@@ -577,7 +578,14 @@ function togglePlay() {
 }
 function setPlayLabel(active) { $("play").textContent = t(active ? "pause" : "play"); }
 
-function banner(text, kind) { const b = $("banner"); b.className = "banner" + (text ? " " + kind : ""); b.textContent = text || ""; }
+// 提示 5 秒后自动消失、不挡鼠标；报错一直留着，点一下关掉。
+let bannerTimer = 0;
+function banner(text, kind) {
+  const b = $("banner"); clearTimeout(bannerTimer);
+  b.className = "banner" + (text ? " " + kind : ""); b.textContent = text || "";
+  if (text && kind === "info") bannerTimer = setTimeout(() => { if (b.textContent === text) banner(""); }, 5000);
+}
+$("banner").onclick = () => { if ($("banner").classList.contains("err")) banner(""); };
 
 function ensureCtx() {
   if (ctx) return;
