@@ -451,11 +451,13 @@ async function open(name, quiet) {
   source = r.source; mtime = r.mtime; dirty = false; history = []; selected.clear();
   fillForm(); range(); draw(); updateTitle(); scrollToNotes();
   status(source === "builtin" ? t("builtinRO") : r.path || "");
+  replay();
 }
 function fresh(drums) {
   if (dirty && !confirm(t("discard"))) return;
   cur = blank(drums); source = "new"; mtime = null; dirty = false; history = []; selected.clear(); step = 0.25;
   fillForm(); range(); draw(); updateTitle(); scrollToNotes(); status("");
+  replay();
 }
 $("newMelody").onclick = () => fresh(false);
 $("newDrums").onclick = () => fresh(true);
@@ -519,6 +521,8 @@ function startAt(offset) {
   $("play").textContent = t("stop"); tick();
 }
 function stopSource() { if (src) { src.onended = null; try { src.stop(); } catch (_) {} src = null; } }
+// 换了 loop：正在播就从头放新的。
+function replay() { if (src) { clearTimeout(previewTimer); stopPlay(); togglePlay(); } }
 function stopPlay() { stopSource(); head = -1; cancelAnimationFrame(raf); $("play").textContent = t("play"); draw(); }
 async function togglePlay() {
   if (src) { stopPlay(); return; }
