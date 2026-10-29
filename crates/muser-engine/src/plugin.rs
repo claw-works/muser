@@ -568,8 +568,8 @@ mod imp {
             let format = self.profile.as_ref().map(|p| p.profile.state_format.clone()).unwrap_or_default();
             let extra = crate::profile::state_keys(&format);
             for k in params.keys().filter(|k| k.starts_with('@')) {
-                if !["@state", "@setup", "@preset"].contains(&k.as_str()) && !extra.contains(&k.as_str()) {
-                    let mut all = vec!["@state", "@setup", "@preset"];
+                if !["@state", "@setup", "@preset", "@label"].contains(&k.as_str()) && !extra.contains(&k.as_str()) {
+                    let mut all = vec!["@state", "@setup", "@preset", "@label"];
                     all.extend_from_slice(extra);
                     return Err(format!("未知的保留键 '{k}'，可用: {}", all.join(" / ")));
                 }

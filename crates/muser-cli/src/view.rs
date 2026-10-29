@@ -335,7 +335,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
             .collect();
         nodes.push(json!({
             "id": id, "kind": "track", "name": if t.name.is_empty() { id.clone() } else { t.name.clone() },
-            "instrument": t.instrument, "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
+            "instrument": t.instrument, "label": t.instrument_params.get("@label"), "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
             "gain_db": t.gain_db, "muted": t.muted, "solo": solo.contains(&id), "effects": fx(&t.effects), "clips": clips,
             "gain_auto": has_gain_automation(&t.automation), "chain": chain(&t.effects),
         }));
@@ -642,6 +642,55 @@ impl Shared {
         Ok(changes.len())
     }
 
+    /// 打开第 `ti` 条插件音轨的插件界面（子进程 `muser plugin edit`，从当前状态开始），人关窗口后把
+    /// 状态存到工程旁的 `<工程名>.<label>.muserstate`，并把 `@state`、`@label` 写回工程文件（随后自动重新渲染）。
+    fn edit_plugin(&self, ti: usize, label: &str) -> Result<String, String> {
+        let (spec, mut params) = {
+            let st = self.state.lock().unwrap();
+            let file = st.file.as_ref().ok_or("工程尚未成功加载")?;
+            let t = file.tracks.get(ti).ok_or_else(|| format!("没有第 {ti} 条音轨"))?;
+            let spec = t.instrument.strip_prefix("plugin:").ok_or("这条音轨不是插件乐器（plugin:）")?.to_string();
+            (spec, t.instrument_params.clone())
+        };
+        params.remove("@label");
+        let label = label.trim();
+        let label = if label.is_empty() { format!("track{ti}") } else { label.to_string() };
+        let safe: String = label.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
+        let dir = self.path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let dir = std::fs::canonicalize(dir).map_err(|e| format!("{e}"))?;
+        let stem = self.path.file_stem().and_then(|s| s.to_str()).unwrap_or("project").trim_end_matches(".muser");
+        let out = dir.join(format!("{stem}.{safe}.muserstate"));
+        let started = SystemTime::now();
+        let exe = std::env::current_exe().map_err(|e| format!("{e}"))?;
+        eprintln!("[view] 打开 {spec} 的界面（音轨 {ti}），关窗口后保存到 {}", out.display());
+        // 插件界面在独立进程里：插件崩溃不影响这里。
+        let status = std::process::Command::new(exe)
+            .args(["plugin", "edit", &spec, "--params", &Value::Object(params).to_string(), "-o"])
+            .arg(&out)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| format!("启动插件界面失败: {e}"))?;
+        // 插件退出时崩溃（如 Kontakt 关界面后）不算失败：以状态文件是否在这之后写过为准。
+        if mtime(&out).is_none_or(|m| m < started) {
+            return Err(format!("插件界面没有保存状态（退出 {status}）"));
+        }
+        let write = || -> Result<()> {
+            let text = std::fs::read_to_string(&self.path)?;
+            let mut v: Value = serde_json::from_str(&text)?;
+            let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {ti} 条音轨"))?;
+            let p = t.entry("instrument_params").or_insert_with(|| json!({}));
+            let p = p.as_object_mut().ok_or_else(|| anyhow!("instrument_params 不是对象"))?;
+            p.insert("@state".into(), json!(out.display().to_string()));
+            p.insert("@label".into(), json!(label));
+            std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
+            Ok(())
+        };
+        write().map_err(|e| format!("写回工程失败: {e:#}"))?;
+        eprintln!("[view] 音轨 {ti} 的插件音色已保存（{label}）");
+        Ok(out.display().to_string())
+    }
+
     fn reset(&self) {
         let mut st = self.state.lock().unwrap();
         st.working = st.file.clone();
@@ -846,6 +895,16 @@ fn handle(shared: &Shared, mut req: tiny_http::Request, port: u16) {
             Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
             Err(e) => respond_json(req, 400, &json!({ "error": e })),
         },
+        (Method::Post, "/api/plugin-edit") => {
+            let r = read_body::<Value>(&mut req).and_then(|b| {
+                let ti = b["track"].as_u64().ok_or("需要 track")? as usize;
+                shared.edit_plugin(ti, b["label"].as_str().unwrap_or(""))
+            });
+            match r {
+                Ok(path) => respond_json(req, 200, &json!({ "ok": true, "state": path })),
+                Err(e) => respond_json(req, 400, &json!({ "error": e })),
+            }
+        }
         (Method::Post, "/api/reset") => {
             shared.reset();
             respond_json(req, 200, &json!({ "ok": true }));
