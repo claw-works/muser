@@ -51,3 +51,19 @@ muser audio vocal.wav --json
   挂它自己的效果链；只在某一刻甩一下（句尾混响、回声）就在原轨用 `automation` 拉 `sends.<总线>` 或 `effects[i]` 的 `mix`。
   示例：[samples/audio/spoken-groove](../samples/audio/spoken-groove.muser.json)。
 - 鼓 loop 文件可以作为侧链触发源：`"sidechain": "<音频轨名>"`。
+
+## 常用的人声 / 录音效果（音频轨上的 effects）
+
+只想让某几句带效果：把这几句放到单独的 audio 轨（见上一条）。示例：[samples/audio/voice-fx](../samples/audio/voice-fx.muser.json)。
+
+| 效果 | effects（按顺序） | 要点 |
+|---|---|---|
+| 收音机 / 对讲机 | `eq` highpass 500 ×2、`eq` lowpass 3500 ×2、`eq` peak 1600 Hz +8 dB（q 1.2）、`compressor` -30 dB 8:1 快攻快放 + makeup | 两个滤波器叠起来更陡；只留中频（< 300 Hz 和 > 4 kHz 都约 1%）。电话更窄：300–3000 Hz |
+| 水下 | `eq` lowpass 600 Hz（q 1.4 再叠一个 q 0.7）、`chorus` 0.6 Hz、12 ms、mix 0.6、`reverb` mix 0.45、decay 2.5、damping 0.9 | 闷（频谱重心约 340 Hz），慢速摇晃，暗的余响 |
+| 隧道 / 大空间 | `eq` highpass 150、`delay` 0.09 s、feedback 0.45、mix 0.35、`reverb` mix 0.55、decay 4.5、damping 0.3、size 0.95 | 短回声叠长混响；混响要长、亮（damping 低） |
+| 远处 / 隔墙 | `eq` lowpass 1200–2000、`eq` highpass 200、`reverb` mix 0.5 | 降 `gain_db` 6–10 dB 更像远 |
+| 失真 / 扩音器 | 内置效果器没有失真：用 [Plasma](plugins/plasma.md) 或 Airwindows（`plugin`），再接收音机的 EQ | |
+
+- 滤波、压缩会改变响度：加完效果跑 `mix-report`，把各条调到差不多响再比较。
+- 效果只在某一刻出现（句尾变远、突然进隧道）：在原轨用 `automation` 拉 `effects[i]` 的 `mix` 或 eq 的 `frequency`。
+

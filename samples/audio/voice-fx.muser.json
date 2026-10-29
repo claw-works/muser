@@ -1,0 +1,150 @@
+{
+  "name": "voice-fx",
+  "tempo": 60,
+  "tracks": [
+    {
+      "name": "dry",
+      "instrument": "audio",
+      "gain_db": 6,
+      "clips": [
+        {
+          "start": 0,
+          "length": 2,
+          "audio": {
+            "file": "voice/write.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "radio",
+      "instrument": "audio",
+      "gain_db": 11,
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 500,
+          "q": 0.9
+        },
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 500,
+          "q": 0.9
+        },
+        {
+          "type": "eq",
+          "shape": "lowpass",
+          "frequency": 3500,
+          "q": 0.9
+        },
+        {
+          "type": "eq",
+          "shape": "lowpass",
+          "frequency": 3500,
+          "q": 0.9
+        },
+        {
+          "type": "eq",
+          "shape": "peak",
+          "frequency": 1600,
+          "q": 1.2,
+          "gain_db": 8
+        },
+        {
+          "type": "compressor",
+          "threshold_db": -30,
+          "ratio": 8,
+          "attack_ms": 2,
+          "release_ms": 80,
+          "makeup_db": 6
+        }
+      ],
+      "clips": [
+        {
+          "start": 2.5,
+          "length": 2,
+          "audio": {
+            "file": "voice/write.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "underwater",
+      "instrument": "audio",
+      "gain_db": 13,
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "lowpass",
+          "frequency": 600,
+          "q": 1.4
+        },
+        {
+          "type": "eq",
+          "shape": "lowpass",
+          "frequency": 600,
+          "q": 0.7
+        },
+        {
+          "type": "chorus",
+          "rate_hz": 0.6,
+          "depth_ms": 12,
+          "mix": 0.6
+        },
+        {
+          "type": "reverb",
+          "mix": 0.45,
+          "decay_seconds": 2.5,
+          "damping": 0.9,
+          "size": 0.7
+        }
+      ],
+      "clips": [
+        {
+          "start": 5,
+          "length": 3,
+          "audio": {
+            "file": "voice/write.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tunnel",
+      "instrument": "audio",
+      "gain_db": 8.5,
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 150
+        },
+        {
+          "type": "delay",
+          "time_seconds": 0.09,
+          "feedback": 0.45,
+          "mix": 0.35
+        },
+        {
+          "type": "reverb",
+          "mix": 0.55,
+          "decay_seconds": 4.5,
+          "damping": 0.3,
+          "size": 0.95
+        }
+      ],
+      "clips": [
+        {
+          "start": 8.5,
+          "length": 5,
+          "audio": {
+            "file": "voice/write.mp3"
+          }
+        }
+      ]
+    }
+  ]
+}

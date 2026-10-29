@@ -144,6 +144,8 @@ muser play samples/arrange/night-drive.muser.json
 |---|---|
 | `spoken-groove` | 90 BPM boom bap，10 小节：第 1 小节 rim 点拍 + 人声数 "One. Two. Three. Four!"，之后 `drummer` 鼓、ABC 贝斯与电钢，每两小节一句 "Write it in JSON." / "Play it like a human." / "Mix it with your agent."，军鼓上的 "Hey!"，最后 "This is muser." 落在收尾的镲上。人声轨 highpass + 压缩、送混响总线，与其它轨按 `mix-report` 平衡。**单句效果**：要单独处理的句子放在各自的音频轨上——"Hey!" 附点八分回声（`voice-echo`）、"Play it like a human." 镶边机器人声（`voice-robot`）、"Mix it with your agent." 收音机音色（`voice-radio`，highpass + lowpass + 1.6 kHz 提升）；最后一句用发送量自动化在句尾把混响甩大 |
 
+| `voice-fx` | 同一句人声的四种处理：原声 → 收音机（双重 highpass / lowpass、1.6 kHz 提升、重压缩）→ 水下（600 Hz 低通、慢速合唱摇晃、暗混响）→ 隧道（90 ms 回声 + 4.5 秒亮混响）。配方见 [skills/audio.md](../skills/audio.md) |
+
 ```bash
 muser audio samples/audio/voice/write.mp3 --tempo 90   # 看文件多长（秒、拍）
 muser play samples/audio/spoken-groove.muser.json
