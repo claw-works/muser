@@ -59,10 +59,31 @@ muser audio vocal.wav --json
 | 效果 | effects（按顺序） | 要点 |
 |---|---|---|
 | 收音机 / 对讲机 | `eq` highpass 500 ×2、`eq` lowpass 3500 ×2、`eq` peak 1600 Hz +8 dB（q 1.2）、`compressor` -30 dB 8:1 快攻快放 + makeup | 两个滤波器叠起来更陡；只留中频（< 300 Hz 和 > 4 kHz 都约 1%）。电话更窄：300–3000 Hz |
-| 水下 | `eq` lowpass 600 Hz（q 1.4 再叠一个 q 0.7）、`chorus` 0.6 Hz、12 ms、mix 0.6、`reverb` mix 0.45、decay 2.5、damping 0.9 | 闷（频谱重心约 340 Hz），慢速摇晃，暗的余响 |
+| 水下 | `eq` lowpass 1000 Hz（q 1.4 再叠一个 q 0.7）、`chorus` 0.6 Hz、12 ms、mix 0.6、`reverb` mix 0.45、decay 2.5、damping 0.9，`gain_db` 提高 | 闷、慢速摇晃、暗的余响。低通别低于 ~800 Hz：能量全在 300 Hz 以下时，笔记本 / 手机喇叭几乎放不出来，听着像没声 |
 | 隧道 / 大空间 | `eq` highpass 150、`delay` 0.09 s、feedback 0.45、mix 0.35、`reverb` mix 0.55、decay 4.5、damping 0.3、size 0.95 | 短回声叠长混响；混响要长、亮（damping 低） |
 | 远处 / 隔墙 | `eq` lowpass 1200–2000、`eq` highpass 200、`reverb` mix 0.5 | 降 `gain_db` 6–10 dB 更像远 |
-| 失真 / 扩音器 | 内置效果器没有失真：用 [Plasma](plugins/plasma.md) 或 Airwindows（`plugin`），再接收音机的 EQ | |
+| 失真 / 扩音器 | 内置效果器没有失真：用 Airwindows 的 `Drive` / `Loud` / `Mackity`，或 [Plasma](plugins/plasma.md)，再接收音机的 EQ | |
+
+### 更多音效：Airwindows Consolidated
+
+装了 [Airwindows Consolidated](plugins/airwindows-consolidated.md)（免费、约 470 个效果，用 CLAP 版）时，音效的选择多得多。
+一个 `plugin` 效果器条目是一个效果，`"effect"` 选名字，参数是 0–1；先 `muser plugin params` 看参数名、`muser audition` 试听：
+
+```json
+{ "type": "plugin", "path": "~/.clap/Airwindows Consolidated.clap", "params": { "effect": "Drive", "Drive": 0.6, "Dry/Wet": 1.0 } }
+```
+
+| 想要 | 效果 |
+|---|---|
+| 扩音器、对讲机的破音 | `Drive`、`Loud`、`Mackity`、`HardVacuum`，后面接收音机的 EQ |
+| 老收音机 / 旧录音的颗粒 | `DeRez5`、`Pockey2`、`BitGlitter`、`GrooveWear`、`ToVinyl4` |
+| 磁带摇晃、走带不稳 | `Flutter2`、`Vibrato`（水下的摇晃也可以用它代替 chorus） |
+| 机器人 / 怪物声、变调 | `PitchNasty`、`GlitchShifter`（`Note` 半音）、`Gringer` |
+| 信号断续、对讲机切换 | `TremoSquare`（方波开关，只在过零点切换） |
+| 教堂、大厅、太空 | `kCathedral5`、`Galactic`（在音轨上把 Dry/Wet 降到 0.2–0.35） |
+| 模糊、梦境 | `CloudCoat`、`TakeCare` |
+
+没装插件时校验会报"找不到插件"：先 `muser plugin scan` 确认，或退回上面的内置配方。
 
 - 滤波、压缩会改变响度：加完效果跑 `mix-report`，把各条调到差不多响再比较。
 - 效果只在某一刻出现（句尾变远、突然进隧道）：在原轨用 `automation` 拉 `effects[i]` 的 `mix` 或 eq 的 `frequency`。

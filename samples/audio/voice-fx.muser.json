@@ -74,18 +74,18 @@
     {
       "name": "underwater",
       "instrument": "audio",
-      "gain_db": 13,
+      "gain_db": 16,
       "effects": [
         {
           "type": "eq",
           "shape": "lowpass",
-          "frequency": 600,
+          "frequency": 1000,
           "q": 1.4
         },
         {
           "type": "eq",
           "shape": "lowpass",
-          "frequency": 600,
+          "frequency": 1000,
           "q": 0.7
         },
         {

@@ -164,6 +164,8 @@ clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`
 - `file` 相对工程文件所在目录；`offset`、淡入淡出单位是秒；clip 的 `start` / `length` 仍是拍。
 - 按原速播放，不随 tempo 拉伸、不变调。先 `muser audio <文件> --tempo T` 看时长（拍）再写 `length`。
 - 之后效果器、推子、总线、发送、侧链、`mix-report` 照常用。字段与格式：[skills/audio.md](skills/audio.md)。
+- **给录音加音效**（收音机、电话、水下、隧道、远处、扩音器、机器人声…）：audio 轨上串效果器即可，配方见 [skills/audio.md](skills/audio.md)；
+  只给某几句加就把它们放到单独的 audio 轨。装了 Airwindows 插件时还有失真、lo-fi、变调等几百种。
 
 ## 调音色：instrument_params
 
