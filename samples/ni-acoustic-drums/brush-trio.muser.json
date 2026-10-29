@@ -1,0 +1,238 @@
+{
+  "name": "brush-trio",
+  "tempo": 90,
+  "seed": 3,
+  "sections": {
+    "intro": {
+      "bars": 2,
+      "chords": "Gm7 C7"
+    },
+    "head": {
+      "bars": 8,
+      "chords": "Fmaj7 D7 | Gm7 C7 | Am7 D7 | Gm7 C7 | Fmaj7 Bb7 | Am7 D7 | Gm7 C7 | Fmaj7"
+    },
+    "outro": {
+      "bars": 2,
+      "chords": "Gm7 C7 | Fmaj9"
+    }
+  },
+  "form": [
+    "intro",
+    "head",
+    {
+      "section": "head",
+      "seed": 9
+    },
+    "outro"
+  ],
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 300
+        },
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 1.8
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "compressor",
+      "threshold_db": -16,
+      "ratio": 2
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "audio",
+      "gain_db": 6,
+      "clips": [
+        {
+          "start": 0,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 1.wav"
+          }
+        },
+        {
+          "start": 8,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 4.wav"
+          }
+        },
+        {
+          "start": 16,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 5.wav"
+          }
+        },
+        {
+          "start": 24,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 4.wav"
+          }
+        },
+        {
+          "start": 32,
+          "length": 4,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 9.wav"
+          }
+        },
+        {
+          "start": 36,
+          "length": 4,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 15.wav"
+          }
+        },
+        {
+          "start": 40,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 10.wav"
+          }
+        },
+        {
+          "start": 48,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 11.wav"
+          }
+        },
+        {
+          "start": 56,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 10.wav"
+          }
+        },
+        {
+          "start": 64,
+          "length": 4,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 9.wav"
+          }
+        },
+        {
+          "start": 68,
+          "length": 4,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 16.wav"
+          }
+        },
+        {
+          "start": 72,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Brush Kit Samples/Drums[90] Brush 1.wav"
+          }
+        }
+      ],
+      "sends": {
+        "verb": -18
+      }
+    },
+    {
+      "name": "bass",
+      "instrument": "bass.finger",
+      "gain_db": -5,
+      "instrument_params": {
+        "tone": 1400
+      },
+      "humanize": {
+        "timing_ms": 6,
+        "velocity": 0.07
+      },
+      "parts": {
+        "intro": {
+          "chordal": "1 - - - 5 - - -",
+          "octave": 2,
+          "step": 0.5
+        },
+        "head": {
+          "chordal": "1 3 5 6",
+          "step": 1,
+          "octave": 2
+        },
+        "outro": {
+          "chordal": "1 3 5 b7 1 - - -",
+          "step": 1,
+          "octave": 2
+        }
+      }
+    },
+    {
+      "name": "piano",
+      "instrument": "poly.fm_electric_piano",
+      "gain_db": -10,
+      "sends": {
+        "verb": -10
+      },
+      "humanize": {
+        "timing_ms": 9,
+        "velocity": 0.1,
+        "swing": 62,
+        "swing_unit": 0.5
+      },
+      "parts": {
+        "intro": {
+          "chordal": "c - - - - - - -",
+          "octave": 4,
+          "velocity": 0.5
+        },
+        "head": {
+          "chordal": "c . . c . . c .",
+          "octave": 4,
+          "velocity": 0.6
+        },
+        "outro": {
+          "chordal": "c . . c c - - -",
+          "octave": 4,
+          "velocity": 0.55
+        }
+      }
+    },
+    {
+      "name": "vibes",
+      "instrument": "mallet.vibraphone",
+      "gain_db": -2,
+      "sends": {
+        "verb": -8
+      },
+      "humanize": {
+        "timing_ms": 8,
+        "velocity": 0.1,
+        "swing": 62,
+        "swing_unit": 0.5
+      },
+      "parts": {
+        "head#2": {
+          "chordal": "3' . 5' 7' 9' - . 5'",
+          "octave": 4,
+          "velocity": 0.55
+        },
+        "outro": {
+          "chordal": "9' - - - - - - -",
+          "octave": 4,
+          "velocity": 0.5
+        }
+      }
+    }
+  ]
+}

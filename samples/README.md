@@ -14,6 +14,7 @@
 | [`abc/`](#abc) | ABC 记谱写旋律：吉格（反复与一二房）、三声部、记谱功能巡礼 |
 | [`arrange/`](#arrange) | 编曲层写的完整歌曲：段落、曲式、和弦、跟着和弦走的声部、变换 |
 | [`audio/`](#audio) | 音频音轨：AWS Polly 合成的人声对到节拍上，和鼓、贝斯、电钢一起混音 |
+| [`ni-acoustic-drums/`](#ni-acoustic-drums) | Native Instruments Acoustic Drums（Kontakt 库）的鼓 loop 放在音频轨上，muser 配贝斯与键盘（需本机装好这个库） |
 | [`sketches/`](#sketches) | 草稿 A/B：ABC 旋律 + grid 贝斯 + 鼓手 + humanize，几行 JSON 一段 |
 
 wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
@@ -152,6 +153,23 @@ muser play samples/arrange/night-drive.muser.json
 muser audio samples/audio/voice/write.mp3 --tempo 90   # 看文件多长（秒、拍）
 muser play samples/audio/spoken-groove.muser.json
 ```
+
+## ni-acoustic-drums
+
+Native Instruments 的 **Acoustic Drums**（Kontakt 8 的鼓 loop 库，Native Access 装到 `/Users/Shared/Acoustic Drums Library`）。
+它是 10 套鼓 × 16 条录好的 loop（48 kHz / 24 bit WAV，一条 1 或 2 小节，采样级对齐，文件名里是速度：`Drums[90] Brush 4.wav`），
+不需要 Kontakt：直接放在音频轨上按拍拼接（音频不拉伸，所以工程 tempo 要和那套鼓的速度相同）。
+各套的速度：Lazy 72、Funk E 84、Brush 90、Grey Band 100、Granny 105、Shrug 106、Steady 110、Alter 136、Jah 166、Angst 170。
+1 小节的多是过门 / 变奏，接在一句的末尾。
+
+| 工程 | 内容 |
+|---|---|
+| `brush-trio` | Brush（刷子）90 BPM，F 大调 ii–V 的爵士三重奏：行走贝斯、FM 电钢 swing 伴奏，第二遍颤音琴加一条线，句尾接 1 小节的刷子过门 |
+| `funk-e` | Funk E 84 BPM，E 小调放克：16 分音符 slap 贝斯（`b7` 经过音）、clavinet 切分、hook 段风琴铺底与一句**吉他推弦**（`bend`：全音推、预推再放、半音推、推弦揉弦） |
+| `lazy-lofi` | Lazy 72 BPM lo-fi：Wurly 和弦往后拖（`push_ms` -12）、暗贝斯、鼓轨 7 kHz 低通、主总线 9 kHz 低通，第二遍颤音琴 |
+
+Kontakt 8 本身也能作为插件加载（`muser plugin info '/Library/Audio/Plug-Ins/VST3/Kontakt 8.vst3'`），但它的音色要在自己的界面里载入，
+无界面时选不了音色；这个库又只是 loop，所以直接用 WAV。
 
 ## sketches
 

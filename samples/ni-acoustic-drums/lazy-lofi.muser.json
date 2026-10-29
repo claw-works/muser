@@ -1,0 +1,215 @@
+{
+  "name": "lazy-lofi",
+  "tempo": 72,
+  "seed": 2,
+  "sections": {
+    "intro": {
+      "bars": 2,
+      "chords": "Fmaj9 Em7"
+    },
+    "a": {
+      "bars": 8,
+      "chords": "Fmaj9 Em7 Dm9 Cmaj9"
+    },
+    "out": {
+      "bars": 2,
+      "chords": "Fmaj9 | Cmaj9"
+    }
+  },
+  "form": [
+    "intro",
+    "a",
+    {
+      "section": "a",
+      "seed": 4
+    },
+    "out"
+  ],
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 300
+        },
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.6
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "eq",
+      "shape": "lowpass",
+      "frequency": 9000
+    },
+    {
+      "type": "compressor",
+      "threshold_db": -16,
+      "ratio": 2
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "audio",
+      "gain_db": 1,
+      "clips": [
+        {
+          "start": 0,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 9.wav"
+          }
+        },
+        {
+          "start": 8,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 4.wav"
+          }
+        },
+        {
+          "start": 16,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 5.wav"
+          }
+        },
+        {
+          "start": 24,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 4.wav"
+          }
+        },
+        {
+          "start": 32,
+          "length": 4,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 2.wav"
+          }
+        },
+        {
+          "start": 36,
+          "length": 4,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 1.wav"
+          }
+        },
+        {
+          "start": 40,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 12.wav"
+          }
+        },
+        {
+          "start": 48,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 11.wav"
+          }
+        },
+        {
+          "start": 56,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 12.wav"
+          }
+        },
+        {
+          "start": 64,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 10.wav"
+          }
+        },
+        {
+          "start": 72,
+          "length": 8,
+          "audio": {
+            "file": "/Users/Shared/Acoustic Drums Library/Samples/Lazy Kit Samples/Drums[72] Lazy 15.wav"
+          }
+        }
+      ],
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "lowpass",
+          "frequency": 7000
+        }
+      ]
+    },
+    {
+      "name": "keys",
+      "instrument": "poly.wurly",
+      "gain_db": -8,
+      "sends": {
+        "verb": -9
+      },
+      "humanize": {
+        "timing_ms": 14,
+        "velocity": 0.1,
+        "push_ms": -12
+      },
+      "parts": {
+        "*": {
+          "chordal": "c - - - . c - .",
+          "octave": 4,
+          "velocity": 0.55
+        }
+      }
+    },
+    {
+      "name": "bass",
+      "instrument": "bass.finger",
+      "gain_db": -4,
+      "instrument_params": {
+        "tone": 900
+      },
+      "humanize": {
+        "timing_ms": 10,
+        "velocity": 0.06
+      },
+      "parts": {
+        "a": {
+          "chordal": "1 - - . . 5 1 .",
+          "octave": 2
+        },
+        "out": {
+          "chordal": "1 - - - - - - -",
+          "octave": 2
+        }
+      }
+    },
+    {
+      "name": "vibes",
+      "instrument": "mallet.vibraphone",
+      "gain_db": -1,
+      "sends": {
+        "verb": -6
+      },
+      "humanize": {
+        "timing_ms": 12,
+        "velocity": 0.12
+      },
+      "parts": {
+        "a#2": {
+          "chordal": "5' . 3' . 9' - - .",
+          "octave": 4,
+          "velocity": 0.5
+        }
+      }
+    }
+  ]
+}
