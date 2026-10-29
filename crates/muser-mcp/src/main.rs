@@ -1332,10 +1332,21 @@ validate_project 会指出越界参数与未知乐器的具体位置。"
 )]
 impl ServerHandler for Muser {}
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() {
     // 本进程被插件扫描器以子进程方式启动时，读完插件即退出。
     muser_engine::plugin::serve_scanner_if_asked();
+    let r = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(anyhow::Error::from).and_then(|rt| rt.block_on(serve()));
+    let code = match r {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("Error: {e:?}");
+            1
+        }
+    };
+    muser_engine::plugin::exit(code)
+}
+
+async fn serve() -> anyhow::Result<()> {
     // 以 stdio 运行 MCP server。
     let service = Muser::new().serve(stdio()).await?;
     service.waiting().await?;

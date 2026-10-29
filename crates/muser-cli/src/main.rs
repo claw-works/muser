@@ -384,9 +384,20 @@ enum ProfileCommand {
     Path,
 }
 
-fn main() -> Result<()> {
+fn main() {
     // 本进程被插件扫描器以子进程方式启动时，读完插件即退出。
     muser_engine::plugin::serve_scanner_if_asked();
+    let code = match run() {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("Error: {e:?}");
+            1
+        }
+    };
+    muser_engine::plugin::exit(code)
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Render {

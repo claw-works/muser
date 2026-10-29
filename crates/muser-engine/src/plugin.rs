@@ -147,6 +147,24 @@ pub fn split_spec(spec: &str) -> (&str, Option<&str>) {
 #[cfg(feature = "host")]
 pub use imp::*;
 
+static LOADED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 结束进程。加载过插件时跳过 C/C++ 的退出析构：插件实例按设计不销毁（见 `defer_release`），
+/// 有的插件（Kontakt）的全局 `std::thread` 析构时还在运行，会让进程在文件都写完之后中止（SIGABRT）。
+pub fn exit(code: i32) -> ! {
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    if LOADED.load(std::sync::atomic::Ordering::Relaxed) {
+        extern "C" {
+            fn _exit(code: i32) -> !;
+        }
+        // SAFETY: 输出已刷新；工程文件、WAV、状态文件都在返回前写完并关闭。
+        unsafe { _exit(code) }
+    }
+    std::process::exit(code)
+}
+
 #[cfg(not(feature = "host"))]
 pub use stub::*;
 
@@ -368,6 +386,7 @@ mod imp {
             if !std::path::Path::new(path).exists() {
                 return Err(format!("找不到插件 '{path}'（用 `muser plugin scan` 查看本机插件）"));
             }
+            super::LOADED.store(true, std::sync::atomic::Ordering::Relaxed);
             let library = load_library(path)?;
             let plugin_id = match id {
                 Some(s) => s.to_string(),
