@@ -154,6 +154,26 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bypassed_effect_passes_sound_through() {
+        let project = |fx: serde_json::Value| -> muser_core::Project {
+            serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "poly.wurly", "effects": fx,
+                "automation": [{ "target": "effects[1]", "param": "frequency", "shape": "points", "points": [[0, 400], [2, 2000]] }],
+                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 1 }] }] }] })).unwrap()
+        };
+        let render = |p: &muser_core::Project| crate::render(p, RenderSettings::default()).unwrap().channel(0).to_vec();
+        let eq = serde_json::json!({ "type": "eq", "shape": "lowpass", "frequency": 800 });
+        let bypassed = project(serde_json::json!([{ "type": "reverb", "mix": 0.9, "bypass": true }, eq]));
+        assert!(bypassed.tracks[0].effects[0].bypass);
+        assert_eq!(serde_json::to_value(&bypassed.tracks[0].effects[0]).unwrap()["bypass"], true, "写回 JSON 时保留");
+        // 旁通的混响不出声；第二个效果器的自动化仍指向 effects[1]。
+        let only_eq = project(serde_json::json!([{ "type": "eq", "shape": "lowpass", "frequency": 20 }, eq]));
+        let mut no_reverb = only_eq.clone();
+        no_reverb.tracks[0].effects[0].bypass = true;
+        assert_eq!(render(&bypassed), render(&no_reverb));
+        assert_ne!(render(&project(serde_json::json!([{ "type": "reverb", "mix": 0.9 }, eq]))), render(&bypassed));
+    }
     use manguebyte::prelude::AudioBuffer;
     use muser_core::{Clip, Note, Project, Track};
 
@@ -232,21 +252,21 @@ mod tests {
         use muser_core::Effect;
         let mut p = demo_project();
         // 轨级加压缩器
-        p.tracks[0].effects.push(Effect::Compressor {
+        p.tracks[0].effects.push((Effect::Compressor {
             threshold_db: -18.0,
             ratio: 4.0,
             attack_ms: 10.0,
             release_ms: 120.0,
             makeup_db: 0.0,
             sidechain: None,
-        });
+        }).into());
         // 主总线加混响
-        p.master_effects.push(Effect::Reverb {
+        p.master_effects.push((Effect::Reverb {
             mix: 0.25,
             decay_seconds: 1.6,
             damping: 0.5,
             size: 0.5,
-        });
+        }).into());
         let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
             .expect("带效果链渲染应成功");
         assert!(audio.peak() > 0.0, "带效果链仍应发声");
@@ -264,12 +284,12 @@ mod tests {
         dry.tracks.push(t);
 
         let mut wet = dry.clone();
-        wet.master_effects.push(Effect::Reverb {
+        wet.master_effects.push((Effect::Reverb {
             mix: 0.6,
             decay_seconds: 2.5,
             damping: 0.3,
             size: 0.8,
-        });
+        }).into());
 
         let s = RenderSettings { tail_seconds: 2.0, ..Default::default() };
         let dry_audio = render(&dry, s).unwrap();
@@ -299,22 +319,22 @@ mod tests {
         use muser_core::Effect;
         let mut p = demo_project();
         // 轨级 chorus + EQ
-        p.tracks[0].effects.push(Effect::Chorus {
+        p.tracks[0].effects.push((Effect::Chorus {
             rate_hz: 0.8,
             depth_ms: 3.0,
             mix: 0.4,
-        });
-        p.tracks[0].effects.push(Effect::Eq {
+        }).into());
+        p.tracks[0].effects.push((Effect::Eq {
             shape: "high_shelf".to_string(),
             frequency: 6000.0,
             q: 0.707,
             gain_db: 3.0,
-        });
+        }).into());
         // 主总线 limiter
-        p.master_effects.push(Effect::Limiter {
+        p.master_effects.push((Effect::Limiter {
             ceiling_db: -0.3,
             release_ms: 50.0,
-        });
+        }).into());
         let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
             .expect("chorus/eq/limiter 渲染应成功");
         assert!(audio.peak() > 0.0, "应发声");
@@ -327,16 +347,16 @@ mod tests {
     fn phaser_flanger_render() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.tracks[0].effects.push(Effect::Phaser {
+        p.tracks[0].effects.push((Effect::Phaser {
             rate_hz: 0.5,
             feedback: 0.4,
             mix: 0.5,
-        });
-        p.master_effects.push(Effect::Flanger {
+        }).into());
+        p.master_effects.push((Effect::Flanger {
             rate_hz: 0.2,
             feedback: 0.7,
             mix: 0.5,
-        });
+        }).into());
         let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
             .expect("phaser/flanger 渲染应成功");
         assert!(audio.peak() > 0.0, "应发声");
@@ -346,12 +366,12 @@ mod tests {
     fn eq_unknown_shape_errors() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.master_effects.push(Effect::Eq {
+        p.master_effects.push((Effect::Eq {
             shape: "bogus".to_string(),
             frequency: 1000.0,
             q: 0.7,
             gain_db: 0.0,
-        });
+        }).into());
         let err = render(&p, RenderSettings::default()).unwrap_err();
         // 工程校验阶段（core 描述表）就会拦截，错误信息指明位置与可选值。
         let msg = err.to_string();
@@ -393,11 +413,11 @@ mod tests {
     fn plugin_without_host_feature_errors() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.master_effects.push(Effect::Plugin {
+        p.master_effects.push((Effect::Plugin {
             path: "/nonexistent/x.clap".to_string(),
             id: None,
             params: Default::default(),
-        });
+        }).into());
         let err = render(&p, RenderSettings::default()).unwrap_err();
         match err {
             EngineError::Effect(crate::effects::EffectError::HostDisabled) => {}
@@ -411,11 +431,11 @@ mod tests {
     fn plugin_missing_path_errors() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.master_effects.push(Effect::Plugin {
+        p.master_effects.push((Effect::Plugin {
             path: "/definitely/not/here.clap".to_string(),
             id: None,
             params: Default::default(),
-        });
+        }).into());
         let err = render(&p, RenderSettings::default()).unwrap_err();
         // host 下 validate 会加载插件检查参数，路径不存在在校验阶段就报出，并指明位置。
         let msg = err.to_string();
@@ -627,7 +647,7 @@ mod tests {
         let mut p = auto_project("synth.poly", &[(60, 0.0, 8.0), (64, 0.0, 8.0)], serde_json::json!([
             { "target": "effects[0]", "param": "frequency", "shape": "points", "points": [[0, 300], [8, 12000]], "curve": "exp" }
         ]));
-        p.tracks[0].effects.push(muser_core::Effect::Eq { shape: "lowpass".into(), frequency: 300.0, q: 0.707, gain_db: 0.0 });
+        p.tracks[0].effects.push((muser_core::Effect::Eq { shape: "lowpass".into(), frequency: 300.0, q: 0.707, gain_db: 0.0 }).into());
         let a = render(&p, quiet()).unwrap();
         assert!(seg_brightness(&a, 3 * SEC, 7 * SEC / 2) > seg_brightness(&a, SEC / 2, SEC) * 3.0);
     }
@@ -635,7 +655,7 @@ mod tests {
     #[test]
     fn automation_master_effect_and_gain() {
         let mut p = auto_project("synth.poly", &[(60, 0.0, 2.0)], serde_json::json!([]));
-        p.master_effects.push(muser_core::Effect::Reverb { mix: 0.0, decay_seconds: 2.0, damping: 0.5, size: 0.6 });
+        p.master_effects.push((muser_core::Effect::Reverb { mix: 0.0, decay_seconds: 2.0, damping: 0.5, size: 0.6 }).into());
         p.automation = serde_json::from_value(serde_json::json!([
             { "target": "master_effects[0]", "param": "mix", "shape": "points", "points": [[0, 0], [2, 0.8]] },
             { "target": "master_gain_db", "shape": "points", "points": [[0, 0], [8, -6]] }

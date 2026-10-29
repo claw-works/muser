@@ -8,6 +8,35 @@
 
 use serde::{Deserialize, Serialize};
 
+/// 效果链里的一格：效果器本身，加上是否旁通（`"bypass": true` 时不处理声音，位置与参数保留，
+/// 自动化的 `effects[i]` 序号不变）。JSON 里 `bypass` 与效果器的字段写在一起。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectSlot {
+    #[serde(flatten)]
+    pub effect: Effect,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bypass: bool,
+}
+
+impl std::ops::Deref for EffectSlot {
+    type Target = Effect;
+    fn deref(&self) -> &Effect {
+        &self.effect
+    }
+}
+
+impl std::ops::DerefMut for EffectSlot {
+    fn deref_mut(&mut self) -> &mut Effect {
+        &mut self.effect
+    }
+}
+
+impl From<Effect> for EffectSlot {
+    fn from(effect: Effect) -> Self {
+        Self { effect, bypass: false }
+    }
+}
+
 /// 一个效果器及其参数。JSON 中以 `type` 字段区分（serde 内部标签）。
 ///
 /// 示例：

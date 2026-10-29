@@ -154,7 +154,8 @@
   .chain-cell { min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .chain-cell::-webkit-scrollbar { display: none; }
   .chain { display: flex; align-items: center; flex-wrap: nowrap; min-width: max-content; white-space: nowrap; font-size: 9px; }
-  .chain .fx { padding: 3px 6px; border-radius: 5px; color: #0b1019; font-weight: 750; }
+  .chain .fx { min-height: 0; padding: 3px 6px; border: 0; border-radius: 5px; color: #0b1019; font-size: inherit; font-weight: 750; cursor: pointer; }
+  .chain .fx.bypassed { background: #2a3043 !important; color: var(--faint); text-decoration: line-through; }
   .chain .wire { width: 8px; height: 1px; background: #586078; }
   .chain .dest { padding: 2px 6px; color: var(--dim); background: rgba(255,255,255,.025); border: 1px solid #41485e; border-radius: 5px; }
   .chain .dest.bus { color: #bcb5ff; border-color: rgba(138,125,255,.42); }
@@ -405,6 +406,7 @@ const I18N = {
     muted: " (muted)", peak: (db) => `Peak ${db} dBFS`, saved: "Saved to project file",
     copied: "Copied", copyPrompt: "Copy the JSON below:", nodeChange: (id, name, parts) => `${id} (${name}): ${parts}`,
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
+    bypassChange: (b) => `bypass → [${b.map((x) => (x ? "off" : "on")).join(", ")}]`, fxBypassed: "bypassed (click to turn on)", fxActive: "on (click to bypass)",
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
     exportWavHint: "The whole song as you hear it now (faders, mutes and solo included), 16-bit WAV",
     exportMidiHint: "Notes of every instrument track as a standard MIDI file (audio tracks are not included)",
@@ -443,6 +445,7 @@ const I18N = {
     muted: "（静音）", peak: (db) => `峰值 ${db} dBFS`, saved: "已保存到工程文件",
     copied: "已复制", copyPrompt: "复制下面的 JSON：", nodeChange: (id, name, parts) => `${id}（${name}）: ${parts}`,
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
+    bypassChange: (b) => `效果器 → [${b.map((x) => (x ? "旁通" : "开")).join("，")}]`, fxBypassed: "已旁通（点一下打开）", fxActive: "开着（点一下旁通）",
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
     exportWavHint: "现在听到的整首（含推子、静音、独奏），16-bit WAV",
     exportMidiHint: "各乐器音轨的音符，标准 MIDI 文件（audio 音轨不包含）",
@@ -898,7 +901,7 @@ function channelItem(n, number, isChanged) {
   const lane = item.querySelector("canvas.track-notes");
   lane.dataset.id = n.id;
   lane.addEventListener("click", seekFromCanvas);
-  item.querySelector(".chain-cell").appendChild(chainView(n.chain, n.output, n.sends));
+  item.querySelector(".chain-cell").appendChild(chainView(n.chain, n.output, n.sends, n.id));
   bindGain(item, n);
   bindMuteSolo(item, n);
   bindExpansion(item, n.id);
@@ -921,7 +924,7 @@ function sharedItem(n, number, isChanged) {
   item.querySelector(".track-name").textContent = n.name;
   item.querySelector(".track-instrument").textContent = t("sharedBus");
   item.querySelector("canvas.meter").dataset.id = n.id;
-  item.querySelector(".chain-cell").appendChild(chainView(n.chain, n.output, n.sends));
+  item.querySelector(".chain-cell").appendChild(chainView(n.chain, n.output, n.sends, n.id));
   bindGain(item, n);
   bindMuteSolo(item, n);
   return item;
@@ -940,7 +943,7 @@ function masterItem() {
     <div class="chain-cell"></div>`;
   item.querySelector(".track-instrument").textContent = t("mainOutput");
   item.querySelector(".shared-fixed-gain").textContent = t("projectGain", fmtDb(data.master_gain_db));
-  item.querySelector(".chain-cell").appendChild(chainView(data.master_chain, null, {}));
+  item.querySelector(".chain-cell").appendChild(chainView(data.master_chain, null, {}, "master"));
   return item;
 }
 
@@ -994,13 +997,22 @@ const FX_COLORS = { eq: "#75c9ff", compressor: "#ffc46b", limiter: "#ff7c8b", re
 const fxColor = (t) => FX_COLORS[t] || "#cbd2e4";
 const fxLabel = (c) => c.label + (c.sidechain ? ` ⟵${c.sidechain}` : "");
 /** 混音行里的信号链：效果器方块用线连起来，最后指向去向；发送用虚线框列在后面。 */
-function chainView(chain, output, sends) {
+// 点效果器标签切换旁通（bypass），和推子一样是页面上的改动，「保存」写回工程。
+function chainView(chain, output, sends, node) {
   const box = document.createElement("div"); box.className = "chain";
-  for (const c of chain) {
-    const fx = document.createElement("span"); fx.className = "fx"; fx.style.background = fxColor(c.type);
-    fx.textContent = fxLabel(c); fx.title = c.type; box.appendChild(fx);
+  chain.forEach((c, i) => {
+    const fx = document.createElement("button"); fx.type = "button";
+    fx.className = "fx" + (c.bypass ? " bypassed" : ""); fx.style.background = fxColor(c.type);
+    fx.textContent = fxLabel(c); fx.title = `${c.type} — ${t(c.bypass ? "fxBypassed" : "fxActive")}`;
+    fx.setAttribute("aria-pressed", String(!c.bypass));
+    fx.onclick = (e) => {
+      e.stopPropagation();
+      const bypass = chain.map((x, j) => (j === i ? !x.bypass : !!x.bypass));
+      post("/api/mix", { changes: [{ node, bypass }] }).catch(() => {});
+    };
+    box.appendChild(fx);
     const w = document.createElement("span"); w.className = "wire"; box.appendChild(w);
-  }
+  });
   if (output) {
     if (!chain.length) { const w = document.createElement("span"); w.className = "wire"; box.appendChild(w); }
     const d = document.createElement("span"); d.className = "dest" + (output === "master" ? "" : " bus"); d.textContent = "→ " + output; box.appendChild(d);
@@ -1118,8 +1130,9 @@ function renderFlow() {
     (n.chain || []).forEach((c, i) => {
       const w = chipW(c);
       if (i > 0) el("line", { x1: cx - 6, y1: n.y + 31, x2: cx, y2: n.y + 31, stroke: "#69728a" }, g);
-      el("rect", { x: cx, y: n.y + 23, width: w, height: 16, rx: 3, fill: fxColor(c.type) }, g);
-      const ct = el("text", { x: cx + 5, y: n.y + 35, fill: "#0b1018", "font-size": 10, "font-weight": 650, "font-family": flowFontFamily }, g);
+      el("rect", { x: cx, y: n.y + 23, width: w, height: 16, rx: 3, fill: c.bypass ? "#2a3043" : fxColor(c.type) }, g);
+      const ct = el("text", { x: cx + 5, y: n.y + 35, fill: c.bypass ? "#5c6479" : "#0b1018", "font-size": 10, "font-weight": 650, "font-family": flowFontFamily,
+        "text-decoration": c.bypass ? "line-through" : "none" }, g);
       ct.textContent = fitText(fxLabel(c), w - 10, chipFont);
       const tip = el("title", {}, ct); tip.textContent = fxLabel(c);
       cx += w + 6;
@@ -1134,6 +1147,7 @@ function renderChanges() {
     const parts = [];
     if ("gain_db" in c) parts.push(t("gainChange", c.gain_db));
     if ("muted" in c) parts.push(t("muteChange", c.muted));
+    if ("bypass" in c) parts.push(t("bypassChange", c.bypass));
     return t("nodeChange", c.node, name(c.node), parts.join(language === "zh" ? "，" : ", "));
   }).join("\n");
   $("save").disabled = $("reset").disabled = list.length === 0;

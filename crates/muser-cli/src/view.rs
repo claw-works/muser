@@ -114,10 +114,11 @@ fn encode_meter(peaks: &[[f32; 2]]) -> String {
 }
 
 /// 效果器在信号流图里的显示：类型、简短标签、侧链键。
-fn chain(list: &[muser_core::Effect]) -> Vec<Value> {
+fn chain(list: &[muser_core::EffectSlot]) -> Vec<Value> {
     use muser_core::Effect;
     list.iter()
-        .map(|e| {
+        .map(|slot| {
+            let e = &slot.effect;
             let (label, sidechain) = match e {
                 Effect::Plugin { path, id, params, .. } => {
                     let stem = Path::new(path).file_stem().map_or_else(|| path.clone(), |s| s.to_string_lossy().to_string());
@@ -130,7 +131,7 @@ fn chain(list: &[muser_core::Effect]) -> Vec<Value> {
                 Effect::Eq { shape, .. } => (format!("eq {shape}"), None),
                 e => (e.type_name().to_string(), None),
             };
-            json!({ "type": e.type_name(), "label": label, "sidechain": sidechain })
+            json!({ "type": e.type_name(), "label": label, "sidechain": sidechain, "bypass": slot.bypass })
         })
         .collect()
 }
@@ -143,6 +144,20 @@ struct Change {
     gain_db: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     muted: Option<bool>,
+    /// 效果链每一格是否旁通（整条链，按顺序）。`node` 还可以是 `master`（主总线的效果链）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bypass: Option<Vec<bool>>,
+}
+
+fn effects_mut<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Vec<muser_core::EffectSlot>, String> {
+    if id == "master" {
+        return Ok(&mut p.master_effects);
+    }
+    match parse_node(id).ok_or_else(|| format!("无效的 node '{id}'"))? {
+        ("tracks", i) => p.tracks.get_mut(i).map(|t| &mut t.effects),
+        (_, i) => p.buses.get_mut(i).map(|b| &mut b.effects),
+    }
+    .ok_or_else(|| format!("没有 {id}"))
 }
 
 #[derive(serde::Deserialize)]
@@ -207,6 +222,18 @@ fn has_gain_automation(autos: &[muser_core::Automation]) -> bool {
 
 fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
     for c in changes {
+        if let Some(b) = &c.bypass {
+            let fx = effects_mut(p, &c.node)?;
+            if b.len() != fx.len() {
+                return Err(format!("{}.bypass 应有 {} 项（效果链长度）", c.node, fx.len()));
+            }
+            for (slot, on) in fx.iter_mut().zip(b) {
+                slot.bypass = *on;
+            }
+        }
+        if c.node == "master" {
+            continue;
+        }
         let (gain, muted, autos) = fields(p, &c.node)?;
         if let Some(g) = c.gain_db {
             if !(-80.0..=24.0).contains(&g) {
@@ -226,6 +253,29 @@ fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
 fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result<()> {
     let mut working = working.clone();
     for c in changes {
+        if let Some(b) = &c.bypass {
+            let list = match c.node.as_str() {
+                "master" => v.get_mut("master_effects"),
+                id => {
+                    let (kind, i) = parse_node(id).ok_or_else(|| anyhow!("无效的 node '{id}'"))?;
+                    v.get_mut(kind).and_then(|a| a.get_mut(i)).and_then(|o| o.get_mut("effects"))
+                }
+            }
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| anyhow!("工程文件里没有 {} 的效果链", c.node))?;
+            for (fx, on) in list.iter_mut().zip(b) {
+                if let Some(o) = fx.as_object_mut() {
+                    if *on {
+                        o.insert("bypass".into(), json!(true));
+                    } else {
+                        o.remove("bypass");
+                    }
+                }
+            }
+        }
+        if c.node == "master" {
+            continue;
+        }
         let autos = fields(&mut working, &c.node).map_err(|e| anyhow!(e))?.2.clone();
         let (kind, i) = parse_node(&c.node).ok_or_else(|| anyhow!("无效的 node '{}'", c.node))?;
         let obj = v
@@ -249,18 +299,20 @@ fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result
 /// 工作副本相对文件的改动（只列出确实不同的字段）。
 fn diff(file: &Project, working: &Project) -> Vec<Change> {
     let mut out = Vec::new();
-    let mut push = |node: String, g0: f64, g1: f64, m0: bool, m1: bool| {
-        let c = Change { node, gain_db: (g0 != g1).then_some(g1), muted: (m0 != m1).then_some(m1) };
-        if c.gain_db.is_some() || c.muted.is_some() {
+    let flags = |fx: &[muser_core::EffectSlot]| fx.iter().map(|e| e.bypass).collect::<Vec<_>>();
+    let mut push = |node: String, g0: f64, g1: f64, m0: bool, m1: bool, b0: Vec<bool>, b1: Vec<bool>| {
+        let c = Change { node, gain_db: (g0 != g1).then_some(g1), muted: (m0 != m1).then_some(m1), bypass: (b0 != b1).then_some(b1) };
+        if c.gain_db.is_some() || c.muted.is_some() || c.bypass.is_some() {
             out.push(c);
         }
     };
     for (i, (a, b)) in file.tracks.iter().zip(&working.tracks).enumerate() {
-        push(format!("tracks[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted);
+        push(format!("tracks[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted, flags(&a.effects), flags(&b.effects));
     }
     for (i, (a, b)) in file.buses.iter().zip(&working.buses).enumerate() {
-        push(format!("buses[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted);
+        push(format!("buses[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted, flags(&a.effects), flags(&b.effects));
     }
+    push("master".into(), 0.0, 0.0, false, false, flags(&file.master_effects), flags(&working.master_effects));
     out
 }
 
@@ -311,7 +363,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
         Ok(a) => a,
         Err(_) => working,
     };
-    let fx = |list: &[muser_core::Effect]| list.iter().map(|e| e.type_name()).collect::<Vec<_>>();
+    let fx = |list: &[muser_core::EffectSlot]| list.iter().map(|e| e.type_name()).collect::<Vec<_>>();
     let mut nodes = Vec::new();
     for (i, t) in working.tracks.iter().enumerate() {
         let id = format!("tracks[{i}]");
@@ -1223,8 +1275,8 @@ mod tests {
     fn apply_changes_to_project_and_json() {
         let mut p = project();
         let ch = vec![
-            Change { node: "tracks[0]".into(), gain_db: Some(-4.5), muted: None },
-            Change { node: "buses[0]".into(), gain_db: None, muted: Some(true) },
+            Change { node: "tracks[0]".into(), gain_db: Some(-4.5), muted: None, bypass: None },
+            Change { node: "buses[0]".into(), gain_db: None, muted: Some(true), bypass: None },
         ];
         apply_to_project(&mut p, &ch).unwrap();
         assert_eq!((p.tracks[0].gain_db, p.buses[0].muted), (-4.5, true));
@@ -1233,10 +1285,34 @@ mod tests {
         apply_to_json(&mut v, &ch, &p).unwrap();
         assert_eq!(v["tracks"][0]["gain_db"], json!(-4.5));
         assert_eq!(v["buses"][0]["muted"], json!(true));
-        let bad = vec![Change { node: "tracks[9]".into(), gain_db: Some(0.0), muted: None }];
+        let bad = vec![Change { node: "tracks[9]".into(), gain_db: Some(0.0), muted: None, bypass: None }];
         assert!(apply_to_project(&mut p, &bad).is_err());
-        let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None }];
+        let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None, bypass: None }];
         assert!(apply_to_project(&mut p, &bad).unwrap_err().contains("超出范围"));
+    }
+
+    #[test]
+    fn bypass_changes_round_trip() {
+        let file = Project::from_json(
+            r#"{ "tempo": 120, "master_effects": [{ "type": "limiter" }],
+                 "tracks": [{ "name": "a", "instrument": "synth.poly", "clips": [], "effects": [{ "type": "reverb" }, { "type": "eq", "bypass": true }] }] }"#,
+        )
+        .unwrap();
+        let mut p = file.clone();
+        let ch = vec![
+            Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: Some(vec![true, false]) },
+            Change { node: "master".into(), gain_db: None, muted: None, bypass: Some(vec![true]) },
+        ];
+        apply_to_project(&mut p, &ch).unwrap();
+        assert!(p.tracks[0].effects[0].bypass && !p.tracks[0].effects[1].bypass && p.master_effects[0].bypass);
+        assert_eq!(diff(&file, &p), ch);
+        let mut v: Value = serde_json::to_value(&file).unwrap();
+        apply_to_json(&mut v, &ch, &p).unwrap();
+        assert_eq!(v["tracks"][0]["effects"][0]["bypass"], json!(true));
+        assert!(v["tracks"][0]["effects"][1].get("bypass").is_none(), "关掉旁通时删掉字段");
+        assert_eq!(v["master_effects"][0]["bypass"], json!(true));
+        let wrong = vec![Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: Some(vec![true]) }];
+        assert!(apply_to_project(&mut p, &wrong).unwrap_err().contains("2 项"));
     }
 
     #[test]
@@ -1248,7 +1324,7 @@ mod tests {
         )
         .unwrap();
         let file = p.clone();
-        let ch = vec![Change { node: "tracks[0]".into(), gain_db: Some(-6.0), muted: None }];
+        let ch = vec![Change { node: "tracks[0]".into(), gain_db: Some(-6.0), muted: None, bypass: None }];
         apply_to_project(&mut p, &ch).unwrap();
         let pts = match &p.tracks[0].automation[0].shape {
             muser_core::automation::Shape::Points { points, .. } => points.iter().map(|(_, v)| v.as_f64().unwrap()).collect::<Vec<_>>(),
@@ -1263,7 +1339,7 @@ mod tests {
         let mut q = file.clone();
         q.tracks[0].clips = serde_json::from_value(json!([{ "start": 0, "length": 8, "notes": [{ "pitch": 60, "start": 0, "length": 8 }] }])).unwrap();
         let mut louder = q.clone();
-        apply_to_project(&mut louder, &[Change { node: "tracks[0]".into(), gain_db: Some(0.0), muted: None }]).unwrap();
+        apply_to_project(&mut louder, &[Change { node: "tracks[0]".into(), gain_db: Some(0.0), muted: None, bypass: None }]).unwrap();
         let e = |p: &Project| muser_engine::render(p, RenderSettings { tail_seconds: 0.1, ..Default::default() }).unwrap().channel(0).iter().map(|s| f64::from(*s).powi(2)).sum::<f64>();
         assert!(e(&louder) > e(&q) * 5.0);
     }

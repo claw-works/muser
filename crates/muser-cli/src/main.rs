@@ -1135,11 +1135,11 @@ fn cmd_routing(path: &str) -> Result<()> {
         }
         Node::Bus(i) => format!("[{}]{}", p.buses[i].name, if p.buses[i].muted { "（静音）" } else { "" }),
     };
-    let fx = |list: &[muser_core::Effect]| {
+    let fx = |list: &[muser_core::EffectSlot]| {
         if list.is_empty() {
             String::new()
         } else {
-            format!(" → {}", list.iter().map(|e| match e {
+            format!(" → {}", list.iter().map(|e| match &e.effect {
                 muser_core::Effect::Compressor { sidechain: Some(k), .. } => format!("compressor⟵{k}"),
                 e => e.type_name().to_string(),
             }).collect::<Vec<_>>().join(" → "))

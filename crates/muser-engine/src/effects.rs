@@ -39,11 +39,13 @@ pub enum Fx {
     Other(Box<dyn Processor<f32>>),
     #[cfg(feature = "host")]
     Plugin(HostedPlugin),
+    /// 旁通（`"bypass": true`）：声音原样通过。
+    Bypass,
 }
 
 impl Fx {
-    fn processor(&mut self) -> &mut dyn Processor<f32> {
-        match self {
+    fn processor(&mut self) -> Option<&mut dyn Processor<f32>> {
+        Some(match self {
             Fx::Reverb(p) => p,
             Fx::Delay(p) => p,
             Fx::Compressor(p) => p,
@@ -54,15 +56,20 @@ impl Fx {
             Fx::Other(p) => p.as_mut(),
             #[cfg(feature = "host")]
             Fx::Plugin(p) => p,
-        }
+            Fx::Bypass => return None,
+        })
     }
 
     pub fn prepare(&mut self, spec: &ProcessSpec) {
-        self.processor().prepare(spec);
+        if let Some(p) = self.processor() {
+            p.prepare(spec);
+        }
     }
 
     pub fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        self.processor().process(buffer);
+        if let Some(p) = self.processor() {
+            p.process(buffer);
+        }
     }
 
     /// 自动化：运行中改一个参数（名称与效果器 JSON 字段相同；已按描述表校验过范围）。
@@ -105,9 +112,14 @@ impl Fx {
 }
 
 /// 把一组 [`Effect`] 构造成已就绪（prepare 过）的效果链。
-pub fn build_chain(effects: &[Effect], spec: &ProcessSpec) -> Result<Vec<Fx>, EffectError> {
+pub fn build_chain(effects: &[muser_core::EffectSlot], spec: &ProcessSpec) -> Result<Vec<Fx>, EffectError> {
     let mut chain = Vec::with_capacity(effects.len());
     for e in effects {
+        // 旁通的效果器仍占一格，自动化的 `effects[i]` 序号不变。
+        if e.bypass {
+            chain.push(Fx::Bypass);
+            continue;
+        }
         let mut fx = build_one(e, spec)?;
         fx.prepare(spec);
         chain.push(fx);

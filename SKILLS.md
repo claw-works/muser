@@ -287,6 +287,7 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 
 效果器写在 `track.effects`（轨级，在该轨增益/声像之前）、总线的 `effects` 或 `master_effects`（主总线，在主增益之前），
 按数组顺序串联。每个参数都可省略，`{ "type": "reverb" }` 就是一个可用的混响。
+任何效果器都可加 `"bypass": true` 临时关掉（旁通：声音原样通过，参数与位置保留，自动化的 `effects[i]` 不变）；`muser view` 上点效果器标签切换。
 
 | type | 作用 | 子 skill |
 |---|---|---|

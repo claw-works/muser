@@ -24,7 +24,7 @@ pub mod routing;
 pub mod time;
 
 pub use automation::{Automation, CompiledCurve, Curve, LfoWave, RandomStyle, Shape, Target};
-pub use effect::{effect_spec, ChoiceSpec, Effect, EffectSpec, ParamSpec, EFFECT_SPECS};
+pub use effect::{effect_spec, ChoiceSpec, Effect, EffectSlot, EffectSpec, ParamSpec, EFFECT_SPECS};
 pub use routing::{Bus, MASTER};
 pub use time::{Beats, TimeSignature};
 
@@ -47,7 +47,7 @@ pub struct Project {
     pub master_gain_db: f64,
     /// 主总线效果器链（按顺序串联），默认空。在主增益之前施加。
     #[serde(default)]
-    pub master_effects: Vec<Effect>,
+    pub master_effects: Vec<EffectSlot>,
     /// 主总线自动化（目标 `master_gain_db` / `master_effects[i]`），默认空。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<Automation>,
@@ -386,7 +386,7 @@ pub struct Track {
     pub muted: bool,
     /// 轨级效果器链（按顺序串联），默认空。在增益/声像之前施加。
     #[serde(default)]
-    pub effects: Vec<Effect>,
+    pub effects: Vec<EffectSlot>,
     /// 输出到哪里：`"master"`（默认）或某条总线的名字。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,

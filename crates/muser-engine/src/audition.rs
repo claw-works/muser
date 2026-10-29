@@ -195,7 +195,7 @@ fn project_for(subject: &Subject, param: Option<(&str, &Value)>, s: &AuditionSet
             if let Some((k, v)) = param {
                 fx = set_effect_param(&fx, k, v)?;
             }
-            track.effects.push(fx);
+            track.effects.push(fx.into());
             for o in [0u8, 7, 12, 16] {
                 let mut n = Note::new(s.pitch.saturating_sub(12).saturating_add(o), 0.0, beats);
                 n.velocity = s.velocity;

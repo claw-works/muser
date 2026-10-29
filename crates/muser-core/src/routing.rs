@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Automation, Effect, Project};
+use crate::{Automation, Effect, EffectSlot, Project};
 
 /// 输出目标里表示主总线的名字。
 pub const MASTER: &str = "master";
@@ -36,7 +36,7 @@ pub struct Bus {
     pub muted: bool,
     /// 总线效果器链。
     #[serde(default)]
-    pub effects: Vec<Effect>,
+    pub effects: Vec<EffectSlot>,
     /// 输出到哪里：`"master"`（默认）或另一条总线的名字。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
@@ -172,9 +172,9 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
     }
 
     let mut sidechains = Vec::new();
-    let mut scan = |node: Node, effects: &[Effect], at: &str| -> Result<(), String> {
+    let mut scan = |node: Node, effects: &[EffectSlot], at: &str| -> Result<(), String> {
         for (ei, e) in effects.iter().enumerate() {
-            if let Effect::Compressor { sidechain: Some(name), .. } = e {
+            if let Effect::Compressor { sidechain: Some(name), .. } = &e.effect {
                 let key = find_node(p, name).map_err(|m| format!("{at}.effects[{ei}].sidechain: {m}"))?;
                 if key == node {
                     return Err(format!("{at}.effects[{ei}].sidechain: 不能用自己触发自己"));
@@ -191,7 +191,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
         scan(Node::Bus(i), &b.effects, &format!("buses[{i}]"))?;
     }
     for (ei, e) in p.master_effects.iter().enumerate() {
-        if let Effect::Compressor { sidechain: Some(name), .. } = e {
+        if let Effect::Compressor { sidechain: Some(name), .. } = &e.effect {
             find_node(p, name).map_err(|m| format!("master_effects[{ei}].sidechain: {m}"))?;
         }
     }

@@ -696,7 +696,7 @@ fn sidechain_keys(project: &Project, plan: &Plan) -> Result<(HashSet<Node>, Vec<
     let mut key_nodes: HashSet<Node> = plan.sidechains.iter().map(|s| s.key).collect();
     let mut master_keys: Vec<Option<Node>> = Vec::new();
     for e in &project.master_effects {
-        let k = match e {
+        let k = match &e.effect {
             Effect::Compressor { sidechain: Some(name), .. } => Some(routing::find_node(project, name).map_err(invalid)?),
             _ => None,
         };
@@ -874,7 +874,7 @@ impl Renderer {
         // 演奏线程共用的一份工程。
         let mut shared: Option<Arc<Project>> = None;
         for &node in &plan.order {
-            let (muted, effects_list, gain_db, pan, lanes, law): (bool, &[Effect], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) = match node {
+            let (muted, effects_list, gain_db, pan, lanes, law): (bool, &[muser_core::EffectSlot], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) = match node {
                 Node::Track(i) => {
                     let t = &project.tracks[i];
                     (t.muted, &t.effects, t.gain_db, t.pan, automate::compile_track(project, i, beats).map_err(invalid)?, pan_gains)
