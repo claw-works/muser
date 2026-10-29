@@ -609,7 +609,19 @@ pub fn available() -> Vec<String> {
 
 /// 不实例化乐器、不加载插件或采样，检查乐器名与 `instrument_params`。
 /// `plugin:` 只检查语法；`sfz:` 检查文件存在。
+/// `@label`（给人和 agent 看的音色名，见 muser view 的音色面板）对任何乐器都只是注释。
+fn without_label(params: &InstrumentParams) -> std::borrow::Cow<'_, InstrumentParams> {
+    if params.contains_key("@label") {
+        let mut p = params.clone();
+        p.remove("@label");
+        std::borrow::Cow::Owned(p)
+    } else {
+        std::borrow::Cow::Borrowed(params)
+    }
+}
+
 pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentError> {
+    let params = &*without_label(params);
     let trimmed = name.trim();
     // 音频音轨：没有乐器，声音来自 clip 上的音频文件（crate::audio）。
     if trimmed == muser_core::audio::INSTRUMENT {
@@ -738,6 +750,7 @@ pub fn resolve_with(name: &str, params: &InstrumentParams) -> Result<TrackInstru
 
 /// 同 [`resolve_with`]，插件按给定的采样率与块大小激活。
 pub fn resolve_for(name: &str, params: &InstrumentParams, spec: &ProcessSpec) -> Result<TrackInstrument, InstrumentError> {
+    let params = &*without_label(params);
     let trimmed = name.trim();
     if let Some(rest) = trimmed.strip_prefix("plugin:") {
         return resolve_plugin(rest, params, spec);
@@ -839,6 +852,15 @@ fn resolve_plugin(_spec: &str, _params: &InstrumentParams, _ps: &ProcessSpec) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn label_is_accepted_by_every_instrument() {
+        let mut p = InstrumentParams::new();
+        p.insert("@label".into(), serde_json::json!("Warm keys"));
+        for name in ["poly.wurly", "guitar.steel", "drums.808", "audio"] {
+            check(name, &p).unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+    }
 
     #[test]
     fn catalog_has_all_presets_and_unique_names() {
