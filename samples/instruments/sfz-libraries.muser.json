@@ -1,0 +1,157 @@
+{
+  "name": "sfz-libraries",
+  "tempo": 90,
+  "buses": [
+    {
+      "name": "room",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.2,
+          "size": 0.6
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "rhodes",
+      "instrument": "sfz:jlearman.jRhodes3d/jRhodes3d-keyswitch.sfz",
+      "sends": {
+        "room": -14
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 8,
+          "pedal": [
+            [
+              0.05,
+              1.95
+            ],
+            [
+              2.05,
+              3.95
+            ],
+            [
+              4.05,
+              5.95
+            ],
+            [
+              6.05,
+              8
+            ]
+          ],
+          "abc": "L:1/4\nK:Dm\n!pp![D,F,A,C]2 !p![B,,D,F,A]2 | !mf![G,,B,,D,F]2 !ff![A,,^C,E,G]2 |"
+        },
+        {
+          "start": 40,
+          "length": 8,
+          "pedal": [
+            [
+              0.05,
+              3.95
+            ],
+            [
+              4.05,
+              8
+            ]
+          ],
+          "abc": "L:1/4\nK:Dm\n!mp![D,F,A,C]4 | !mf![G,,B,,D,F]2 [A,,^C,E,G]2 |"
+        }
+      ],
+      "gain_db": -7
+    },
+    {
+      "name": "cello",
+      "instrument": "sfz:karoryfer-bigcat.cello/Programs/02- Bowed (mod wheel).sfz",
+      "instrument_params": {
+        "cc": {
+          "1": 100
+        }
+      },
+      "sends": {
+        "room": -12
+      },
+      "clips": [
+        {
+          "start": 8,
+          "length": 8,
+          "legato": true,
+          "abc": "L:1/8\nK:Dm\nD2F2A4 | G2F2E4 | F2A2d4 | ^c8 |"
+        }
+      ],
+      "gain_db": 6
+    },
+    {
+      "name": "tuba",
+      "instrument": "sfz:karoryfer.war-tuba/Programs/1-solo-legato.sfz",
+      "sends": {
+        "room": -16
+      },
+      "clips": [
+        {
+          "start": 16,
+          "length": 8,
+          "legato": true,
+          "abc": "L:1/8\nK:Dm\nD,,4 A,,4 | B,,,4 F,,4 | G,,4 D,,4 | A,,,8 |"
+        }
+      ],
+      "gain_db": -1
+    },
+    {
+      "name": "sax",
+      "instrument": "sfz:karoryfer.bear-sax/Programs/1-solo-mono.sfz",
+      "sends": {
+        "room": -12
+      },
+      "clips": [
+        {
+          "start": 24,
+          "length": 8,
+          "legato": true,
+          "abc": "L:1/8\nK:Dm\nA,2D2F3E | D2C2A,4 | B,2D2G3F | E8 |"
+        }
+      ],
+      "gain_db": 13
+    },
+    {
+      "name": "flute",
+      "instrument": "sfz:Ixox.Flute/Ixox Flute.sfz",
+      "sends": {
+        "room": -10
+      },
+      "clips": [
+        {
+          "start": 32,
+          "length": 8,
+          "legato": true,
+          "abc": "L:1/8\nK:Dm\na2f2d'3c' | a2g2f4 | g2b2d'3c' | ^c'8 |"
+        }
+      ],
+      "gain_db": 7
+    },
+    {
+      "name": "bass",
+      "instrument": "sfz:karoryfer.black-and-blue-basses/Programs/05-darkblack_pluck.sfz",
+      "sends": {
+        "room": -20
+      },
+      "clips": [
+        {
+          "start": 40,
+          "length": 8,
+          "abc": "L:1/8\nK:Dm\nD,,2 z A,, D,2 C,2 | B,,,2 z F,, A,,2 ^C,2 |"
+        }
+      ],
+      "gain_db": 5
+    }
+  ]
+}

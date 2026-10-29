@@ -49,6 +49,8 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径相对音色库，
   需设 `MUSER_SFZ_PATH` 指向你的音色库目录（见 [README.zh-CN.md](../README.zh-CN.md)）。
 
+`sfz-libraries`：免费 SFZ 音色库巡礼（D 小调，约 34 秒，需本机音色库，见 sfzinstruments）：jRhodes3d 电钢和弦从 pp 到 ff（力度层交叉淡化）→ bigcat 大提琴（mod wheel `cc1=100`）→ War Tuba → Bear Sax（低音萨克斯，C2–G#4）→ Ixox 长笛 → Black And Blue 贝斯与电钢收尾。
+
 `sfz-bass-black-and-blue`：Black And Blue Basses（CC0 采样贝斯，需本机音色库）的 SFZ 示例：`instrument_params` 用 `"keyswitch": "Pluck"` 选奏法、`"cc": {"105": 127}` 打开单音模式。
 
 ## params
