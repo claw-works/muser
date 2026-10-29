@@ -447,6 +447,8 @@ const I18N = {
     soundDone: "Done", soundCancel: "Discard", soundUsed: (s) => `Switched to ${s}; re-rendering`,
     sfzSampler: "SFZ sampler", sfzCount: (n) => `Built-in sampler · ${n} sounds in MUSER_SFZ_PATH`, sfzSearch: "Search sounds (name, library, path)…",
     sfzShown: (a, b) => (a === b ? `${b} sounds` : `${a} of ${b} sounds`),
+    builtinInstruments: "Built-in instruments", builtinCount: (n) => `muser's own synths, drum kits, keys, strings… · ${n}`,
+    builtinSearch: "Search (name, family such as drums / poly / strings, description)…",
     soundBusy: "Loading the new sound and re-rendering… keep listening — playback switches over when it's ready",
     soundBusyPct: (p) => `Re-rendering ${p}%… playback switches to the new sound at the same spot`,
     soundGroupSfz: "SFZ (built-in sampler, MUSER_SFZ_PATH)", soundGroupPlugin: "Instrument plugins (pick the sound in the plugin window)", soundScanning: "Scanning plugins…", soundNoPlugins: "No SFZ files (set MUSER_SFZ_PATH) or VST3 / CLAP instrument plugins found",
@@ -490,6 +492,8 @@ const I18N = {
     soundDone: "完成", soundCancel: "放弃", soundUsed: (s) => `已换成 ${s}，正在重新渲染`,
     sfzSampler: "SFZ 采样器", sfzCount: (n) => `内置采样器 · MUSER_SFZ_PATH 里 ${n} 个音色`, sfzSearch: "搜索音色（名字、音色库、路径）…",
     sfzShown: (a, b) => (a === b ? `${b} 个音色` : `${b} 个里的 ${a} 个`),
+    builtinInstruments: "内置乐器", builtinCount: (n) => `muser 自带的合成器、鼓组、键盘、弦乐… · ${n} 个`,
+    builtinSearch: "搜索（名字、类别如 drums / poly / strings、说明）…",
     soundBusy: "正在载入新音色并重新渲染……可以继续听，好了会自动换上",
     soundBusyPct: (p) => `正在重新渲染 ${p}%……好了在同一位置换成新音色`,
     soundGroupSfz: "SFZ（内置采样器，MUSER_SFZ_PATH）", soundGroupPlugin: "乐器插件（在插件窗口里选音色）", soundScanning: "正在扫描插件…", soundNoPlugins: "没有找到 SFZ（设置 MUSER_SFZ_PATH）或 VST3 / CLAP 乐器插件",
@@ -841,31 +845,39 @@ function card(icon, name, meta, tag, current, onclick) {
 }
 function renderInstruments() {
   const box = $("sd-instruments"); box.innerHTML = "";
-  const sfz = soundChoices.filter((p) => p.format === "sfz"), plugins = soundChoices.filter((p) => p.format !== "sfz");
+  const of = (f) => soundChoices.filter((p) => p.format === f);
+  const plugins = soundChoices.filter((p) => p.format !== "sfz" && p.format !== "builtin");
   const cur = soundTrack.instrument || "";
-  box.appendChild(card("🎹", t("sfzSampler"), t("sfzCount", sfz.length), "SFZ", cur.startsWith("sfz:"), () => openSfz()));
+  const builtin = of("builtin");
+  box.appendChild(card("🎵", t("builtinInstruments"), t("builtinCount", builtin.length), "muser", builtin.some((p) => p.spec === cur), () => openList("builtin")));
+  box.appendChild(card("🎹", t("sfzSampler"), t("sfzCount", of("sfz").length), "SFZ", cur.startsWith("sfz:"), () => openList("sfz")));
   for (const p of plugins) {
     box.appendChild(card("🎛", p.name, p.vendor || "", p.format.toUpperCase(), sameSound(p.spec, cur), () => openPlugin(p)));
   }
   if (!soundChoices.length) { const e = document.createElement("p"); e.className = "note"; e.textContent = t("soundNoPlugins"); box.appendChild(e); }
 }
-function openSfz() {
-  drawerPage("sd-sfz");
-  $("sd-search").placeholder = t("sfzSearch"); $("sd-search").value = "";
+// 一类可直接换的音色（内置乐器 / SFZ）：搜索过滤，点一个就换。
+let listKind = "sfz";
+function openList(kind) {
+  listKind = kind; drawerPage("sd-sfz");
+  $("sd-title").textContent = `${t("sound")} · ${soundTrack.name} · ${kind === "sfz" ? t("sfzSampler") : t("builtinInstruments")}`;
+  $("sd-search").placeholder = t(kind === "sfz" ? "sfzSearch" : "builtinSearch"); $("sd-search").value = "";
   renderSfz(); setTimeout(() => $("sd-search").focus(), 50);
 }
 function renderSfz() {
   const terms = $("sd-search").value.toLowerCase().split(/\s+/).filter(Boolean);
   const cur = soundTrack.instrument || "";
-  let list = soundChoices.filter((p) => p.format === "sfz");
-  if (cur.startsWith("sfz:") && !list.some((p) => p.spec === cur)) list = [{ spec: cur, name: shortInstrument(cur), vendor: "" }, ...list];
-  const shown = list.filter((p) => terms.every((w) => `${p.name} ${p.vendor} ${p.spec}`.toLowerCase().includes(w)));
+  let list = soundChoices.filter((p) => p.format === listKind);
+  if (listKind === "sfz" && cur.startsWith("sfz:") && !list.some((p) => p.spec === cur)) list = [{ spec: cur, name: shortInstrument(cur), vendor: "" }, ...list];
+  const shown = list.filter((p) => terms.every((w) => `${p.name} ${p.vendor} ${p.spec} ${p.description || ""}`.toLowerCase().includes(w)));
   $("sd-count").textContent = t("sfzShown", shown.length, list.length);
   const box = $("sd-sfz-list"); box.innerHTML = "";
   for (const p of shown.slice(0, 300)) {
     const b = document.createElement("button"); b.type = "button"; b.className = "sound-item" + (p.spec === cur ? " current" : "");
     b.innerHTML = `<div class="name"></div><div class="meta"></div>`;
-    b.querySelector(".name").textContent = p.name; b.querySelector(".meta").textContent = p.spec.slice(4);
+    b.querySelector(".name").textContent = p.name;
+    b.querySelector(".meta").textContent = listKind === "sfz" ? p.spec.slice(4) : `${p.vendor} · ${p.description || ""}`;
+    if (p.description) b.title = p.description;
     b.onclick = async () => {
       try {
         await post("/api/sound/open", { track: trackIndex(soundTrack), spec: p.spec, label: "" });

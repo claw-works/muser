@@ -736,16 +736,19 @@ impl Shared {
         Ok(changes.len())
     }
 
-    /// 可选的音色：`$MUSER_SFZ_PATH` 里的 SFZ（内置采样器，直接换）与扫描到的 VST3 / CLAP 乐器插件（在插件窗口里选）。
+    /// 可选的音色：内置乐器与 `$MUSER_SFZ_PATH` 里的 SFZ（直接换）、扫描到的 VST3 / CLAP 乐器插件（在插件窗口里选）。
     fn sound_choices() -> Vec<Value> {
-        let mut out: Vec<Value> = muser_engine::sfz::library()
+        let mut out: Vec<Value> = muser_engine::instrument::catalog()
+            .into_iter()
+            .map(|i| json!({ "spec": i.name, "name": i.name, "vendor": i.family, "description": i.description, "format": "builtin" }))
+            .collect();
+        out.extend(muser_engine::sfz::library()
             .into_iter()
             .map(|(rel, path)| {
                 let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| rel.clone());
                 let group = rel.split('/').next().filter(|g| *g != rel).unwrap_or("").to_string();
                 json!({ "spec": format!("sfz:{rel}"), "name": name, "vendor": group, "format": "sfz" })
-            })
-            .collect();
+            }));
         if cfg!(all(target_os = "macos", feature = "host")) {
             if let Ok((list, _)) = muser_engine::plugin::scan(false) {
                 out.extend(
@@ -758,7 +761,7 @@ impl Shared {
         out
     }
 
-    /// 直接换成一个不需要插件窗口的音色（`sfz:…`）：写进工程文件（文件监视会重新渲染）。
+    /// 直接换成一个不需要插件窗口的音色（内置乐器名或 `sfz:…`）：写进工程文件（文件监视会重新渲染）。
     fn sound_use(&self, ti: usize, instrument: &str, label: &str) -> Result<(), String> {
         if self.edit.lock().unwrap().as_ref().is_some_and(|e| e.open && e.track == ti) {
             return Err("这条轨的插件窗口还开着，先完成或放弃它".into());
