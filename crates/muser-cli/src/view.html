@@ -261,6 +261,18 @@
     .shared-item { grid-template-columns: 224px minmax(160px,1fr) 62px 30px; }
     .shared-item .chain-cell { grid-column: 2 / -1; padding: 4px 0 5px; }
   }
+  .sound-panel { position: fixed; z-index: 30; top: 90px; right: 28px; width: 340px; padding: 16px 18px 14px; background: #121624;
+    border: 1px solid var(--line-hi); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+  .sound-panel h3 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px; font-size: 14px; }
+  .sound-panel h3 button { min-height: 26px; padding: 0 8px; }
+  .sound-panel label { display: block; margin: 10px 0 4px; color: var(--dim); font-size: 11px; }
+  .sound-panel select, .sound-panel input { box-sizing: border-box; width: 100%; min-height: 32px; padding: 0 8px; color: var(--text);
+    background: #0c0f19; border: 1px solid var(--line-hi); border-radius: 8px; font: inherit; }
+  .sound-panel .row { display: flex; gap: 8px; margin-top: 14px; }
+  .sound-panel .row button { flex: 1; }
+  .sound-panel [hidden] { display: none !important; }
+  .sound-panel .note { margin: 10px 0 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
+  .sound-panel .sync { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -349,6 +361,17 @@
     </section>
   </div>
 </div>
+<div class="sound-panel" id="sound-panel" hidden>
+  <h3><span id="sp-title"></span><button id="sp-close" aria-label="Close">×</button></h3>
+  <div class="note" id="sp-current"></div>
+  <label for="sp-plugin" id="sp-plugin-label"></label>
+  <select id="sp-plugin"></select>
+  <label for="sp-label" id="sp-label-label"></label>
+  <input id="sp-label" type="text">
+  <div class="row" id="sp-idle"><button class="primary" id="sp-open"></button></div>
+  <div class="row" id="sp-live" hidden><button id="sp-play"></button><button class="primary" id="sp-done"></button><button id="sp-cancel"></button></div>
+  <p class="note" id="sp-note"></p>
+</div>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -382,9 +405,12 @@ const I18N = {
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
     exportWavHint: "The whole song as you hear it now (faders, mutes and solo included), 16-bit WAV",
     exportMidiHint: "Notes of every instrument track as a standard MIDI file (audio tracks are not included)",
-    pluginEdit: "Open the plugin's own window to pick a sound", pluginLabel: "Name this sound (saved in the project as @label):",
-    pluginOpen: "Plugin window open — pick a sound there, then close the window to save it into the project",
-    pluginSaved: "Sound saved to the project; re-rendering",
+    soundHint: "Choose this track's sound in an instrument plugin", sound: "Sound", soundPlugin: "Instrument plugin",
+    soundName: "Name (saved as @label)", soundOpen: "Open plugin window", soundAudition: "▶ Audition track", soundStopAudition: "■ Stop",
+    soundDone: "Done", soundCancel: "Discard", soundScanning: "Scanning plugins…", soundNoPlugins: "No VST3 / CLAP instrument plugins found",
+    soundCurrent: (i) => `Current: ${i}`, soundEditing: "Window open — pick and tweak the sound there; you can play it on the plugin's keyboard, or audition this track.",
+    soundSynced: (time) => `Synced to the project at ${time}; re-rendering`, soundNotYet: "No changes yet",
+    soundClosed: "Plugin window closed", soundOther: (n) => `A plugin window is already open (track ${n}).`,
     exporting: "Preparing…", exportFailed: "Export failed: ",
     exportAbc: "ABC", exportAbcHint: "Standard ABC 2.1 score, one voice per instrument track (drums and audio tracks are not included)",
     exportYue2: "ABC (YuE2)", exportYue2Hint: "YuE2 native score: Vocal / Ins melodies with chord symbols, for cot=full (use muser abc --yue2 for options)",
@@ -416,9 +442,12 @@ const I18N = {
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
     exportWavHint: "现在听到的整首（含推子、静音、独奏），16-bit WAV",
     exportMidiHint: "各乐器音轨的音符，标准 MIDI 文件（audio 音轨不包含）",
-    pluginEdit: "打开插件自己的界面选音色", pluginLabel: "给这个音色起个名字（写进工程的 @label）：",
-    pluginOpen: "插件窗口已打开：在里面选好音色，关掉窗口即存回工程",
-    pluginSaved: "音色已存回工程，正在重新渲染",
+    soundHint: "在乐器插件里给这条轨选音色", sound: "音色", soundPlugin: "乐器插件",
+    soundName: "名字（写进 @label）", soundOpen: "打开插件窗口", soundAudition: "▶ 试听本轨", soundStopAudition: "■ 停止",
+    soundDone: "完成", soundCancel: "放弃", soundScanning: "正在扫描插件…", soundNoPlugins: "本机没有找到 VST3 / CLAP 乐器插件",
+    soundCurrent: (i) => `现在：${i}`, soundEditing: "窗口已打开：在里面选音色、调参数；可以在插件的键盘上弹，或试听这条轨。",
+    soundSynced: (time) => `${time} 已同步到工程，正在重新渲染`, soundNotYet: "还没有改动",
+    soundClosed: "插件窗口已关闭", soundOther: (n) => `已经有一个插件窗口开着（音轨 ${n}）。`,
     exporting: "准备中…", exportFailed: "导出失败：",
     exportAbc: "ABC", exportAbcHint: "标准 ABC 2.1 乐谱，每条乐器音轨一个声部（鼓组、audio 音轨不包含）",
     exportYue2: "ABC（YuE2）", exportYue2Hint: "YuE2 原生乐谱：Vocal / Ins 旋律加和弦记号，给 cot=full（更多选项用 muser abc --yue2）",
@@ -714,6 +743,70 @@ async function post(url, body) {
   return out;
 }
 
+// ---------- 音色（插件界面） ----------
+let soundTrack = null, soundPlugins = null, soundTimer = 0, auditioning = false;
+async function openSoundPanel(n) {
+  soundTrack = n; auditioning = false;
+  $("sound-panel").hidden = false;
+  $("sp-title").textContent = `${t("sound")} · ${n.name}`;
+  $("sp-current").textContent = t("soundCurrent", shortInstrument(n.instrument) + (n.label ? " · " + n.label : ""));
+  $("sp-plugin-label").textContent = t("soundPlugin"); $("sp-label-label").textContent = t("soundName");
+  $("sp-open").textContent = t("soundOpen"); $("sp-play").textContent = t("soundAudition");
+  $("sp-done").textContent = t("soundDone"); $("sp-cancel").textContent = t("soundCancel");
+  $("sp-label").value = n.label || "";
+  const sel = $("sp-plugin");
+  if (!soundPlugins) {
+    sel.innerHTML = `<option>${t("soundScanning")}</option>`; sel.disabled = true; $("sp-open").disabled = true;
+    try { soundPlugins = await (await fetch("/api/sound/plugins")).json(); } catch (_) { soundPlugins = []; }
+    if (!Array.isArray(soundPlugins)) soundPlugins = [];
+  }
+  sel.disabled = false; sel.innerHTML = "";
+  for (const p of soundPlugins) {
+    const o = document.createElement("option"); o.value = p.spec; o.textContent = `${p.name} (${p.format.toUpperCase()}${p.vendor ? ", " + p.vendor : ""})`;
+    sel.appendChild(o);
+  }
+  const cur = /^plugin:(.*)$/.exec(n.instrument || "");
+  if (cur) { const m = soundPlugins.find((p) => p.spec === cur[1] || p.spec.split("#")[0] === cur[1].split("#")[0]); if (m) sel.value = m.spec; }
+  $("sp-open").disabled = !soundPlugins.length;
+  $("sp-note").textContent = soundPlugins.length ? "" : t("soundNoPlugins");
+  soundPoll();
+}
+async function soundPoll() {
+  clearTimeout(soundTimer);
+  if ($("sound-panel").hidden) return;
+  let s = { open: false };
+  try { s = await (await fetch("/api/sound/status")).json(); } catch (_) {}
+  const mine = s.open && soundTrack && s.track === +/\d+/.exec(soundTrack.id)[0];
+  $("sp-idle").hidden = mine; $("sp-live").hidden = !mine;
+  $("sp-plugin").disabled = mine;
+  if (mine) {
+    $("sp-note").innerHTML = "";
+    const time = s.synced ? new Date(s.synced * 1000).toLocaleTimeString() : null;
+    $("sp-note").append(t("soundEditing"), document.createElement("br"));
+    const sync = document.createElement("span"); sync.className = "sync"; sync.textContent = time ? t("soundSynced", time) : t("soundNotYet");
+    $("sp-note").append(sync);
+  } else if (s.open) {
+    $("sp-note").textContent = t("soundOther", s.track + 1); $("sp-open").disabled = true;
+  } else {
+    $("sp-open").disabled = !(soundPlugins || []).length;
+    if (auditioning) { auditioning = false; $("sp-play").textContent = t("soundAudition"); }
+  }
+  soundTimer = setTimeout(soundPoll, 1000);
+}
+$("sp-open").onclick = async () => {
+  const track = +/\d+/.exec(soundTrack.id)[0];
+  await post("/api/sound/open", { track, spec: $("sp-plugin").value, label: $("sp-label").value }).catch(() => {});
+  soundPoll();
+};
+$("sp-play").onclick = async () => {
+  auditioning = !auditioning;
+  await post("/api/sound/cmd", { cmd: auditioning ? "play" : "stop" }).catch(() => { auditioning = false; });
+  $("sp-play").textContent = auditioning ? t("soundStopAudition") : t("soundAudition");
+};
+$("sp-done").onclick = async () => { await post("/api/sound/cmd", { cmd: "done", label: $("sp-label").value }).catch(() => {}); banner(t("soundClosed"), "info"); soundPoll(); };
+$("sp-cancel").onclick = async () => { await post("/api/sound/cmd", { cmd: "cancel" }).catch(() => {}); soundPoll(); };
+$("sp-close").onclick = () => { $("sound-panel").hidden = true; clearTimeout(soundTimer); };
+
 // ---------- 界面 ----------
 function renderHeader() {
   const raw = (data.name || "muser view").split("/").pop();
@@ -762,17 +855,10 @@ function channelItem(n, number, isChanged) {
   item.querySelector(".expand-button").setAttribute("aria-label", t("expand", n.name));
   const instrument = item.querySelector(".track-instrument");
   instrument.textContent = sub + (n.label ? " · " + n.label : ""); if (n.kind === "track") instrument.title = n.instrument;
-  if (n.kind === "track" && /^plugin:/.test(n.instrument || "")) {
+  if (n.kind === "track" && data.sound_edit && n.instrument !== "audio") {
     const b = document.createElement("button");
-    b.className = "expand-button plugin-edit"; b.textContent = "🎛"; b.title = t("pluginEdit"); b.setAttribute("aria-label", t("pluginEdit"));
-    b.onclick = async (e) => {
-      e.stopPropagation();
-      const label = prompt(t("pluginLabel"), n.label || n.name);
-      if (label === null) return;
-      banner(t("pluginOpen"), "info"); b.disabled = true;
-      try { await post("/api/plugin-edit", { track: +/\d+/.exec(n.id)[0], label }); banner(t("pluginSaved"), "info"); }
-      catch (_) {} finally { b.disabled = false; }
-    };
+    b.className = "expand-button sound-button"; b.textContent = "🎛"; b.title = t("soundHint"); b.setAttribute("aria-label", t("soundHint"));
+    b.onclick = (e) => { e.stopPropagation(); openSoundPanel(n); };
     item.querySelector(".track-title").appendChild(b);
   }
   const meter = item.querySelector("canvas.meter"); meter.dataset.id = n.id;

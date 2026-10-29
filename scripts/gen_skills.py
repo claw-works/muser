@@ -646,7 +646,11 @@ def sfz_page():
   这样同一份工程在不同机器上都能用。分享的工程优先用相对路径。
 - 音符 `pitch` 用 MIDI 音高；音域、力度层、循环、释放采样都由 .sfz 文件定义。最多 32 个同时发声。
 - `muser validate` 会检查 .sfz 文件是否存在；采样缺失或格式错误会在渲染时报出。
-- 部分 SFZ opcode（如 `<curve>`、`<effect>`）不支持，渲染时会在 stderr 提示数量，音色可能与原设计略有差异。
+- 支持的表现力 opcode：滤波器（`fil_type` `cutoff` `resonance` `fil_keytrack` `fil_veltrack`）与滤波包络（`fileg_*`）、音高包络（`pitcheg_*`）、
+  LFO（`amplfo_*` `pitchlfo_*` `fillfo_*`，`lfo1`–`lfo4` 的 `freq` `wave` `delay` `fade` `pitch` `volume` `amplitude` `pan` `cutoff`）、
+  力度曲线 `amp_velcurve_N`、`offset_random`、`note_polyphony`。按控制器调制的写法（`*_onccN`、`*_ccN`，如 `lfo1_pitch_oncc1` 揉弦深度、
+  `ampeg_attack_oncc11`）按工程里的控制器值（`instrument_params.cc`，没写时用 .sfz 的 `set_cc`）在加载时折算进去。
+- 仍不支持的（`<curve>` 自定义曲线、`<effect>`、LFO 调 LFO、区域 EQ `eqN_*` 等）渲染时在 stderr 列出名字与次数，音色可能与原设计略有差异。
 - `instrument_params` 支持两项（加载时生效，不能自动化）：
   - `"cc": { "105": 127 }`：设控制器值。很多音色库用控制器做开关（单音模式、选弦、齐奏音量、滤波、颤音深度…），
     muser 按这些值选择区域（`loccN`/`hiccN`）并折算 `volume_onccN` / `amplitude_onccN` / `pan_onccN`；
@@ -656,7 +660,7 @@ def sfz_page():
 - 触发方式按 .sfz 设计工作：`trigger=first` / `legato`（连奏采样，前一个键还按着时触发；clip 写 `"legato": true` 自动连起来，
   见 SKILLS.md 的连奏一节）、`release`（松键/抬踏板时的余音、琴弦共鸣）。
 - 其它需要调整的地方可在轨上加效果器（如 `eq`、`reverb`）。
-- 采样里的 LFO、滤波器、速度曲线等 opcode 暂不支持（加载时提示数量），控制器默认值让它们不起作用时影响不大。
+- 揉弦、颤音深度常由 CC1（mod wheel）控制：`instrument_params: { "cc": { "1": 64 } }` 打开一半，0 关掉。
 - 免费音色库：freepats（钢琴、吉他等）、Versilian VSCO（管弦乐）、sfzinstruments.github.io。
 - 路径是本机路径，工程换机器后需改成新位置。
 - 钢琴类音色配合延音踏板：clip 的 `pedal` 字段，见 [pedal.md](../pedal.md)。
@@ -851,6 +855,19 @@ muser plugin save-state "<插件>" --params '{"@preset": "pad", "cutoff": "1200 
 工程里加载：`"instrument_params": { "@state": "pad.muserstate" }`（效果器写在 `params` 里），之后再写的参数会覆盖。
 应用顺序：`@state` → 状态改写（`@wavetable` / `@modulations`）→ `selector`（如 `effect`）→ 画像 `setup` → `@preset` → 其余参数。状态文件记录了插件 id，装进别的插件会被拒绝；
 它和插件版本、平台绑定，适合本机使用，分享经验请用画像。MCP：`save_plugin_state`。
+
+### 让人在插件界面里选音色（macOS）
+
+有的插件（如 Kontakt）的音色只能在它自己的界面里载入，参数和画像都选不了。这时让人来选：
+
+- `muser view` 页面上，每条乐器轨名字旁的 🎛 打开"音色"面板：选乐器插件（本机扫描到的 VST3 / CLAP 乐器）、起个名字，
+  点"打开插件窗口"。人在插件窗口里选音色、调参数，能在插件的屏幕键盘上弹，或点"试听本轨"循环播放这条轨的音符（最多 8 小节）。
+  改动约 2 秒后自动存盘并写回工程（`@state` 指向工程旁的 `<工程名>.<音轨名>.muserstate`，`@label` 是名字），view 随即重新渲染。
+  "完成"或关掉插件窗口即结束；"放弃"恢复成打开前的样子。
+- 命令行：`muser plugin edit "<插件>" [--params JSON] -o <文件>`，关窗口时保存状态。
+- `@label` 只是给人和 agent 看的名字（插件的状态是二进制，读不出选了什么音色），渲染时忽略。
+  agent 看到 `"@label": "Piano Uno"` 就知道这条轨是什么音色，换音色要请人再选一次。
+- Windows / Linux 上还没有插件窗口，页面上不显示 🎛。
 """
 
 

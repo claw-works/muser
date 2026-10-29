@@ -52,6 +52,7 @@ muser render beat.muser.json -o beat.wav
 - `profile list|show|draft|check|path`：插件画像（常用参数别名、预设、setup、经验的数据文件）。
   `show <插件|画像.json> [--markdown]`；`draft <插件> [--audition] [--save | -o 文件]`；`check <画像.json> [--plugin <插件>]`。
 - `save-state <插件> [--params JSON] -o <文件>`：保存插件完整状态，工程里用 `"@state": "<文件>"` 加载。
+- `edit <插件> [--params JSON] -o <文件>`（macOS）：打开插件自己的界面让人选音色，关窗口时保存状态；`muser view` 的 🎛 面板用的就是它。
 - `<插件>` 是路径，可带 `#插件id`。都支持 `--json`。
 
 ### `muser audition`

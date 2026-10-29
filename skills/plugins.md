@@ -155,3 +155,16 @@ muser plugin save-state "<插件>" --params '{"@preset": "pad", "cutoff": "1200 
 工程里加载：`"instrument_params": { "@state": "pad.muserstate" }`（效果器写在 `params` 里），之后再写的参数会覆盖。
 应用顺序：`@state` → 状态改写（`@wavetable` / `@modulations`）→ `selector`（如 `effect`）→ 画像 `setup` → `@preset` → 其余参数。状态文件记录了插件 id，装进别的插件会被拒绝；
 它和插件版本、平台绑定，适合本机使用，分享经验请用画像。MCP：`save_plugin_state`。
+
+### 让人在插件界面里选音色（macOS）
+
+有的插件（如 Kontakt）的音色只能在它自己的界面里载入，参数和画像都选不了。这时让人来选：
+
+- `muser view` 页面上，每条乐器轨名字旁的 🎛 打开"音色"面板：选乐器插件（本机扫描到的 VST3 / CLAP 乐器）、起个名字，
+  点"打开插件窗口"。人在插件窗口里选音色、调参数，能在插件的屏幕键盘上弹，或点"试听本轨"循环播放这条轨的音符（最多 8 小节）。
+  改动约 2 秒后自动存盘并写回工程（`@state` 指向工程旁的 `<工程名>.<音轨名>.muserstate`，`@label` 是名字），view 随即重新渲染。
+  "完成"或关掉插件窗口即结束；"放弃"恢复成打开前的样子。
+- 命令行：`muser plugin edit "<插件>" [--params JSON] -o <文件>`，关窗口时保存状态。
+- `@label` 只是给人和 agent 看的名字（插件的状态是二进制，读不出选了什么音色），渲染时忽略。
+  agent 看到 `"@label": "Piano Uno"` 就知道这条轨是什么音色，换音色要请人再选一次。
+- Windows / Linux 上还没有插件窗口，页面上不显示 🎛。

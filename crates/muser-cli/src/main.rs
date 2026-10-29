@@ -327,6 +327,12 @@ enum PluginCommand {
         /// 输出文件（建议扩展名 .muserstate）。
         #[arg(short, long)]
         output: String,
+        /// 窗口标题。
+        #[arg(long)]
+        title: Option<String>,
+        /// 由 muser view 驱动（stdin 读 JSON 命令，stdout 报告同步）。
+        #[arg(long, hide = true)]
+        serve: bool,
     },
     /// 列出某个参数可写的文字值（选项类参数即全部选项，如滤波类型、波形）。
     Values {
@@ -923,17 +929,47 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
             println!("已保存 {} {} 的状态 → {output}", h.plugin_name, h.version);
             println!("工程里写 \"instrument_params\": {{ \"@state\": \"{output}\" }}（效果器写在 params 里）。");
         }
-        PluginCommand::Edit { plugin: spec, params, output } => {
+        PluginCommand::Edit { plugin: spec, params, output, title, serve } => {
             #[cfg(target_os = "macos")]
             {
+                use muser_engine::plugin_edit::{run, Cmd, Outcome};
                 let base = parse_map(params.as_deref())?;
-                let h = plugin::edit_state(&spec, &base, std::path::Path::new(&output)).map_err(fail)?;
-                println!("已保存 {} {} 的状态 → {output}", h.plugin_name, h.version);
-                println!("工程里写 \"instrument_params\": {{ \"@state\": \"{output}\" }}。");
+                let (tx, rx) = std::sync::mpsc::channel::<Cmd>();
+                if serve {
+                    // 由 muser view 驱动：stdin 每行一条 JSON 命令，stdout 每行一条事件。
+                    std::thread::spawn(move || {
+                        for line in std::io::stdin().lines().map_while(Result::ok) {
+                            match serde_json::from_str::<Cmd>(&line) {
+                                Ok(c) => {
+                                    let _ = tx.send(c);
+                                }
+                                Err(e) => eprintln!("[muser] 看不懂的命令 {line}: {e}"),
+                            }
+                        }
+                    });
+                } else {
+                    std::mem::forget(tx);
+                }
+                let title = title.unwrap_or_else(|| format!("{} · muser", plugin::split_spec(&spec).0.rsplit('/').next().unwrap_or(&spec)));
+                let saved = || {
+                    if serve {
+                        use std::io::Write;
+                        println!("{}", serde_json::json!({ "event": "saved" }));
+                        let _ = std::io::stdout().flush();
+                    }
+                };
+                match run(&spec, &base, std::path::Path::new(&output), &title, rx, saved).map_err(fail)? {
+                    Outcome::Saved(h) if !serve => {
+                        println!("已保存 {} {} 的状态 → {output}", h.plugin_name, h.version);
+                        println!("工程里写 \"instrument_params\": {{ \"@state\": \"{output}\" }}。");
+                    }
+                    Outcome::Unchanged if !serve => println!("没有改动，未保存。"),
+                    _ => {}
+                }
             }
             #[cfg(not(target_os = "macos"))]
             {
-                let _ = (spec, params, output);
+                let _ = (spec, params, output, title, serve);
                 return Err(anyhow::anyhow!("插件界面目前只支持 macOS"));
             }
         }

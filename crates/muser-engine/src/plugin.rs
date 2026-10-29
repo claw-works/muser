@@ -192,10 +192,6 @@ mod stub {
     pub fn save_state(_spec: &str, _params: &serde_json::Map<String, Value>, _out: &std::path::Path) -> Result<StateHeader, String> {
         Err(HOST_DISABLED.into())
     }
-    #[cfg(target_os = "macos")]
-    pub fn edit_state(_spec: &str, _params: &serde_json::Map<String, Value>, _out: &std::path::Path) -> Result<StateHeader, String> {
-        Err(HOST_DISABLED.into())
-    }
     pub fn plugin_identity(_spec: &str) -> Result<(String, String, String), String> {
         Err(HOST_DISABLED.into())
     }
@@ -951,69 +947,6 @@ mod imp {
             eprintln!("[muser] 警告: {w}");
         }
         o.save_state_file(out)?;
-        drop(proc);
-        Ok(read_state_file(out)?.0)
-    }
-
-    /// 打开插件自己的界面（原生窗口），人在里面选音色、调参数；关窗口时把状态存到 `out`。
-    /// 只在 macOS、VST3 插件上；必须在主线程调用。
-    #[cfg(target_os = "macos")]
-    pub fn edit_state(spec: &str, params: &serde_json::Map<String, Value>, out: &std::path::Path) -> Result<StateHeader, String> {
-        use manguebyte::host::editor::{EditorRequest, EditorSize, ParentWindow};
-        use manguebyte::host::vst3::HostEvent;
-        use objc2::MainThreadMarker;
-        use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSEventMask, NSWindow, NSWindowStyleMask};
-        use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize, NSString};
-
-        let mtm = MainThreadMarker::new().ok_or("插件界面须在主线程打开")?;
-        let mut o = Opened::open_spec(spec)?;
-        o.apply(params)?;
-        let pspec = manguebyte::prelude::ProcessSpec { sample_rate: 48_000.0, max_block_size: 256, num_channels: 2 };
-        let mut proc = o.activate(pspec.sample_rate, pspec.max_block_size)?;
-        proc.prepare(&pspec);
-        let name = o.plugin.entry().name.clone();
-        let app = NSApplication::sharedApplication(mtm);
-        app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-        app.finishLaunching();
-        let style = NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable;
-        let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(800.0, 600.0));
-        // SAFETY: 主线程上新建窗口；关窗口后不释放（下面还要读它是否可见）。
-        let window = unsafe { NSWindow::initWithContentRect_styleMask_backing_defer(mtm.alloc(), rect, style, NSBackingStoreType::Buffered, false) };
-        unsafe { window.setReleasedWhenClosed(false) };
-        window.setTitle(&NSString::from_str(&format!("{name} — 关闭窗口即保存到 {}", out.display())));
-        let view = window.contentView().ok_or("窗口没有内容视图")?;
-        let parent = ParentWindow::cocoa(objc2::rc::Retained::as_ptr(&view) as usize).ok_or("无效的视图")?;
-        let vst3 = o.plugin.as_vst3_mut().ok_or("目前只支持 VST3 插件的界面")?;
-        let size = vst3.open_editor(parent, None).map_err(|e| format!("插件界面打不开: {e:?}"))?;
-        window.setContentSize(NSSize::new(f64::from(size.width), f64::from(size.height)));
-        window.center();
-        window.makeKeyAndOrderFront(None);
-        #[allow(deprecated)]
-        app.activateIgnoringOtherApps(true);
-        let mut silent = manguebyte::prelude::AudioBuffer::<f32>::new(2, 256);
-        while window.isVisible() {
-            // SAFETY: AppKit 的默认运行循环模式常量。
-            let mode = unsafe { NSDefaultRunLoopMode };
-            let until = NSDate::dateWithTimeIntervalSinceNow(0.01);
-            while let Some(ev) = app.nextEventMatchingMask_untilDate_inMode_dequeue(NSEventMask::Any, Some(&until), mode, true) {
-                app.sendEvent(&ev);
-            }
-            // 让插件的音频半边也转起来（有的插件在处理中才读完采样）。
-            for ch in 0..2 {
-                silent.channel_mut(ch).fill(0.0);
-            }
-            proc.process(&mut silent);
-            let vst3 = o.plugin.as_vst3_mut().expect("上面已检查是 VST3");
-            for ev in vst3.pump() {
-                if let HostEvent::Editor(EditorRequest::Resize(EditorSize { width, height })) = ev {
-                    if let Ok(s) = vst3.set_editor_size(EditorSize::new(width, height)) {
-                        window.setContentSize(NSSize::new(f64::from(s.width), f64::from(s.height)));
-                    }
-                }
-            }
-        }
-        o.save_state_file(out)?;
-        o.plugin.as_vst3_mut().expect("上面已检查是 VST3").close_editor();
         drop(proc);
         Ok(read_state_file(out)?.0)
     }
