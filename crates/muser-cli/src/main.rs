@@ -302,7 +302,7 @@ enum SoundsCommand {
         /// 状态文件（.muserstate）。
         state: String,
     },
-    /// 采集（macOS）：打开插件窗口并在 Finder 里选中音色文件，在窗口里载入它（双击插件的浏览器，或把文件拖进窗口），
+    /// 采集（macOS）：打开插件窗口，在窗口里载入这个音色（用插件自己的浏览器 / 搜索框），
     /// 关窗口后状态存进本机音色库，之后 `sounds state` 直接可用。人来点，或 agent 用 computer use。
     Capture {
         plugin: String,
@@ -1005,8 +1005,6 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                 if let Some(d) = out.parent() {
                     std::fs::create_dir_all(d)?;
                 }
-                // 在 Finder 里选中音色文件：可以直接拖进插件窗口。
-                let _ = std::process::Command::new("open").arg("-R").arg(&x.file).status();
                 let title = format!("载入：{}（{}）— 载入后关闭窗口 · muser", x.name, x.library);
                 let (_tx, rx) = std::sync::mpsc::channel();
                 match muser_engine::plugin_edit::run(&format!("{}#{}", p.path, p.id), &serde_json::Map::new(), &out, &title, rx, || {}).map_err(|e| anyhow::anyhow!(e))? {

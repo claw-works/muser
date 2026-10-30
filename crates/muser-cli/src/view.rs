@@ -812,8 +812,9 @@ impl Shared {
     }
 
     /// 打开第 `ti` 条音轨的音色编辑：`spec` 是要用的乐器插件（和现在的不同就换乐器，从插件的初始音色开始）。
-    fn edit_open(self: &Arc<Self>, ti: usize, spec: &str, label: &str) -> Result<(), String> {
-        self.edit_open_with(ti, spec, label, None)
+    /// `fresh`：从插件的初始状态开始（载入一个新音色），否则从这条轨现在的音色开始调。
+    fn edit_open(self: &Arc<Self>, ti: usize, spec: &str, label: &str, fresh: bool) -> Result<(), String> {
+        self.edit_open_with(ti, spec, label, None, fresh)
     }
 
     /// 插件的一个内置音色：能直接换成状态的（自动 / 已采集）写进工程；要在插件窗口里载入的开一个采集窗口
@@ -839,9 +840,6 @@ impl Shared {
             write().map_err(|e| format!("写回工程失败: {e:#}"))?;
             return Ok("used");
         }
-        if cfg!(target_os = "macos") {
-            let _ = std::process::Command::new("open").arg("-R").arg(&x.file).status();
-        }
         // 这条轨的采集窗口已经开着：换成载入这个音色，窗口不用关。
         {
             use std::io::Write;
@@ -856,11 +854,11 @@ impl Shared {
             }
         }
         let label = x.name.clone();
-        self.edit_open_with(ti, &p.spec(), &label, Some((p, x.file)))?;
+        self.edit_open_with(ti, &p.spec(), &label, Some((p, x.file)), true)?;
         Ok("capture")
     }
 
-    fn edit_open_with(self: &Arc<Self>, ti: usize, spec: &str, label: &str, capture: Option<(muser_engine::presets::PluginRef, String)>) -> Result<(), String> {
+    fn edit_open_with(self: &Arc<Self>, ti: usize, spec: &str, label: &str, capture: Option<(muser_engine::presets::PluginRef, String)>, fresh: bool) -> Result<(), String> {
         let spec = spec.strip_prefix("plugin:").unwrap_or(spec);
         if !cfg!(target_os = "macos") {
             return Err("插件界面目前只支持 macOS".into());
@@ -879,8 +877,8 @@ impl Shared {
             (if t.name.is_empty() { format!("track{ti}") } else { t.name.clone() }, t.instrument.clone(), t.instrument_params.clone())
         };
         let keep = current.strip_prefix("plugin:").is_some_and(|c| same_plugin(c, spec));
-        if !keep || capture.is_some() {
-            // 换插件或采集新音色：从插件的初始状态开始。
+        if !keep || capture.is_some() || fresh {
+            // 换插件、采集、载入新音色：从插件的初始状态开始。
             params.clear();
         }
         params.remove("@label");
@@ -898,8 +896,8 @@ impl Shared {
         let text = std::fs::read_to_string(&self.path).map_err(|e| format!("读取工程失败: {e}"))?;
         let v: Value = serde_json::from_str(&text).map_err(|e| format!("解析工程失败: {e}"))?;
         let backup = (v["tracks"][ti].clone(), std::fs::read(&out).ok());
-        if !keep || capture.is_some() {
-            // 换插件 / 重新采集：旧的状态文件不能沿用（放弃时从 backup 恢复）。
+        if !keep || capture.is_some() || fresh {
+            // 换插件 / 重新采集 / 新音色：旧的状态文件不能沿用（放弃时从 backup 恢复）。
             let _ = std::fs::remove_file(&out);
         }
         let plugin_name = muser_engine::plugin::split_spec(spec).0.rsplit('/').next().unwrap_or(spec).trim_end_matches(".vst3").trim_end_matches(".clap").to_string();
@@ -1319,7 +1317,7 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
                 let ti = b["track"].as_u64().ok_or("需要 track")? as usize;
                 let (spec, label) = (b["spec"].as_str().ok_or("需要 spec")?, b["label"].as_str().unwrap_or(""));
                 if spec.starts_with("plugin:") {
-                    shared.edit_open(ti, spec, label)
+                    shared.edit_open(ti, spec, label, b["fresh"].as_bool().unwrap_or(false))
                 } else {
                     shared.sound_use(ti, spec, label)
                 }
@@ -1332,7 +1330,8 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
         (Method::Get, "/api/sound/presets") => {
             let spec = query(&url).get("spec").map(|s| crate::poly::percent_decode(s)).unwrap_or_default();
             match muser_engine::presets::plugin_ref(&spec) {
-                Ok(p) => respond_json(req, 200, &json!(muser_engine::presets::presets(&p))),
+                // 抽屉里只列能直接用的（我的音色、已采集、能自动转换的预设）；要在插件里载入的去插件自己的浏览器里选。
+                Ok(p) => respond_json(req, 200, &json!(muser_engine::presets::presets(&p).into_iter().filter(|x| x.load != muser_engine::presets::Load::Manual).collect::<Vec<_>>())),
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
             }
         }
