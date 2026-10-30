@@ -441,11 +441,11 @@ fn spectral_period(mono: &[f32], sr: f64, bar_s: f64, hold_bars: f64) -> Vec<(f6
             return f64::MIN;
         }
         let (mut ab, mut aa, mut bb) = (0.0, 0.0, 0.0);
-        for t in 0..x.len() - lag {
-            for j in 0..16 {
-                ab += x[t][j] * x[t + lag][j];
-                aa += x[t][j] * x[t][j];
-                bb += x[t + lag][j] * x[t + lag][j];
+        for (u, v) in x.iter().zip(&x[lag..]) {
+            for (a, b) in u.iter().zip(v) {
+                ab += a * b;
+                aa += a * a;
+                bb += b * b;
             }
         }
         ab / (aa * bb).sqrt().max(1e-12)

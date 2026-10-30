@@ -67,7 +67,7 @@
           "abc": "L:1/4\nK:Dm\n!mp![D,F,A,C]4 | !mf![G,,B,,D,F]2 [A,,^C,E,G]2 |"
         }
       ],
-      "gain_db": -7
+      "gain_db": -7.6
     },
     {
       "name": "cello",
@@ -88,7 +88,7 @@
           "abc": "L:1/8\nK:Dm\nD2F2A4 | G2F2E4 | F2A2d4 | ^c8 |"
         }
       ],
-      "gain_db": 6
+      "gain_db": 10.1
     },
     {
       "name": "tuba",
@@ -104,7 +104,7 @@
           "abc": "L:1/8\nK:Dm\nD,,4 A,,4 | B,,,4 F,,4 | G,,4 D,,4 | A,,,8 |"
         }
       ],
-      "gain_db": -1
+      "gain_db": 3.6
     },
     {
       "name": "sax",
@@ -120,7 +120,7 @@
           "abc": "L:1/8\nK:Dm\nA,2D2F3E | D2C2A,4 | B,2D2G3F | E8 |"
         }
       ],
-      "gain_db": 13
+      "gain_db": 15.1
     },
     {
       "name": "flute",
@@ -136,7 +136,7 @@
           "abc": "L:1/8\nK:Dm\na2f2d'3c' | a2g2f4 | g2b2d'3c' | ^c'8 |"
         }
       ],
-      "gain_db": 7
+      "gain_db": 8.9
     },
     {
       "name": "bass",
@@ -151,7 +151,7 @@
           "abc": "L:1/8\nK:Dm\nD,,2 z A,, D,2 C,2 | B,,,2 z F,, A,,2 ^C,2 |"
         }
       ],
-      "gain_db": 5
+      "gain_db": 7.7
     }
   ]
 }

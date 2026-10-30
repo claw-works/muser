@@ -381,7 +381,11 @@ fn sfz_instrument(path: &std::path::Path, cc: &crate::sfz::Options) -> Result<Tr
             crate::sfz::summary(&loaded.warnings)
         );
     }
-    let (sampler, loader) = Sampler::with_instrument(loaded.instrument.clone(), SFZ_VOICES);
+    let (mut sampler, loader) = Sampler::with_instrument(loaded.instrument.clone(), SFZ_VOICES);
+    // 工程里给的控制器值：上游采样器按它实时调制（`<opcode>_onccN`）。
+    for (&n, &v) in &loaded.cc {
+        sampler.set_controller(u16::from(n), f32::from(v) / 127.0, 0);
+    }
     Ok(TrackInstrument::new(SfzSampler { sampler, _loader: loader, _shared: loaded }, 0))
 }
 

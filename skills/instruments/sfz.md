@@ -14,11 +14,13 @@
   这样同一份工程在不同机器上都能用。分享的工程优先用相对路径。
 - 音符 `pitch` 用 MIDI 音高；音域、力度层、循环、释放采样都由 .sfz 文件定义。最多 32 个同时发声。
 - `muser validate` 会检查 .sfz 文件是否存在；采样缺失或格式错误会在渲染时报出。
-- 支持的表现力 opcode：滤波器（`fil_type` `cutoff` `resonance` `fil_keytrack` `fil_veltrack`）与滤波包络（`fileg_*`）、音高包络（`pitcheg_*`）、
-  LFO（`amplfo_*` `pitchlfo_*` `fillfo_*`，`lfo1`–`lfo4` 的 `freq` `wave` `delay` `fade` `pitch` `volume` `amplitude` `pan` `cutoff`）、
-  力度曲线 `amp_velcurve_N`、`offset_random`、`note_polyphony`。按控制器调制的写法（`*_onccN`、`*_ccN`，如 `lfo1_pitch_oncc1` 揉弦深度、
-  `ampeg_attack_oncc11`）按工程里的控制器值（`instrument_params.cc`，没写时用 .sfz 的 `set_cc`）在加载时折算进去。
-- 仍不支持的（`<curve>` 自定义曲线、`<effect>`、LFO 调 LFO、区域 EQ `eqN_*` 等）渲染时在 stderr 列出名字与次数，音色可能与原设计略有差异。
+- 支持的表现力 opcode：滤波器（`fil_type` `cutoff` `resonance` `fil_keytrack` `fil_veltrack`）与滤波包络（`fileg_*`）；
+  按控制器**实时**调制的 `<opcode>_onccN`（音量、声像、音高、截止频率、共振、两个包络的各级），控制器的值来自工程里的
+  `instrument_params.cc`，没写时用 .sfz 的 `set_ccN`。`amplitude_onccN` 按 SFZ 的惯例是乘法，在加载时按控制器值折成固定振幅。
+  力度交叉淡化（`xfin_lovel` 等）与力度曲线 `amp_velcurve_N` 按力度切段近似（每 8 级一段）；`*noise` 白噪声、
+  头部后同一行的 `#include` 也能读。
+- 不支持的（LFO `lfoN_*` `amplfo_*` 等、音高包络 `pitcheg_*`、`offset_random`、`<curve>`、`<effect>`、区域 EQ `eqN_*` 等）
+  渲染时在 stderr 列出名字与次数，音色可能与原设计略有差异（如没有颤音）。
 - `instrument_params` 支持两项（加载时生效，不能自动化）：
   - `"cc": { "105": 127 }`：设控制器值。很多音色库用控制器做开关（单音模式、选弦、齐奏音量、滤波、颤音深度…），
     muser 按这些值选择区域（`loccN`/`hiccN`）并折算 `volume_onccN` / `amplitude_onccN` / `pan_onccN`；
