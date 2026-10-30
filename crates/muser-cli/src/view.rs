@@ -453,7 +453,8 @@ struct State {
     /// 声卡播放器当前载入的工程（去掉推子、静音后的 JSON；变了要重新载入）。
     #[cfg(feature = "device")]
     player_shape: Option<String>,
-    /// 播放中结构变了的工程：等这一版渲染完、乐器输出进了缓存再交给声卡播放器（声卡线程不现场载入乐器，换音色时不卡）。
+    /// 播放中结构变了的工程（只有声卡播放器用）：等这一版渲染完、乐器输出进了缓存再交给声卡播放器（声卡线程不现场载入乐器，换音色时不卡）。
+    #[cfg_attr(not(feature = "device"), allow(dead_code))]
     player_pending: Option<Project>,
 }
 

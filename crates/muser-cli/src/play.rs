@@ -4,7 +4,9 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Subcommand;
 use muser_core::Project;
-use muser_engine::{loop_library, RenderSettings};
+use muser_engine::loop_library;
+#[cfg(feature = "device")]
+use muser_engine::RenderSettings;
 
 /// 放一遍工程（本机声卡）。`from` 秒起。
 pub fn play(project: Project, from: f64) -> Result<()> {

@@ -40,6 +40,10 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 - **`muser analyze`**：给听不到声音的 agent 的听感报告——按段落的密度、音区、和声节奏、重复度、避免音与小二度冲突，可选响度与明暗，加上能量曲线与"AI 味"检查（能量只升不降、编制不变、一个和弦循环、过门每 4 小节一次、全部对齐网格、副歌每遍一样），最后用一句句话给建议（"副歌没有起来""两条轨互相掩蔽"）
 - **MIDI 导出**：`muser midi song.muser.json` 写出标准 MIDI 文件（每条乐器音轨一条 MIDI 轨，鼓组在通道 10），音符与 muser 演奏的完全一致——含 humanize、连奏、ABC / grid / 鼓手展开，延音踏板为 CC64——可在 DAW 或分析工具里打开
 - **ABC 导出**：`muser abc song.muser.json` 把乐谱写成标准的多声部 ABC 2.1，给能读 ABC 的模型与记谱软件；`--yue2` 写成 [YuE2](https://github.com/multimodal-art-projection/YuE) 的原生谱面（Vocal / Ins 旋律加和弦记号），给它的 `full` / `melody` 模式。调号取 clip 里 ABC 写的或由音高估计，和弦记号由伴奏估计
+- **听不到也能挑音色**：`muser sounds list` 列出本机所有音色（内置、`MUSER_SFZ_PATH` 里的 SFZ、乐器插件）；`muser sounds describe` 渲染探测音，写成文字卡片（亮度、起音、延音、余音、音域、力度反应、立体声宽度、音高），缓存在本机；`--keys` 给 loop 套件、鼓组做键位卡（哪些键有声、几小节一圈、多密）。SKILLS.md 教 agent 把听到的记进用户自己的 skill
+- **插件音色与本机音色库**：`muser sounds presets` 列出插件自带的音色——VST3 `.vstpreset`、Surge XT 预设（直接载入）、Kontakt 乐器（音色库 / 类别 / 标签）；只能在插件自己的界面里载入的，载入一次（人，或用 computer use 的 agent）存进 `~/.config/muser/sound-library`，之后按名字直接用（`sounds state` / `capture` / `save` / `identify`）
+- **插件窗口（macOS）**：`muser plugin edit` 打开插件自己的界面，带声音；`muser view` 里点 🎛 打开音色抽屉——内置乐器与 SFZ（可搜索，点一下就换）、插件能直接用的音色，或在插件窗口里载入新音色，试听本轨，状态同步进工程。Kontakt 的 loop 套件跟着工程速度走，定速的 loop 任何速度都能用
+- **逐音弯音**（`"bend"`：吉他推弦、滑进音、尾音下滑，各自占一个 MIDI 通道）与**效果器旁通**（`"bypass": true`，`muser view` 里点效果器切换）
 - `muser play`：用声卡把工程放一遍就退出，配合"先听后写"的草稿流程
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 
