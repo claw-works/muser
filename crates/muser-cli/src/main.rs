@@ -992,15 +992,17 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                 let (_tx, rx) = std::sync::mpsc::channel();
                 match muser_engine::plugin_edit::run(&p.spec(), &serde_json::Map::new(), &out, &title, rx, || {}).map_err(|e| anyhow::anyhow!(e))? {
                     muser_engine::plugin_edit::Outcome::Saved(_) => {
-                        presets::record_capture(&p, &x.file, &out).map_err(|e| anyhow::anyhow!(e))?;
                         let mut params = serde_json::Map::new();
                         params.insert("@state".into(), serde_json::json!(out.display().to_string()));
                         let card = muser_engine::sounds::describe(&p.spec(), &params, None, true).map_err(|e| anyhow::anyhow!(e))?;
+                        if card.summary.starts_with("没有声音") {
+                            // 没载入完就关了窗口：不记进音色库。
+                            let _ = std::fs::remove_file(&out);
+                            return Err(anyhow::anyhow!("「{}」没有载入成功（存下的状态没有声音），没有采集：重新 capture，等它在插件窗口里载入完再关窗口", x.name));
+                        }
+                        presets::record_capture(&p, &x.file, &out).map_err(|e| anyhow::anyhow!(e))?;
                         println!("已采集 {} → {}", x.name, out.display());
                         println!("听感：{}", card.summary);
-                        if card.summary.starts_with("没有声音") {
-                            println!("⚠ 没有声音：可能没载入成功（或载入的不是这个音色），重新 capture 一次。");
-                        }
                     }
                     muser_engine::plugin_edit::Outcome::Unchanged => println!("窗口里没有改动，没有采集。"),
                 }

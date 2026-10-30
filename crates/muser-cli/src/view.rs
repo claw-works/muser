@@ -486,6 +486,8 @@ struct EditSession {
     backup: (Value, Option<Vec<u8>>),
     /// 采集：载入的是插件的这个内置音色，状态存在本机音色库里，结束时记进音色库索引。
     capture: Option<(muser_engine::presets::PluginRef, String)>,
+    /// 采集没成功等，给页面看。
+    error: Option<String>,
 }
 
 /// 换了乐器：旧乐器的参数与针对乐器参数的自动化（`target: instrument`）都作废；音量、声像、效果器的自动化保留。
@@ -901,7 +903,7 @@ impl Shared {
         let stdout = child.stdout.take().ok_or("子进程没有 stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
         eprintln!("[view] 打开 {spec} 的界面（音轨 {ti}），状态同步到 {}", out.display());
-        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture });
+        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None });
         drop(edit);
         let me = Arc::clone(self);
         std::thread::spawn(move || {
@@ -912,13 +914,30 @@ impl Shared {
                 }
             }
             let _ = child.wait();
+            // 采集：先听一遍存下的状态（不拿着锁，要几秒），有声音才记进音色库，没声音就恢复原样。
+            let check = me.edit.lock().unwrap().as_ref().and_then(|e| match (&e.capture, e.wrote && e.out.is_file()) {
+                (Some((p, file)), true) => Some((p.clone(), file.clone(), e.out.clone(), e.label.clone())),
+                _ => None,
+            });
+            let verdict = check.map(|(p, file, out, label)| {
+                let mut params = serde_json::Map::new();
+                params.insert("@state".into(), json!(out.display().to_string()));
+                let silent = muser_engine::sounds::describe(&p.spec(), &params, None, true).map_or(true, |c| c.summary.starts_with("没有声音"));
+                (p, file, out, label, silent)
+            });
             if let Some(e) = me.edit.lock().unwrap().as_mut() {
                 e.open = false;
-                // 采集到了（窗口里载入过、存过盘）：记进音色库，下次直接用。
-                if let (Some((p, file)), true) = (&e.capture, e.wrote && e.out.is_file()) {
-                    match muser_engine::presets::record_capture(p, file, &e.out) {
-                        Ok(()) => eprintln!("[view] 已采集 {} → {}", e.label, e.out.display()),
-                        Err(err) => eprintln!("[view] 记入音色库失败: {err}"),
+                if let Some((p, file, out, label, silent)) = verdict {
+                    if silent {
+                        let r = me.edit_restore(e);
+                        e.wrote = false;
+                        e.error = Some(format!("「{label}」没有载入成功（存下的状态没有声音），已恢复成打开前的样子：再试一次，等它在插件窗口里载入完再点完成{}", r.err().map(|x| format!("（恢复时出错：{x}）")).unwrap_or_default()));
+                        eprintln!("[view] 采集 {label} 失败：没有声音");
+                    } else {
+                        match muser_engine::presets::record_capture(&p, &file, &out) {
+                            Ok(()) => eprintln!("[view] 已采集 {label} → {}", out.display()),
+                            Err(err) => eprintln!("[view] 记入音色库失败: {err}"),
+                        }
                     }
                 }
             }
@@ -1000,33 +1019,38 @@ impl Shared {
             }
         }
         if cmd == "cancel" {
-            // 恢复打开前的音轨与状态文件。
-            if e.wrote {
-                let restore = || -> Result<()> {
-                    let text = std::fs::read_to_string(&self.path)?;
-                    let mut v: Value = serde_json::from_str(&text)?;
-                    v["tracks"][e.track] = e.backup.0.clone();
-                    std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
-                    Ok(())
-                };
-                restore().map_err(|err| format!("恢复工程失败: {err:#}"))?;
-            }
-            match &e.backup.1 {
-                Some(b) => std::fs::write(&e.out, b).map_err(|err| format!("恢复状态文件失败: {err}"))?,
-                None if e.wrote => {
-                    let _ = std::fs::remove_file(&e.out);
-                }
-                None => {}
-            }
+            self.edit_restore(e)?;
             e.wrote = false;
         }
         writeln!(e.stdin, "{line}").and_then(|_| e.stdin.flush()).map_err(|err| format!("插件窗口已退出: {err}"))
     }
 
+    /// 恢复打开编辑之前的音轨与状态文件。
+    fn edit_restore(&self, e: &EditSession) -> Result<(), String> {
+        if e.wrote {
+            let restore = || -> Result<()> {
+                let text = std::fs::read_to_string(&self.path)?;
+                let mut v: Value = serde_json::from_str(&text)?;
+                v["tracks"][e.track] = e.backup.0.clone();
+                std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
+                Ok(())
+            };
+            restore().map_err(|err| format!("恢复工程失败: {err:#}"))?;
+        }
+        match &e.backup.1 {
+            Some(b) => std::fs::write(&e.out, b).map_err(|err| format!("恢复状态文件失败: {err}"))?,
+            None if e.wrote => {
+                let _ = std::fs::remove_file(&e.out);
+            }
+            None => {}
+        }
+        Ok(())
+    }
+
     fn edit_status(&self) -> Value {
         let edit = self.edit.lock().unwrap();
         match edit.as_ref() {
-            Some(e) => json!({ "open": e.open, "track": e.track, "spec": e.spec, "label": e.label,
+            Some(e) => json!({ "open": e.open, "track": e.track, "spec": e.spec, "label": e.label, "error": e.error,
                 "synced": e.synced.and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_secs_f64()) }),
             None => json!({ "open": false }),
         }

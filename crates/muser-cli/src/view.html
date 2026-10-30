@@ -824,6 +824,7 @@ async function post(url, body) {
 }
 
 // ---------- 音色抽屉：SFZ 采样器（虚拟乐器，搜索后选音色）与乐器插件（在插件窗口里选） ----------
+let lastSoundError = null;
 let soundTrack = null, soundChoices = null, soundPlugin = null, soundTimer = 0, auditioning = false;
 const trackIndex = (n) => +/\d+/.exec(n.id)[0];
 function sameSound(a, b) {
@@ -964,6 +965,7 @@ async function soundPoll() {
     const sync = document.createElement("span"); sync.className = "sync"; sync.textContent = time ? t("soundSynced", time) : t("soundNotYet");
     $("sd-note").append(sync);
   } else {
+    if (s.error && s.error !== lastSoundError) { banner(s.error, "err"); lastSoundError = s.error; }
     $("sd-open").disabled = !!s.open;
     $("sd-note").textContent = s.open ? t("soundOther", s.track + 1) : "";
     if (auditioning) { auditioning = false; $("sd-play").textContent = t("soundAudition"); }
