@@ -1009,7 +1009,7 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                 let _ = std::process::Command::new("open").arg("-R").arg(&x.file).status();
                 let title = format!("载入：{}（{}）— 载入后关闭窗口 · muser", x.name, x.library);
                 let (_tx, rx) = std::sync::mpsc::channel();
-                match muser_engine::plugin_edit::run(&p.spec(), &serde_json::Map::new(), &out, &title, rx, || {}).map_err(|e| anyhow::anyhow!(e))? {
+                match muser_engine::plugin_edit::run(&format!("{}#{}", p.path, p.id), &serde_json::Map::new(), &out, &title, rx, || {}).map_err(|e| anyhow::anyhow!(e))? {
                     muser_engine::plugin_edit::Outcome::Saved(_) => {
                         let mut params = serde_json::Map::new();
                         params.insert("@state".into(), serde_json::json!(out.display().to_string()));
