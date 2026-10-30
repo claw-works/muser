@@ -873,6 +873,30 @@ muser plugin save-state "<插件>" --params '{"@preset": "pad", "cutoff": "1200 
 - `@label` 只是给人和 agent 看的名字（插件的状态是二进制，读不出选了什么音色），渲染时忽略。
   agent 看到 `"@label": "Piano Uno"` 就知道这条轨是什么音色，换音色要请人再选一次。
 - Windows / Linux 上还没有插件窗口，面板里只列 SFZ。
+
+## 9. 多声道输出与异步加载（采样鼓等）
+
+有的插件把每支麦克风单独输出（如 DrumGizmo 的 15 路：环境、头顶、底鼓内外、军鼓上下……）。默认只取前两路，
+那往往只是环境麦，声音又远又小。用 `@outputs` 指定每一路混进立体声的方式：
+
+```json
+"instrument_params": {
+  "@state": "kit.muserstate",
+  "@warmup": 5,
+  "@outputs": [
+    { "channel": 1, "gain_db": -6, "pan": -1 },
+    { "channel": 2, "gain_db": -6, "pan": 1 },
+    { "channel": 8, "gain_db": 0, "pan": 0 },
+    { "channel": 9, "gain_db": -8, "pan": 0, "invert": true }
+  ]
+}
+```
+
+- `channel` 从 1 开始，是插件主输出的第几路（`muser plugin info` 的"音频输出"给出路数）；没列出的声道不进混音。
+- `gain_db` 默认 0；`pan` 在 -1（左）到 1（右）之间，默认 0，等功率声像；`invert: true` 反相（军鼓下麦常需要）。
+- `@warmup`（秒，0–60）：激活后按真实时间静音运行，等插件在后台线程加载采样。DrumGizmo 这类插件加载鼓组是异步的，
+  离线渲染比实时快得多，不等的话开头会是静音，且每次结果不同。代价是每次渲染/开始播放前多等这么久。
+- 加载哪个鼓组存在插件状态里：先用 `muser plugin save-state` 得到状态文件，把其中的 `drumkitfile` / `midimapfile` 路径改成鼓组位置。
 """
 
 

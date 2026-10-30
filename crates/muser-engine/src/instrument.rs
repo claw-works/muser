@@ -787,14 +787,80 @@ struct PluginInstrument {
     transport: manguebyte::prelude::Transport,
     sample_rate: f64,
     blocks: u32,
+    /// 多声道输出：插件按全部主输出声道处理，再按 `@outputs` 混成立体声。
+    wide: Option<WideOutput>,
+}
+
+/// 插件主输出的宽缓冲和混音方案。
+#[cfg(feature = "host")]
+struct WideOutput {
+    buffer: AudioBuffer<f32>,
+    mix: Vec<crate::plugin::OutputMix>,
+}
+
+#[cfg(feature = "host")]
+impl PluginInstrument {
+    /// 交给插件的缓冲：有 `@outputs` 时是宽缓冲，否则就是调用方的立体声缓冲。
+    fn run(
+        processor: &mut Box<dyn Processor<f32> + Send>,
+        wide: &mut Option<WideOutput>,
+        buffer: &mut AudioBuffer<f32>,
+        ctx: &manguebyte::prelude::ProcessContext,
+    ) {
+        let Some(wide) = wide else {
+            processor.process_with(buffer, ctx);
+            return;
+        };
+        let frames = buffer.num_frames();
+        if frames > wide.buffer.capacity() {
+            wide.buffer.resize(wide.buffer.num_channels(), frames);
+        }
+        wide.buffer.set_num_frames(frames);
+        wide.buffer.clear();
+        processor.process_with(&mut wide.buffer, ctx);
+        for ch in 0..buffer.num_channels().min(2) {
+            buffer.channel_mut(ch).fill(0.0);
+        }
+        for m in &wide.mix {
+            let src = wide.buffer.channel(m.channel);
+            for (side, gain) in [(0, m.left), (1, m.right)] {
+                if side < buffer.num_channels() {
+                    for (d, s) in buffer.channel_mut(side).iter_mut().zip(src) {
+                        *d += s * gain;
+                    }
+                }
+            }
+        }
+    }
+
+    /// 等插件在后台线程加载完采样：静音喂给它，按真实时间推进 `seconds` 秒。
+    fn warm_up(&mut self, seconds: f64, spec: &ProcessSpec) {
+        use manguebyte::prelude::ProcessContext;
+        let frames = spec.max_block_size.clamp(32, 1024);
+        let mut scratch = AudioBuffer::<f32>::new(spec.num_channels.max(2), frames);
+        let none = manguebyte::prelude::EventBuffer::with_capacity(1);
+        let start = std::time::Instant::now();
+        while start.elapsed().as_secs_f64() < seconds {
+            scratch.clear();
+            let ctx = ProcessContext::new(&none, &self.transport);
+            Self::run(&mut self.processor, &mut self.wide, &mut scratch, &ctx);
+            let _ = self.opened.plugin.pump();
+            std::thread::sleep(std::time::Duration::from_secs_f64(frames as f64 / self.sample_rate));
+        }
+    }
 }
 
 #[cfg(feature = "host")]
 impl Playable for PluginInstrument {
     fn prepare(&mut self, spec: &ProcessSpec) {
+        let wide_spec = self.wide.as_ref().map(|w| ProcessSpec { num_channels: w.buffer.num_channels(), ..*spec });
+        let spec = wide_spec.as_ref().unwrap_or(spec);
         self.processor.prepare(spec);
         if let Err(w) = self.opened.settle(self.processor.as_mut(), spec) {
             eprintln!("[muser] 警告: {w}");
+        }
+        if self.opened.warmup > 0.0 {
+            self.warm_up(self.opened.warmup, spec);
         }
     }
     fn note_on(&mut self, note: NoteRef, velocity: f32, _accent: bool) {
@@ -811,7 +877,7 @@ impl Playable for PluginInstrument {
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         use manguebyte::prelude::ProcessContext;
         let ctx = ProcessContext::new(&self.pending, &self.transport);
-        self.processor.process_with(buffer, &ctx);
+        Self::run(&mut self.processor, &mut self.wide, buffer, &ctx);
         self.pending.clear();
         self.transport.advance(buffer.num_frames(), self.sample_rate);
         self.blocks = self.blocks.wrapping_add(1);
@@ -834,6 +900,10 @@ fn resolve_plugin(spec: &str, params: &InstrumentParams, ps: &ProcessSpec) -> Re
     let load_err = |detail: String| InstrumentError::PluginLoad { path: path.to_string(), detail };
     let mut opened = crate::plugin::Opened::open(path, id).map_err(load_err)?;
     opened.apply(params).map_err(|detail| InstrumentError::Param { detail })?;
+    let wide = opened.outputs.clone().map(|mix| WideOutput {
+        buffer: AudioBuffer::new(opened.main_output_channels(), ps.max_block_size),
+        mix,
+    });
     let processor = opened.activate(ps.sample_rate, ps.max_block_size).map_err(load_err)?;
     Ok(TrackInstrument::new(
         PluginInstrument {
@@ -843,6 +913,7 @@ fn resolve_plugin(spec: &str, params: &InstrumentParams, ps: &ProcessSpec) -> Re
             transport: crate::transport::start(),
             sample_rate: ps.sample_rate,
             blocks: 0,
+            wide,
         },
         0,
     ))

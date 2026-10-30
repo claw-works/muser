@@ -318,6 +318,66 @@ mod imp {
         pub profile: Option<std::sync::Arc<crate::profile::Loaded>>,
         /// 已加载的状态（激活后检查是否保留）。
         state_loaded: bool,
+        /// `@outputs`：多声道输出混成立体声的方案；`None` 时只取前两路。
+        pub outputs: Option<Vec<OutputMix>>,
+        /// `@warmup`：激活后按真实时间静音运行的秒数，等插件在后台线程加载完采样。
+        pub warmup: f64,
+    }
+
+    /// `@outputs` 的一项：插件主输出的某一路混进立体声的方式。
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct OutputMix {
+        /// 从 0 开始的声道序号。
+        pub channel: usize,
+        pub left: f32,
+        pub right: f32,
+    }
+
+    /// 解析 `@outputs`：`[{"channel": 3, "gain_db": -3, "pan": -0.5, "invert": false}, …]`。
+    /// `channel` 从 1 开始；`pan` 在 -1（左）到 1（右）之间，等功率声像；没列出的声道不进混音。
+    pub fn parse_outputs(v: &Value, channels: usize) -> Result<Vec<OutputMix>, String> {
+        let list = v.as_array().ok_or("@outputs 应为数组：[{\"channel\": 1, \"gain_db\": 0, \"pan\": 0}, …]")?;
+        if list.is_empty() {
+            return Err("@outputs 不能为空".into());
+        }
+        let mut out: Vec<OutputMix> = Vec::new();
+        for (i, item) in list.iter().enumerate() {
+            let o = item.as_object().ok_or_else(|| format!("@outputs[{i}] 应为对象"))?;
+            if let Some(k) = o.keys().find(|k| !["channel", "gain_db", "pan", "invert"].contains(&k.as_str())) {
+                return Err(format!("@outputs[{i}] 有未知字段 '{k}'，可用: channel / gain_db / pan / invert"));
+            }
+            let channel = o.get("channel").and_then(Value::as_u64).ok_or_else(|| format!("@outputs[{i}].channel 应为从 1 开始的整数"))? as usize;
+            if channel == 0 || channel > channels {
+                return Err(format!("@outputs[{i}].channel = {channel} 超出范围：这个插件的主输出有 {channels} 路"));
+            }
+            if out.iter().any(|m| m.channel == channel - 1) {
+                return Err(format!("@outputs 里声道 {channel} 重复"));
+            }
+            let num = |key: &str, default: f64| -> Result<f64, String> {
+                match o.get(key) {
+                    None => Ok(default),
+                    Some(x) => x.as_f64().filter(|x| x.is_finite()).ok_or_else(|| format!("@outputs[{i}].{key} 应为数字")),
+                }
+            };
+            let gain_db = num("gain_db", 0.0)?;
+            let pan = num("pan", 0.0)?;
+            if !(-1.0..=1.0).contains(&pan) {
+                return Err(format!("@outputs[{i}].pan = {pan} 应在 -1（左）到 1（右）之间"));
+            }
+            let invert = match o.get("invert") {
+                None => false,
+                Some(x) => x.as_bool().ok_or_else(|| format!("@outputs[{i}].invert 应为 true/false"))?,
+            };
+            let angle = (pan + 1.0) * std::f64::consts::FRAC_PI_4;
+            let gain = 10f64.powf(gain_db / 20.0) * if invert { -1.0 } else { 1.0 };
+            out.push(OutputMix { channel: channel - 1, left: (gain * angle.cos()) as f32, right: (gain * angle.sin()) as f32 });
+        }
+        Ok(out)
+    }
+
+    /// 解析 `@warmup`：0–60 秒。
+    pub fn parse_warmup(v: &Value) -> Result<f64, String> {
+        v.as_f64().filter(|x| (0.0..=60.0).contains(x)).ok_or_else(|| format!("@warmup 应为 0–60 之间的秒数，实际 {v}"))
     }
 
     fn kind_name(k: Kind) -> &'static str {
@@ -502,7 +562,7 @@ mod imp {
                     );
                 }
             }
-            Ok(Opened { library, plugin: std::mem::ManuallyDrop::new(plugin), params, path: path.to_string(), applied: Vec::new(), profile, state_loaded: false })
+            Ok(Opened { library, plugin: std::mem::ManuallyDrop::new(plugin), params, path: path.to_string(), applied: Vec::new(), profile, state_loaded: false, outputs: None, warmup: 0.0 })
         }
 
         pub fn open_spec(spec: &str) -> Result<Opened, String> {
@@ -655,11 +715,17 @@ mod imp {
             let format = self.profile.as_ref().map(|p| p.profile.state_format.clone()).unwrap_or_default();
             let extra = crate::profile::state_keys(&format);
             for k in params.keys().filter(|k| k.starts_with('@')) {
-                if !["@state", "@setup", "@preset", "@label"].contains(&k.as_str()) && !extra.contains(&k.as_str()) {
-                    let mut all = vec!["@state", "@setup", "@preset", "@label"];
+                if !["@state", "@setup", "@preset", "@label", "@outputs", "@warmup"].contains(&k.as_str()) && !extra.contains(&k.as_str()) {
+                    let mut all = vec!["@state", "@setup", "@preset", "@label", "@outputs", "@warmup"];
                     all.extend_from_slice(extra);
                     return Err(format!("未知的保留键 '{k}'，可用: {}", all.join(" / ")));
                 }
+            }
+            if let Some(v) = params.get("@outputs") {
+                self.outputs = Some(parse_outputs(v, self.main_output_channels())?);
+            }
+            if let Some(v) = params.get("@warmup") {
+                self.warmup = parse_warmup(v)?;
             }
             if let Some(v) = params.get("@state") {
                 let path = v.as_str().ok_or("@state 应为状态文件路径")?;
@@ -913,6 +979,12 @@ mod imp {
                 let _ = self.plugin.set_param(id, x);
             }
             Ok(processor)
+        }
+
+        /// 主输出总线的声道数（没有主输出时按 2 路算）。
+        pub fn main_output_channels(&self) -> usize {
+            let n: usize = self.plugin.audio_outputs().iter().filter(|b| b.is_main).map(|b| b.channels as usize).sum();
+            if n == 0 { 2 } else { n }
         }
 
         pub fn describe_param(&self, p: &Param) -> PluginParam {
@@ -1351,3 +1423,48 @@ mod imp {
 /// 非 host 构建下的空实现，便于入口统一调用。
 #[cfg(not(feature = "host"))]
 pub fn serve_scanner_if_asked() {}
+
+#[cfg(all(test, feature = "host"))]
+mod outputs_tests {
+    use super::{parse_outputs, parse_warmup};
+    use serde_json::json;
+
+    #[test]
+    fn outputs_pan_gain_and_invert() {
+        let m = parse_outputs(&json!([
+            { "channel": 1, "pan": -1 },
+            { "channel": 2, "pan": 1, "gain_db": -6.0206 },
+            { "channel": 3, "invert": true }
+        ]), 3)
+        .unwrap();
+        assert_eq!(m.iter().map(|x| x.channel).collect::<Vec<_>>(), [0, 1, 2]);
+        assert!((m[0].left - 1.0).abs() < 1e-6 && m[0].right.abs() < 1e-6);
+        assert!(m[1].left.abs() < 1e-6 && (m[1].right - 0.5).abs() < 1e-3);
+        // 居中是等功率：两边各约 0.707，反相取负
+        assert!((m[2].left + 0.7071).abs() < 1e-3 && (m[2].right + 0.7071).abs() < 1e-3);
+    }
+
+    #[test]
+    fn outputs_reject_bad_input() {
+        for bad in [
+            json!("x"),
+            json!([]),
+            json!([{ "channel": 0 }]),
+            json!([{ "channel": 4 }]),
+            json!([{ "channel": 1 }, { "channel": 1 }]),
+            json!([{ "channel": 1, "pan": 2 }]),
+            json!([{ "channel": 1, "gain": 0 }]),
+            json!([{ "channel": 1, "invert": "yes" }]),
+        ] {
+            assert!(parse_outputs(&bad, 3).is_err(), "{bad} 应被拒绝");
+        }
+    }
+
+    #[test]
+    fn warmup_range() {
+        assert_eq!(parse_warmup(&json!(3.5)).unwrap(), 3.5);
+        assert!(parse_warmup(&json!(-1)).is_err());
+        assert!(parse_warmup(&json!(61)).is_err());
+        assert!(parse_warmup(&json!("5")).is_err());
+    }
+}
