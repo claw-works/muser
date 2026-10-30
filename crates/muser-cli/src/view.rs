@@ -92,9 +92,11 @@ fn chain(list: &[muser_core::Effect]) -> Vec<Value> {
     list.iter()
         .map(|e| {
             let (label, sidechain) = match e {
-                Effect::Plugin { path, params, .. } => {
+                Effect::Plugin { path, id, params, .. } => {
                     let stem = Path::new(path).file_stem().map_or_else(|| path.clone(), |s| s.to_string_lossy().to_string());
-                    let pick = ["effect", "@preset", "type", "FX Type"].iter().find_map(|k| params.get(*k).and_then(Value::as_str));
+                    // LV2 的 id 是 URI（同一个 bundle 含很多插件），取末段区分；VST3 的十六进制 id 不显示。
+                    let uri_tail = id.as_deref().filter(|i| i.contains('/')).and_then(|i| i.rsplit(['/', '#']).next());
+                    let pick = ["effect", "@preset", "type", "FX Type"].iter().find_map(|k| params.get(*k).and_then(Value::as_str)).or(uri_tail);
                     (pick.map_or(stem.clone(), |p| format!("{stem}: {p}")), None)
                 }
                 Effect::Compressor { sidechain, .. } => ("compressor".to_string(), sidechain.clone()),
