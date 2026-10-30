@@ -55,6 +55,12 @@ muser render beat.muser.json -o beat.wav
 - `edit <插件> [--params JSON] -o <文件>`（macOS）：打开插件自己的界面让人选音色，关窗口时保存状态；`muser view` 的 🎛 面板用的就是它。
 - `<插件>` 是路径，可带 `#插件id`。都支持 `--json`。
 
+### `muser sounds list|describe`
+
+- `list [--kind builtin|sfz|plugin] [--filter 词] [--json]`：本机能用的音色（内置乐器、`$MUSER_SFZ_PATH` 里的 SFZ、扫描到的乐器插件），听过的附一句卡片描述。
+- `describe <音色> [--params JSON] [--drums] [--refresh] [--json]`："听"一个音色：渲染探测音，测亮度、起音、延音、余音、音域、力度、立体声、音高，
+  写成文字卡片，缓存在本机（`~/Library/Caches/muser/sounds`、`~/.cache/muser/sounds`）。插件用 `--params '{"@state": …}'` 指定音色。
+
 ### `muser audition`
 试听一个参数的作用：`--instrument <乐器>`（或 `--effect '<效果器 JSON>'` + `--source <乐器>`），
 `--params '<基础参数 JSON>'`，`--param <参数名> --values=a,b,c`（数字或插件可解析的文字），

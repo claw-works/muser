@@ -152,6 +152,11 @@ enum Command {
         #[command(subcommand)]
         command: poly::PolyCommand,
     },
+    /// 本机的音色：列出能用的音色（内置、SFZ、乐器插件），或"听"一个音色写成文字卡片（缓存在本机）。
+    Sounds {
+        #[command(subcommand)]
+        command: SoundsCommand,
+    },
     /// 外置插件（VST3 / CLAP / LV2）：扫描本机、查看信息、列参数。
     Plugin {
         #[command(subcommand)]
@@ -259,6 +264,38 @@ enum Command {
         /// 输出路径；缺省打印到 stdout。
         #[arg(short, long)]
         output: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SoundsCommand {
+    /// 列出本机能用的音色：内置乐器、$MUSER_SFZ_PATH 里的 SFZ、扫描到的乐器插件；听过的附一句卡片描述。
+    List {
+        /// 只列某类：builtin / sfz / plugin。
+        #[arg(long)]
+        kind: Option<String>,
+        /// 关键词过滤（名字、类别、说明、路径；空格分开的词都要出现）。
+        #[arg(long)]
+        filter: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// 听一个音色：渲染探测音（5 个音区 + 轻力度；鼓组为常用鼓键），测亮度、起音、延音、余音、音域、力度、立体声、音高，
+    /// 写成文字卡片并缓存在本机（同一音色、参数与文件不变时直接读缓存）。
+    Describe {
+        /// 音色：内置乐器名、sfz:<路径> 或 plugin:<路径>#<id>。
+        sound: String,
+        /// instrument_params（JSON），如插件的 {"@state": "<文件>"}、SFZ 的 {"cc": {"1": 64}}。
+        #[arg(long)]
+        params: Option<String>,
+        /// 按鼓组探测（默认自动判断）。
+        #[arg(long)]
+        drums: bool,
+        /// 忽略缓存重新听。
+        #[arg(long)]
+        refresh: bool,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -452,6 +489,7 @@ fn run() -> Result<()> {
             })
         }
         Command::Plugin { command } => cmd_plugin(command),
+        Command::Sounds { command } => cmd_sounds(command),
         Command::Poly { command } => poly::run(command),
         Command::Loop { command } => play::run_loop(command),
         Command::Play { project, seed, from } => {
@@ -854,6 +892,45 @@ fn cmd_profile(command: ProfileCommand) -> Result<()> {
                     }
                     anyhow::bail!("{} 个问题", problems.len());
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_sounds(command: SoundsCommand) -> Result<()> {
+    use muser_engine::sounds;
+    match command {
+        SoundsCommand::List { kind, filter, json } => {
+            let terms: Vec<String> = filter.unwrap_or_default().to_lowercase().split_whitespace().map(str::to_string).collect();
+            let list: Vec<_> = sounds::list()
+                .into_iter()
+                .filter(|s| kind.as_deref().is_none_or(|k| s.kind == k))
+                .filter(|s| {
+                    let hay = format!("{} {} {} {}", s.spec, s.name, s.group, s.description).to_lowercase();
+                    terms.iter().all(|t| hay.contains(t))
+                })
+                .collect();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            for s in &list {
+                let extra = s.card.as_deref().map(|c| format!("  ♪ {c}")).unwrap_or_default();
+                println!("{:<44} [{}{}] {}{extra}", s.spec, s.kind, if s.group.is_empty() { String::new() } else { format!(" · {}", s.group) }, s.description.chars().take(60).collect::<String>());
+            }
+            println!("\n共 {} 个。`muser sounds describe <音色>` 听一个（♪ 是已经听过的）。", list.len());
+        }
+        SoundsCommand::Describe { sound, params, drums, refresh, json } => {
+            let params = parse_map(params.as_deref())?;
+            let card = sounds::describe(&sound, &params, drums.then_some(true), refresh).map_err(|e| anyhow::anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&card)?);
+                return Ok(());
+            }
+            println!("{}\n  {}", card.spec, card.summary);
+            for t in &card.traits {
+                println!("  - {t}");
             }
         }
     }

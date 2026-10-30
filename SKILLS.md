@@ -41,6 +41,8 @@
 | 想知道 | CLI | MCP tool |
 |---|---|---|
 | 有哪些乐器 | `muser instruments [--family F]` | `list_instruments` |
+| 本机所有能用的音色（内置、SFZ、乐器插件）| `muser sounds list [--kind builtin\|sfz\|plugin] [--filter 词]` | — |
+| 一个音色听起来怎样（亮度、起音、延音、音域、力度、立体声、音高）| `muser sounds describe <音色> [--params JSON]` | — |
 | 某乐器的音高约定、音域、复音数、**可调参数与预设当前值** | `muser instruments <名称>` | `describe_instrument` |
 | 有哪些效果器 | `muser effects` | `list_effects` |
 | 某效果器的参数、范围、默认值、示例 | `muser effects <名称>` | `describe_effect` |
@@ -106,6 +108,45 @@
 | 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 
 所有内置音源都由 manguebyte 实时合成（物理建模、模态合成、FM、减法合成等），不依赖系统 MIDI 音源。
+
+## 选音色：先"听"，再记成用户自己的 skill
+
+你听不到声音，但 muser 可以替你听：`muser sounds describe` 渲染一组探测音（音阶乐器在 C2–C6 各弹一个音、再轻弹一下；
+鼓组敲底鼓、军鼓、镲片），把测量结果写成文字卡片，缓存在用户本机（同一音色、参数与文件不变时直接读缓存，`--refresh` 重听）。
+
+```bash
+muser sounds list --filter "piano"                 # 候选：内置、$MUSER_SFZ_PATH 里的 SFZ、乐器插件；♪ 是听过的
+muser sounds describe poly.wurly                   # 很暗、起音柔和、慢衰减、松开即停；音域约 C2–C6 + 逐项数据
+muser sounds describe "sfz:Salamander…/Salamander….sfz"
+muser sounds describe "plugin:<路径>#<id>" --params '{"@state": "<状态文件>"}'   # 插件：按这份状态听
+```
+
+1. **按需求列 2–5 个候选**，各听一遍，对照卡片挑：
+   | 想要 | 看卡片里的 |
+   |---|---|
+   | 抒情、温暖的和弦 / 铺底 | 亮度"偏暗、温暖"、起音"柔和"或"慢"、延音"持续"或"慢衰减" |
+   | 穿透的主旋律 | 亮度"明亮"、起音"快"、音域覆盖旋律所在的音区 |
+   | 打击感、节奏型伴奏 | 起音"瞬间"、"快衰减" |
+   | 低音线 | 音域里 C2 发声、亮度不太亮 |
+   | 能表现强弱的独奏 | 力度"表现大"、重弹明显更亮 |
+   | 要合成单声道 / 和别的宽声部叠加 | 立体声不要"侧信号比中间还强" |
+   卡片是测量换来的，不是真正的听感：选定后放进曲子里渲染，用 `muser analyze --audio` 看效果，最后请人听一下。
+2. **插件的音色由它的状态决定**（Kontakt 这类商业插件的音色只能在它自己的界面里载入）：先请人在 `muser view` 的 🎛 里选好
+   （会存下 `@state` 和名字 `@label`），再带着这份状态 `describe`。别把插件当成只有一种声音。
+3. **听完把结论记成用户自己的 skill**，下次直接用，不用重听。写在你（agent）自己的 skill / 记忆目录里，例如 Claude Code 的
+   `~/.claude/skills/my-sounds/SKILL.md`；**不要**写进 muser 的仓库或工程目录——里面是用户本机的音色库、插件与路径。已有就更新，不要另建一份：
+
+   ```markdown
+   ---
+   name: my-sounds
+   description: 这台机器上用 muser 听过的音色（内置、SFZ、插件状态）与适合的用途。选音色前先看这里。
+   ---
+   | 音色（instrument） | 参数 / 状态 | 听感（muser sounds describe） | 适合 | 备注 |
+   |---|---|---|---|---|
+   | `sfz:Salamander…/Salamander….sfz` | — | 偏暗、起音快、快衰减、宽立体声；C2–C6 | 古典钢琴、抒情伴奏 | 加载约 10 秒 |
+   | `plugin:…/Kontakt 8.vst3#…` | `@state: ~/…/song.piano.muserstate`（`@label` Piano Uno） | 偏暗、起音瞬间、很宽 | 流行钢琴 | 人在 🎛 里选的 |
+   ```
+   只记描述与用途，不复制采样或插件状态的内容。描述通用音源（某个免费 SFZ 库、某个插件的出厂预设）的这类 skill，以后可以分享给别人。
 
 ## 连奏：legato
 

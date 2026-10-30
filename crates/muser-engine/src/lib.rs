@@ -57,6 +57,7 @@ pub mod transport {
 }
 pub mod render;
 pub mod sfz;
+pub mod sounds;
 
 pub use instrument::{
     available as available_instruments, catalog as instrument_catalog, check as check_instrument_with, check_name as check_instrument,

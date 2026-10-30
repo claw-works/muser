@@ -123,6 +123,16 @@ pub fn read_state_file(path: &std::path::Path) -> Result<(StateHeader, Vec<u8>),
 }
 
 /// 用户主目录：`HOME`，Windows 上为 `USERPROFILE`。
+/// muser 的本机缓存目录。Linux: $XDG_CACHE_HOME/muser 或 ~/.cache/muser；macOS: ~/Library/Caches/muser；Windows: %LOCALAPPDATA%/muser。
+pub fn cache_dir() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| if cfg!(windows) { std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) } else { None })
+        .or_else(|| home_dir().map(|h| if cfg!(target_os = "macos") { h.join("Library").join("Caches") } else { h.join(".cache") }))
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("muser")
+}
+
 pub fn home_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).filter(|h| !h.is_empty()).map(std::path::PathBuf::from)
 }
@@ -1235,13 +1245,7 @@ mod imp {
     }
 
     fn cache_path() -> std::path::PathBuf {
-        // Linux: $XDG_CACHE_HOME 或 ~/.cache；macOS: ~/Library/Caches；Windows: %LOCALAPPDATA%。
-        let base = std::env::var_os("XDG_CACHE_HOME")
-            .map(std::path::PathBuf::from)
-            .or_else(|| if cfg!(windows) { std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) } else { None })
-            .or_else(|| super::home_dir().map(|h| if cfg!(target_os = "macos") { h.join("Library").join("Caches") } else { h.join(".cache") }))
-            .unwrap_or_else(std::env::temp_dir);
-        base.join("muser").join("plugins.cache")
+        super::cache_dir().join("plugins.cache")
     }
 
     /// 扫描本机标准插件目录。每个插件在独立进程里读取，崩溃或卡死的插件只会出现在失败列表里。
