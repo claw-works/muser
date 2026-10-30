@@ -17,7 +17,7 @@ use crate::audition::{analyze, Analysis};
 use crate::{render, RenderSettings};
 
 /// 探测方法有变化时加一，旧缓存作废。
-const PROBE_VERSION: u32 = 5;
+const PROBE_VERSION: u32 = 6;
 
 /// 目录里的一个音色。
 #[derive(Debug, Clone, Serialize)]
@@ -399,6 +399,67 @@ pub struct KeyMap {
     pub probe_version: u32,
 }
 
+/// 频谱随时间的周期：每 50 ms 16 个对数频段的能量，在 1、2、4 小节的候选滞后上看整段的相关。
+fn spectral_period(mono: &[f32], sr: f64, bar_s: f64, hold_bars: f64) -> Vec<(f64, f64)> {
+    const N: usize = 2048;
+    let hop = (sr * 0.05) as usize;
+    let mut fft = manguebyte::dsp::fft::RealFft::<f32>::new(N);
+    let mut spec = vec![manguebyte::dsp::fft::Complex::<f32>::default(); fft.spectrum_len()];
+    let hann: Vec<f32> = (0..N).map(|k| 0.5 - 0.5 * (std::f32::consts::TAU * k as f32 / N as f32).cos()).collect();
+    let edges: Vec<f64> = (0..=16).map(|k| 40.0 * (16000.0f64 / 40.0).powf(f64::from(k) / 16.0)).collect();
+    let mut frames: Vec<[f64; 16]> = Vec::new();
+    let mut frame = vec![0f32; N];
+    let mut i = 0;
+    while i + N <= mono.len() {
+        for k in 0..N {
+            frame[k] = mono[i + k] * hann[k];
+        }
+        fft.forward(&frame, &mut spec);
+        let mut b = [0f64; 16];
+        for (k, c) in spec.iter().enumerate() {
+            let f = k as f64 * sr / N as f64;
+            if let Some(band) = (0..16).find(|&j| f >= edges[j] && f < edges[j + 1]) {
+                b[band] += f64::from(c.re * c.re + c.im * c.im);
+            }
+        }
+        frames.push(b.map(|x| (x + 1e-10).ln()));
+        i += hop;
+    }
+    if frames.len() < 4 {
+        return Vec::new();
+    }
+    let mut mean = [0f64; 16];
+    for f in &frames {
+        for j in 0..16 {
+            mean[j] += f[j] / frames.len() as f64;
+        }
+    }
+    let x: Vec<[f64; 16]> = frames.iter().map(|f| std::array::from_fn(|j| f[j] - mean[j])).collect();
+    let dt = hop as f64 / sr;
+    let corr = |lag: usize| -> f64 {
+        if lag + 2 >= x.len() {
+            return f64::MIN;
+        }
+        let (mut ab, mut aa, mut bb) = (0.0, 0.0, 0.0);
+        for t in 0..x.len() - lag {
+            for j in 0..16 {
+                ab += x[t][j] * x[t + lag][j];
+                aa += x[t][j] * x[t][j];
+                bb += x[t + lag][j] * x[t + lag][j];
+            }
+        }
+        ab / (aa * bb).sqrt().max(1e-12)
+    };
+    [1.0, 2.0, 4.0]
+        .into_iter()
+        .filter(|b| *b <= hold_bars - 0.5)
+        .map(|b| {
+            let lag = (b * bar_s / dt).round() as usize;
+            (b, [lag.saturating_sub(1), lag, lag + 1].into_iter().map(&corr).fold(f64::MIN, f64::max))
+        })
+        .collect()
+}
+
 /// MIDI 音高的音名（C4 = 60，Kontakt 等的标法是 C3 = 60）。
 pub fn note_name(p: u8) -> String {
     let n = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][usize::from(p % 12)];
@@ -480,8 +541,16 @@ pub fn describe_keys(spec: &str, params: &serde_json::Map<String, Value>, from: 
             })
             .collect();
         let top = cands.iter().map(|c| c.1).fold(0.0, f64::max);
-        let best = cands.iter().find(|c| c.1 >= 0.85 * top).map_or((0.0, 0.0), |c| *c);
-        let loop_bars = (best.1 > 0.5 && onsets as f64 >= hold_bars * 2.0).then_some(best.0);
+        // 包络看得出周期（节奏型 loop）就按包络；看不出（持续的音色：弦乐、和弦、长笛）改看频谱随时间的变化。
+        let best = if top > 0.6 {
+            cands.iter().find(|c| c.1 >= 0.85 * top).copied()
+        } else {
+            let sc = spectral_period(&mono, sr, bar_s, hold_bars);
+            let stop = sc.iter().map(|c| c.1).fold(0.0, f64::max);
+            sc.iter().find(|c| c.1 >= 0.9 * stop && stop > 0.5).copied()
+        }
+        .unwrap_or((0.0, 0.0));
+        let loop_bars = (best.1 > 0.5).then_some(best.0);
         // 频谱重心（一段 8192 点）。
         let n = 8192.min(mono.len()).next_power_of_two() / if 8192.min(mono.len()).is_power_of_two() { 1 } else { 2 };
         let mut fft = manguebyte::dsp::fft::RealFft::<f32>::new(n);
