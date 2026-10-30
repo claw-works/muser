@@ -57,6 +57,7 @@ pub mod transport {
 }
 pub mod render;
 pub mod sfz;
+pub mod presets;
 pub mod sounds;
 
 pub use instrument::{

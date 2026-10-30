@@ -484,6 +484,8 @@ struct EditSession {
     out: PathBuf,
     /// 打开前的音轨 JSON 与状态文件内容：放弃时恢复。
     backup: (Value, Option<Vec<u8>>),
+    /// 采集：载入的是插件的这个内置音色，状态存在本机音色库里，结束时记进音色库索引。
+    capture: Option<(muser_engine::presets::PluginRef, String)>,
 }
 
 /// 两个插件引用是不是同一个插件（`#id` 可省略：省略时文件里只有一个插件）。
@@ -796,6 +798,38 @@ impl Shared {
 
     /// 打开第 `ti` 条音轨的音色编辑：`spec` 是要用的乐器插件（和现在的不同就换乐器，从插件的初始音色开始）。
     fn edit_open(self: &Arc<Self>, ti: usize, spec: &str, label: &str) -> Result<(), String> {
+        self.edit_open_with(ti, spec, label, None)
+    }
+
+    /// 插件的一个内置音色：能直接换成状态的（自动 / 已采集）写进工程；要在插件窗口里载入的开一个采集窗口
+    /// （在 Finder 里选中音色文件，人或 agent 把它载入后点完成），状态存进本机音色库，下次直接用。
+    fn preset_use(self: &Arc<Self>, ti: usize, spec: &str, file: &str) -> Result<&'static str, String> {
+        use muser_engine::presets;
+        let p = presets::plugin_ref(spec)?;
+        let x = presets::find(&p, file)?;
+        if x.load != presets::Load::Manual {
+            let state = presets::state_for(&p, &x)?;
+            let write = || -> Result<()> {
+                let text = std::fs::read_to_string(&self.path)?;
+                let mut v: Value = serde_json::from_str(&text)?;
+                let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {ti} 条音轨"))?;
+                t.insert("instrument".into(), json!(p.spec()));
+                t.insert("instrument_params".into(), json!({ "@state": state.display().to_string(), "@label": x.name }));
+                std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
+                Ok(())
+            };
+            write().map_err(|e| format!("写回工程失败: {e:#}"))?;
+            return Ok("used");
+        }
+        if cfg!(target_os = "macos") {
+            let _ = std::process::Command::new("open").arg("-R").arg(&x.file).status();
+        }
+        let label = x.name.clone();
+        self.edit_open_with(ti, &p.spec(), &label, Some((p, x.file)))?;
+        Ok("capture")
+    }
+
+    fn edit_open_with(self: &Arc<Self>, ti: usize, spec: &str, label: &str, capture: Option<(muser_engine::presets::PluginRef, String)>) -> Result<(), String> {
         let spec = spec.strip_prefix("plugin:").unwrap_or(spec);
         if !cfg!(target_os = "macos") {
             return Err("插件界面目前只支持 macOS".into());
@@ -814,7 +848,8 @@ impl Shared {
             (if t.name.is_empty() { format!("track{ti}") } else { t.name.clone() }, t.instrument.clone(), t.instrument_params.clone())
         };
         let keep = current.strip_prefix("plugin:").is_some_and(|c| same_plugin(c, spec));
-        if !keep {
+        if !keep || capture.is_some() {
+            // 换插件或采集新音色：从插件的初始状态开始。
             params.clear();
         }
         params.remove("@label");
@@ -822,17 +857,26 @@ impl Shared {
         let dir = self.path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
         let dir = std::fs::canonicalize(dir).map_err(|e| format!("{e}"))?;
         let stem = self.path.file_stem().and_then(|s| s.to_str()).unwrap_or("project").trim_end_matches(".muser");
-        let out = dir.join(format!("{stem}.{safe}.muserstate"));
+        let out = match &capture {
+            Some((p, file)) => muser_engine::presets::library_state_path(p, file),
+            None => dir.join(format!("{stem}.{safe}.muserstate")),
+        };
+        if let Some(d) = out.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
         let text = std::fs::read_to_string(&self.path).map_err(|e| format!("读取工程失败: {e}"))?;
         let v: Value = serde_json::from_str(&text).map_err(|e| format!("解析工程失败: {e}"))?;
         let backup = (v["tracks"][ti].clone(), std::fs::read(&out).ok());
-        if !keep {
-            // 换插件：旧插件的状态文件不能沿用（放弃时从 backup 恢复）。
+        if !keep || capture.is_some() {
+            // 换插件 / 重新采集：旧的状态文件不能沿用（放弃时从 backup 恢复）。
             let _ = std::fs::remove_file(&out);
         }
         let plugin_name = muser_engine::plugin::split_spec(spec).0.rsplit('/').next().unwrap_or(spec).trim_end_matches(".vst3").trim_end_matches(".clap").to_string();
         let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
-            .args(["plugin", "edit", spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &format!("{plugin_name} — {name} · muser"), "-o"])
+            .args(["plugin", "edit", spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &match &capture {
+                Some(_) => format!("{plugin_name} — 载入「{label}」后点 muser 的完成 · {name}"),
+                None => format!("{plugin_name} — {name} · muser"),
+            }, "-o"])
             .arg(&out)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -843,7 +887,7 @@ impl Shared {
         let stdout = child.stdout.take().ok_or("子进程没有 stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
         eprintln!("[view] 打开 {spec} 的界面（音轨 {ti}），状态同步到 {}", out.display());
-        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup });
+        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture });
         drop(edit);
         let me = Arc::clone(self);
         std::thread::spawn(move || {
@@ -856,6 +900,13 @@ impl Shared {
             let _ = child.wait();
             if let Some(e) = me.edit.lock().unwrap().as_mut() {
                 e.open = false;
+                // 采集到了（窗口里载入过、存过盘）：记进音色库，下次直接用。
+                if let (Some((p, file)), true) = (&e.capture, e.wrote && e.out.is_file()) {
+                    match muser_engine::presets::record_capture(p, file, &e.out) {
+                        Ok(()) => eprintln!("[view] 已采集 {} → {}", e.label, e.out.display()),
+                        Err(err) => eprintln!("[view] 记入音色库失败: {err}"),
+                    }
+                }
             }
             eprintln!("[view] 插件窗口已关闭");
         });
@@ -1187,6 +1238,23 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             });
             match r {
                 Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
+                Err(e) => respond_json(req, 400, &json!({ "error": e })),
+            }
+        }
+        (Method::Get, "/api/sound/presets") => {
+            let spec = query(&url).get("spec").map(|s| crate::poly::percent_decode(s)).unwrap_or_default();
+            match muser_engine::presets::plugin_ref(&spec) {
+                Ok(p) => respond_json(req, 200, &json!(muser_engine::presets::presets(&p))),
+                Err(e) => respond_json(req, 400, &json!({ "error": e })),
+            }
+        }
+        (Method::Post, "/api/sound/preset") => {
+            let r = read_body::<Value>(&mut req).and_then(|b| {
+                let ti = b["track"].as_u64().ok_or("需要 track")? as usize;
+                shared.preset_use(ti, b["spec"].as_str().ok_or("需要 spec")?, b["file"].as_str().ok_or("需要 file")?)
+            });
+            match r {
+                Ok(how) => respond_json(req, 200, &json!({ "ok": true, "how": how })),
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
             }
         }

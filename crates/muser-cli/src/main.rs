@@ -280,6 +280,28 @@ enum SoundsCommand {
         #[arg(long)]
         json: bool,
     },
+    /// 列出乐器插件的内置音色（VST3 标准预设、Surge 的 .fxp、Kontakt 的 .nki…）与能不能直接用（auto / captured / manual）。
+    Presets {
+        /// 插件：plugin:<路径>#<id>，或路径。
+        plugin: String,
+        /// 关键词过滤（名字、类别、音色库、标签）。
+        #[arg(long)]
+        filter: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// 取一个内置音色的插件状态文件（在本机音色库里；能自动转换的直接生成），打印工程里怎么写。
+    State {
+        plugin: String,
+        /// 音色名或文件路径（`sounds presets` 列出）。
+        preset: String,
+    },
+    /// 采集（macOS）：打开插件窗口并在 Finder 里选中音色文件，在窗口里载入它（双击插件的浏览器，或把文件拖进窗口），
+    /// 关窗口后状态存进本机音色库，之后 `sounds state` 直接可用。人来点，或 agent 用 computer use。
+    Capture {
+        plugin: String,
+        preset: String,
+    },
     /// 听一个音色：渲染探测音（5 个音区 + 轻力度；鼓组为常用鼓键），测亮度、起音、延音、余音、音域、力度、立体声、音高，
     /// 写成文字卡片并缓存在本机（同一音色、参数与文件不变时直接读缓存）。
     Describe {
@@ -920,6 +942,74 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                 println!("{:<44} [{}{}] {}{extra}", s.spec, s.kind, if s.group.is_empty() { String::new() } else { format!(" · {}", s.group) }, s.description.chars().take(60).collect::<String>());
             }
             println!("\n共 {} 个。`muser sounds describe <音色>` 听一个（♪ 是已经听过的）。", list.len());
+        }
+        SoundsCommand::Presets { plugin, filter, json } => {
+            use muser_engine::presets;
+            let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
+            let terms: Vec<String> = filter.unwrap_or_default().to_lowercase().split_whitespace().map(str::to_string).collect();
+            let list: Vec<_> = presets::presets(&p)
+                .into_iter()
+                .filter(|x| {
+                    let hay = format!("{} {} {} {}", x.name, x.category, x.library, x.tags.join(" ")).to_lowercase();
+                    terms.iter().all(|t| hay.contains(t))
+                })
+                .collect();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            for x in &list {
+                let mark = match x.load {
+                    presets::Load::Auto => "自动",
+                    presets::Load::Captured => "已采集",
+                    presets::Load::Manual => "需载入",
+                };
+                println!("[{mark}] {:<32} {} · {}{}", x.name, x.library, x.category, if x.tags.is_empty() { String::new() } else { format!(" · {}", x.tags.join(", ")) });
+            }
+            println!("\n共 {} 个。`muser sounds state '{}' <音色>` 取状态；[需载入] 的先 `muser sounds capture`。", list.len(), p.spec());
+        }
+        SoundsCommand::State { plugin, preset } => {
+            use muser_engine::presets;
+            let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
+            let x = presets::find(&p, &preset).map_err(|e| anyhow::anyhow!(e))?;
+            let state = presets::state_for(&p, &x).map_err(|e| anyhow::anyhow!(e))?;
+            println!("{}", state.display());
+            println!("工程里写：\"instrument\": \"{}\", \"instrument_params\": {{ \"@state\": \"{}\", \"@label\": \"{}\" }}", p.spec(), state.display(), x.name);
+        }
+        SoundsCommand::Capture { plugin, preset } => {
+            #[cfg(target_os = "macos")]
+            {
+                use muser_engine::presets;
+                let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
+                let x = presets::find(&p, &preset).map_err(|e| anyhow::anyhow!(e))?;
+                let out = presets::library_state_path(&p, &x.file);
+                if let Some(d) = out.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                // 在 Finder 里选中音色文件：可以直接拖进插件窗口。
+                let _ = std::process::Command::new("open").arg("-R").arg(&x.file).status();
+                let title = format!("载入：{}（{}）— 载入后关闭窗口 · muser", x.name, x.library);
+                let (_tx, rx) = std::sync::mpsc::channel();
+                match muser_engine::plugin_edit::run(&p.spec(), &serde_json::Map::new(), &out, &title, rx, || {}).map_err(|e| anyhow::anyhow!(e))? {
+                    muser_engine::plugin_edit::Outcome::Saved(_) => {
+                        presets::record_capture(&p, &x.file, &out).map_err(|e| anyhow::anyhow!(e))?;
+                        let mut params = serde_json::Map::new();
+                        params.insert("@state".into(), serde_json::json!(out.display().to_string()));
+                        let card = muser_engine::sounds::describe(&p.spec(), &params, None, true).map_err(|e| anyhow::anyhow!(e))?;
+                        println!("已采集 {} → {}", x.name, out.display());
+                        println!("听感：{}", card.summary);
+                        if card.summary.starts_with("没有声音") {
+                            println!("⚠ 没有声音：可能没载入成功（或载入的不是这个音色），重新 capture 一次。");
+                        }
+                    }
+                    muser_engine::plugin_edit::Outcome::Unchanged => println!("窗口里没有改动，没有采集。"),
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = (plugin, preset);
+                return Err(anyhow::anyhow!("采集要打开插件窗口，目前只支持 macOS"));
+            }
         }
         SoundsCommand::Describe { sound, params, drums, refresh, json } => {
             let params = parse_map(params.as_deref())?;
