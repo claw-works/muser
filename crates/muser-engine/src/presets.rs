@@ -97,6 +97,48 @@ struct Index {
     /// 插件 id → 预设文件 → 采集的状态文件。
     #[serde(default)]
     captured: BTreeMap<String, BTreeMap<String, String>>,
+    /// 插件 id → 名字 → 用户自己调出来存下的状态（"我的音色"）。
+    #[serde(default)]
+    mine: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+fn write_index(idx: &Index) -> Result<(), String> {
+    std::fs::create_dir_all(library_dir()).map_err(|e| e.to_string())?;
+    std::fs::write(index_path(), serde_json::to_string_pretty(idx).unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+/// 把用户自己调出来的音色存进音色库的"我的音色"（同名覆盖）。返回音色库里的文件。
+pub fn save_mine(p: &PluginRef, name: &str, state: &Path) -> Result<PathBuf, String> {
+    let out = library_dir().join(slug(&p.name)).join("mine").join(format!("{}.muserstate", slug(name)));
+    if let Some(d) = out.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    std::fs::copy(state, &out).map_err(|e| format!("存进音色库失败: {e}"))?;
+    let mut idx = read_index();
+    idx.mine.entry(p.id.clone()).or_default().insert(name.to_string(), out.display().to_string());
+    write_index(&idx)?;
+    Ok(out)
+}
+
+/// 状态里载入的是哪个音色文件：取每个候选文件（跳过开头的元数据）的若干 64 字节片段，看有多少原样出现在状态里。
+/// Kontakt 的状态带着乐器块的原样字节，同一个音色吻合度约 0.8，别的音色约 0。按吻合度从高到低。
+pub fn identify(state: &Path, candidates: &[Preset]) -> Vec<(f64, Preset)> {
+    let Ok(st) = std::fs::read(state) else { return Vec::new() };
+    let pieces: std::collections::HashSet<&[u8]> = st.windows(64).collect();
+    let mut out: Vec<(f64, Preset)> = candidates
+        .iter()
+        .filter_map(|x| {
+            let n = std::fs::read(&x.file).ok()?;
+            let windows: Vec<&[u8]> = (2600..n.len().saturating_sub(64)).step_by(512).map(|o| &n[o..o + 64]).collect();
+            if windows.is_empty() {
+                return None;
+            }
+            let hit = windows.iter().filter(|w| pieces.contains(**w)).count();
+            Some((hit as f64 / windows.len() as f64, x.clone()))
+        })
+        .collect();
+    out.sort_by(|a, b| b.0.total_cmp(&a.0));
+    out
 }
 
 fn index_path() -> PathBuf {
@@ -129,8 +171,7 @@ pub fn library_state_path(p: &PluginRef, preset_file: &str) -> PathBuf {
 pub fn record_capture(p: &PluginRef, preset_file: &str, state: &Path) -> Result<(), String> {
     let mut idx = read_index();
     idx.captured.entry(p.id.clone()).or_default().insert(preset_file.to_string(), state.display().to_string());
-    std::fs::create_dir_all(library_dir()).map_err(|e| e.to_string())?;
-    std::fs::write(index_path(), serde_json::to_string_pretty(&idx).unwrap_or_default()).map_err(|e| e.to_string())
+    write_index(&idx)
 }
 
 fn walk(dir: &Path, ext: &str, depth: usize, skip: &[&str], out: &mut Vec<PathBuf>) {
@@ -239,9 +280,16 @@ fn nki_meta(path: &Path) -> (String, String, Vec<String>) {
     (library, category, kept)
 }
 
-/// 插件的内置音色。
+/// 插件的内置音色（最前面是用户自己存下的"我的音色"）。
 pub fn presets(p: &PluginRef) -> Vec<Preset> {
-    let mut out = Vec::new();
+    let mut out: Vec<Preset> = read_index()
+        .mine
+        .get(&p.id)
+        .into_iter()
+        .flatten()
+        .filter(|(_, f)| Path::new(f).is_file())
+        .map(|(name, f)| Preset { name: name.clone(), category: "我的音色".into(), library: "muser".into(), tags: Vec::new(), file: f.clone(), load: Load::Captured })
+        .collect();
     let status = |file: &str, auto: bool| if captured_state(p, file).is_some() { Load::Captured } else if auto { Load::Auto } else { Load::Manual };
     // VST3 标准预设。
     if p.format == "vst3" {
@@ -363,6 +411,9 @@ pub(crate) fn read_fxp(b: &[u8]) -> Result<Vec<u8>, String> {
 pub fn state_for(p: &PluginRef, preset: &Preset) -> Result<PathBuf, String> {
     if let Some(s) = captured_state(p, &preset.file) {
         return Ok(s);
+    }
+    if preset.file.ends_with(".muserstate") && read_state_file(Path::new(&preset.file)).is_ok() {
+        return Ok(PathBuf::from(&preset.file));
     }
     let out = library_state_path(p, &preset.file);
     if out.is_file() && read_state_file(&out).is_ok() {

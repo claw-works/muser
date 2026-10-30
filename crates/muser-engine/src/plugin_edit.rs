@@ -22,6 +22,8 @@ pub enum Cmd {
     Done,
     /// 不存盘，关窗口。
     Cancel,
+    /// 改窗口标题（换了要载入的音色时）。
+    Title { title: String },
 }
 
 /// 会话怎么结束的。
@@ -264,6 +266,7 @@ pub fn run(
                     let _ = to_audio.send(audition::ToAudio::Stop);
                 }
                 Cmd::Done => window.close(),
+                Cmd::Title { title } => window.setTitle(&NSString::from_str(&title)),
                 Cmd::Cancel => {
                     cancel = true;
                     window.close();

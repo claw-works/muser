@@ -457,6 +457,7 @@ const I18N = {
     sfzShown: (a, b) => (a === b ? `${b} sounds` : `${a} of ${b} sounds`),
     presetSearch: "Search this plugin's sounds (name, library, category, tags)…", presetShown: (a, b) => (a === b ? `${b} built-in sounds` : `${a} of ${b} built-in sounds`),
     load_auto: "ready", load_captured: "captured", load_manual: "load once",
+    captureRetarget: (n) => `Now load "${n}" in the open plugin window (selected in Finder), then click Done.`,
     captureHint: (n) => `Plugin window opened: load "${n}" in it (the file is selected in Finder — you can drag it into the window), then click Done. It is saved to your sound library for next time.`,
     builtinInstruments: "Built-in instruments", builtinCount: (n) => `muser's own synths, drum kits, keys, strings… · ${n}`,
     builtinSearch: "Search (name, family such as drums / poly / strings, description)…",
@@ -505,6 +506,7 @@ const I18N = {
     sfzShown: (a, b) => (a === b ? `${b} 个音色` : `${b} 个里的 ${a} 个`),
     presetSearch: "搜索这个插件的音色（名字、音色库、类别、标签）…", presetShown: (a, b) => (a === b ? `${b} 个内置音色` : `${b} 个里的 ${a} 个`),
     load_auto: "直接用", load_captured: "已采集", load_manual: "需载入一次",
+    captureRetarget: (n) => `换成载入「${n}」：在开着的插件窗口里载入它（Finder 里已选中），然后点完成。`,
     captureHint: (n) => `插件窗口已打开：在里面载入「${n}」（Finder 里已选中这个文件，可以直接拖进窗口），然后点完成。会存进你的音色库，下次直接用。`,
     builtinInstruments: "内置乐器", builtinCount: (n) => `muser 自带的合成器、鼓组、键盘、弦乐… · ${n} 个`,
     builtinSearch: "搜索（名字、类别如 drums / poly / strings、说明）…",
@@ -928,7 +930,7 @@ function renderPresets() {
           $("sd-current").textContent = t("soundCurrent", shortInstrument(soundPlugin.spec) + " · " + x.name);
           banner(t("soundUsed", x.name), "info"); renderPresets(); drawerBusy({ rendering: true, progress: 1 });
         } else {
-          $("sd-label").value = x.name; banner(t("captureHint", x.name), "info"); soundPoll();
+          $("sd-label").value = x.name; banner(t(r.how === "retarget" ? "captureRetarget" : "captureHint", x.name), "info"); soundPoll();
         }
       } catch (_) {}
     };
@@ -966,6 +968,7 @@ async function soundPoll() {
     $("sd-note").append(sync);
   } else {
     if (s.error && s.error !== lastSoundError) { banner(s.error, "err"); lastSoundError = s.error; }
+    if (s.notice && s.notice !== lastSoundError) { banner(s.notice, "info"); lastSoundError = s.notice; }
     $("sd-open").disabled = !!s.open;
     $("sd-note").textContent = s.open ? t("soundOther", s.track + 1) : "";
     if (auditioning) { auditioning = false; $("sd-play").textContent = t("soundAudition"); }

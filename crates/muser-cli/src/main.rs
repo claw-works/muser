@@ -296,6 +296,12 @@ enum SoundsCommand {
         /// 音色名或文件路径（`sounds presets` 列出）。
         preset: String,
     },
+    /// 认出一份插件状态里载入的是哪个内置音色（比对音色文件的原样字节；Kontakt 的 .nki 有效）。
+    Identify {
+        plugin: String,
+        /// 状态文件（.muserstate）。
+        state: String,
+    },
     /// 采集（macOS）：打开插件窗口并在 Finder 里选中音色文件，在窗口里载入它（双击插件的浏览器，或把文件拖进窗口），
     /// 关窗口后状态存进本机音色库，之后 `sounds state` 直接可用。人来点，或 agent 用 computer use。
     Capture {
@@ -976,6 +982,19 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
             println!("{}", state.display());
             println!("工程里写：\"instrument\": \"{}\", \"instrument_params\": {{ \"@state\": \"{}\", \"@label\": \"{}\" }}", p.spec(), state.display(), x.name);
         }
+        SoundsCommand::Identify { plugin, state } => {
+            use muser_engine::presets;
+            let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
+            let all: Vec<_> = presets::presets(&p).into_iter().filter(|x| !x.file.ends_with(".muserstate")).collect();
+            let ranked = presets::identify(std::path::Path::new(&state), &all);
+            match ranked.first() {
+                Some((score, x)) if *score >= 0.3 => println!("载入的是：{}（{} · {}，吻合度 {score:.2}）", x.name, x.library, x.category),
+                _ => println!("认不出：没有哪个音色文件和这份状态吻合（吻合度都低于 0.3）"),
+            }
+            for (score, x) in ranked.iter().take(5) {
+                println!("  {score:.2}  {}", x.name);
+            }
+        }
         SoundsCommand::Capture { plugin, preset } => {
             #[cfg(target_os = "macos")]
             {
@@ -1000,8 +1019,23 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                             let _ = std::fs::remove_file(&out);
                             return Err(anyhow::anyhow!("「{}」没有载入成功（存下的状态没有声音），没有采集：重新 capture，等它在插件窗口里载入完再关窗口", x.name));
                         }
-                        presets::record_capture(&p, &x.file, &out).map_err(|e| anyhow::anyhow!(e))?;
-                        println!("已采集 {} → {}", x.name, out.display());
+                        // 窗口里实际载入的是哪个（可能载入了别的音色）。
+                        let all: Vec<_> = presets::presets(&p).into_iter().filter(|y| !y.file.ends_with(".muserstate")).collect();
+                        let ranked = presets::identify(&out, &all);
+                        let target = ranked.iter().find(|(_, y)| y.file == x.file).map_or(0.0, |r| r.0);
+                        let chosen = match ranked.first() {
+                            Some((score, best)) if *score >= 0.3 && target < 0.3 => {
+                                println!("窗口里载入的是「{}」，不是「{}」：按「{}」存", best.name, x.name, best.name);
+                                best.clone()
+                            }
+                            _ => x.clone(),
+                        };
+                        let fin = presets::library_state_path(&p, &chosen.file);
+                        if fin != out {
+                            std::fs::rename(&out, &fin)?;
+                        }
+                        presets::record_capture(&p, &chosen.file, &fin).map_err(|e| anyhow::anyhow!(e))?;
+                        println!("已采集 {} → {}", chosen.name, fin.display());
                         println!("听感：{}", card.summary);
                     }
                     muser_engine::plugin_edit::Outcome::Unchanged => println!("窗口里没有改动，没有采集。"),

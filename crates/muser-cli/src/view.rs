@@ -488,6 +488,8 @@ struct EditSession {
     capture: Option<(muser_engine::presets::PluginRef, String)>,
     /// 采集没成功等，给页面看。
     error: Option<String>,
+    /// 提示（如"载入的是另一个音色，已按它存进音色库"）。
+    notice: Option<String>,
 }
 
 /// 换了乐器：旧乐器的参数与针对乐器参数的自动化（`target: instrument`）都作废；音量、声像、效果器的自动化保留。
@@ -840,6 +842,19 @@ impl Shared {
         if cfg!(target_os = "macos") {
             let _ = std::process::Command::new("open").arg("-R").arg(&x.file).status();
         }
+        // 这条轨的采集窗口已经开着：换成载入这个音色，窗口不用关。
+        {
+            use std::io::Write;
+            let mut edit = self.edit.lock().unwrap();
+            if let Some(e) = edit.as_mut().filter(|e| e.open && e.track == ti && e.capture.is_some() && same_plugin(&e.spec, &p.spec()[7..])) {
+                let title = format!("{} — 载入「{}」后点 muser 的完成", p.name, x.name);
+                e.label = x.name.clone();
+                e.capture = Some((p, x.file));
+                let line = json!({ "cmd": "title", "title": title });
+                writeln!(e.stdin, "{line}").and_then(|_| e.stdin.flush()).map_err(|err| format!("插件窗口已退出: {err}"))?;
+                return Ok("retarget");
+            }
+        }
         let label = x.name.clone();
         self.edit_open_with(ti, &p.spec(), &label, Some((p, x.file)))?;
         Ok("capture")
@@ -903,7 +918,7 @@ impl Shared {
         let stdout = child.stdout.take().ok_or("子进程没有 stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
         eprintln!("[view] 打开 {spec} 的界面（音轨 {ti}），状态同步到 {}", out.display());
-        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None });
+        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None, notice: None });
         drop(edit);
         let me = Arc::clone(self);
         std::thread::spawn(move || {
@@ -914,33 +929,7 @@ impl Shared {
                 }
             }
             let _ = child.wait();
-            // 采集：先听一遍存下的状态（不拿着锁，要几秒），有声音才记进音色库，没声音就恢复原样。
-            let check = me.edit.lock().unwrap().as_ref().and_then(|e| match (&e.capture, e.wrote && e.out.is_file()) {
-                (Some((p, file)), true) => Some((p.clone(), file.clone(), e.out.clone(), e.label.clone())),
-                _ => None,
-            });
-            let verdict = check.map(|(p, file, out, label)| {
-                let mut params = serde_json::Map::new();
-                params.insert("@state".into(), json!(out.display().to_string()));
-                let silent = muser_engine::sounds::describe(&p.spec(), &params, None, true).map_or(true, |c| c.summary.starts_with("没有声音"));
-                (p, file, out, label, silent)
-            });
-            if let Some(e) = me.edit.lock().unwrap().as_mut() {
-                e.open = false;
-                if let Some((p, file, out, label, silent)) = verdict {
-                    if silent {
-                        let r = me.edit_restore(e);
-                        e.wrote = false;
-                        e.error = Some(format!("「{label}」没有载入成功（存下的状态没有声音），已恢复成打开前的样子：再试一次，等它在插件窗口里载入完再点完成{}", r.err().map(|x| format!("（恢复时出错：{x}）")).unwrap_or_default()));
-                        eprintln!("[view] 采集 {label} 失败：没有声音");
-                    } else {
-                        match muser_engine::presets::record_capture(&p, &file, &out) {
-                            Ok(()) => eprintln!("[view] 已采集 {label} → {}", out.display()),
-                            Err(err) => eprintln!("[view] 记入音色库失败: {err}"),
-                        }
-                    }
-                }
-            }
+            me.edit_finish();
             eprintln!("[view] 插件窗口已关闭");
         });
         Ok(())
@@ -1025,6 +1014,68 @@ impl Shared {
         writeln!(e.stdin, "{line}").and_then(|_| e.stdin.flush()).map_err(|err| format!("插件窗口已退出: {err}"))
     }
 
+    /// 编辑窗口关了之后：采集的先听一遍（没声音就恢复原样）、认出实际载入的是哪个音色、记进音色库；
+    /// 自己调的存一份进音色库的"我的音色"。听与认要几秒，不拿着锁做。
+    fn edit_finish(&self) {
+        use muser_engine::presets;
+        let job = self.edit.lock().unwrap().as_ref().filter(|e| e.wrote && e.out.is_file()).map(|e| (e.spec.clone(), e.capture.clone(), e.out.clone(), e.label.clone()));
+        let outcome: Option<Result<(String, PathBuf, Option<String>), String>> = job.map(|(spec, capture, out, label)| {
+            let p = presets::plugin_ref(&spec)?;
+            let Some((_, target)) = capture else {
+                // 自己调的音色：存进"我的音色"，工程里仍用自己的那份。
+                presets::save_mine(&p, &label, &out)?;
+                eprintln!("[view] 已存进我的音色：{label}");
+                return Ok((label, out, None));
+            };
+            let mut params = serde_json::Map::new();
+            params.insert("@state".into(), json!(out.display().to_string()));
+            let silent = muser_engine::sounds::describe(&p.spec(), &params, None, true).map_or(true, |c| c.summary.starts_with("没有声音"));
+            if silent {
+                return Err(format!("「{label}」没有载入成功（存下的状态没有声音），已恢复成打开前的样子：再试一次，等它在插件窗口里载入完再点完成"));
+            }
+            // 实际载入的是哪个：吻合度最高的那个（目标本身吻合就用目标）。
+            let all: Vec<presets::Preset> = presets::presets(&p).into_iter().filter(|x| !x.file.ends_with(".muserstate")).collect();
+            let ranked = presets::identify(&out, &all);
+            let target_score = ranked.iter().find(|(_, x)| x.file == target).map_or(0.0, |r| r.0);
+            let (file, name, notice) = match ranked.first() {
+                Some((score, best)) if *score >= 0.3 && target_score < 0.3 => {
+                    (best.file.clone(), best.name.clone(), Some(format!("窗口里载入的是「{}」，不是「{label}」：已按「{}」存进音色库", best.name, best.name)))
+                }
+                _ => (target.clone(), label.clone(), None),
+            };
+            let fin = presets::library_state_path(&p, &file);
+            if fin != out {
+                std::fs::rename(&out, &fin).or_else(|_| std::fs::copy(&out, &fin).map(|_| ())).map_err(|e| format!("存进音色库失败: {e}"))?;
+            }
+            presets::record_capture(&p, &file, &fin)?;
+            eprintln!("[view] 已采集 {name} → {}", fin.display());
+            Ok((name, fin, notice))
+        });
+        let mut edit = self.edit.lock().unwrap();
+        let Some(e) = edit.as_mut() else { return };
+        e.open = false;
+        match outcome {
+            Some(Ok((name, fin, notice))) => {
+                if fin != e.out || name != e.label {
+                    (e.out, e.label) = (fin, name);
+                    if let Err(err) = self.edit_write(e) {
+                        eprintln!("[view] 写回工程失败: {err}");
+                    }
+                }
+                e.notice = notice;
+            }
+            Some(Err(msg)) => {
+                if let Err(r) = self.edit_restore(e) {
+                    eprintln!("[view] 恢复失败: {r}");
+                }
+                e.wrote = false;
+                eprintln!("[view] {msg}");
+                e.error = Some(msg);
+            }
+            None => {}
+        }
+    }
+
     /// 恢复打开编辑之前的音轨与状态文件。
     fn edit_restore(&self, e: &EditSession) -> Result<(), String> {
         if e.wrote {
@@ -1050,7 +1101,7 @@ impl Shared {
     fn edit_status(&self) -> Value {
         let edit = self.edit.lock().unwrap();
         match edit.as_ref() {
-            Some(e) => json!({ "open": e.open, "track": e.track, "spec": e.spec, "label": e.label, "error": e.error,
+            Some(e) => json!({ "open": e.open, "track": e.track, "spec": e.spec, "label": e.label, "error": e.error, "notice": e.notice,
                 "synced": e.synced.and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_secs_f64()) }),
             None => json!({ "open": false }),
         }
