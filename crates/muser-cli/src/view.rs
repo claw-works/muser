@@ -488,6 +488,18 @@ struct EditSession {
     capture: Option<(muser_engine::presets::PluginRef, String)>,
 }
 
+/// 换了乐器：旧乐器的参数与针对乐器参数的自动化（`target: instrument`）都作废；音量、声像、效果器的自动化保留。
+fn switch_instrument(t: &mut serde_json::Map<String, Value>, instrument: &str) {
+    t.insert("instrument".into(), json!(instrument));
+    t.remove("instrument_params");
+    if let Some(a) = t.get_mut("automation").and_then(Value::as_array_mut) {
+        a.retain(|x| x.get("target").and_then(Value::as_str).map(str::trim) != Some("instrument"));
+        if a.is_empty() {
+            t.remove("automation");
+        }
+    }
+}
+
 /// 两个插件引用是不是同一个插件（`#id` 可省略：省略时文件里只有一个插件）。
 fn same_plugin(a: &str, b: &str) -> bool {
     let (pa, ia) = muser_engine::plugin::split_spec(a);
@@ -780,8 +792,7 @@ impl Shared {
             let mut v: Value = serde_json::from_str(&text)?;
             let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {ti} 条音轨"))?;
             if t.get("instrument").and_then(Value::as_str) != Some(instrument) {
-                t.insert("instrument".into(), json!(instrument));
-                t.remove("instrument_params");
+                switch_instrument(t, instrument);
             }
             let label = label.trim();
             if !label.is_empty() {
@@ -813,7 +824,10 @@ impl Shared {
                 let text = std::fs::read_to_string(&self.path)?;
                 let mut v: Value = serde_json::from_str(&text)?;
                 let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {ti} 条音轨"))?;
-                t.insert("instrument".into(), json!(p.spec()));
+                let same = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &p.spec()[7..]));
+                if !same {
+                    switch_instrument(t, &p.spec());
+                }
                 t.insert("instrument_params".into(), json!({ "@state": state.display().to_string(), "@label": x.name }));
                 std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
                 Ok(())
@@ -937,8 +951,7 @@ impl Shared {
         let t = v.get_mut("tracks").and_then(|t| t.get_mut(e.track)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {} 条音轨", e.track))?;
         let keep = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &e.spec));
         if !keep {
-            t.insert("instrument".into(), json!(format!("plugin:{}", e.spec)));
-            t.insert("instrument_params".into(), json!({}));
+            switch_instrument(t, &format!("plugin:{}", e.spec));
         }
         let p = t.entry("instrument_params").or_insert_with(|| json!({}));
         let p = p.as_object_mut().ok_or_else(|| anyhow!("instrument_params 不是对象"))?;
@@ -1385,6 +1398,18 @@ mod tests {
         assert!(apply_to_project(&mut p, &bad).is_err());
         let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None, bypass: None }];
         assert!(apply_to_project(&mut p, &bad).unwrap_err().contains("超出范围"));
+    }
+
+    #[test]
+    fn switching_instrument_drops_its_automation() {
+        let mut t = json!({ "instrument": "poly.supersaw", "instrument_params": { "cutoff": 900 },
+            "automation": [{ "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 160], [8, 9000]] },
+                           { "target": "gain_db", "shape": "points", "points": [[0, -30], [8, 0]] }] });
+        switch_instrument(t.as_object_mut().unwrap(), "plugin:/k.vst3#X");
+        assert_eq!(t["instrument"], "plugin:/k.vst3#X");
+        assert!(t.get("instrument_params").is_none());
+        assert_eq!(t["automation"].as_array().unwrap().len(), 1);
+        assert_eq!(t["automation"][0]["target"], "gain_db");
     }
 
     #[test]
