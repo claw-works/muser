@@ -1350,7 +1350,11 @@ fn main() {
 
 async fn serve() -> anyhow::Result<()> {
     // 以 stdio 运行 MCP server。
-    let service = Muser::new().serve(stdio()).await?;
+    // 协议走原来的 stdout；进程的 fd 1 接到 stderr，插件打的日志不会混进协议流。
+    let service = match muser_engine::plugin::take_stdout() {
+        Some(out) => Muser::new().serve((tokio::io::stdin(), tokio::fs::File::from_std(out))).await?,
+        None => Muser::new().serve(stdio()).await?,
+    };
     service.waiting().await?;
     Ok(())
 }

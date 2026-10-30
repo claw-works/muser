@@ -17,7 +17,7 @@ use crate::audition::{analyze, Analysis};
 use crate::{render, RenderSettings};
 
 /// 探测方法有变化时加一，旧缓存作废。
-const PROBE_VERSION: u32 = 2;
+const PROBE_VERSION: u32 = 5;
 
 /// 目录里的一个音色。
 #[derive(Debug, Clone, Serialize)]
@@ -368,6 +368,167 @@ fn words(probes: &[Probe], drums: bool) -> (String, Vec<String>) {
     (format!("{}；音域约 {lo}–{hi}", summary.join("、")), traits)
 }
 
+/// 键位卡里的一个键。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyProbe {
+    pub pitch: u8,
+    /// 音名（C4 = 60）。
+    pub name: String,
+    pub audible: bool,
+    /// 按住这段时间的均方根电平（dBFS）。
+    pub level_db: f64,
+    /// 频谱重心（Hz）。
+    pub centroid_hz: f64,
+    /// 每小节起音次数。
+    pub onsets_per_bar: f64,
+    /// 循环周期（小节）；不循环（单发、持续音）时为空。
+    pub loop_bars: Option<f64>,
+}
+
+/// 一个音色的键位卡：每个键按住几小节的结果。loop 套件（如 Kontakt 的 Leap kit）每个键是一段跟着工程速度走的 loop，
+/// 键位卡告诉你哪些键有声、哪些是 loop、几小节一圈、多密多响；也适合鼓组、分区音色。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyMap {
+    pub spec: String,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub params: serde_json::Map<String, Value>,
+    pub tempo: f64,
+    pub hold_bars: f64,
+    pub keys: Vec<KeyProbe>,
+    pub summary: String,
+    pub probe_version: u32,
+}
+
+/// MIDI 音高的音名（C4 = 60，Kontakt 等的标法是 C3 = 60）。
+pub fn note_name(p: u8) -> String {
+    let n = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][usize::from(p % 12)];
+    format!("{n}{}", i32::from(p) / 12 - 1)
+}
+
+/// 做键位卡：`from..=to` 的每个键按住 `hold_bars` 小节（4/4，`tempo`），一次渲染里依次排开。结果缓存在本机。
+pub fn describe_keys(spec: &str, params: &serde_json::Map<String, Value>, from: u8, to: u8, tempo: f64, hold_bars: f64, refresh: bool) -> Result<KeyMap, String> {
+    if from > to || to > 127 {
+        return Err("键的范围应为 from ≤ to ≤ 127".into());
+    }
+    let mut key_params = params.clone();
+    key_params.insert("@keys".into(), serde_json::json!([from, to, tempo, hold_bars]));
+    let cache = cache_file(spec, &key_params);
+    if !refresh {
+        if let Some(m) = std::fs::read_to_string(&cache).ok().and_then(|t| serde_json::from_str::<KeyMap>(&t).ok()).filter(|m| m.probe_version == PROBE_VERSION) {
+            return Ok(m);
+        }
+    }
+    let hold = hold_bars * 4.0;
+    // 每个键之间空 1 小节，让余音散掉。
+    let slot = hold + 4.0;
+    let pitches: Vec<u8> = (from..=to).collect();
+    let mut track = Track::new("keys", spec);
+    track.instrument_params = params.clone();
+    let mut clip = Clip::new(0.0, pitches.len() as f64 * slot);
+    clip.notes = pitches.iter().enumerate().map(|(i, &p)| Note { velocity: 0.85, ..Note::new(p, Beats(i as f64 * slot), Beats(hold)) }).collect();
+    track.clips.push(clip);
+    let mut project = Project::new("keys", tempo);
+    project.tracks.push(track);
+    crate::validate(&project).map_err(|e| e.to_string())?;
+    let settings = RenderSettings { tail_seconds: 0.0, ..RenderSettings::default() };
+    let sr = f64::from(settings.sample_rate);
+    let audio = render(&project, settings).map_err(|e| e.to_string())?;
+    let beat = 60.0 / tempo;
+    let bar_s = 4.0 * beat;
+    let mut keys = Vec::new();
+    for (i, &p) in pitches.iter().enumerate() {
+        let a = ((i as f64 * slot * beat) * sr) as usize;
+        let z = (a + (hold * beat * sr) as usize).min(audio.num_frames());
+        let mono: Vec<f32> = (a..z).map(|k| 0.5 * (audio.channel(0)[k] + audio.channel(1)[k])).collect();
+        let peak = mono.iter().fold(0f32, |m, x| m.max(x.abs()));
+        if peak < 0.001 || mono.is_empty() {
+            keys.push(KeyProbe { pitch: p, name: note_name(p), audible: false, level_db: -120.0, centroid_hz: 0.0, onsets_per_bar: 0.0, loop_bars: None });
+            continue;
+        }
+        let rms = (mono.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / mono.len() as f64).sqrt();
+        // 10 ms 包络。
+        let hop = (sr * 0.01) as usize;
+        let env: Vec<f64> = mono.chunks(hop).map(|c| c.iter().map(|x| f64::from(x.abs())).sum::<f64>() / c.len() as f64).collect();
+        let max = env.iter().cloned().fold(0.0, f64::max);
+        let mut onsets = 0usize;
+        let mut last = -100i64;
+        for k in 2..env.len() {
+            if env[k] > 0.3 * max && env[k] > 1.6 * env[k - 2] + 1e-4 && (k as i64 - last) > 6 {
+                onsets += 1;
+                last = k as i64;
+            }
+        }
+        // 循环：loop 的长度几乎都是 1、2、4 小节。在这几个候选周期上看包络的自相关（±2% 内取最高），
+        // 取不低于最高者 85% 的最短一个（1 小节的 loop 在 2、4 小节处一样相关）。
+        let mean = env.iter().sum::<f64>() / env.len() as f64;
+        let e: Vec<f64> = env.iter().map(|x| x - mean).collect();
+        let energy: f64 = e.iter().map(|x| x * x).sum::<f64>().max(1e-12);
+        let corr_at = |lag: usize| -> f64 {
+            if lag + 10 >= e.len() {
+                return 0.0;
+            }
+            e[..e.len() - lag].iter().zip(&e[lag..]).map(|(x, y)| x * y).sum::<f64>() / energy * e.len() as f64 / (e.len() - lag) as f64
+        };
+        let cands: Vec<(f64, f64)> = [1.0, 2.0, 4.0]
+            .into_iter()
+            .filter(|b| *b <= hold_bars - 0.5)
+            .map(|b| {
+                let lag = b * bar_s / 0.01;
+                let w = (lag * 0.02).max(2.0) as usize;
+                let c = ((lag as usize).saturating_sub(w)..=lag as usize + w).map(&corr_at).fold(f64::MIN, f64::max);
+                (b, c)
+            })
+            .collect();
+        let top = cands.iter().map(|c| c.1).fold(0.0, f64::max);
+        let best = cands.iter().find(|c| c.1 >= 0.85 * top).map_or((0.0, 0.0), |c| *c);
+        let loop_bars = (best.1 > 0.5 && onsets as f64 >= hold_bars * 2.0).then_some(best.0);
+        // 频谱重心（一段 8192 点）。
+        let n = 8192.min(mono.len()).next_power_of_two() / if 8192.min(mono.len()).is_power_of_two() { 1 } else { 2 };
+        let mut fft = manguebyte::dsp::fft::RealFft::<f32>::new(n);
+        let mut spec_buf = vec![manguebyte::dsp::fft::Complex::<f32>::default(); fft.spectrum_len()];
+        let mid = mono.len() / 2;
+        let start = mid.saturating_sub(n / 2);
+        let frame: Vec<f32> = (0..n).map(|k| mono.get(start + k).copied().unwrap_or(0.0) * (0.5 - 0.5 * (std::f32::consts::TAU * k as f32 / n as f32).cos())).collect();
+        fft.forward(&frame, &mut spec_buf);
+        let (mut num, mut den) = (0f64, 0f64);
+        for (k, c) in spec_buf.iter().enumerate() {
+            let m = f64::from((c.re * c.re + c.im * c.im).sqrt());
+            num += m * k as f64 * sr / n as f64;
+            den += m;
+        }
+        keys.push(KeyProbe {
+            pitch: p,
+            name: note_name(p),
+            audible: true,
+            level_db: (20.0 * rms.max(1e-9).log10() * 10.0).round() / 10.0,
+            centroid_hz: (num / den.max(1e-12)).round(),
+            onsets_per_bar: (onsets as f64 / hold_bars * 10.0).round() / 10.0,
+            loop_bars,
+        });
+    }
+    let audible: Vec<&KeyProbe> = keys.iter().filter(|k| k.audible).collect();
+    let loops = audible.iter().filter(|k| k.loop_bars.is_some()).count();
+    let summary = match (audible.first(), audible.last()) {
+        (Some(a), Some(b)) => {
+            let white_only = audible.iter().all(|k| matches!(k.pitch % 12, 0 | 2 | 4 | 5 | 7 | 9 | 11));
+            format!(
+                "{} 个键有声（{}–{}{}），其中 {loops} 个是跟着速度循环的 loop",
+                audible.len(),
+                a.name,
+                b.name,
+                if white_only && audible.len() > 1 { "，只有白键" } else { "" }
+            )
+        }
+        _ => "这个范围里没有键发声".into(),
+    };
+    let map = KeyMap { spec: spec.to_string(), params: params.clone(), tempo, hold_bars, keys, summary, probe_version: PROBE_VERSION };
+    if let Some(d) = cache.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(&cache, serde_json::to_string_pretty(&map).unwrap_or_default());
+    Ok(map)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,6 +545,11 @@ mod tests {
         assert!((c4.detected_pitch.unwrap() - 60.0).abs() < 0.5, "{:?}", c4.detected_pitch);
         let kit = describe("drums.808", &none, None, true).unwrap();
         assert!(kit.drums && kit.summary.starts_with("鼓组"), "{}", kit.summary);
+        let keys = describe_keys("drums.808", &none, 35, 38, 120.0, 2.0, true).unwrap();
+        let audible: Vec<u8> = keys.keys.iter().filter(|k| k.audible).map(|k| k.pitch).collect();
+        assert!(audible.contains(&36) && audible.contains(&38), "{audible:?}");
+        assert!(keys.keys.iter().all(|k| k.loop_bars.is_none()), "一击的鼓不是 loop");
+        assert_eq!(note_name(60), "C4");
         // 第二次从缓存读。
         assert_eq!(cached("drums.808", &none).unwrap().summary, kit.summary);
     }

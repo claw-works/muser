@@ -159,6 +159,18 @@ muser sounds describe "plugin:<路径>#<id>" --params '{"@state": "<状态文件
    6. 一次只载入一个。遇到授权、激活、"找不到音色库"、更新提示之类的对话框不要自己点掉——停下来告诉用户。
       不要改插件的设置、不要删东西。
    批量采集时逐个做、每个都确认听感不是"没有声音"，做完把采集过的音色和听感记进用户自己的 skill（下一条）。
+   **loop 套件（Kontakt 的 Leap kit 等）：按住一个键就是一段跟着工程速度走的 loop**。音频轨不做时间拉伸，
+   要用别的速度的现成鼓 loop，就用这种套件：插件按工程的 tempo 拉伸，音符按多久就打多久，起点对齐小节就对齐节拍。
+   - 载入：在 Kontakt 的 **Instruments** 里搜套件名（如 "Alter Kit"）双击——整套 loop 分在不同的键上。不要在 Loops 标签里
+     双击单条 loop：那只会得到一条 loop 的 Leap 自定义套件。载入后用 `muser sounds save "<插件>" "<名字>" <状态文件>`
+     存进"我的音色"（`muser plugin edit … -o <文件>` 存下的状态，或 view 里"载入新音色"完成时自动存）。
+   - 摸清键位：`muser sounds describe "<插件>" --params '{"@state": "<文件>"}' --keys --from 57 --to 89 --tempo <工程速度>`
+     每个键按住 4 小节，列出哪些键有声、几小节一圈、每小节起音几次、响度、亮度。例：Acoustic Drums 的 Alter Kit 是
+     C4–D6（Kontakt 标为 C3–D5）的 16 个白键，F4、A4、B4 是 2 小节的 loop，其余 1 小节；越往高音越密越响。
+   - 写法：一个音符就是一段 loop，`length` 是播放的拍数，最好是 loop 长度的整数倍（1 小节的 loop 写 4、8、16 拍）。
+     换 loop 就换音高：主歌用稀疏的键、副歌用密的，每 4 / 8 小节最后一小节换一个键当过门。
+   - 要叠在别的鼓上时，加 `eq` highpass（几百 Hz）只留镲片和军鼓的空气感，再接到底鼓的侧链上一起"呼吸"。
+
 3. **听完把结论记成用户自己的 skill**，下次直接用，不用重听。写在你（agent）自己的 skill / 记忆目录里，例如 Claude Code 的
    `~/.claude/skills/my-sounds/SKILL.md`；**不要**写进 muser 的仓库或工程目录——里面是用户本机的音色库、插件与路径。已有就更新，不要另建一份：
 

@@ -61,6 +61,9 @@ muser render beat.muser.json -o beat.wav
 - `presets <插件> [--filter 词] [--json]`：插件的内置音色（VST3 标准预设、Surge `.fxp`、Kontakt `.nki` 的名字 / 音色库 / 类别 / 标签），
   标出能不能直接用：auto（直接换成状态）/ captured（采集过）/ manual（要在插件窗口里载入一次）。
 - `state <插件> <音色>`：取这个音色的状态文件（在本机音色库 `~/.config/muser/sound-library/`），打印工程里的写法。
+- `save <插件> <名字> <状态文件>`：把一份插件状态存进音色库的"我的音色"（同名覆盖），之后在 `presets` 与 view 的抽屉里可用。
+- `describe <音色> --keys [--from 36 --to 96 --tempo 120 --hold 4]`：键位卡——每个键按住几小节，测有没有声、是不是跟着速度循环的
+  loop、几小节一圈、每小节起音、响度、亮度（loop 套件、鼓组、分区音色）。
 - `identify <插件> <状态文件>`：认出状态里载入的是哪个内置音色（比对音色文件的原样字节）。
 - `capture <插件> <音色>`（macOS）：打开插件窗口、在 Finder 里选中音色文件，人或 agent（computer use）载入后关窗口，状态存进音色库。
 - `describe <音色> [--params JSON] [--drums] [--refresh] [--json]`："听"一个音色：渲染探测音，测亮度、起音、延音、余音、音域、力度、立体声、音高，

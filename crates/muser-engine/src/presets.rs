@@ -113,7 +113,11 @@ pub fn save_mine(p: &PluginRef, name: &str, state: &Path) -> Result<PathBuf, Str
     if let Some(d) = out.parent() {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
-    std::fs::copy(state, &out).map_err(|e| format!("存进音色库失败: {e}"))?;
+    // 已经在这个位置（就是音色库里的那份）时不用复制：复制到自己会把文件截断。
+    let same = std::fs::canonicalize(state).ok().zip(std::fs::canonicalize(&out).ok()).is_some_and(|(a, b)| a == b);
+    if !same {
+        std::fs::copy(state, &out).map_err(|e| format!("存进音色库失败: {e}"))?;
+    }
     let mut idx = read_index();
     idx.mine.entry(p.id.clone()).or_default().insert(name.to_string(), out.display().to_string());
     write_index(&idx)?;

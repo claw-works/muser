@@ -188,6 +188,58 @@ pub fn run_with_main_loop(work: impl FnOnce() -> i32 + Send + 'static) -> ! {
     }
 }
 
+/// 把进程的标准输出"收走"：返回原来的 stdout（给 MCP 这类用 stdout 走协议的服务专用），并把 fd 1 接到标准错误，
+/// 之后插件（Kontakt）往 stdout 打的日志都进 stderr，不会混进协议流。只在 Unix 上；其它系统返回 None。
+pub fn take_stdout() -> Option<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::FromRawFd;
+        extern "C" {
+            fn dup(fd: i32) -> i32;
+            fn dup2(from: i32, to: i32) -> i32;
+        }
+        // SAFETY: 复制 fd 1 得到一个新 fd，交给返回的 File 独占；再把 fd 1 指向 stderr。
+        let saved = unsafe { dup(1) };
+        if saved < 0 {
+            return None;
+        }
+        unsafe { dup2(2, 1) };
+        Some(unsafe { std::fs::File::from_raw_fd(saved) })
+    }
+    #[cfg(not(unix))]
+    None
+}
+
+/// 运行 `f` 期间把进程的标准输出接到标准错误：有的插件（Kontakt）往 stdout 打日志，会混进 `--json` 的输出。
+pub fn with_stdout_to_stderr<T>(f: impl FnOnce() -> T) -> T {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        extern "C" {
+            fn dup(fd: i32) -> i32;
+            fn dup2(from: i32, to: i32) -> i32;
+            fn close(fd: i32) -> i32;
+        }
+        let _ = std::io::stdout().flush();
+        // SAFETY: 只在 fd 1 / 2 之间复制与恢复，保存的副本用完关掉。
+        let saved = unsafe { dup(1) };
+        if saved >= 0 {
+            unsafe { dup2(2, 1) };
+        }
+        let r = f();
+        let _ = std::io::stdout().flush();
+        if saved >= 0 {
+            unsafe {
+                dup2(saved, 1);
+                close(saved);
+            }
+        }
+        r
+    }
+    #[cfg(not(unix))]
+    f()
+}
+
 /// 结束进程。加载过插件时跳过 C/C++ 的退出析构：插件实例按设计不销毁（见 `defer_release`），
 /// 有的插件（Kontakt）的全局 `std::thread` 析构时还在运行，会让进程在文件都写完之后中止（SIGABRT）。
 pub fn exit(code: i32) -> ! {

@@ -296,6 +296,15 @@ enum SoundsCommand {
         /// 音色名或文件路径（`sounds presets` 列出）。
         preset: String,
     },
+    /// 把一份插件状态存进本机音色库的"我的音色"（如 `muser plugin edit` 存下的状态、调好的 loop 套件），之后
+    /// `sounds presets` 与 muser view 的音色抽屉里都能直接用。同名覆盖。
+    Save {
+        plugin: String,
+        /// 名字（如 "Alter Kit"）。
+        name: String,
+        /// 状态文件（.muserstate）。
+        state: String,
+    },
     /// 认出一份插件状态里载入的是哪个内置音色（比对音色文件的原样字节；Kontakt 的 .nki 有效）。
     Identify {
         plugin: String,
@@ -322,6 +331,20 @@ enum SoundsCommand {
         /// 忽略缓存重新听。
         #[arg(long)]
         refresh: bool,
+        /// 键位卡：每个键按住几小节，测有没有声、是不是跟着速度循环的 loop、几小节一圈、多密多响（loop 套件、鼓组、分区音色）。
+        #[arg(long)]
+        keys: bool,
+        /// 键位卡的范围（MIDI 音高，C4 = 60）。
+        #[arg(long, default_value_t = 36)]
+        from: u8,
+        #[arg(long, default_value_t = 96)]
+        to: u8,
+        /// 键位卡用的速度（loop 会被拉伸到这个速度）。
+        #[arg(long, default_value_t = 120.0)]
+        tempo: f64,
+        /// 每个键按住几小节。
+        #[arg(long, default_value_t = 4.0)]
+        hold: f64,
         #[arg(long)]
         json: bool,
     },
@@ -982,6 +1005,13 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
             println!("{}", state.display());
             println!("工程里写：\"instrument\": \"{}\", \"instrument_params\": {{ \"@state\": \"{}\", \"@label\": \"{}\" }}", p.spec(), state.display(), x.name);
         }
+        SoundsCommand::Save { plugin, name, state } => {
+            use muser_engine::presets;
+            let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
+            muser_engine::plugin::read_state_file(std::path::Path::new(&state)).map_err(|e| anyhow::anyhow!(e))?;
+            let out = presets::save_mine(&p, &name, std::path::Path::new(&state)).map_err(|e| anyhow::anyhow!(e))?;
+            println!("已存进我的音色：{name} → {}", out.display());
+        }
         SoundsCommand::Identify { plugin, state } => {
             use muser_engine::presets;
             let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
@@ -1045,9 +1075,22 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                 return Err(anyhow::anyhow!("采集要打开插件窗口，目前只支持 macOS"));
             }
         }
-        SoundsCommand::Describe { sound, params, drums, refresh, json } => {
+        SoundsCommand::Describe { sound, params, keys: true, from, to, tempo, hold, refresh, json, .. } => {
             let params = parse_map(params.as_deref())?;
-            let card = sounds::describe(&sound, &params, drums.then_some(true), refresh).map_err(|e| anyhow::anyhow!(e))?;
+            let map = muser_engine::plugin::with_stdout_to_stderr(|| sounds::describe_keys(&sound, &params, from, to, tempo, hold, refresh)).map_err(|e| anyhow::anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&map)?);
+                return Ok(());
+            }
+            println!("{}\n  {}（{} BPM，每键按住 {} 小节）", map.spec, map.summary, map.tempo, map.hold_bars);
+            for k in map.keys.iter().filter(|k| k.audible) {
+                let lp = k.loop_bars.map_or("不循环".to_string(), |b| format!("{b} 小节一圈"));
+                println!("  {:<4} {:>3}  {lp:<10} 起音 {:>4}/小节  响度 {:>6.1} dB  亮度 {:>5.0} Hz", k.name, k.pitch, k.onsets_per_bar, k.level_db, k.centroid_hz);
+            }
+        }
+        SoundsCommand::Describe { sound, params, drums, refresh, json, .. } => {
+            let params = parse_map(params.as_deref())?;
+            let card = muser_engine::plugin::with_stdout_to_stderr(|| sounds::describe(&sound, &params, drums.then_some(true), refresh)).map_err(|e| anyhow::anyhow!(e))?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&card)?);
                 return Ok(());
@@ -1093,7 +1136,7 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
                 found.len(), if failures.is_empty() { String::new() } else { format!("，{} 个读取失败", failures.len()) });
         }
         PluginCommand::Info { plugin: spec, json } => {
-            let info = plugin::info(&spec).map_err(fail)?;
+            let info = plugin::with_stdout_to_stderr(|| plugin::info(&spec)).map_err(fail)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&info)?);
                 return Ok(());
@@ -1184,7 +1227,7 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
         PluginCommand::Profile { command } => cmd_profile(command)?,
         PluginCommand::Values { plugin: spec, param, samples, params, json } => {
             let base = parse_map(params.as_deref())?;
-            let (p, values) = plugin::values(&spec, &param, samples, &base).map_err(fail)?;
+            let (p, values) = plugin::with_stdout_to_stderr(|| plugin::values(&spec, &param, samples, &base)).map_err(fail)?;
             if json {
                 let list: Vec<_> = values.iter().map(|(v, t)| serde_json::json!({ "value": v, "text": t })).collect();
                 println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "param": p, "values": list }))?);
@@ -1205,7 +1248,7 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
         }
         PluginCommand::Params { plugin: spec, filter, all, params, limit, json } => {
             let base = parse_map(params.as_deref())?;
-            let list = plugin::params(&spec, filter.as_deref(), all, &base).map_err(fail)?;
+            let list = plugin::with_stdout_to_stderr(|| plugin::params(&spec, filter.as_deref(), all, &base)).map_err(fail)?;
             let total = list.len();
             let shown: Vec<_> = if limit == 0 { list } else { list.into_iter().take(limit).collect() };
             if json {
