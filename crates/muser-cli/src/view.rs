@@ -453,7 +453,7 @@ struct State {
     /// 声卡播放器当前载入的工程（去掉推子、静音后的 JSON；变了要重新载入）。
     #[cfg(feature = "device")]
     player_shape: Option<String>,
-    /// 结构变了的工程：等这一版渲染完、乐器输出进了缓存再交给声卡播放器（声卡线程不现场载入乐器，换音色时不卡）。
+    /// 播放中结构变了的工程：等这一版渲染完、乐器输出进了缓存再交给声卡播放器（声卡线程不现场载入乐器，换音色时不卡）。
     player_pending: Option<Project>,
 }
 
@@ -521,9 +521,16 @@ impl Shared {
                     Some(pending) => *pending = p,
                     None => player.set_mix(p),
                 }
-            } else {
+            } else if player.status().playing && st.player_shape.is_some() {
+                // 正在播放时结构变了（换音色、改音符…）：旧的接着放，这一版渲染完、乐器输出进了缓存再在当前位置换上，
+                // 免得声卡线程现场载入乐器而卡顿。
                 st.player_shape = Some(shape);
                 st.player_pending = Some(p);
+            } else {
+                // 没在播放（或第一次载入）：立刻交给声卡，边渲染边播。
+                st.player_shape = Some(shape);
+                st.player_pending = None;
+                player.load(p);
             }
         }
     }
