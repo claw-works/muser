@@ -576,7 +576,7 @@ enum ProfileCommand {
 fn main() {
     // 本进程被插件扫描器以子进程方式启动时，读完插件即退出。
     muser_engine::plugin::serve_scanner_if_asked();
-    let code = match run() {
+    let code = match run_with_stack() {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("Error: {e:?}");
@@ -584,6 +584,18 @@ fn main() {
         }
     };
     muser_engine::plugin::exit(code)
+}
+
+/// Windows 主线程只有 1 MB 栈，调试构建解析这么多子命令就会栈溢出：在一个 16 MB 栈的线程里跑。
+/// 其它系统留在主线程（macOS 的插件窗口必须在主线程上）。
+#[cfg(windows)]
+fn run_with_stack() -> Result<()> {
+    std::thread::Builder::new().stack_size(16 << 20).spawn(run).context("起不了主线程")?.join().unwrap_or_else(|_| Err(anyhow::anyhow!("主线程崩溃")))
+}
+
+#[cfg(not(windows))]
+fn run_with_stack() -> Result<()> {
+    run()
 }
 
 fn run() -> Result<()> {
