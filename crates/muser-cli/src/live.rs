@@ -36,7 +36,8 @@ pub struct Change {
     /// 给整场换个标题（页面最上面，从这一段起）。
     #[serde(default)]
     pub title: Option<String>,
-    /// `"after"`（默认）：排在已经提交的音乐之后（在循环里时：这一遍放完再接）；`"now"`：下一条小节线就换（截断正在放的这段）。
+    /// `"after"`（默认）：排在已经提交的音乐之后（在循环里时：这一遍放完再接）；`"now"`：下一条小节线就换（截断正在放的这段）；
+    /// `"patch"`：改正在放的这一段——写的是完整的一段（从它的开头写起），从下一小节起接着这一段的同一位置往下放（曲式不乱）。
     #[serde(default)]
     pub at: At,
     /// 这一段几小节。
@@ -76,6 +77,7 @@ pub enum At {
     #[default]
     After,
     Now,
+    Patch,
 }
 
 /// 一条轨在这一段里做什么。没写到的轨在这一段里休息。
@@ -120,6 +122,10 @@ struct Seg {
     rep: bool,
     /// 被后来的 `"now"` 截短了。
     cut: bool,
+    /// 从这一段写的内容的第几拍开始放（`"patch"` 从中间接上；平常是 0）。
+    offset: f64,
+    /// 是 `"patch"` 改出来的：新轨的写法（instrument 等）允许和已有的重复。
+    patch: bool,
 }
 
 impl Seg {
@@ -128,6 +134,10 @@ impl Seg {
     }
     fn end(&self) -> f64 {
         self.start + self.len()
+    }
+    /// 写的这一段完整有多长（循环时一遍的长度）。
+    fn full_len(&self) -> f64 {
+        f64::from(self.change.bars) * self.ts.beats_per_bar()
     }
 }
 
@@ -160,6 +170,8 @@ pub struct Receipt {
     pub starts_in_seconds: f64,
     /// 已经排到第几小节（这一段的最后一小节）。
     pub queued_until_bar: usize,
+    /// 从这一段写的第几小节起放（`"patch"` 接在中间时大于 1）。
+    pub section_bar: usize,
 }
 
 /// 一场演奏的音乐部分：模板 + 依次的段。
@@ -213,7 +225,7 @@ impl Session {
         base.form.clear();
         base.sections.clear();
         let title = if template.name.is_empty() { "muser live".to_string() } else { template.name.clone() };
-        let s = Session { base, title, mixes: Vec::new(), segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false }] };
+        let s = Session { base, title, mixes: Vec::new(), segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false, offset: 0.0, patch: false }] };
         s.project()?;
         Ok(s)
     }
@@ -243,7 +255,8 @@ impl Session {
         let mut changed = false;
         while self.segs.last().is_some_and(|l| l.end() < until) {
             let start = self.segs.last().unwrap().end();
-            self.segs.push(Seg { start, rep: true, cut: false, ..src.clone() });
+            // 循环从这一段的开头完整地重复（就算它是从中间 patch 上来的）。
+            self.segs.push(Seg { start, rep: true, cut: false, offset: 0.0, patch: false, bars: src.change.bars, ..src.clone() });
             changed = true;
         }
         changed
@@ -256,21 +269,31 @@ impl Session {
         }
         let earliest = now + MARGIN_SECONDS * self.tempo() / 60.0;
         let before = self.segs.clone();
+        let mut patch_from: Option<u32> = None;
         let at = match change.at {
             At::After => {
                 // 排在已经提交的之后；那里已经过了（在循环里）就等这一遍循环放完。
                 let mut b = self.real_end();
-                let l = self.last_real().len();
+                let l = self.last_real().full_len();
                 while b < earliest {
                     b += l;
                 }
                 b
             }
-            At::Now => {
+            At::Now | At::Patch => {
                 self.extend(earliest + 1.0);
                 let s = self.segs.iter().find(|s| s.end() > earliest).expect("刚排过").clone();
                 let bpb = s.ts.beats_per_bar();
                 let k = ((earliest - s.start) / bpb - 1e-9).ceil().max(0.0) as u32;
+                if change.at == At::Patch {
+                    // 接着这一段的同一位置：这一段的第几小节（算上它自己从中间开始的部分）。
+                    let into = (s.offset / bpb).round() as u32 + k;
+                    if into >= change.bars {
+                        self.segs = before;
+                        bail!("这一段已经放到第 {} 小节，改写的只有 {} 小节：用 \"after\" 排在后面", into + 1, change.bars);
+                    }
+                    patch_from = Some(into);
+                }
                 s.start + f64::from(k.min(s.bars)) * bpb
             }
         };
@@ -293,12 +316,15 @@ impl Session {
             self.title = t.trim().to_string();
         }
         let ts = change.time_signature.unwrap_or(self.base.time_signature);
-        self.segs.push(Seg { start: at, bars: change.bars, ts, change: Arc::new(change), rep: false, cut: false });
+        let skip = patch_from.unwrap_or(0);
+        let offset = f64::from(skip) * ts.beats_per_bar();
+        self.segs.push(Seg { start: at, bars: change.bars - skip, ts, change: Arc::new(change), rep: false, cut: false, offset, patch: patch_from.is_some() });
         match self.project() {
             Ok(p) => {
                 let map = p.bar_map();
                 let (bar, into) = map.bar_at(at);
                 Ok(Receipt {
+                    section_bar: skip as usize + 1,
                     bar: bar + 1,
                     beat_in_bar: (into * 1000.0).round() / 1000.0 + 1.0,
                     absolute_beat: at,
@@ -333,6 +359,9 @@ impl Session {
             }
             if seg.cut {
                 name.push_str(" (cut)");
+            }
+            if seg.patch {
+                name.push_str(&format!(" (patch from bar {})", (seg.offset / seg.ts.beats_per_bar()).round() as u32 + 1));
             }
             sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None });
             p.form.push(muser_core::arrange::FormEntry::Name(name));
@@ -492,11 +521,14 @@ fn empty(name: &str) -> TrackChange {
 
 /// 把一段写进工程：片段、自动化平移到这一段的开头；新轨在这里建；效果器从这里接入 / 撤下。
 fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
-    let (off, len) = (seg.start, seg.len());
+    // `off`：这一段写的内容从哪一拍算起（patch 从中间接上时比 seg.start 早）；只放 [lo, hi) 这一截。
+    let (off, len) = (seg.start - seg.offset, seg.len());
+    let (lo, hi) = (seg.offset, seg.offset + len);
+    let tempo = p.tempo;
     for tc in &seg.change.tracks {
         let i = match p.tracks.iter().position(|t| t.name == tc.name) {
-            // 循环出来的重复：新轨那一遍已经建好了。
-            Some(i) if seg.rep => i,
+            // 循环出来的重复、patch 改写：新轨那一遍已经建好了。
+            Some(i) if seg.rep || seg.patch => i,
             Some(i) => {
                 if tc.instrument.is_some() && tc.instrument.as_deref() != Some(p.tracks[i].instrument.as_str()) {
                     bail!("音轨 '{}' 已经有乐器（{}）：中途不能换，换乐器就新开一条轨", tc.name, p.tracks[i].instrument);
@@ -522,45 +554,80 @@ fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
         };
         let t = &mut p.tracks[i];
         for c in &tc.clips {
-            if c.start.0 < 0.0 || c.start.0 >= len - 1e-9 {
+            let (cs, ce) = (c.start.0, c.start.0 + c.length.0);
+            if cs < 0.0 || cs >= hi - 1e-9 || ce <= lo + 1e-9 {
                 continue;
             }
             let mut c = c.clone();
-            c.length = Beats(c.length.0.min(len - c.start.0));
+            if cs < lo - 1e-9 {
+                // 跨过接上的地方：展开成音符，只留之后起音的（之前的已经在放的那一段里了）。
+                c = clip_from(&c, lo - cs, &t.instrument, tempo)?;
+            }
+            c.length = Beats(c.length.0.min(hi - c.start.0));
             c.start = Beats(c.start.0 + off);
             t.clips.push(c);
         }
         if !seg.rep {
+            let begin = seg.start;
             for &k in &tc.effects_off {
                 let e = t.effects.get_mut(k).ok_or_else(|| anyhow!("音轨 '{}' 没有 effects[{k}]", tc.name))?;
-                e.until = Some(Beats(e.until.map_or(off, |u| u.0.min(off))));
+                e.until = Some(Beats(e.until.map_or(begin, |u| u.0.min(begin))));
             }
             for e in &tc.effects_add {
                 let mut e = e.clone();
-                e.from = Some(Beats(off + e.from.map_or(0.0, |b| b.0)));
+                e.from = Some(Beats((off + e.from.map_or(0.0, |b| b.0)).max(begin)));
                 e.until = e.until.map(|b| Beats(off + b.0));
                 t.effects.push(e);
             }
         }
         for a in &tc.automation {
-            t.automation.push(shift(a, off));
+            t.automation.push(shift_from(a, off, seg.start));
         }
     }
     for bc in &seg.change.buses {
         let b = p.buses.iter_mut().find(|b| b.name == bc.name).ok_or_else(|| anyhow!("没有叫 '{}' 的总线（总线要先在模板里建好）", bc.name))?;
         // 总线、主输出的变化只在这一段第一次出现时：渐弱以后循环停在弱的那里，不会每遍重来。
         if !seg.rep {
-            effects_change(&mut b.effects, bc, off, &format!("总线 '{}'", bc.name))?;
-            b.automation.extend(bc.automation.iter().map(|a| shift(a, off)));
+            effects_change(&mut b.effects, bc, seg.start, &format!("总线 '{}'", bc.name))?;
+            b.automation.extend(bc.automation.iter().map(|a| shift_from(a, off, seg.start)));
         }
     }
     if let Some(m) = &seg.change.master {
         if !seg.rep {
-            effects_change(&mut p.master_effects, m, off, "主输出")?;
-            p.automation.extend(m.automation.iter().map(|a| shift(a, off)));
+            effects_change(&mut p.master_effects, m, seg.start, "主输出")?;
+            p.automation.extend(m.automation.iter().map(|a| shift_from(a, off, seg.start)));
         }
     }
     Ok(())
+}
+
+/// 同 [`shift`]，但最早从第 `begin` 拍起生效（patch 从中间接上时，之前的部分不算）。
+fn shift_from(a: &Automation, off: f64, begin: f64) -> Automation {
+    let mut a = shift(a, off);
+    a.start = a.start.map(|s| Beats(s.0.max(begin)));
+    a
+}
+
+/// 片段从它的第 `skip` 拍开始的那一截：展开成音符，只留之后起音的，时间往前挪 `skip`。
+fn clip_from(c: &Clip, skip: f64, instrument: &str, tempo: f64) -> Result<Clip> {
+    let tmp: Project = serde_json::from_value(json!({ "tempo": tempo, "tracks": [{ "name": "x", "instrument": instrument, "clips": [c] }] }))?;
+    let notes = muser_engine::clip_notes(&tmp, 0, 0).map_err(|e| anyhow!(e))?;
+    let mut out = c.clone();
+    out.abc = None;
+    out.grid = None;
+    out.drummer = None;
+    out.notes = notes
+        .into_iter()
+        .filter(|n| n.start.0 >= skip - 1e-9)
+        .map(|mut n| {
+            n.start = Beats(n.start.0 - skip);
+            n
+        })
+        .collect();
+    out.pedal = c.pedal.iter().filter(|(_, e)| *e > skip).map(|(a, e)| ((a - skip).max(0.0), e - skip)).collect();
+    out.start = Beats(c.start.0 + skip);
+    out.length = Beats(c.length.0 - skip);
+    Ok(out)
 }
 
 /// 自动化平移到这一段的开头，从这一段开头起生效。
@@ -1046,6 +1113,39 @@ mod tests {
         assert_eq!(Session::fader_at(&p, "bass", 6.0), Some(-3.0), "之前的不变");
         s.mix("master", -6.0, at + 1.0, 0.5).unwrap();
         assert_eq!(Session::fader_at(&s.project().unwrap(), "master", at + 2.0), Some(-6.0));
+    }
+
+    /// patch：从下一小节起接着这一段的同一位置；跨过接口的片段只留之后的音；之后循环从头完整地重复。
+    #[test]
+    fn patch_continues_at_the_same_place() {
+        let mut s = Session::new(&template()).unwrap();
+        let song = |kick: &str| change(json!({ "at": "after", "bars": 4, "tracks": [
+            { "name": "bass", "clips": [{ "start": 0, "length": 16, "notes": (0..16).map(|i| json!({ "pitch": 36 + i, "start": i, "length": 0.5 })).collect::<Vec<_>>() }] },
+            { "name": "drums", "clips": [{ "start": 0, "length": 16, "grid": { "kick": kick } }] } ] }));
+        s.submit(song("x..............."), 0.0).unwrap();
+        // 这一段从第 4 拍开始（模板一小节之后）。现在第 9 拍：1.5 秒（3 拍）以后的下一条小节线是第 12 拍 = 这一段的第 3 小节。
+        let mut c = song("x...x...x...x...");
+        c.at = At::Patch;
+        let r = s.submit(c, 9.0).unwrap();
+        assert_eq!((r.absolute_beat, r.section_bar), (12.0, 3), "{r:?}");
+        let p = s.project().unwrap();
+        let bass = p.tracks.iter().find(|t| t.name == "bass").unwrap();
+        // 原来那段被截在第 12 拍；改写的那段从第 12 拍起，只有这一段第 8 拍以后的音（音高 44 起）。
+        let patched = bass.clips.iter().find(|c| (c.start.0 - 12.0).abs() < 1e-9).expect("patch 的片段");
+        assert_eq!(patched.notes.first().map(|n| n.pitch), Some(44));
+        assert_eq!(patched.length.0, 8.0);
+        // 循环：从第 20 拍起，整段 4 小节从头重复。
+        s.extend(40.0);
+        let p = s.project().unwrap();
+        let bass = p.tracks.iter().find(|t| t.name == "bass").unwrap();
+        let rep = bass.clips.iter().find(|c| (c.start.0 - 20.0).abs() < 1e-9).expect("循环的片段");
+        assert_eq!(rep.length.0, 16.0);
+        assert!(p.form.iter().any(|f| matches!(f, muser_core::arrange::FormEntry::Name(n) if n.contains("patch from bar 3"))));
+        // 已经放到这一段写的范围之外：报错。
+        let mut c = song("x...");
+        c.bars = 1;
+        c.at = At::Patch;
+        assert!(s.submit(c, 21.0).is_err());
     }
 
     #[test]
