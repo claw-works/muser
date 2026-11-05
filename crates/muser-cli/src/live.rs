@@ -1018,7 +1018,8 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
                         // 再留几秒：页面看到"已结束"再退出。
                         std::thread::spawn(|| {
                             std::thread::sleep(Duration::from_secs(3));
-                            std::process::exit(0);
+                            // 加载过插件（Kontakt）时跳过 C++ 的退出析构，不然插件的后台线程还在跑就被清理，进程会崩溃。
+                            muser_engine::plugin::exit(0);
                         });
                     }
                     (200, json!({ "ok": true, "saved": l.record.as_ref().map(|p| p.display().to_string()) }))
