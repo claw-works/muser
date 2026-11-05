@@ -279,6 +279,32 @@ pub fn parse_params(params: &serde_json::Map<String, serde_json::Value>) -> Resu
     Ok(opts)
 }
 
+/// `tune_curvecc81` → ("tune", 81)；`pitch_` 当 `tune_`，`gain_` 当 `volume_`。
+fn curve_opcode(name: &str) -> Option<(&'static str, u16)> {
+    let (target, rest) = name.split_once("_curvecc")?;
+    let c: u16 = rest.parse().ok()?;
+    let t = match target {
+        "tune" | "pitch" => "tune",
+        "volume" | "gain" => "volume",
+        "amplitude" => "amplitude",
+        "pan" => "pan",
+        _ => return None,
+    };
+    Some((t, c))
+}
+
+/// 调制目标对应的曲线名（见 [`curve_opcode`]）。
+fn curve_key(t: manguebyte::sampler::ModulationTarget) -> Option<&'static str> {
+    use manguebyte::sampler::ModulationTarget as T;
+    match t {
+        T::Pitch => Some("tune"),
+        T::Volume => Some("volume"),
+        T::Amplitude => Some("amplitude"),
+        T::Pan => Some("pan"),
+        _ => None,
+    }
+}
+
 fn cc_num(name: &str, prefix: &str) -> Option<u8> {
     name.strip_prefix(prefix).and_then(|n| n.parse::<u8>().ok()).filter(|n| *n < 128)
 }
@@ -474,6 +500,8 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
         // 控制器交叉淡化：cc → (lo, hi)，淡入 / 淡出。
         let (mut xin, mut xout): (BTreeMap<u8, (f64, f64)>, BTreeMap<u8, (f64, f64)>) = (BTreeMap::new(), BTreeMap::new());
         let mut power = false;
+        // 控制器曲线（`tune_curveccN=1` 这类，SFZ 内置的 0–3 号）：(调制目标, 控制器) → 曲线号。
+        let mut curves: BTreeMap<(String, u16), u8> = BTreeMap::new();
         let mut keep: Vec<Opcode> = Vec::new();
         let num = |o: &Opcode| o.value.trim().parse::<f64>().ok();
         for o in std::mem::take(&mut r.unknown) {
@@ -497,6 +525,8 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
                 xout.entry(c).or_insert((0.0, 127.0)).1 = num(&o).unwrap_or(127.0);
             } else if n == "xf_cccurve" {
                 power = o.value.trim() == "power";
+            } else if let Some((target, c)) = curve_opcode(n).filter(|_| matches!(o.value.trim(), "0" | "1" | "2" | "3")) {
+                curves.insert((target.to_string(), c), o.value.trim().parse().unwrap_or(0));
             } else if n == "group_volume" || n == "master_volume" || n == "global_volume" {
                 r.volume += num(&o).unwrap_or(0.0);
             } else if switched && matches!(n, "sw_last" | "sw_label" | "sw_default" | "sw_lokey" | "sw_hikey") {
@@ -514,14 +544,38 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
         // `amplitude_onccN` 按 SFZ 的惯例（ARIA、sfizz）是乘法：振幅 × 深度% × 控制器/127（Karoryfer 用它让 mod wheel
         // 推到 0 时无声）。上游采样器当成加法（100% 加上去），会响出好几 dB：这里按当前控制器值折成固定振幅，
         // 不交给它（这一项不再随 CC 实时变化；其它调制照常实时）。
-        r.modulations.retain(|m| {
-            if m.target != manguebyte::sampler::ModulationTarget::Amplitude {
-                return true;
+        // 控制器曲线：上游采样器只认线性（0 号）。内置的 1 号（双极 0–1 → −1–+1）、2 号（反向 1–0）、3 号（反向双极）
+        // 折成"调制深度 × 系数 + 固定偏移"：深度 D 的 1 号曲线 = 深度 2D、基准 −D。Ixox Flute 用它做微调
+        // （`set_hdcc81=0.5` + `tune_oncc81=100` + 1 号曲线 = 0 音分），不折的话整体偏高 50 音分。
+        let curve = |m: &manguebyte::sampler::Modulation| curve_key(m.target).and_then(|t| curves.get(&(t.to_string(), m.controller)).copied()).unwrap_or(0);
+        let shape = |c: u8, v: f64| match c { 1 => 2.0 * v - 1.0, 2 => 1.0 - v, 3 => 1.0 - 2.0 * v, _ => v };
+        let (mut tune, mut volume, mut pan) = (0.0, 0.0, 0.0);
+        r.modulations.retain_mut(|m| {
+            use manguebyte::sampler::ModulationTarget as T;
+            let c = curve(m);
+            if m.target == T::Amplitude {
+                let v = shape(c, u8::try_from(m.controller).map_or(0.0, cc) / 127.0);
+                r.amplitude *= (amplitude_depth(m.controller, m.depth) / 100.0 * v).max(0.0);
+                return false;
             }
-            let v = u8::try_from(m.controller).map_or(0.0, cc) / 127.0;
-            r.amplitude *= (amplitude_depth(m.controller, m.depth) / 100.0 * v).max(0.0);
-            false
+            if c != 0 {
+                // 深度 × v 变成 深度 × shape(v) = 深度 × (k·v + b)：调制深度乘 k，基准加 深度 × b。
+                let (k, b) = match c { 1 => (2.0, -1.0), 2 => (-1.0, 1.0), _ => (-2.0, 1.0) };
+                let offset = m.depth * b;
+                match m.target {
+                    T::Pitch => tune += offset,
+                    T::Volume => volume += offset,
+                    T::Pan => pan += offset,
+                    _ => return true, // 其它目标没有可以加偏移的基准：保持线性（曲线留在不支持的列表里）
+                }
+                m.depth *= k;
+            }
+            true
         });
+        r.tune += tune;
+        r.volume += volume;
+        r.pan += pan;
+
         // 交叉淡化折算成音量（gain 曲线线性，power 曲线取平方根，保持功率）。
         let ramp = |v: f64, (a, b): (f64, f64)| if b <= a { if v >= b { 1.0 } else { 0.0 } } else { ((v - a) / (b - a)).clamp(0.0, 1.0) };
         let mut w = 1.0;

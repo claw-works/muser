@@ -794,6 +794,22 @@ mod tests {
     }
 
     /// 用本机的 freepats 音色库（MUSER_SFZ_PATH）做真实测试；不存在则跳过。
+    /// SFZ 的内置控制器曲线：1 号（双极）在控制器 0.5 时是 0 —— 和没有这条调制一样；没折算时会偏高 50 音分。
+    #[test]
+    fn sfz_bipolar_curve_is_centred() {
+        let dir = std::env::temp_dir().join(format!("muser-sfzcurve-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let plain = dir.join("plain.sfz");
+        let curved = dir.join("curved.sfz");
+        std::fs::write(&plain, "<region> sample=*sine lokey=0 hikey=127 pitch_keycenter=69").unwrap();
+        std::fs::write(&curved, "<control> set_hdcc81=0.5\n<global> tune_oncc81=100 tune_curvecc81=1\n<region> sample=*sine lokey=0 hikey=127 pitch_keycenter=69").unwrap();
+        let a = render_one(&format!("sfz:{}", plain.display()), serde_json::json!({}), &[(69, 0.0, 1.0)]).unwrap();
+        let b = render_one(&format!("sfz:{}", curved.display()), serde_json::json!({}), &[(69, 0.0, 1.0)]).unwrap();
+        let diff = a.channel(0).iter().zip(b.channel(0)).map(|(x, y)| (x - y).abs()).fold(0f32, f32::max);
+        assert!(diff < 1e-3, "双极曲线居中时音高不变，最大差 {diff}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn sfz_real_library_makes_sound() {
         let path = crate::sfz::resolve("FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz");
