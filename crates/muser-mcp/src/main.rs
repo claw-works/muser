@@ -477,6 +477,14 @@ struct LiveWaitParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct LiveMixParams {
+    /// 轨名、总线名，或 "master"（主输出）。
+    track: String,
+    /// 推子的目标值（dB，-60 到 +12）。live_status 的 mix 里有每条轨现在的 gain_db 和响度 rms_db。
+    gain_db: f64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct LiveAutoplayParams {
     /// 从现在起自主演奏多久，如 "5m"；"0" 不限。
     duration: String,
@@ -1460,6 +1468,15 @@ warnings 列出没声音的轨、推子后峰值过 0、送进主总线过载、
 runway = 写下一段；autoplay_over = 交最后一段（适合循环的乐句）就停下、等人类说话（音乐会一直循环）；idle = 再调用一次。")]
     fn live_wait(&self, Parameters(p): Parameters<LiveWaitParams>) -> Result<CallToolResult, McpError> {
         match muser_engine::live_client::request(None, "GET", &format!("/api/wait?runway={}", p.runway.unwrap_or(8.0)), None) {
+            Ok(v) => json_result(&v),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "演奏中调音量：约 0.4 秒后开始、0.3 秒内渐变到 gain_db，不用写新的一段、不打乱曲式（录下的工程里是那一刻起的音量自动化）。\
+人说\"萨克斯太小\"就用它；也可以先看 live_status 的 mix（每条轨的 gain_db 与现在的响度 rms_db）自己平衡。")]
+    fn live_mix(&self, Parameters(p): Parameters<LiveMixParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::live_client::request(None, "POST", "/api/mix", Some(&serde_json::json!({ "track": p.track, "gain_db": p.gain_db }).to_string())) {
             Ok(v) => json_result(&v),
             Err(e) => Ok(user_err(e)),
         }

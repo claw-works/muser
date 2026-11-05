@@ -131,6 +131,23 @@ impl Seg {
     }
 }
 
+/// 一次调音量：从第 `beat` 拍起，`ramp` 拍内从 `from` 渐变到 `to`（dB）。`target` 是轨名、总线名，或 "master"。
+#[derive(Debug, Clone)]
+struct Mix {
+    target: String,
+    beat: f64,
+    ramp: f64,
+    from: f64,
+    to: f64,
+}
+
+impl Mix {
+    fn automation(&self, master: bool) -> Automation {
+        serde_json::from_value(json!({ "target": if master { "master_gain_db" } else { "gain_db" }, "shape": "points",
+            "points": [[self.beat, self.from], [self.beat + self.ramp, self.to]], "start": self.beat })).expect("合法的自动化")
+    }
+}
+
 /// 提交的回执。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Receipt {
@@ -149,6 +166,8 @@ pub struct Receipt {
 pub struct Session {
     base: Project,
     segs: Vec<Seg>,
+    /// 演奏中调的音量（`muser live mix`），按时间写进对应那一段之后。
+    mixes: Vec<Mix>,
     /// 整场的标题（`--title`，或某一段的 `title`）。
     title: String,
 }
@@ -194,7 +213,7 @@ impl Session {
         base.form.clear();
         base.sections.clear();
         let title = if template.name.is_empty() { "muser live".to_string() } else { template.name.clone() };
-        let s = Session { base, title, segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false }] };
+        let s = Session { base, title, mixes: Vec::new(), segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false }] };
         s.project()?;
         Ok(s)
     }
@@ -318,10 +337,61 @@ impl Session {
             sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None });
             p.form.push(muser_core::arrange::FormEntry::Name(name));
             apply(&mut p, seg).with_context(|| format!("第 {} 段", k + 1))?;
+            // 这一段里调过的音量：写在这一段之后（比它晚的段写的自动化会覆盖它）。
+            let end = self.segs.get(k + 1).map_or(f64::INFINITY, |n| n.start);
+            for m in self.mixes.iter().filter(|m| m.beat >= seg.start - 1e-9 && m.beat < end && (m.beat < until || seg.start == 0.0)) {
+                if m.target == "master" {
+                    p.automation.push(m.automation(true));
+                } else if let Some(t) = p.tracks.iter_mut().find(|t| t.name == m.target) {
+                    t.automation.push(m.automation(false));
+                } else if let Some(b) = p.buses.iter_mut().find(|b| b.name == m.target) {
+                    b.automation.push(m.automation(false));
+                }
+            }
         }
         p.sections = sections;
         muser_engine::validate(&p).map_err(|e| anyhow!("{e}"))?;
         Ok(p)
+    }
+
+    /// 第 `beat` 拍时某条轨 / 总线 / 主输出的推子值（dB，算上自动化）。
+    fn fader_at(p: &Project, target: &str, beat: f64) -> Option<f64> {
+        let total = p.duration_beats().0 + 64.0;
+        if target == "master" {
+            let l = muser_engine::automate::compile_master(p, total).ok()?;
+            return Some(muser_engine::automate::scalar(&l.gain, beat, p.master_gain_db));
+        }
+        if let Some(i) = p.tracks.iter().position(|t| t.name == target) {
+            let l = muser_engine::automate::compile_track(p, i, total).ok()?;
+            return Some(muser_engine::automate::scalar(&l.gain, beat, p.tracks[i].gain_db));
+        }
+        let i = p.buses.iter().position(|b| b.name == target)?;
+        let l = muser_engine::automate::compile_bus(p, i, total).ok()?;
+        Some(muser_engine::automate::scalar(&l.gain, beat, p.buses[i].gain_db))
+    }
+
+    /// 调音量：从第 `at` 拍起 `ramp` 拍内渐变到 `db`。返回原来的值。
+    pub fn mix(&mut self, target: &str, db: f64, at: f64, ramp: f64) -> Result<f64> {
+        if !(-60.0..=12.0).contains(&db) {
+            bail!("音量在 -60 到 +12 dB 之间");
+        }
+        let p = self.project()?;
+        let from = Self::fader_at(&p, target, at).ok_or_else(|| {
+            anyhow!("没有叫 '{target}' 的轨或总线（主输出写 master）；有：{}", p.tracks.iter().map(|t| t.name.as_str()).chain(p.buses.iter().map(|b| b.name.as_str())).collect::<Vec<_>>().join("、"))
+        })?;
+        self.mixes.push(Mix { target: target.to_string(), beat: at, ramp, from, to: db });
+        if let Err(e) = self.project() {
+            self.mixes.pop();
+            return Err(e);
+        }
+        Ok(from)
+    }
+
+    /// 每条轨、总线、主输出现在的推子值（dB）。
+    pub fn faders(&self, now: f64) -> Vec<(String, f64)> {
+        let Ok(p) = self.project() else { return Vec::new() };
+        let names = p.tracks.iter().map(|t| t.name.clone()).chain(p.buses.iter().map(|b| b.name.clone())).chain(std::iter::once("master".to_string()));
+        names.filter_map(|n| Self::fader_at(&p, &n, now).map(|v| (n, (v * 10.0).round() / 10.0))).collect()
     }
 
     /// 给 agent 看的现状：现在第几小节、排到哪、是否在循环、每条轨、上一段写了什么。
@@ -599,9 +669,36 @@ impl Live {
         }
     }
 
+    /// 调音量：约 0.4 秒后开始（渲染领先播放的那一段已经算好了），0.3 秒内渐变到 `db`。
+    fn mix(&self, body: &Value) -> Result<Value> {
+        if self.is_stopped() {
+            bail!("演奏已经结束了");
+        }
+        let target = body["track"].as_str().ok_or_else(|| anyhow!("要 track（轨名、总线名，或 master）"))?;
+        let db = body["gain_db"].as_f64().ok_or_else(|| anyhow!("要 gain_db（推子的目标值，dB）"))?;
+        let now = self.now_beat();
+        let tempo = self.session.lock().unwrap().tempo();
+        let at = now + 0.4 * tempo / 60.0;
+        let from = self.session.lock().unwrap().mix(target, db, at, 0.3 * tempo / 60.0)?;
+        self.push()?;
+        self.save(now);
+        Ok(json!({ "ok": true, "track": target, "from_db": (from * 10.0).round() / 10.0, "to_db": db, "starts_in_seconds": 0.4 }))
+    }
+
     /// 给 agent 的状态：上次看过以后又掉过帧就提醒（页面的轮询不算"看过"）。
     fn agent_status(&self) -> Value {
         let mut v = self.status();
+        // 混音：每个节点的推子值与现在的响度（RMS dBFS，约 1.5 秒），agent 自己看谁太小、太大。
+        let now = self.now_beat();
+        let faders: std::collections::HashMap<String, f64> = self.session.lock().unwrap().faders(now).into_iter().collect();
+        let loud: std::collections::HashMap<String, Option<f64>> = self.player.loudness().into_iter().map(|(n, l)| (if n.is_empty() { "master".into() } else { n }, l)).collect();
+        let mut mix: Vec<Value> = faders
+            .iter()
+            .map(|(n, g)| json!({ "name": n, "gain_db": g, "rms_db": loud.get(n).copied().flatten().map(|x| (x * 10.0).round() / 10.0) }))
+            .filter(|m| !m["rms_db"].is_null() || m["name"] == "master")
+            .collect();
+        mix.sort_by(|a, b| b["rms_db"].as_f64().unwrap_or(-200.0).total_cmp(&a["rms_db"].as_f64().unwrap_or(-200.0)));
+        v["mix"] = json!(mix);
         let n = v["underruns"].as_u64().unwrap_or(0) as usize;
         let mut seen = self.underruns_seen.lock().unwrap();
         if n > *seen && v["warning"].is_null() {
@@ -796,6 +893,10 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
                     Ok(v) => (200, v),
                     Err(e) => (400, json!({ "error": format!("{e:#}") })),
                 },
+                (tiny_http::Method::Post, "/api/mix") => match serde_json::from_str::<Value>(&body).map_err(anyhow::Error::from).and_then(|b| l.mix(&b)) {
+                    Ok(v) => (200, v),
+                    Err(e) => (400, json!({ "error": format!("{e:#}") })),
+                },
                 (tiny_http::Method::Post, "/api/autoplay") => {
                     let d = serde_json::from_str::<Value>(&body).ok().and_then(|b| b["duration"].as_str().map(str::to_string)).unwrap_or_default();
                     match parse_duration(&d) {
@@ -925,6 +1026,26 @@ mod tests {
         assert!(s.submit(change(json!({ "bars": 1, "buses": [{ "name": "nope" }] })), 3.0).is_err(), "总线要先在模板里建好");
         s.submit(change(json!({ "at": "now", "bars": 1 })), 9.0).unwrap();
         assert!(s.project().unwrap().form.iter().any(|f| matches!(f, muser_core::arrange::FormEntry::Name(n) if n.ends_with("(cut)"))));
+    }
+
+    /// 调音量写成那一刻起的自动化；比它晚的段写的音量自动化会覆盖它。
+    #[test]
+    fn mix_is_automation_in_time_order() {
+        let mut s = Session::new(&template()).unwrap();
+        s.extend(20.0);
+        assert_eq!(s.mix("bass", -3.0, 5.0, 0.5).unwrap(), 0.0, "原来是 bass 的 gain_db 0");
+        assert!(s.mix("nobody", -3.0, 5.0, 0.5).is_err());
+        assert!(s.mix("bass", 30.0, 5.0, 0.5).is_err());
+        let p = s.project().unwrap();
+        assert_eq!(Session::fader_at(&p, "bass", 6.0), Some(-3.0));
+        // 之后的一段写了音量自动化：从那里起听它的。
+        s.submit(change(json!({ "bars": 1, "tracks": [{ "name": "bass", "automation": [{ "target": "gain_db", "shape": "points", "points": [[0, -10]] }] }] })), 10.0).unwrap();
+        let p = s.project().unwrap();
+        let at = s.segs.last().unwrap().start;
+        assert_eq!(Session::fader_at(&p, "bass", at + 0.5), Some(-10.0));
+        assert_eq!(Session::fader_at(&p, "bass", 6.0), Some(-3.0), "之前的不变");
+        s.mix("master", -6.0, at + 1.0, 0.5).unwrap();
+        assert_eq!(Session::fader_at(&s.project().unwrap(), "master", at + 2.0), Some(-6.0));
     }
 
     #[test]

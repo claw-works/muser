@@ -1732,6 +1732,14 @@ enum LiveCommand {
         #[arg(long)]
         port: Option<u16>,
     },
+    /// 演奏中调音量：轨名 / 总线名 / master，推子的目标值（dB）。约 0.4 秒后开始、0.3 秒内渐变到位；不用写新的一段，不打乱曲式。
+    Mix {
+        track: String,
+        #[arg(allow_hyphen_values = true)]
+        gain_db: f64,
+        #[arg(long)]
+        port: Option<u16>,
+    },
     /// 重设自主演奏的时长（从现在起，如 5m；0 = 不限）。
     Autoplay {
         duration: String,
@@ -1790,6 +1798,7 @@ fn cmd_live(command: LiveCommand) -> Result<()> {
         }
         LiveCommand::Status { port } => print(live::request(port, "GET", "/api/status", None)?),
         LiveCommand::Wait { runway, port } => print(live::request(port, "GET", &format!("/api/wait?runway={runway}"), None)?),
+        LiveCommand::Mix { track, gain_db, port } => print(live::request(port, "POST", "/api/mix", Some(&serde_json::json!({ "track": track, "gain_db": gain_db }).to_string()))?),
         LiveCommand::Autoplay { duration, port } => print(live::request(port, "POST", "/api/autoplay", Some(&serde_json::json!({ "duration": duration }).to_string()))?),
         LiveCommand::Stop { port } => print(live::request(port, "POST", "/api/stop", None)?),
     }

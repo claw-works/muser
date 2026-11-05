@@ -130,7 +130,7 @@ random 自动化），不改文件。需要 device 特性（发行版都带；he
 
 现场演奏（做法见 [skills/live.md](skills/live.md)）。`start <模板> [--detach] [--autoplay 3m] [--record s.muser.json] [--open] [--port 8747]`
 常驻、占着本机声卡、只听 127.0.0.1（`--detach` 在后台启动、开始演奏就返回，agent 用这个）；其余子命令控制它：`send <段.json|->` 提交一段（立即返回回执）、`status`、
-`wait [--runway 8]`（最多 30 秒）、`autoplay <时长>`、`stop`（写好录音工程并退出）。模板在 `samples/live/`。需要 device 特性。
+`wait [--runway 8]`（最多 30 秒）、`mix <轨|总线|master> <dB>`（演奏中调音量，0.3 秒渐变，不打乱曲式）、`autoplay <时长>`、`stop`（写好录音工程并退出）。模板在 `samples/live/`。需要 device 特性。
 
 ### `muser loop edit|list|show|play|save|share`
 
@@ -235,7 +235,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（47 个）
+### 已实现的 Tools（48 个）
 
 | tool | 作用 |
 |---|---|
@@ -284,6 +284,7 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `live_send` | 提交一段（小节数、拍号、各轨片段 / 效果器 / 自动化，时间相对这一段开头），立即返回生效的小节与秒数 |
 | `live_status` | 现在第几小节、排好的还剩几秒、是否在循环、各轨、上一段的写法、自主演奏还剩多久 |
 | `live_wait` | 等到跑道短于 N 秒或自主演奏时间到（最多 30 秒），返回原因 |
+| `live_mix` | 演奏中调某条轨 / 总线 / 主输出的音量（0.3 秒渐变，不用写新的一段） |
 | `live_autoplay` | 重设自主演奏的时长 |
 | `live_stop` | 结束演奏，写好录音工程 |
 

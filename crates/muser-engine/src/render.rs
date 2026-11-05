@@ -935,6 +935,8 @@ struct Strip {
     busy: std::time::Duration,
     /// 现场模式：输入、输出都安静了多少帧（够久就不处理效果链）。
     quiet: usize,
+    /// 推子后输出的均方（约 1.5 秒的指数滑动平均，[`Renderer::loudness_now`]）。
+    ms: f64,
 }
 
 /// 主总线的"推子"：只有增益。
@@ -1206,6 +1208,7 @@ impl Renderer {
                 loud: None,
                 busy: Default::default(),
                 quiet: 0,
+                ms: 0.0,
             });
         }
         let MasterLanes { effects: fx_lanes, gain } = automate::compile_master(project, beats).map_err(invalid)?;
@@ -1247,6 +1250,7 @@ impl Renderer {
             loud: None,
             busy: Default::default(),
             quiet: 0,
+            ms: 0.0,
         });
         }
 
@@ -1445,6 +1449,13 @@ impl Renderer {
                     }
                 }
                 fader(&mut o, from, cx, st.gain_db, st.pan, &st.lanes, st.law);
+                if live_mode {
+                    // 约 1.5 秒的滑动均方：每帧 ms += (x² - ms) / τ。按块近似：块内平均后一次更新。
+                    let n_o = o.num_frames();
+                    let sum: f64 = (0..2).flat_map(|c| o.channel(c).iter()).map(|x| f64::from(*x) * f64::from(*x)).sum::<f64>() / 2.0;
+                    let a = (n_o as f64 / (1.5 * cx.sr)).min(1.0);
+                    st.ms += (sum / n_o.max(1) as f64 - st.ms) * a;
+                }
                 if self.meters && !st.muted {
                     for (i, f) in (from..ready).enumerate() {
                         let w = f / METER_WINDOW;
@@ -1500,6 +1511,14 @@ impl Renderer {
         self.strips
             .iter()
             .map(|s| (s.ident.get(2..).unwrap_or("").to_string(), s.meter.get(w).map_or(0.0, |p| p[0].max(p[1]))))
+            .collect()
+    }
+
+    /// 现场模式：各节点（轨名 / 总线名，主总线是空串）推子后约 1.5 秒的响度（RMS，dBFS；没声音时 None）。
+    pub fn loudness_now(&self) -> Vec<(String, Option<f64>)> {
+        self.strips
+            .iter()
+            .map(|s| (s.ident.get(2..).unwrap_or("").to_string(), (s.ms > 1e-10).then(|| 10.0 * s.ms.log10())))
             .collect()
     }
 

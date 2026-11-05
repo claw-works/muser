@@ -78,6 +78,8 @@ struct Shared {
     dropped: AtomicUsize,
     /// 现场模式：正在听到的这一小段各节点的峰值（[`Player::levels`]）。
     levels: Mutex<Vec<(String, f32)>>,
+    /// 现场模式：各节点约 1.5 秒的响度（[`Player::loudness`]）。
+    loudness: Mutex<Vec<(String, Option<f64>)>>,
     /// 现场模式：最近约一秒里各节点占了多少（一个核的比例，[`Player::loads`]）。
     loads: Mutex<Vec<(String, f32)>>,
     /// 最近的慢事件：(在第几秒, 是什么, 毫秒)。
@@ -530,6 +532,12 @@ impl Player {
         self.shared.slow.lock().unwrap().iter().cloned().collect()
     }
 
+    /// 现场模式下各节点（轨名 / 总线名，主总线是空串）推子后约 1.5 秒的响度（RMS dBFS，没声音时 None）。
+    /// 比听到的提前一点（渲染领先播放的那一小段）。
+    pub fn loudness(&self) -> Vec<(String, Option<f64>)> {
+        self.shared.loudness.lock().unwrap().clone()
+    }
+
     /// 现场模式下最近约一秒各节点的负载（一个核的比例，1.0 = 一整个核），从高到低。
     pub fn loads(&self) -> Vec<(String, f32)> {
         self.shared.loads.lock().unwrap().clone()
@@ -717,6 +725,7 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
         if live && wrote {
             if let Some(r) = &renderer {
                 *sh.levels.lock().unwrap() = r.levels(sh.position.load(Ordering::Acquire));
+                *sh.loudness.lock().unwrap() = r.loudness_now();
                 let now = std::time::Instant::now();
                 match &last_cost {
                     Some((t, _)) if now.duration_since(*t) < Duration::from_secs(1) => {}
