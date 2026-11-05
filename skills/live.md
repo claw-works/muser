@@ -45,6 +45,8 @@
 - `title`：人换了方向（"来一段乡村"）时可以顺手改整场的标题。
 - **用一个音色之前先看说明**：`muser instruments <名字>`。有的音色一个键就是一个和弦（`poly.rave_chord_stab` 这类 chord stab），
   给它写三和弦会叠成刺耳的音团——它只按单音；有的是单音（acid 贝斯、独奏人声），重叠的音会滑音。
+- 内置鼓组的 **ride（吊镲）现在不好听**（像破锣）：爵士、乡村的 swing 律动先用 `hat`（闭镲）或 `pedal_hat` 打，
+  要真的 ride 就用本机的 SFZ / 插件鼓组（`muser sounds list`）。
 - **鼓型写短**：`grid` 的每一行会在整个片段里自己循环，一小节的 16 步就够了，不用把 8 小节都写出来；
   现成的律动在 `muser loop list` / `muser loop show <名字>`（disco、funk、house…），拿来改比从头写快。
 - **没写到的轨在这一段里休息**。想让一条轨继续，就在这一段里也给它片段（`live status` 的 `last_change` 是上一段的完整写法，
