@@ -276,5 +276,5 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
   Linux x86_64 / arm64（各有桌面版与 headless 版）、macOS arm64 / x86_64、Windows x86_64 的 `muser` + `muser-mcp`（含插件宿主），附文档与 SHA256，发布到 GitHub Release
 - MCP server（`muser-mcp`）：34 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
 
-尚未实现（路线图）：见 [TODO.md](TODO.md)（0.4：一行安装与自更新、旧工程迁移、可视化数据导出、逐段拍号、音节演唱、agent 现场演奏等；0.5：yinse 合成器）。
+尚未实现（路线图）：0.5 的 yinse 合成器（muser 自己的、给 AI 用的音色引擎）等。
 ```
