@@ -91,7 +91,8 @@ pub fn referenced(p: &Project, file: &str) -> bool {
 
 /// 把一遍贴到工作副本：名为 `take.track` 的音频轨（没有就新建），和这一遍重叠的旧片段换掉。
 pub fn place(p: &mut Project, take: &Take) -> Result<()> {
-    let beats = take.seconds * p.tempo / 60.0;
+    let tm = p.tempo_map();
+    let beats = tm.beat_at(tm.secs_at(take.start) + take.seconds) - take.start;
     let i = match p.tracks.iter().position(|t| t.name == take.track) {
         Some(i) => i,
         None => {
@@ -115,8 +116,8 @@ fn clip_json(take: &Take, beats: f64) -> Value {
 }
 
 /// 保存时把一遍写进工程 JSON（与 [`place`] 一样：找轨或新建、换掉重叠的片段）。
-pub fn place_json(v: &mut Value, take: &Take, tempo: f64) -> Result<()> {
-    let beats = take.seconds * tempo / 60.0;
+pub fn place_json(v: &mut Value, take: &Take, tm: &muser_core::tempo::TempoMap) -> Result<()> {
+    let beats = tm.beat_at(tm.secs_at(take.start) + take.seconds) - take.start;
     let tracks = v.get_mut("tracks").and_then(Value::as_array_mut).ok_or_else(|| anyhow!("工程文件里没有 tracks"))?;
     let i = match tracks.iter().position(|t| t.get("name").and_then(Value::as_str) == Some(take.track.as_str())) {
         Some(i) => i,
@@ -224,7 +225,7 @@ fn line_lags(p: &Project) -> Result<Vec<(String, usize, Option<(f64, f64)>)>> {
     if guide.is_empty() || lines.is_empty() {
         bail!("没有引导旋律：要有一条音符带 lyric（或 ABC 的 w: 歌词行）的音轨来对照");
     }
-    let spb = 60.0 / p.tempo;
+    let tm = p.tempo_map();
     let base = p.base_dir.clone().unwrap_or_default();
     // 人声：没静音的音频轨上的片段，(起点秒, 终点秒, 文件里从第几秒, 文件)。
     let clips: Vec<(f64, f64, f64, String)> = p
@@ -232,7 +233,7 @@ fn line_lags(p: &Project) -> Result<Vec<(String, usize, Option<(f64, f64)>)>> {
         .iter()
         .filter(|t| t.instrument.trim() == muser_core::audio::INSTRUMENT && !t.muted)
         .flat_map(|t| t.clips.iter())
-        .filter_map(|c| c.audio.as_ref().map(|a| (c.start.0 * spb, (c.start.0 + c.length.0) * spb, a.offset, a.file.clone())))
+        .filter_map(|c| c.audio.as_ref().map(|a| (tm.secs_at(c.start.0), tm.secs_at(c.start.0 + c.length.0), a.offset, a.file.clone())))
         .collect();
     if clips.is_empty() {
         bail!("工程里没有（没静音的）音频轨可以检查");
@@ -279,7 +280,7 @@ fn line_lags(p: &Project) -> Result<Vec<(String, usize, Option<(f64, f64)>)>> {
                 best = Some((lag, err));
             }
         }
-        rows.push((text, map.bar_at(line.start / spb).0, best));
+        rows.push((text, map.bar_at(tm.beat_at(line.start)).0, best));
     }
     Ok(rows)
 }
@@ -421,7 +422,7 @@ mod tests {
         assert_eq!(v.clips[0].length.0, 2.0, "1 秒 @ 120 BPM = 2 拍");
         // 写进 JSON 一样。
         let mut j: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        place_json(&mut j, &a, 120.0).unwrap();
+        place_json(&mut j, &a, &muser_core::tempo::TempoMap::constant(120.0)).unwrap();
         assert_eq!(j["tracks"][1]["clips"][0]["audio"]["file"], json!("recordings/vocal-take-01.wav"));
         assert!(delete(&path, &a.file, true).is_err(), "在用的不删");
         delete(&path, &a.file, false).unwrap();

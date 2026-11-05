@@ -17,6 +17,7 @@ pub mod arrange;
 pub mod chord;
 pub mod audio;
 pub mod automation;
+pub mod tempo;
 pub mod effect;
 pub mod grid;
 pub mod humanize;
@@ -132,6 +133,21 @@ impl Project {
     /// 曲式的总长（拍）。段落名不存在时不计（校验会报错）。
     pub fn form_beats(&self) -> f64 {
         self.form.iter().filter_map(|e| self.sections.get(e.section())).map(|s| f64::from(s.bars) * self.section_meter(s).beats_per_bar()).sum()
+    }
+
+    /// 速度表：拍 ↔ 秒（段落各有速度、渐变时）。没有换速度时就是一个 `tempo` 到底。
+    pub fn tempo_map(&self) -> tempo::TempoMap {
+        let mut m = tempo::TempoMap::constant(self.tempo);
+        let mut t = 0.0;
+        for s in self.form.iter().filter_map(|e| self.sections.get(e.section())) {
+            let bpb = self.section_meter(s).beats_per_bar();
+            if let Some(bpm) = s.tempo {
+                let ramp = f64::from(s.tempo_ramp_bars.unwrap_or(0).min(s.bars)) * bpb;
+                m.change(t, bpm, ramp);
+            }
+            t += f64::from(s.bars) * bpb;
+        }
+        m
     }
 
     /// 拍号表：小节和拍之间的换算（段落各有拍号时，小节不再一样长）。
@@ -302,6 +318,14 @@ impl Project {
     /// 段落、曲式、parts 的写法。
     fn validate_arrangement(&self) -> Result<(), String> {
         for (name, sec) in &self.sections {
+            if let Some(t) = sec.tempo {
+                if !(t.is_finite() && t > 0.0 && t <= 999.0) {
+                    return Err(format!("sections.{name}.tempo = {t} 应在 0–999 BPM 之间"));
+                }
+            }
+            if sec.tempo_ramp_bars.is_some_and(|r| r > sec.bars) {
+                return Err(format!("sections.{name}.tempo_ramp_bars 不能比这一段的小节数（{}）多", sec.bars));
+            }
             if sec.bars == 0 || sec.bars > 1024 {
                 return Err(format!("sections.{name}.bars = {} 应在 1–1024", sec.bars));
             }

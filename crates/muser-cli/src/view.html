@@ -638,14 +638,27 @@ const hasLoopRange = () => loopEnd !== null && loopEnd > loopStart;
 function loopBounds() {
   return $("loop").checked && hasLoopRange() ? [loopStart, Math.min(loopEnd, total)] : [0, total];
 }
+// 拍 ↔ 秒：速度会变时按服务器给的每拍秒数插值，否则按 tempo。
+function secsAt(b) {
+  const t = data && data.beat_secs;
+  if (!t) return b * 60 / data.tempo;
+  const i = Math.max(0, Math.min(t.length - 2, Math.floor(b)));
+  return t[i] + (t[i + 1] - t[i]) * (b - i);
+}
+function beatAt(s) {
+  const t = data && data.beat_secs;
+  if (!t) return s * data.tempo / 60;
+  let lo = 0, hi = t.length - 2;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (t[m] <= s) lo = m; else hi = m - 1; }
+  return lo + (s - t[lo]) / Math.max(1e-9, t[lo + 1] - t[lo]);
+}
 function defaultLoopFrames() {
   if (!data) return sr * 8;
-  return Math.max(1, Math.round((data.bar_starts[4] ?? data.beats_per_bar * 4) * 60 / data.tempo * sr));
+  return Math.max(1, Math.round(secsAt(data.bar_starts[4] ?? data.beats_per_bar * 4) * sr));
 }
 function snapLoopFrame(frame) {
   if (!data) return Math.round(frame);
-  const beat = 60 / data.tempo * sr;
-  return Math.max(0, Math.min(total, Math.round(Math.round(frame / beat) * beat)));
+  return Math.max(0, Math.min(total, Math.round(secsAt(Math.round(beatAt(frame / sr))) * sr)));
 }
 function updateLoopRangeUI() {
   const label = $("loop-range"), clear = $("clear-loop");
@@ -1404,13 +1417,13 @@ document.addEventListener("keydown", (e) => {
     const n = data.nodes.find((x) => x.id === selectedClip.id), c = n && n.clips[selectedClip.clip];
     if (!c) return;
     // 每次 10 毫秒；按住 Shift 一次 1/16 音符。
-    const step = e.shiftKey ? 0.25 : 0.01 * data.tempo / 60, to = Math.max(0, c.start + (e.key === "ArrowLeft" ? -step : step));
+    const step = e.shiftKey ? 0.25 : beatAt(secsAt(c.start) + 0.01) - c.start, to = Math.max(0, c.start + (e.key === "ArrowLeft" ? -step : step));
     c.start = to; drawTrackLanes();   // 先在页面上挪，连按时不等服务器
     post("/api/clip", { track: +/\d+/.exec(n.id)[0], clip: selectedClip.clip, start: to }).then(refresh).catch(() => {});
   }
 });
 function bindClipEditing(lane, n) {
-  const beatAt = (e) => { const r = lane.getBoundingClientRect(); return Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * (total / sr) * data.tempo / 60; };
+  const beatAt = (e) => { const r = lane.getBoundingClientRect(); return beatAt(Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * (total / sr)); };
   const clipAt = (beat) => (n.clips || []).findIndex((c) => c.audio && beat >= c.start && beat < c.start + c.length);
   const trackIndex = +/\d+/.exec(n.id)[0];
   lane.addEventListener("pointermove", (e) => { if (!lane.dataset.drag) lane.classList.toggle("over-audio", !cutting && clipAt(beatAt(e)) >= 0); });
@@ -1478,7 +1491,7 @@ async function startDeviceRecording() {
   const looped = hasLoopRange();
   const from = looped ? loopStart : position();
   const until = looped ? Math.min(loopEnd, total) : total;
-  const spb = 60 / data.tempo, bar = Math.round((data.bar_starts && data.bar_starts[1]) || data.beats_per_bar || 4);
+  const b0 = beatAt(from / sr), spb = secsAt(b0 + 1) - secsAt(b0), bar = Math.round((data.bar_starts && data.bar_starts[1]) || data.beats_per_bar || 4);
   const count = +$("rec-countin").value * bar;
   const btn = $("rec-btn");
   rec = { device: true };
@@ -1511,7 +1524,7 @@ async function startRecording() {
   const from = looped ? loopStart : position();
   const until = looped ? Math.min(loopEnd, total) : total;
   if (playing) pause();
-  const spb = 60 / data.tempo, bar = (data.bar_starts && data.bar_starts[1]) || data.beats_per_bar || 4;
+  const b0 = beatAt(from / sr), spb = secsAt(b0 + 1) - secsAt(b0), bar = (data.bar_starts && data.bar_starts[1]) || data.beats_per_bar || 4;
   const count = +$("rec-countin").value * Math.round(bar);
   const t0 = ctx.currentTime + 0.15 + count * spb;     // 伴奏从 from 开始播的时刻
   for (let k = 0; k < count; k++) {                   // 预备拍：每拍一下，小节头高一点
@@ -1548,7 +1561,7 @@ async function stopRecording() {
   }
   if (out.length < rate * 0.1) { $("rec-status").textContent = t("recHelp"); return; }
   $("rec-status").textContent = t("recUploading");
-  const beat = r.from / sr * data.tempo / 60;
+  const beat = beatAt(r.from / sr);
   try {
     const res = await fetch(`/api/record?track=${encodeURIComponent($("rec-track").value || "vocal")}&start=${beat}`, { method: "POST", body: wavBlob(Float32Array.from(out), rate) });
     const j = await res.json();
@@ -1623,12 +1636,12 @@ function drawTimeline() {
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + "px"; }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   const secPerBeat = 60 / data.tempo, dur = total / sr;
-  const x = (beat) => beat * secPerBeat / dur * W;
+  const x = (beat) => secsAt(beat) / dur * W;
   g.fillStyle = "#0d101a"; g.fillRect(0, 0, W, H);
   g.font = "10px system-ui"; g.textBaseline = "middle";
   const barWidth = data.beats_per_bar * secPerBeat / dur * W;
   const step = Math.max(1, Math.ceil(28 / (barWidth || 1)));
-  for (let bar = 0; bar < data.bar_starts.length && data.bar_starts[bar] * secPerBeat < dur; bar++) {
+  for (let bar = 0; bar < data.bar_starts.length && secsAt(data.bar_starts[bar]) < dur; bar++) {
     const bx = x(data.bar_starts[bar]);
     g.fillStyle = bar % step ? "#1a1e2c" : "#2b3145"; g.fillRect(bx, rulerH, 1, H - rulerH);
     if (bar % step === 0) { g.fillStyle = "#737c93"; g.fillText(String(bar + 1).padStart(2, "0"), bx + 4, rulerH / 2); }
@@ -1671,11 +1684,11 @@ function drawTrackLanes() {
     const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = 50;
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-    const secPerBeat = 60 / data.tempo, dur = total / sr, x = (beat) => beat * secPerBeat / dur * W;
+    const secPerBeat = 60 / data.tempo, dur = total / sr, x = (beat) => secsAt(beat) / dur * W;
     g.fillStyle = i % 2 ? "#0e111b" : "#10131e"; g.fillRect(0, 0, W, H);
     const barWidth = data.beats_per_bar * secPerBeat / dur * W;
     const step = Math.max(1, Math.ceil(28 / (barWidth || 1)));
-    for (let bar = 0; bar < data.bar_starts.length && data.bar_starts[bar] * secPerBeat < dur; bar++) {
+    for (let bar = 0; bar < data.bar_starts.length && secsAt(data.bar_starts[bar]) < dur; bar++) {
       const bx = x(data.bar_starts[bar]);
       g.fillStyle = bar % step ? "#1a1e2b" : "#2a3043"; g.fillRect(bx, 0, 1, H);
     }

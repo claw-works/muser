@@ -26,6 +26,12 @@ pub struct Section {
     /// 这一段的拍号（如 `{"numerator": 7, "denominator": 8}`）；不写就用工程的 `time_signature`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_signature: Option<crate::TimeSignature>,
+    /// 这一段的速度（BPM）；不写就沿用前一段的（第一段前是工程的 `tempo`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tempo: Option<f64>,
+    /// 换速度时用这一段开头的几小节从前一段的速度渐变过来（渐快、渐慢；按时间线性）；不写或 0 = 在这一段开头直接切换。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tempo_ramp_bars: Option<u32>,
     /// 和弦进行，如 `"Am7 F C G"`（每个一小节）、`"F G | Em Am"`（`|` 分小节，一小节里平分）。比段落短时循环。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chords: Option<String>,

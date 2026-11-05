@@ -528,6 +528,9 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
     });
     // 小节按拍号表排（段落各有拍号时小节不一样长），换拍号的小节前写内联 [M:]。
     let map = project.bar_map();
+    // 速度会变：每小节开头的速度（取整）变了就在这一小节前写内联 [Q:1/4=N]；渐变按小节写成台阶。
+    let tm = project.tempo_map();
+    let q_of = |bar: usize| tm.bpm_at(map.bar_start(bar)).round().max(1.0) as u32;
     let ts = map.segs[0].1;
     let end_beats = used.iter().map(|t| t.end).fold(0.0, f64::max).max(project.duration_beats().0);
     let bars = map.bars_until(end_beats);
@@ -642,7 +645,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
 
     // 头部。
     let mut abc = String::new();
-    let bpm = project.tempo.round().max(1.0) as u32;
+    let bpm = q_of(0);
     if opts.dialect == Dialect::Yue2 {
         abc.push_str(&format!("X:1\nT:\nM:{}/{}\nL:1/{denominator}\nQ:1/4={bpm}\n", ts.numerator, ts.denominator));
         abc.push_str("V: Vocal clef=treble name=\"Vocal Melody\" snm=\"Vocal\"\nV: Ins clef=treble name=\"Ins Melody\" snm=\"Inst.\"\n");
@@ -707,7 +710,10 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
                     if vi == 0 { chord_at.iter().filter(|(c, _)| *c >= a && *c < z).cloned().collect() } else { Vec::new() };
                 let empty = evs.iter().all(|e| e.pitches.is_empty());
                 let meter = map.meter_of(bar);
-                let inline = if bar > 0 && meter != map.meter_of(bar - 1) { format!("[M:{}/{}]", meter.numerator, meter.denominator) } else { String::new() };
+                let mut inline = if bar > 0 && meter != map.meter_of(bar - 1) { format!("[M:{}/{}]", meter.numerator, meter.denominator) } else { String::new() };
+                if bar > 0 && !tm.is_constant() && q_of(bar) != q_of(bar - 1) {
+                    inline += &format!("[Q:1/4={}]", q_of(bar));
+                }
                 let body = if empty && bar_chords.is_empty() { "Z".into() } else { write_bar(&evs, &bar_chords, key, &mut accs[vi], opts.dialect) };
                 line.push(inline + &body);
                 if let Some(words) = words {

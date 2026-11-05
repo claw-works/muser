@@ -68,14 +68,16 @@ fn envelope(path: &Path) -> Result<std::sync::Arc<Vec<f32>>, String> {
 pub fn clip_wave(project: &Project, clip: &muser_core::Clip, buckets: usize) -> Option<(Vec<f32>, f64)> {
     let a = clip.audio.as_ref()?;
     let env = envelope(&resolve(project, &a.file)).ok()?;
-    let seconds = clip.length.to_seconds(project.tempo);
+    let tm = project.tempo_map();
+    let seconds = tm.secs_between(clip.start.0, clip.length.0);
     let from = ((a.offset * ENVELOPE_RATE) as usize).min(env.len());
     let to = (((a.offset + seconds) * ENVELOPE_RATE).ceil() as usize).min(env.len());
     let part = &env[from..to];
     let gain = manguebyte::prelude::decibels::db_to_gain(a.gain_db) as f32;
     let k = part.len().div_ceil(buckets.max(1)).max(1);
     let wave = part.chunks(k).map(|c| (c.iter().fold(0.0f32, |m, &v| m.max(v)) * gain).min(1.0)).collect();
-    Some((wave, part.len() as f64 / ENVELOPE_RATE * project.tempo / 60.0))
+    let t0 = tm.secs_at(clip.start.0);
+    Some((wave, tm.beat_at(t0 + part.len() as f64 / ENVELOPE_RATE) - clip.start.0))
 }
 
 /// 第 `ti` 条音轨整首的干声（`total_frames` 帧，`sr` 采样率）。
@@ -84,6 +86,7 @@ pub fn track_buffer(project: &Project, ti: usize, sr: u32, total_frames: usize) 
     let rate = f64::from(sr);
     let mut out = AudioBuffer::<f32>::new(2, total_frames);
     let mut files: HashMap<PathBuf, AudioBuffer<f32>> = HashMap::new();
+    let tm = project.tempo_map();
     for (ci, clip) in track.clips.iter().enumerate() {
         let Some(a) = &clip.audio else { continue };
         let path = resolve(project, &a.file);
@@ -92,9 +95,9 @@ pub fn track_buffer(project: &Project, ti: usize, sr: u32, total_frames: usize) 
             files.insert(path.clone(), buf);
         }
         let src = &files[&path];
-        let at = (clip.start.to_seconds(project.tempo) * rate).round() as usize;
+        let at = (tm.secs_at(clip.start.0) * rate).round() as usize;
         let from = (a.offset * rate).round() as usize;
-        let len = (clip.length.to_seconds(project.tempo) * rate).round() as usize;
+        let len = (tm.secs_between(clip.start.0, clip.length.0) * rate).round() as usize;
         let n = len.min(src.num_frames().saturating_sub(from)).min(total_frames.saturating_sub(at));
         let gain = manguebyte::prelude::decibels::db_to_gain(a.gain_db) as f32;
         let (fade_in, fade_out) = ((a.fade_in * rate) as usize, (a.fade_out * rate) as usize);

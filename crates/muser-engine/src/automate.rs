@@ -306,7 +306,8 @@ pub fn compile_master(project: &Project, total_beats: f64) -> Result<MasterLanes
 
 /// 工程的总长度（拍），含结尾余响，用于随机自动化的预计算。
 pub fn total_beats(project: &Project, tail_seconds: f64) -> f64 {
-    project.duration_beats().0 + tail_seconds * project.tempo / 60.0
+    let tm = project.tempo_map();
+    tm.beat_at(tm.secs_at(project.duration_beats().0) + tail_seconds)
 }
 
 /// 只校验，不渲染。

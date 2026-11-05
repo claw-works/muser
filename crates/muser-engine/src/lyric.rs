@@ -365,14 +365,14 @@ pub struct KaraokeToken {
 /// 卡拉 OK 和 `muser takes --timing` 都以它为准。
 pub fn guide_notes(project: &muser_core::Project) -> Vec<(f64, f64, u8)> {
     let Ok(p) = crate::arrange::arranged(project) else { return Vec::new() };
-    let spb = 60.0 / p.tempo;
+    let tm = p.tempo_map();
     let mut out: Vec<(f64, f64, u8)> = Vec::new();
     for (ti, t) in p.tracks.iter().enumerate() {
         for (ci, c) in t.clips.iter().enumerate() {
             for n in crate::clip_notes(&p, ti, ci).unwrap_or_default() {
                 if n.lyric.is_some() {
                     let s = c.start.0 + n.start.0;
-                    out.push((s * spb, (s + n.length.0.min(c.length.0 - n.start.0)) * spb, n.pitch));
+                    out.push((tm.secs_at(s), tm.secs_at(s + n.length.0.min(c.length.0 - n.start.0)), n.pitch));
                 }
             }
         }
@@ -390,14 +390,14 @@ pub fn guide_notes(project: &muser_core::Project) -> Vec<(f64, f64, u8)> {
 /// 没有 `lyrics` 时按音节显示，休止超过一拍半就换行。
 pub fn karaoke(project: &muser_core::Project) -> Vec<KaraokeLine> {
     let Ok(p) = crate::arrange::arranged(project) else { return Vec::new() };
-    let spb = 60.0 / p.tempo;
+    let tm = p.tempo_map();
     let mut syl: Vec<(f64, f64, String)> = Vec::new();
     for (ti, t) in p.tracks.iter().enumerate() {
         for (ci, c) in t.clips.iter().enumerate() {
             for n in crate::clip_notes(&p, ti, ci).unwrap_or_default() {
                 if let Some(l) = &n.lyric {
                     let s = c.start.0 + n.start.0;
-                    syl.push((s * spb, (s + n.length.0.min(c.length.0 - n.start.0)) * spb, l.clone()));
+                    syl.push((tm.secs_at(s), tm.secs_at(s + n.length.0.min(c.length.0 - n.start.0)), l.clone()));
                 }
             }
         }
@@ -443,7 +443,7 @@ pub fn karaoke(project: &muser_core::Project) -> Vec<KaraokeLine> {
     } else {
         let mut cur: Vec<KaraokeToken> = Vec::new();
         for (s, e, text) in syl {
-            if cur.last().is_some_and(|l| s - l.end > 1.5 * spb) {
+            if cur.last().is_some_and(|l| s - l.end > 1.5 * 60.0 / tm.bpm_at(tm.beat_at(l.end))) {
                 out.push(KaraokeLine { start: cur[0].start, end: cur.last().unwrap().end, tokens: std::mem::take(&mut cur) });
             }
             cur.push(KaraokeToken { text, start: s, end: e });

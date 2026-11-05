@@ -46,6 +46,12 @@ pub struct Change {
     pub at: At,
     /// 这一段几小节。
     pub bars: u32,
+    /// 这一段的速度（BPM）；不写就沿用前一段的。
+    #[serde(default)]
+    pub tempo: Option<f64>,
+    /// 用这一段开头的几小节从前一段的速度渐变过来（渐快、渐慢）；不写或 0 = 直接切换。
+    #[serde(default)]
+    pub tempo_ramp_bars: Option<u32>,
     /// 这一段的拍号；不写就用模板的。
     #[serde(default)]
     pub time_signature: Option<TimeSignature>,
@@ -209,6 +215,8 @@ impl Session {
         let bars = ((arranged.duration_beats().0 / bpb) - 1e-9).ceil().max(1.0) as u32;
         let first = Change {
             name: Some("template".into()),
+            tempo: None,
+            tempo_ramp_bars: None,
             note: None,
             title: None,
             lyrics: None,
@@ -243,8 +251,21 @@ impl Session {
         }
     }
 
-    pub fn tempo(&self) -> f64 {
-        self.base.tempo
+    /// 整场的速度表：和生成的工程一致（写了 `tempo` 的段从段首起换，渐变不超过这一段）。
+    pub fn tm(&self) -> muser_core::tempo::TempoMap {
+        let mut m = muser_core::tempo::TempoMap::constant(self.base.tempo);
+        for s in &self.segs {
+            if let Some(bpm) = s.change.tempo {
+                m.change(s.start, bpm, f64::from(s.change.tempo_ramp_bars.unwrap_or(0).min(s.bars)) * s.ts.beats_per_bar());
+            }
+        }
+        m
+    }
+
+    /// 从第 `beat` 拍起再过 `secs` 秒是第几拍。
+    pub fn beat_after(&self, beat: f64, secs: f64) -> f64 {
+        let m = self.tm();
+        m.beat_at(m.secs_at(beat) + secs)
     }
 
     fn last_real(&self) -> &Seg {
@@ -274,7 +295,7 @@ impl Session {
         if change.bars == 0 || change.bars > 256 {
             bail!("bars 应在 1 到 256 之间");
         }
-        let earliest = now + MARGIN_SECONDS * self.tempo() / 60.0;
+        let earliest = self.beat_after(now, MARGIN_SECONDS);
         let before = self.segs.clone();
         let mut patch_from: Option<u32> = None;
         let at = match change.at {
@@ -330,13 +351,14 @@ impl Session {
         match self.project() {
             Ok(p) => {
                 let map = p.bar_map();
+                let tm = self.tm();
                 let (bar, into) = map.bar_at(at);
                 Ok(Receipt {
                     section_bar: skip as usize + 1,
                     bar: bar + 1,
                     beat_in_bar: (into * 1000.0).round() / 1000.0 + 1.0,
                     absolute_beat: at,
-                    starts_in_seconds: ((at - now) * 60.0 / self.tempo()).max(0.0),
+                    starts_in_seconds: (tm.secs_at(at) - tm.secs_at(now)).max(0.0),
                     queued_until_bar: map.bar_at(self.real_end()).0,
                 })
             }
@@ -371,7 +393,7 @@ impl Session {
             if seg.patch {
                 name.push_str(&format!(" (patch from bar {})", (seg.offset / seg.ts.beats_per_bar()).round() as u32 + 1));
             }
-            sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None });
+            sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None, tempo: seg.change.tempo, tempo_ramp_bars: seg.change.tempo_ramp_bars });
             p.form.push(muser_core::arrange::FormEntry::Name(name));
             apply(&mut p, seg).with_context(|| format!("第 {} 段", k + 1))?;
             // 这一段里调过的音量：写在这一段之后（比它晚的段写的自动化会覆盖它）。
@@ -438,7 +460,8 @@ impl Session {
             Err(e) => return json!({ "error": format!("{e:#}") }),
         };
         let map = p.bar_map();
-        let spb = 60.0 / self.tempo();
+        let tm = self.tm();
+        let secs_until = |b: f64| (tm.secs_at(b) - tm.secs_at(now)).max(0.0);
         let real_end = self.real_end();
         let cur = self.segs.iter().position(|s| s.end() > now).unwrap_or(self.segs.len() - 1);
         let seg = &self.segs[cur];
@@ -450,15 +473,15 @@ impl Session {
             "bar": bar_now + 1,
             "beat_in_bar": (into * 100.0).floor() / 100.0 + 1.0,
             "absolute_beat": now,
-            "tempo": self.tempo(),
+            "tempo": (tm.bpm_at(now) * 10.0).round() / 10.0,
             "time_signature": [seg.ts.numerator, seg.ts.denominator],
             "title": self.title,
             "next": self.segs.iter().skip(cur + 1).find(|s| !s.rep).map(|s| json!({ "name": s.change.name, "note": s.change.note,
-                "bar": map.bar_at(s.start).0 + 1, "starts_in_seconds": ((s.start - now) * spb).max(0.0) })),
+                "bar": map.bar_at(s.start).0 + 1, "starts_in_seconds": secs_until(s.start) })),
             "segment": { "index": cur + 1, "name": seg.change.name, "note": seg.change.note, "start_bar": map.bar_at(seg.start).0 + 1, "bars": seg.bars, "repeat": seg.rep,
-                         "seconds_to_end": ((seg.end() - now) * spb).max(0.0) },
+                         "seconds_to_end": secs_until(seg.end()) },
             "queued_until_bar": map.bar_at(real_end).0,
-            "runway_seconds": ((real_end - now) * spb).max(0.0),
+            "runway_seconds": secs_until(real_end),
             "looping": looping,
             "loop": { "start_bar": map.bar_at(last.start).0 + 1, "bars": last.bars, "repeats_played": if looping { reps } else { 0 } },
             "tracks": p.tracks.iter().map(|t| json!({ "name": t.name, "instrument": t.instrument,
@@ -473,32 +496,36 @@ impl Session {
 impl Session {
     /// 给页面画时间线：每一段（秒、小节、拍号、是不是循环出来的、哪些轨在演奏）；`now`（拍）附近的段带上卡拉 OK 字幕（秒，整场的时间）。
     pub fn timeline(&self, now: f64) -> Value {
-        let spb = 60.0 / self.tempo();
+        let tm = self.tm();
+        let sec = |b: f64| tm.secs_at(b);
+        let now_s = sec(now);
         let mut bar = 1u32;
         let segs: Vec<Value> = self
             .segs
             .iter()
             .map(|s| {
-                let near = s.end() * spb > now * spb - 10.0 && s.start * spb < now * spb + 60.0;
-                let base = (s.start - s.offset) * spb;
+                let near = sec(s.end()) > now_s - 10.0 && sec(s.start) < now_s + 60.0;
+                // 字幕的时间是相对这一段内容开头的拍数（karaoke_of 按 60 BPM 算），按整场的速度表换成秒。
+                let base = s.start - s.offset;
+                let at = |b: f64| sec(base + b);
                 let karaoke: Vec<Value> = if near {
                     s.karaoke
                         .iter()
-                        .filter(|l| base + l.end > s.start * spb && base + l.start < s.end() * spb)
-                        .map(|l| json!({ "start": base + l.start, "end": base + l.end,
-                            "tokens": l.tokens.iter().map(|t| json!({ "text": t.text, "start": base + t.start, "end": base + t.end })).collect::<Vec<_>>() }))
+                        .filter(|l| base + l.end > s.start && base + l.start < s.end())
+                        .map(|l| json!({ "start": at(l.start), "end": at(l.end),
+                            "tokens": l.tokens.iter().map(|t| json!({ "text": t.text, "start": at(t.start), "end": at(t.end) })).collect::<Vec<_>>() }))
                         .collect()
                 } else {
                     Vec::new()
                 };
-                let v = json!({ "start": s.start * spb, "end": s.end() * spb, "bar": bar, "bars": s.bars, "name": s.change.name, "karaoke": karaoke,
+                let v = json!({ "start": sec(s.start), "end": sec(s.end()), "bar": bar, "bars": s.bars, "name": s.change.name, "karaoke": karaoke,
                     "meter": [s.ts.numerator, s.ts.denominator], "repeat": s.rep,
                     "tracks": s.change.tracks.iter().filter(|t| !t.clips.is_empty()).map(|t| t.name.clone()).collect::<Vec<_>>() });
                 bar += s.bars;
                 v
             })
             .collect();
-        json!({ "segments": segs, "queued_until": self.real_end() * spb })
+        json!({ "segments": segs, "queued_until": sec(self.real_end()) })
     }
 }
 
@@ -539,7 +566,7 @@ fn empty(name: &str) -> TrackChange {
     }
 }
 
-/// 一段的卡拉 OK 字幕：只用这一段写的内容算（时间相对它的开头）。乐器：新轨写的、模板里的，否则随便一个音高乐器（只为展开音符）。
+/// 一段的卡拉 OK 字幕：只用这一段写的内容算（时间是相对它开头的拍数：按 60 BPM 算，秒 = 拍）。乐器：新轨写的、模板里的，否则随便一个音高乐器（只为展开音符）。
 fn karaoke_of(change: &Change, base: &Project, ts: TimeSignature) -> Vec<muser_engine::lyric::KaraokeLine> {
     let tracks: Vec<Value> = change
         .tracks
@@ -550,7 +577,7 @@ fn karaoke_of(change: &Change, base: &Project, ts: TimeSignature) -> Vec<muser_e
             json!({ "name": t.name, "instrument": inst, "clips": t.clips })
         })
         .collect();
-    let tmp = json!({ "tempo": base.tempo, "time_signature": ts, "lyrics": change.lyrics, "tracks": tracks });
+    let tmp = json!({ "tempo": 60.0, "time_signature": ts, "lyrics": change.lyrics, "tracks": tracks });
     serde_json::from_value::<Project>(tmp).map(|p| muser_engine::lyric::karaoke(&p)).unwrap_or_default()
 }
 
@@ -718,7 +745,7 @@ const UNDERRUN_WARN: Duration = Duration::from_secs(30);
 
 impl Live {
     fn now_beat(&self) -> f64 {
-        self.player.status().position * self.session.lock().unwrap().tempo() / 60.0
+        self.session.lock().unwrap().tm().beat_at(self.player.status().position)
     }
 
     /// 把整场写进 `--record`（只到现在为止开始的段）。
@@ -779,9 +806,12 @@ impl Live {
         let target = body["track"].as_str().ok_or_else(|| anyhow!("要 track（轨名、总线名，或 master）"))?;
         let db = body["gain_db"].as_f64().ok_or_else(|| anyhow!("要 gain_db（推子的目标值，dB）"))?;
         let now = self.now_beat();
-        let tempo = self.session.lock().unwrap().tempo();
-        let at = now + 0.4 * tempo / 60.0;
-        let from = self.session.lock().unwrap().mix(target, db, at, 0.3 * tempo / 60.0)?;
+        let (at, ramp) = {
+            let s = self.session.lock().unwrap();
+            let at = s.beat_after(now, 0.4);
+            (at, s.beat_after(at, 0.3) - at)
+        };
+        let from = self.session.lock().unwrap().mix(target, db, at, ramp)?;
         self.push()?;
         self.save(now);
         Ok(json!({ "ok": true, "track": target, "from_db": (from * 10.0).round() / 10.0, "to_db": db, "starts_in_seconds": 0.4 }))
@@ -934,8 +964,9 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
         underruns_seen: Mutex::new(0),
     });
     {
-        let tempo = live.session.lock().unwrap().tempo();
-        live.session.lock().unwrap().extend(KEEP_SECONDS * tempo / 60.0);
+        let mut s = live.session.lock().unwrap();
+        let keep = s.beat_after(0.0, KEEP_SECONDS);
+        s.extend(keep);
     }
     live.push()?;
     std::fs::write(muser_engine::live_client::port_file(), json!({ "port": port, "pid": std::process::id(), "template": template }).to_string())?;
@@ -957,8 +988,8 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
             let now = l.now_beat();
             let changed = {
                 let mut s = l.session.lock().unwrap();
-                let keep = KEEP_SECONDS * s.tempo() / 60.0;
-                s.extend(now + keep)
+                let until = s.beat_after(now, KEEP_SECONDS);
+                s.extend(until)
             };
             if changed {
                 if let Err(e) = l.push() {
@@ -1111,6 +1142,24 @@ mod tests {
     }
 
     /// 总线、主输出的自动化与效果器，段落名（循环、截短的注明）。
+    /// 段里换速度：会话自己的速度表和生成的工程一致；渐变的段循环时停在新速度上；回执、status 的秒数按速度表算。
+    #[test]
+    fn tempo_changes_follow_the_map() {
+        let mut s = Session::new(&template()).unwrap();
+        let r = s.submit(change(json!({ "bars": 2, "tempo": 60, "tempo_ramp_bars": 2, "tracks": [] })), 0.0).unwrap();
+        assert_eq!(r.absolute_beat, 4.0);
+        assert!((r.starts_in_seconds - 2.0).abs() < 1e-9, "{r:?}");
+        s.extend(60.0);
+        let (mine, theirs) = (s.tm(), s.project().unwrap().tempo_map());
+        for b in [0.0, 3.0, 5.5, 12.0, 30.0, 59.0] {
+            assert!((mine.secs_at(b) - theirs.secs_at(b)).abs() < 1e-9, "第 {b} 拍");
+        }
+        assert!((mine.bpm_at(12.0) - 60.0).abs() < 1e-9 && (mine.bpm_at(30.0) - 60.0).abs() < 1e-9, "循环停在 60");
+        // 120 → 60 在 8 拍里按时间线性：120·8/(120+60) 秒。
+        assert!((mine.secs_between(4.0, 8.0) - 960.0 / 180.0).abs() < 1e-9);
+        assert_eq!(s.status(12.0)["tempo"], 60.0);
+    }
+
     #[test]
     fn buses_master_and_names() {
         let mut s = Session::new(&template()).unwrap();

@@ -41,7 +41,7 @@ pub mod transport {
     use std::cell::RefCell;
     use std::sync::Arc;
 
-    use manguebyte::dsp::timeline::{TempoMap, TimeSignature};
+    use manguebyte::dsp::timeline::{TempoCurve, TempoMap, TimeSignature};
     use manguebyte::prelude::Transport;
 
     thread_local! {
@@ -64,7 +64,15 @@ pub mod transport {
     pub fn set(project: &muser_core::Project, start: usize) -> Guard {
         let bars = project.bar_map();
         let segs: Vec<(f64, u16, u16)> = bars.segs.iter().map(|(b, ts)| (*b, u16::from(ts.numerator), u16::from(ts.denominator))).collect();
-        let new = Arc::new(map(project.tempo, &segs, |b| bars.bar_at(b).0));
+        let mut m = map(project.tempo, &segs, |b| bars.bar_at(b).0);
+        // 可变速度：每个点照搬（渐变是按时间线性的，和 muser 自己的速度表一样）。
+        let tm = project.tempo_map();
+        if !tm.is_constant() {
+            for (beat, bpm, ramp) in tm.points() {
+                let _ = m.set_tempo(beat, bpm, if ramp { TempoCurve::Linear } else { TempoCurve::Step });
+            }
+        }
+        let new = Arc::new(m);
         Guard(CURRENT.with(|c| c.replace((new, start as i64))))
     }
 

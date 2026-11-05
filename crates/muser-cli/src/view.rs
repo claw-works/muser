@@ -410,11 +410,15 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
     }
     // 每小节从第几拍开始（段落可以各有拍号）；多给 16 小节盖住结尾的余响。
     let map = working.bar_map();
+    let tm = working.tempo_map();
+    let beat_secs: Option<Vec<f64>> = (!tm.is_constant()).then(|| (0..working.duration_beats().0 as usize + 64).map(|b| (tm.secs_at(b as f64) * 1e4).round() / 1e4).collect());
     let bar_starts: Vec<f64> = (0..map.bars_until(working.duration_beats().0) + 16).map(|b| map.bar_start(b)).collect();
     json!({
         "name": working.name, "tempo": working.tempo,
         "beats_per_bar": working.bar_beats(),
         "bar_starts": bar_starts,
+        // 速度会变时：每一整拍在第几秒（页面在两拍之间按直线插值）；不变时为 null，页面按 tempo 算。
+        "beat_secs": beat_secs,
         "time_signature": format!("{}/{}", working.time_signature.numerator, working.time_signature.denominator),
         "duration_beats": working.duration_beats().0,
         "master_gain_db": working.master_gain_db, "master_effects": fx(&working.master_effects),
@@ -781,7 +785,7 @@ impl Shared {
             let mut v: Value = serde_json::from_str(&text)?;
             apply_to_json(&mut v, &changes, working)?;
             for t in &takes {
-                crate::takes::place_json(&mut v, t, working.tempo)?;
+                crate::takes::place_json(&mut v, t, &working.tempo_map())?;
             }
             if let (Some(n), Some(o)) = (transpose, v.as_object_mut()) {
                 if n == 0 {
@@ -1353,8 +1357,8 @@ impl Shared {
                     buf.channel_mut(0).copy_from_slice(&r.samples);
                     let mut wav = Vec::new();
                     muser_engine::wav::write(&mut wav, &buf, r.sample_rate, muser_engine::WavFormat::Int24).map_err(|e| format!("{e:?}"))?;
-                    let tempo = self.state.lock().unwrap().working.as_ref().ok_or("工程尚未成功加载")?.tempo;
-                    let beat = r.start as f64 / f64::from(r.sample_rate) * tempo / 60.0;
+                    let tm = self.state.lock().unwrap().working.as_ref().ok_or("工程尚未成功加载")?.tempo_map();
+                    let beat = tm.beat_at(r.start as f64 / f64::from(r.sample_rate));
                     let track = body.get("track").and_then(Value::as_str).filter(|t| !t.trim().is_empty()).unwrap_or("vocal");
                     let take = self.record(track, beat, &wav)?;
                     Ok(json!({ "ok": true, "take": take, "dropped": r.dropped }))

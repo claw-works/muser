@@ -94,7 +94,8 @@ fn bend_value(bend: &[(f64, f64)], beats: f64) -> i16 {
 
 #[derive(Clone)]
 struct Ctx {
-    tempo: f64,
+    /// 速度表（拍 ↔ 秒）。
+    tm: Arc<muser_core::tempo::TempoMap>,
     sr: f64,
     settings: RenderSettings,
     total_frames: usize,
@@ -103,10 +104,10 @@ struct Ctx {
 
 impl Ctx {
     fn beat_at(&self, frame: usize) -> f64 {
-        frame as f64 / self.sr * self.tempo / 60.0
+        self.tm.beat_at(frame as f64 / self.sr)
     }
     fn frame_at(&self, beat: f64) -> usize {
-        (beat * 60.0 / self.tempo * self.sr).round().max(0.0) as usize
+        (self.tm.secs_at(beat) * self.sr).round().max(0.0) as usize
     }
     /// 效果链里每格起作用的帧 `[from, until)`。
     fn windows(&self, effects: &[muser_core::EffectSlot]) -> Vec<(usize, usize)> {
@@ -117,7 +118,7 @@ impl Ctx {
 /// 一条音轨的全部演奏动作（样本帧, 动作），按时间排序；同帧先 Off 后 On。
 fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
     let track = &project.tracks[ti];
-    let (sr, tempo) = (cx.sr, cx.tempo);
+    let (sr, tm) = (cx.sr, &*cx.tm);
     let mut acts: Vec<(usize, Act)> = Vec::new();
     let mut bent = 0usize;
     let sings = track.instrument.trim().to_lowercase().starts_with("choir.");
@@ -127,8 +128,11 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
         // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
         let all = crate::clip_notes(project, ti, ci).unwrap_or_default();
         let notes: &[muser_core::Note] = &all;
-        let clip_start = clip.start.to_seconds(tempo) * sr;
-        let clip_len_frames = (clip.length.to_seconds(tempo) * sr) as usize;
+        let c0 = clip.start.0;
+        // 片段里第 `b` 拍（相对片段开头）离片段开头几秒。
+        let rel = |b: f64| tm.secs_between(c0, b);
+        let clip_start = tm.secs_at(c0) * sr;
+        let clip_len_frames = (rel(clip.length.0) * sr) as usize;
         let clip_end_frame = clip_start as usize + clip_len_frames;
         // 连奏：延长到下一个不同音高的音之后约 40 ms（空隙超过 1/4 拍视为休止，不连）。
         let legato_len = |i: usize| -> Option<f64> {
@@ -142,7 +146,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             if at_next.iter().any(|m| m.pitch == n.pitch) {
                 return None;
             }
-            let overlap = 0.04 * tempo / 60.0;
+            let overlap = 0.04 * tm.bpm_at(c0 + n.start.0) / 60.0;
             Some((next - n.start.0 + overlap).max(n.length.0))
         };
         let lengths: Vec<Beats> =
@@ -163,12 +167,12 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             let (on, raw_off, velocity) = match &performed {
                 None => {
                     let note = &muser_core::Note { length: lengths[ni], ..note.clone() };
-                    let on = (clip_start + note.start.to_seconds(tempo) * sr) as usize;
-                    (on, (clip_start + (note.start + note.length).to_seconds(tempo) * sr) as usize, note.velocity)
+                    let on = (clip_start + rel(note.start.0) * sr) as usize;
+                    (on, (clip_start + rel((note.start + note.length).0) * sr) as usize, note.velocity)
                 }
                 Some(p) => {
                     let p = p[ni];
-                    let at = |beats: f64| (clip_start + (Beats(beats).to_seconds(tempo) + p.offset_s) * sr).max(0.0) as usize;
+                    let at = |beats: f64| (clip_start + (rel(beats) + p.offset_s) * sr).max(0.0) as usize;
                     (at(p.start), at(p.start + p.length), p.velocity)
                 }
             };
@@ -185,8 +189,10 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 // 每 ~5 ms 一个点，值不变就不发。
                 let step = ((sr * 0.005) as usize).max(1);
                 let mut last = None;
+                // 弯音曲线按拍：用这个音开头的速度换算（渐变中按当时的速度近似）。
+                let bps = tm.bpm_at(c0 + note.start.0) / 60.0;
                 for f in (on..off).step_by(step) {
-                    let v = bend_value(&note.bend, (f - on) as f64 / sr * tempo / 60.0);
+                    let v = bend_value(&note.bend, (f - on) as f64 / sr * bps);
                     if last != Some(v) {
                         acts.push((f, Act::Bend { value: v, ch }));
                         last = Some(v);
@@ -215,8 +221,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             acts.push((off, Act::Off { key: note.pitch, ch }));
         }
         for &(a, b) in &clip.pedal {
-            let down = (clip_start + Beats(a).to_seconds(tempo) * sr) as usize;
-            let up = ((clip_start + Beats(b).to_seconds(tempo) * sr) as usize).min(clip_end_frame);
+            let down = (clip_start + rel(a) * sr) as usize;
+            let up = ((clip_start + rel(b) * sr) as usize).min(clip_end_frame);
             if up > down {
                 acts.push((down, Act::Pedal { down: true }));
                 acts.push((up, Act::Pedal { down: false }));
@@ -241,11 +247,16 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
 /// 一条音轨的演奏动作，以 MIDI tick（每四分音符 `tpq` 个）计时。与渲染用的完全相同
 /// （humanize、连奏、clip 裁剪、踏板），只是把"每秒多少帧"换成"每秒多少 tick"。
 pub(crate) fn schedule_ticks(project: &Project, ti: usize, tpq: u16) -> Vec<(usize, Act)> {
+    // tick 按拍算，与速度无关："每秒 tpq·BPM/60 个 tick"在速度不变时就是拍 × tpq。
+    // 速度会变时用 60 BPM、每秒 tpq 个 tick（秒 = 拍）：tick 准确。
+    // shortcut: 变速的工程里 humanize 的毫秒偏移按 60 BPM 换成 tick（偏差是 BPM/60 倍）；要准时按每个音当时的速度换算。
+    let tm = project.tempo_map();
+    let (tm, bpm) = if tm.is_constant() { (tm, project.tempo) } else { (muser_core::tempo::TempoMap::constant(60.0), 60.0) };
     // 渲染按帧截断取整；拍 → 秒 → tick 的浮点误差可能让整拍落成 479.9999 → 479，放大一点点避免少一 tick。
-    let sr = f64::from(tpq) * project.tempo / 60.0 * (1.0 + 1e-9);
+    let sr = f64::from(tpq) * bpm / 60.0 * (1.0 + 1e-9);
     let settings = RenderSettings::default();
     let spec = ProcessSpec { sample_rate: sr, max_block_size: settings.block_size, num_channels: 2 };
-    schedule(project, ti, &Ctx { tempo: project.tempo, sr, settings, total_frames: 0, spec })
+    schedule(project, ti, &Ctx { tm: Arc::new(tm), sr, settings, total_frames: 0, spec })
 }
 
 /// 从 `start` 帧开始演奏时的动作：之前的都去掉，那时还按着的音与踏板在 `start` 补发。
@@ -732,7 +743,7 @@ fn instrument_key(project: &Project, ti: usize, cx: &Ctx) -> u64 {
     let ts = project.time_signature;
     let key = serde_json::json!({ "am": audio_mtimes,
         "i": t.instrument, "p": t.instrument_params, "c": t.clips, "h": t.humanize, "a": autos.iter().map(|(i, a)| serde_json::json!([i, a])).collect::<Vec<_>>(),
-        "ti": ti, "seed": project.seed, "tempo": project.tempo, "tu": project.tuning, "tr": project.transpose, "ts": [ts.numerator, ts.denominator],
+        "ti": ti, "seed": project.seed, "tempo": project.tempo, "tm": format!("{:?}", cx.tm.points()), "tu": project.tuning, "tr": project.transpose, "ts": [ts.numerator, ts.denominator],
         "sr": cx.settings.sample_rate, "bs": cx.settings.block_size, "n": cx.total_frames, "st": state_mtime,
     });
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -844,9 +855,10 @@ fn sidechain_keys(project: &Project, plan: &Plan) -> Result<(HashSet<Node>, Vec<
 impl Ctx {
     fn new(project: &Project, settings: RenderSettings) -> Ctx {
         let sr = f64::from(settings.sample_rate);
-        let duration = project.duration_beats().to_seconds(project.tempo);
+        let tm = project.tempo_map();
+        let duration = tm.secs_at(project.duration_beats().0);
         Ctx {
-            tempo: project.tempo,
+            tm: Arc::new(tm),
             sr,
             settings,
             total_frames: ((duration + settings.tail_seconds) * sr).ceil() as usize + 1,
@@ -1642,7 +1654,8 @@ pub fn wav_metadata(project: &Project, sample_rate: u32) -> manguebyte::formats:
         m.title = Some(project.name.clone());
     }
     m.tags.push(("ISFT".into(), format!("muser {}", env!("CARGO_PKG_VERSION"))));
-    let frames = |beats: f64| (beats * 60.0 / project.tempo * f64::from(sample_rate)).round().max(0.0) as u64;
+    let tm = project.tempo_map();
+    let frames = |beats: f64| (tm.secs_at(beats) * f64::from(sample_rate)).round().max(0.0) as u64;
     for (i, s) in crate::arrange::timeline(project).unwrap_or_default().iter().enumerate() {
         m.cue_points.push(manguebyte::formats::metadata::CuePoint {
             id: i as u32 + 1,
@@ -1713,6 +1726,37 @@ mod tests {
         // 120 BPM、4/4：一小节 2 秒 = 96000 帧。
         assert_eq!(cues, vec![(0, "verse".into()), (96_000, "chorus".into()), (192_000, "chorus#2".into())]);
         assert_eq!(f.metadata.title.as_deref(), Some("cues"));
+    }
+
+    /// 段落换速度：直接换（60 BPM）、渐变（一小节里 60 → 120，按时间线性：120·4/(60+120) 秒），段落标记落在对应的秒上；
+    /// MIDI 导出写出速度表（渐变每拍一个），ABC 写内联 [Q:]。
+    #[test]
+    fn section_tempo_changes_and_ramps() {
+        let p: Project = serde_json::from_value(serde_json::json!({ "name": "tempo", "tempo": 120,
+            "sections": { "a": { "bars": 1 }, "b": { "bars": 1, "tempo": 60 }, "c": { "bars": 1, "tempo": 120, "tempo_ramp_bars": 1 }, "d": { "bars": 1 } },
+            "form": ["a", "b", "c", "d"],
+            "tracks": [{ "name": "k", "instrument": "drums.909", "parts": { "*": { "grid": { "kick": "x..." } } } }] }))
+        .unwrap();
+        let path = std::env::temp_dir().join(format!("muser-tempo-{}.wav", std::process::id()));
+        render_to_wav(&p, &path.to_string_lossy(), RenderSettings::default()).unwrap();
+        let f = wav::read_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let cues: Vec<u64> = f.metadata.cue_points.iter().map(|c| c.position).collect();
+        assert_eq!(cues, vec![0, 96_000, 288_000, 288_000 + 128_000]);
+        // 每拍一下底鼓：渐变那一小节第 2 拍在 t = (−60 + √(60² + 2k·60))/k 秒（k = 60/T BPM/秒，T = 8/3 秒）。
+        let k = 60.0 / (8.0 / 3.0);
+        let want = 288_000.0 + (-60.0 + (3600.0f64 + 2.0 * k * 60.0).sqrt()) / k * 48_000.0;
+        let ons: Vec<usize> = schedule(&crate::arrange::arranged(&p).unwrap(), 0, &Ctx::new(&p, RenderSettings::default()))
+            .into_iter().filter_map(|(f, a)| matches!(a, Act::On { .. }).then_some(f)).collect();
+        assert!(ons.iter().any(|&f| (f as f64 - want).abs() < 2.0), "{ons:?} vs {want}");
+        let midi = crate::midi::export(&p).unwrap();
+        let tempos = midi.bytes.windows(3).filter(|w| w == &[0xFF, 0x51, 0x03]).count();
+        assert_eq!(tempos, 1 + 1 + 4 + 1, "开头、60、渐变 4 拍、120");
+        let mut p = p;
+        p.tracks.push(serde_json::from_value(serde_json::json!({ "name": "pad", "instrument": "synth.poly",
+            "clips": [{ "start": 0, "length": 16, "notes": [{ "pitch": 60, "start": 0, "length": 16 }] }] })).unwrap());
+        let abc = crate::abc_export::export(&p, &crate::abc_export::AbcOptions::new(crate::abc_export::Dialect::Standard)).unwrap().text;
+        assert!(abc.contains("[Q:1/4=60]") && abc.contains("[Q:1/4=120]"), "{abc}");
     }
 
     #[test]

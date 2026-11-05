@@ -41,7 +41,10 @@ pub fn export_daw(project: &Project, dir: &Path, settings: RenderSettings, progr
 
 fn guide_text(p: &Project, base: &str, sr: u32, stems: &[Stem], skipped: &[String]) -> String {
     let ts = format!("{}/{}", p.time_signature.numerator, p.time_signature.denominator);
-    let tempo = if p.tempo.fract() == 0.0 { format!("{}", p.tempo) } else { format!("{:.3}", p.tempo) };
+    let mut tempo = if p.tempo.fract() == 0.0 { format!("{}", p.tempo) } else { format!("{:.3}", p.tempo) };
+    if !p.tempo_map().is_constant() {
+        tempo += " → variable / 中途变速（the MIDI file carries the tempo map / 速度表在 MIDI 里）";
+    }
     let stem_list: String = stems.iter().map(|s| format!("- `stems/{}`：{}\n", s.path.file_name().map(|f| f.to_string_lossy()).unwrap_or_default(), s.track)).collect();
     let skipped = if skipped.is_empty() { String::new() } else { format!("\n（{} 是音频轨，没有 MIDI，只在 stems 里。）\n", skipped.join("、")) };
     format!(

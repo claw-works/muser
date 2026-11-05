@@ -53,7 +53,24 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
     let project = &*arranged;
     let mut conductor = Track::new();
     conductor.push_meta(0, MetaEvent::TrackName(if project.name.is_empty() { "muser".into() } else { project.name.clone() }));
-    conductor.push_meta(0, MetaEvent::Tempo((60_000_000.0 / project.tempo).round() as u32));
+    let tick_of = |beat: f64| (beat * f64::from(TICKS_PER_QUARTER)).round() as u64;
+    let tm = project.tempo_map();
+    let points = tm.points();
+    for (i, &(beat, bpm, ramp)) in points.iter().enumerate() {
+        let us = |bpm: f64| MetaEvent::Tempo((60_000_000.0 / bpm).round() as u32);
+        match points.get(i + 1).filter(|_| ramp) {
+            // 渐变写成每拍一个速度：取这一拍的平均速度，每拍的起点在时间上都准。
+            Some(&(end, _, _)) => {
+                let mut b = beat;
+                while b < end - 1e-9 {
+                    let db = (end - b).min(1.0);
+                    conductor.push_meta(tick_of(b), us(60.0 * db / tm.secs_between(b, db)));
+                    b += db;
+                }
+            }
+            None => conductor.push_meta(tick_of(beat), us(bpm)),
+        }
+    }
     // 段落名写成 marker（DAW 里的段落标记）。
     for s in &sections {
         let tick = (s.start * f64::from(TICKS_PER_QUARTER)).round() as u64;

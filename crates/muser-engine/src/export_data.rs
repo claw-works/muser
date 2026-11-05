@@ -19,6 +19,7 @@ pub fn export(project: &Project, fps: Option<u32>, settings: RenderSettings) -> 
     let arranged = crate::arrange::arranged(project).map_err(invalid)?;
     let p = &*arranged;
     let spb = 60.0 / p.tempo;
+    let tm = p.tempo_map();
     let r3 = |x: f64| (x * 1000.0).round() / 1000.0;
     let beats = crate::automate::total_beats(p, 0.0);
 
@@ -33,7 +34,7 @@ pub fn export(project: &Project, fps: Option<u32>, settings: RenderSettings) -> 
                     Act::On { key, velocity, ch, .. } => on.entry((key, ch)).or_default().push((tick, velocity)),
                     Act::Off { key, ch } => {
                         if let Some((start, vel)) = on.get_mut(&(key, ch)).and_then(|v| (!v.is_empty()).then(|| v.remove(0))) {
-                            let sec = |k: usize| k as f64 / f64::from(TPQ) * spb;
+                            let sec = |k: usize| tm.secs_at(k as f64 / f64::from(TPQ));
                             notes.push(json!([r3(sec(start)), key, (vel * 127.0).round() as u8, r3(sec(tick) - sec(start))]));
                         }
                     }
@@ -45,24 +46,24 @@ pub fn export(project: &Project, fps: Option<u32>, settings: RenderSettings) -> 
         tracks.push(json!({
             "name": t.name, "instrument": t.instrument, "drums": t.instrument.trim().starts_with("drums."),
             "muted": t.muted, "gain_db": t.gain_db, "notes": notes,
-            "automation": curves(&t.automation, beats, spb),
+            "automation": curves(&t.automation, beats, &tm),
         }));
     }
 
     let mut out = json!({
         "name": p.name, "tempo": p.tempo, "seconds_per_beat": spb,
         "time_signature": [p.time_signature.numerator, p.time_signature.denominator],
-        "duration": r3(beats * spb),
+        "duration": r3(tm.secs_at(beats)),
         "sections": sections.iter().map(|s| {
             let ts = p.sections.get(&s.name).map_or(p.time_signature, |x| p.section_meter(x));
             json!({
                 "name": s.name, "occurrence": s.occurrence,
-                "start": r3(s.start * spb), "end": r3((s.start + s.length) * spb),
+                "start": r3(tm.secs_at(s.start)), "end": r3(tm.secs_at(s.start + s.length)),
                 "bars": (s.length / ts.beats_per_bar()).round(), "time_signature": [ts.numerator, ts.denominator],
             })
         }).collect::<Vec<_>>(),
         "tracks": tracks,
-        "master": { "gain_db": p.master_gain_db, "automation": curves(&p.automation, beats, spb) },
+        "master": { "gain_db": p.master_gain_db, "automation": curves(&p.automation, beats, &tm) },
         "notes_format": "[start_seconds, midi_pitch, velocity_0_127, duration_seconds]",
     });
     if let Some(fps) = fps.filter(|&f| f > 0) {
@@ -74,7 +75,7 @@ pub fn export(project: &Project, fps: Option<u32>, settings: RenderSettings) -> 
 }
 
 /// 每条自动化在 1/4 拍的格点上取值：`[[秒, 值], …]`。值不是数字（如元音名）的点曲线不导出。
-fn curves(autos: &[Automation], beats: f64, spb: f64) -> Vec<Value> {
+fn curves(autos: &[Automation], beats: f64, tm: &muser_core::tempo::TempoMap) -> Vec<Value> {
     autos
         .iter()
         .filter_map(|a| {
@@ -87,7 +88,7 @@ fn curves(autos: &[Automation], beats: f64, spb: f64) -> Vec<Value> {
             let pts: Vec<Value> = (0..=n)
                 .filter_map(|k| {
                     let b = k as f64 * 0.25;
-                    curve.value_at(b).map(|v| json!([(b * spb * 1000.0).round() / 1000.0, (v * 1000.0).round() / 1000.0]))
+                    curve.value_at(b).map(|v| json!([(tm.secs_at(b) * 1000.0).round() / 1000.0, (v * 1000.0).round() / 1000.0]))
                 })
                 .collect();
             let mut o = json!({ "target": a.target, "points": pts });

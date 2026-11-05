@@ -461,7 +461,7 @@ struct LiveStartParams {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct LiveSendParams {
-    /// 一段：{ "name": "chorus"（可省）, "note": "一句话说明变了什么（页面提示）", "title": "改整场标题（可省）", "bars": 8, "time_signature": {"numerator":7,"denominator":8}（可省）, "at": "after"（默认）| "now" | "patch"（改正在放的这一段：写完整的一段，从下一小节起接着同一位置放，曲式不乱）,
+    /// 一段：{ "name": "chorus"（可省）, "note": "一句话说明变了什么（页面提示）", "title": "改整场标题（可省）", "bars": 8, "time_signature": {"numerator":7,"denominator":8}（可省）, "tempo": 140（可省：从这一段起换速度）, "tempo_ramp_bars": 4（可省：前几小节里渐变过去，0 = 直接换）, "at": "after"（默认）| "now" | "patch"（改正在放的这一段：写完整的一段，从下一小节起接着同一位置放，曲式不乱）,
     /// "tracks": [{ "name", "clips"（start 相对这一段开头）, "effects_add", "effects_off", "automation"（时间相对这一段开头）,
     /// 新轨还要 "instrument"（可加 instrument_params / output / sends / gain_db / pan）}],
     /// "buses": [{ "name", "effects_add", "effects_off", "automation" }], "master": { "effects_add", "automation"（master_gain_db 渐弱）} }。

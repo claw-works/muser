@@ -124,6 +124,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
     }
     let arranged = crate::arrange::arranged(project).map_err(invalid)?;
     let p = &*arranged;
+    let tm = p.tempo_map();
     let map = p.bar_map();
     // 每条音轨的音（绝对拍）。audio 音轨没有音符，不计。
     let mut tracks: Vec<(String, bool, Vec<Tone>)> = Vec::new();
@@ -275,7 +276,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         let nonempty = (first_bar..(first_bar + nbars).min(bars)).filter(|&b| !prints[b].is_empty()).count();
         let rep = (first_bar..(first_bar + nbars).min(bars)).filter(|&b| repeated_bar[b]).count();
         let audio_stat = rendered.as_ref().map(|buf| {
-            let secs = |beats: f64| beats * 60.0 / p.tempo;
+            let secs = |beats: f64| tm.secs_at(beats);
             let (fa, fz) = ((secs(a) * sr) as usize, ((secs(z) * sr) as usize).min(buf.num_frames()));
             let mut part = crate::AudioBuffer::<f32>::new(2, fz.saturating_sub(fa).max(1));
             for c in 0..2 {

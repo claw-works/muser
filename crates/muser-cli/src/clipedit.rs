@@ -19,7 +19,7 @@ fn bar(p: &Project, b: f64) -> String {
 
 /// 在第 `at` 拍把第 `ci` 个片段剪成两段（接缝各 10 毫秒淡化）。返回给人看的说明。
 pub fn split(p: &mut Project, ti: usize, ci: usize, at: f64) -> Result<String> {
-    let spb = 60.0 / p.tempo;
+    let tm = p.tempo_map();
     let where_ = bar(p, at);
     let t = audio_track(p, ti)?;
     let c = t.clips.get(ci).cloned().ok_or_else(|| anyhow!("没有这个片段"))?;
@@ -35,7 +35,7 @@ pub fn split(p: &mut Project, ti: usize, ci: usize, at: f64) -> Result<String> {
     let (mut la, mut ra) = (audio.clone(), audio.clone());
     la.fade_out = 0.01;
     ra.fade_in = 0.01;
-    ra.offset = audio.offset + (at - a) * spb;
+    ra.offset = audio.offset + tm.secs_between(a, at - a);
     left.audio = Some(la);
     right.audio = Some(ra);
     t.clips[ci] = left;
@@ -45,7 +45,7 @@ pub fn split(p: &mut Project, ti: usize, ci: usize, at: f64) -> Result<String> {
 
 /// 把第 `ci` 个片段挪到第 `to` 拍开始。返回说明。
 pub fn move_to(p: &mut Project, ti: usize, ci: usize, to: f64) -> Result<String> {
-    let spb = 60.0 / p.tempo;
+    let tm = p.tempo_map();
     let to = to.max(0.0);
     let (from_s, to_s) = (bar(p, p.tracks.get(ti).and_then(|t| t.clips.get(ci)).map_or(0.0, |c| c.start.0)), bar(p, to));
     let t = audio_track(p, ti)?;
@@ -56,7 +56,7 @@ pub fn move_to(p: &mut Project, ti: usize, ci: usize, to: f64) -> Result<String>
     let from = c.start.0;
     c.start = Beats(to);
     t.clips.sort_by(|x, y| x.start.0.total_cmp(&y.start.0));
-    Ok(format!("↔ {}：片段从{from_s}挪到{to_s}（{:+.0} 毫秒）", t.name, (to - from) * spb * 1000.0))
+    Ok(format!("↔ {}：片段从{from_s}挪到{to_s}（{:+.0} 毫秒）", t.name, (tm.secs_at(to) - tm.secs_at(from)) * 1000.0))
 }
 
 /// `muser clip split|move`：改工程文件里这条音频轨的 clips（其余内容不动）。
@@ -75,7 +75,10 @@ pub fn run(project_path: &str, track: &str, split_at: Option<f64>, clip: Option<
             let start = p.tracks[ti].clips.get(ci).ok_or_else(|| anyhow!("'{track}' 没有第 {ci} 个片段"))?.start.0;
             let to = match (to, by_ms) {
                 (Some(t), _) => t,
-                (None, Some(ms)) => start + ms / 1000.0 * p.tempo / 60.0,
+                (None, Some(ms)) => {
+                    let tm = p.tempo_map();
+                    tm.beat_at(tm.secs_at(start) + ms / 1000.0)
+                }
                 _ => bail!("move 要 --to <拍> 或 --by-ms <毫秒>"),
             };
             move_to(&mut p, ti, ci, to)?
