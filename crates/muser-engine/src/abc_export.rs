@@ -9,6 +9,7 @@
 //! 写的是谱面上的音（humanize 之前、clip 裁剪之后）：`notes` / `abc` / `grid` / `drummer` 展开的都算。
 //! 鼓组与 audio 音轨不导出。调号由音高分布估计（Krumhansl 调性轮廓），升降号按调号拼写。
 //! 和弦记号（可选）按每小节（必要时半小节）伴奏音的音级匹配和弦模板。
+//! 小节按拍号表排：段落各有拍号时，换拍号的小节前写内联 `[M:7/8]`。标准写法里带歌词的音轨写 `w:` 歌词行。
 //! 起点与时值量化到 1/16（需要时 1/32、1/64）音符的网格，三连音等落不到网格上的会被就近取整（会提示）。
 
 use std::collections::BTreeMap;
@@ -442,6 +443,8 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
     let mut notes = Vec::new();
     // 每条乐器音轨的音（绝对拍）。
     let mut parts: Vec<(String, Vec<Tone>)> = Vec::new();
+    // 与 parts 一一对应：音符上写的歌词（起点拍, 音节）。
+    let mut lyrics: Vec<Vec<(f64, String)>> = Vec::new();
     for (ti, t) in project.tracks.iter().enumerate() {
         let name = if t.name.is_empty() { format!("tracks[{ti}]") } else { t.name.clone() };
         let inst = t.instrument.trim();
@@ -450,16 +453,21 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             continue;
         }
         let mut tones = Vec::new();
+        let mut words = Vec::new();
         for (ci, clip) in t.clips.iter().enumerate() {
             for n in crate::clip_notes(project, ti, ci).map_err(invalid)?.iter() {
                 let (a, b) = (n.start.0, (n.start.0 + n.length.0).min(clip.length.0));
                 if b > a {
                     tones.push(Tone { start: clip.start.0 + a, end: clip.start.0 + b, pitch: n.pitch });
+                    if let Some(l) = &n.lyric {
+                        words.push((clip.start.0 + a, l.clone()));
+                    }
                 }
             }
         }
         if !tones.is_empty() {
             parts.push((name, tones));
+            lyrics.push(words);
         }
     }
     let find = |name: &str| parts.iter().position(|(n, _)| n == name).ok_or_else(|| {
@@ -518,16 +526,14 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
         notes.push("有落不到 1/64 音符网格上的音（三连音等），已就近量化到 1/32".into());
         (32, 0.125)
     });
-    let ts = project.time_signature;
-    let bar_beats = f64::from(ts.numerator) * 4.0 / f64::from(ts.denominator);
-    // shortcut: 小节按工程拍号等长排；段落各有拍号时只提示，换拍号的段落小节线会错位。要支持时改成按 bar_map 排小节、写 [M:] 内联。
-    if project.bar_map().segs.len() > 1 {
-        notes.push(format!("有段落用了不同的拍号：ABC 里小节一律按工程拍号 {}/{} 排，那些段落的小节线会错位", ts.numerator, ts.denominator));
-    }
-    let bar_units = (bar_beats / unit).round() as usize;
+    // 小节按拍号表排（段落各有拍号时小节不一样长），换拍号的小节前写内联 [M:]。
+    let map = project.bar_map();
+    let ts = map.segs[0].1;
     let end_beats = used.iter().map(|t| t.end).fold(0.0, f64::max).max(project.duration_beats().0);
-    let bars = ((end_beats / bar_beats) - 1e-9).ceil().max(1.0) as usize;
-    let slots = bars * bar_units;
+    let bars = map.bars_until(end_beats);
+    // 每小节从第几格开始（多一项：结尾）。
+    let bar_start: Vec<usize> = (0..=bars).map(|b| (map.bar_start(b) / unit).round() as usize).collect();
+    let slots = bar_start[bars];
     // 调号：指定的 > clip 里 ABC 写的（都一样时）> 由整首（全部乐器音轨）的音高估计。
     let abc_keys: std::collections::BTreeSet<String> = parts
         .iter()
@@ -570,16 +576,17 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             .collect();
         let mut last: Option<String> = None;
         for b in 0..bars {
-            let (a, z) = (b as f64 * bar_beats, (b + 1) as f64 * bar_beats);
+            let (a, z) = (map.bar_start(b), map.bar_start(b + 1));
+            let (first, len) = (bar_start[b], bar_start[b + 1] - bar_start[b]);
             let whole = guess_chord(&harmony, a, z, key);
             // 半小节换和弦：两半各自更像不同的和弦时拆开。
-            let mid = a + bar_beats / 2.0;
-            let halves = (bar_units % 2 == 0).then(|| (guess_chord(&harmony, a, mid, key), guess_chord(&harmony, mid, z, key)));
+            let mid = (a + z) / 2.0;
+            let halves = (len % 2 == 0).then(|| (guess_chord(&harmony, a, mid, key), guess_chord(&harmony, mid, z, key)));
             let plan: Vec<(usize, Option<(String, f64)>)> = match (halves, &whole) {
                 (Some((Some(x), Some(y))), Some(w)) if x.0 != y.0 && x.1.min(y.1) > w.1 + 0.15 => {
-                    vec![(b * bar_units, Some(x)), (b * bar_units + bar_units / 2, Some(y))]
+                    vec![(first, Some(x)), (first + len / 2, Some(y))]
                 }
-                _ => vec![(b * bar_units, whole)],
+                _ => vec![(first, whole)],
             };
             for (at, c) in plan {
                 if let Some((name, _)) = c {
@@ -593,8 +600,8 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
     }
 
     let mut breaks = vec![false; slots];
-    for b in 0..bars {
-        breaks[b * bar_units] = true;
+    for &b in &bar_start[..bars] {
+        breaks[b] = true;
     }
     for (at, _) in &chord_at {
         breaks[*at] = true;
@@ -624,7 +631,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
                 let mut out = Vec::new();
                 let mut at = e.at;
                 while at < e.at + e.len {
-                    let stop = ((at / bar_units + 1) * bar_units).min(e.at + e.len);
+                    let stop = bar_start.iter().copied().find(|&b| b > at).unwrap_or(slots).min(e.at + e.len);
                     out.push(Event { at, len: stop - at, pitches: e.pitches.clone() });
                     at = stop;
                 }
@@ -654,7 +661,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
     }
 
     // 分组：段落边界 + 每组最多 4 小节。没指定段落时用曲式里的。
-    let form_sections: Vec<(String, u32)> = spans.iter().map(|s| (s.name.clone(), (s.length / bar_beats).round() as u32)).collect();
+    let form_sections: Vec<(String, u32)> = spans.iter().map(|s| (s.name.clone(), (map.bar_at(s.start + s.length).0 - map.bar_at(s.start).0) as u32)).collect();
     let section_list = if opts.sections.is_empty() { &form_sections } else { &opts.sections };
     let mut starts: Vec<(usize, Option<&str>)> = Vec::new();
     let mut b = 0usize;
@@ -681,19 +688,44 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
         if let Some(l) = label {
             abc.push_str(&format!("% {l}\n"));
         }
-        for (vi, (vname, _)) in voices.iter().enumerate() {
+        for (vi, (vname, idx)) in voices.iter().enumerate() {
             abc.push_str(&match opts.dialect {
                 Dialect::Yue2 => format!("V: {vname}\n"),
                 Dialect::Standard => format!("V:{}\n", vi + 1),
             });
+            // 歌词：标准写法、声部就是一条带歌词的音轨时，每个起音一个音节（连音线延续的不算），没写的用 *。
+            let words = match (opts.dialect, idx.as_slice()) {
+                (Dialect::Standard, [i]) if !lyrics[*i].is_empty() => Some(&lyrics[*i]),
+                _ => None,
+            };
             let mut line: Vec<String> = Vec::new();
+            let mut sung: Vec<String> = Vec::new();
             for bar in g0..g1 {
-                let (a, z) = (bar * bar_units, (bar + 1) * bar_units);
+                let (a, z) = (bar_start[bar], bar_start[bar + 1]);
                 let evs: Vec<&Event> = voice_events[vi].iter().filter(|e| e.at >= a && e.at < z).collect();
                 let bar_chords: Vec<(usize, String)> =
                     if vi == 0 { chord_at.iter().filter(|(c, _)| *c >= a && *c < z).cloned().collect() } else { Vec::new() };
                 let empty = evs.iter().all(|e| e.pitches.is_empty());
-                line.push(if empty && bar_chords.is_empty() { "Z".into() } else { write_bar(&evs, &bar_chords, key, &mut accs[vi], opts.dialect) });
+                let meter = map.meter_of(bar);
+                let inline = if bar > 0 && meter != map.meter_of(bar - 1) { format!("[M:{}/{}]", meter.numerator, meter.denominator) } else { String::new() };
+                let body = if empty && bar_chords.is_empty() { "Z".into() } else { write_bar(&evs, &bar_chords, key, &mut accs[vi], opts.dialect) };
+                line.push(inline + &body);
+                if let Some(words) = words {
+                    let syl: Vec<String> = evs
+                        .iter()
+                        .filter(|e| {
+                            let held: Vec<u8> = voice_events[vi].iter().find(|p| p.at + p.len == e.at).map_or(Vec::new(), |p| p.pitches.iter().filter(|x| x.1).map(|x| x.0).collect());
+                            e.pitches.iter().any(|p| !held.contains(&p.0))
+                        })
+                        .map(|e| {
+                            words.iter().find(|w| (w.0 / unit).round() as usize == e.at).map_or("*".into(), |w| {
+                                let t: String = w.1.split_whitespace().collect::<Vec<_>>().join("~").chars().filter(|c| !"-*_|".contains(*c)).collect();
+                                if t.is_empty() { "*".into() } else { t }
+                            })
+                        })
+                        .collect();
+                    sung.push(syl.join(" "));
+                }
             }
             // 整组都是整小节休止：写成 Zn。
             if line.len() > 1 && line.iter().all(|b| b == "Z") {
@@ -701,6 +733,9 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             }
             abc.push_str(&line.join("|"));
             abc.push_str("|\n");
+            if sung.iter().any(|s| !s.is_empty()) {
+                abc.push_str(&format!("w: {}\n", sung.join(" | ")));
+            }
         }
     }
     if opts.dialect == Dialect::Yue2 && section_list.is_empty() {
@@ -791,6 +826,26 @@ mod tests {
         opts.vocal_octave = 1;
         assert!(export(&p, &opts).unwrap().text.contains("\"C\"e8g8a8g8|"));
         assert!(out.notes.iter().any(|n| n.contains("drums")));
+    }
+
+    /// 段落各有拍号：小节按段落的拍号排、换拍号处写 [M:]；歌词写成 w: 行；用 muser 的解析器读回，音、歌词、小节都对得上。
+    #[test]
+    fn section_meters_and_lyrics_round_trip() {
+        let p = project(serde_json::json!({ "tempo": 100,
+            "sections": { "a": { "bars": 1 }, "b": { "bars": 2, "time_signature": { "numerator": 7, "denominator": 8 } } },
+            "form": ["a", "b", "a"],
+            "tracks": [{ "name": "vocal", "instrument": "choir.solo", "clips": [{ "start": 0, "length": 15,
+                "abc": "L:1/8\nK:C\nC4 D4 | E6- E | F3 G4 | A8 |\nw: yue liang sheng * qi lai" }] }] }));
+        let out = export(&p, &AbcOptions::new(Dialect::Standard)).unwrap();
+        let t = &out.text;
+        assert!(t.contains("[M:7/8]E14|") && t.contains("[M:4/4]A16|") && t.contains("w: "), "{t}");
+        assert!(out.notes.iter().all(|n| !n.contains("拍号")), "{:?}", out.notes);
+        let body: String = t.lines().filter(|l| !l.starts_with("V:")).collect::<Vec<_>>().join("\n");
+        let k = |n: &muser_core::Note| (n.pitch, (n.start.0 * 1000.0).round() as i64, (n.length.0 * 1000.0).round() as i64, n.lyric.clone());
+        let back: Vec<_> = muser_core::abc::parse(&body).unwrap_or_else(|e| panic!("{e}\n{t}")).iter().map(k).collect();
+        let orig: Vec<_> = muser_core::abc::parse("L:1/8\nK:C\nC4 D4 | E7 | F3 G4 | A8 |\nw: yue liang sheng * qi lai").unwrap().iter().map(k).collect();
+        assert_eq!(back, orig, "{t}");
+        assert!(muser_core::abc::bar_problems(&body, 4.0).unwrap().is_empty(), "{t}");
     }
 
     #[test]

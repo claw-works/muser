@@ -76,7 +76,7 @@ pub fn bar_problems(text: &str, meter: f64) -> Result<Vec<String>, String> {
     if !p.meter_given {
         p.bar = meter;
     }
-    let (notes, marks, repeats) = p.run()?;
+    let (notes, marks, repeats, meters) = p.run()?;
     if repeats || marks.is_empty() {
         return Ok(Vec::new());
     }
@@ -90,9 +90,11 @@ pub fn bar_problems(text: &str, meter: f64) -> Result<Vec<String>, String> {
     let last = starts.len() - 2;
     for (k, w) in starts.windows(2).enumerate() {
         let len = w[1] - w[0];
-        let wrong = if k == 0 || k == last { len > p.bar + 1e-6 } else { (len - p.bar).abs() > 1e-6 };
+        // 内联 [M:] 换了拍号：这一小节按它开头时的拍号查。
+        let bar = meters.iter().rev().find(|m| m.0 <= w[0] + 1e-9).map_or(p.bar, |m| m.1);
+        let wrong = if k == 0 || k == last { len > bar + 1e-6 } else { (len - bar).abs() > 1e-6 };
         if wrong && len > 1e-9 {
-            out.push(format!("第 {} 小节 {} 拍（{} 个单位时值），一小节应为 {} 拍（{} 个）", k + 1, beats(len), units(len), beats(p.bar), units(p.bar)));
+            out.push(format!("第 {} 小节 {} 拍（{} 个单位时值），一小节应为 {} 拍（{} 个）", k + 1, beats(len), units(len), beats(bar), units(bar)));
         }
     }
     Ok(out)
@@ -224,8 +226,9 @@ impl<'a> Parser<'a> {
         Ok(Parser { body, lyrics, unit, bar, meter_given, key })
     }
 
-    /// 音符，小节线的位置（行号, 拍），有没有反复 / 一二房。
-    fn run(&self) -> Result<(Vec<Note>, Vec<(usize, f64)>, bool), String> {
+    /// 音符，小节线的位置（行号, 拍），有没有反复 / 一二房，内联 `[M:]` 换拍号的位置（拍, 一小节几拍）。
+    #[allow(clippy::type_complexity)]
+    fn run(&self) -> Result<(Vec<Note>, Vec<(usize, f64)>, bool, Vec<(f64, f64)>), String> {
         // 先把整段展开成"小节流"处理反复：记下每个 token 的位置，遇到 :| 回到 |: 处再走一遍。
         let tokens = self.tokens()?;
         let order = repeat_order(&tokens);
@@ -240,6 +243,8 @@ impl<'a> Parser<'a> {
         // 被连音线连起来、等着下一个同音高延长的音（notes 里的下标）。
         let mut tied: Vec<usize> = Vec::new();
         let mut marks = Vec::new();
+        let mut bar = self.bar;
+        let mut meters = Vec::new();
         let repeats = tokens.iter().any(|(_, t)| matches!(t, Tok::RepeatStart | Tok::RepeatEnd | Tok::Ending(_)));
         for &i in &order {
             let (line, tok) = &tokens[i];
@@ -250,6 +255,10 @@ impl<'a> Parser<'a> {
                     marks.push((*line, t));
                 }
                 Tok::RepeatStart | Tok::RepeatEnd | Tok::Ending(_) => accidentals = [None; 128],
+                Tok::Meter(b) => {
+                    bar = *b;
+                    meters.push((t, bar));
+                }
                 Tok::Dynamic(v) => velocity = *v,
                 Tok::Accent => accent = true,
                 Tok::Staccato => staccato = true,
@@ -258,7 +267,7 @@ impl<'a> Parser<'a> {
                         2 | 4 | 8 => 3.0,
                         3 | 6 => 2.0,
                         _ => {
-                            if (self.bar / 4.0 * 8.0).round() as i64 % 3 == 0 {
+                            if (bar / 4.0 * 8.0).round() as i64 % 3 == 0 {
                                 3.0
                             } else {
                                 2.0
@@ -270,8 +279,8 @@ impl<'a> Parser<'a> {
                 Tok::Broken(f) => broken = Some(*f),
                 Tok::BarRest(n) => {
                     // 多小节休止：中间的小节线也记下。
-                    marks.extend((1..*n).map(|k| (*line, t + self.bar * f64::from(k))));
-                    t += self.bar * f64::from(*n);
+                    marks.extend((1..*n).map(|k| (*line, t + bar * f64::from(k))));
+                    t += bar * f64::from(*n);
                     tied.clear();
                 }
                 Tok::Rest(len) => {
@@ -312,7 +321,7 @@ impl<'a> Parser<'a> {
         if notes.is_empty() && order.is_empty() {
             return Err("ABC 里没有音符（K: 之后写旋律，如 \"L:1/8\\nK:Am\\nA2 cB e2 dc |\"）".into());
         }
-        Ok((notes, marks, repeats))
+        Ok((notes, marks, repeats, meters))
     }
 
     /// 连音（tuplet）与附点节奏（broken rhythm）对时值的影响。
@@ -412,6 +421,15 @@ impl<'a> Parser<'a> {
                         let (tok, len) = self.bar_token(text, i).unwrap();
                         out.extend(tok.into_iter().map(|t| (line, t)));
                         i += len;
+                    }
+                    '[' if b.get(i + 2) == Some(&b':') && b.get(i + 1).is_some_and(u8::is_ascii_alphabetic) => {
+                        // 内联字段 [M:7/8]：认拍号，其它的跳过。
+                        let end = text[i..].find(']').ok_or_else(|| at(i, "内联字段 [ 没有闭合"))?;
+                        if b[i + 1] == b'M' {
+                            let f = fraction(text[i + 3..i + end].trim()).ok_or_else(|| at(i, "[M:] 应为分数，如 [M:7/8]"))?;
+                            out.push((line, Tok::Meter(f * 4.0)));
+                        }
+                        i += end + 1;
                     }
                     '[' => {
                         // 和弦 [CEG]2
@@ -583,6 +601,8 @@ enum Tok {
     Notes(Pending),
     Rest(f64),
     BarRest(u32),
+    /// 内联 `[M:]`：之后一小节几拍。
+    Meter(f64),
     Bar,
     RepeatStart,
     RepeatEnd,
@@ -640,6 +660,16 @@ fn repeat_order(tokens: &[(usize, Tok)]) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inline_meter_changes_bar_length() {
+        // [M:7/8] 之后一小节 3.5 拍：Z 按新拍号算，小节检查也按新拍号。
+        let n = parse("M:4/4\nL:1/8\nK:C\nC8 |[M:7/8] Z | D7 |[M:4/4] E8 |").unwrap();
+        let starts: Vec<f64> = n.iter().map(|x| x.start.0).collect();
+        assert_eq!(starts, [0.0, 7.5, 11.0]);
+        assert!(bar_problems("M:4/4\nL:1/8\nK:C\nC8 |[M:7/8] D7 | E7 |[M:4/4] F8 |", 4.0).unwrap().is_empty());
+        assert_eq!(bar_problems("M:4/4\nL:1/8\nK:C\nC8 |[M:7/8] D8 | E7 |", 4.0).unwrap().len(), 1);
+    }
 
     #[test]
     fn lyric_lines_follow_the_notes() {
