@@ -247,6 +247,16 @@ impl Player {
     /// 打开系统默认输出设备。按设备的采样率渲染（`settings.sample_rate` 不用）。
     /// `cache` 里的乐器输出在跳转时复用（由调用方填充，例如浏览器模式的渲染线程）。
     pub fn start(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>) -> Result<Player, String> {
+        Self::open(settings, cache, false)
+    }
+
+    /// 现场模式（`muser live`）：第一次 [`Player::load`] 从头开始演奏（[`Renderer::live`]），之后每次 load
+    /// 都是"往后加了东西"的工程，不停、不重建地换上（[`Renderer::reconcile`]）。不跳转。
+    pub fn start_live(settings: RenderSettings) -> Result<Player, String> {
+        Self::open(settings, Arc::new(Mutex::new(RenderCache::new())), true)
+    }
+
+    fn open(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, live: bool) -> Result<Player, String> {
         let device = OutputDevice::open_default().map_err(|e| format!("打开声卡失败: {e}"))?;
         let sample_rate = device.sample_rate().round() as u32;
         let name = device.name().to_string();
@@ -258,7 +268,7 @@ impl Player {
         let sh = Arc::clone(&shared);
         std::thread::Builder::new()
             .name("muser-playback".into())
-            .spawn(move || run(settings, cache, sh, cmd_rx, &mut tx))
+            .spawn(move || run(settings, cache, sh, cmd_rx, &mut tx, live))
             .map_err(|e| format!("启动播放线程失败: {e}"))?;
         let player = Player { cmd: cmd_tx, shared, sample_rate, device: name, rx, stream: Mutex::new(None), rec: Mutex::new(None) };
         player.output_only(&device)?;
@@ -511,7 +521,7 @@ fn flush(sh: &Shared) {
 }
 
 /// 播放线程。
-fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>, cmds: mpsc::Receiver<Cmd>, tx: &mut spsc::Producer<[f32; 2]>) {
+fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>, cmds: mpsc::Receiver<Cmd>, tx: &mut spsc::Producer<[f32; 2]>, live: bool) {
     let mut project: Option<Project> = None;
     let mut renderer: Option<Renderer> = None;
     let mut block = AudioBuffer::<f32>::new(2, CHUNK);
@@ -555,6 +565,22 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
             }
         };
         match cmd {
+            Some(Cmd::Load(p)) if live => {
+                let r = match renderer.as_mut() {
+                    Some(r) => r.reconcile(&p).map_err(|e| format!("{e:#}")),
+                    None => Renderer::live(&p, settings).map(|r| renderer = Some(r)).map_err(|e| format!("{e:#}")),
+                };
+                match r {
+                    Ok(()) => {
+                        if let Some(r) = &renderer {
+                            sh.total.store(r.total_frames(), Ordering::Release);
+                        }
+                        *sh.error.lock().unwrap() = None;
+                    }
+                    Err(e) => fail(e),
+                }
+                project = Some(p);
+            }
             Some(Cmd::Load(p)) => {
                 let at = sh.position.load(Ordering::Acquire);
                 match rebuild(&p, at) {

@@ -11,6 +11,7 @@
 //! - `mix-report <project.json> [--json]`  各轨/总线/主总线响度，用来平衡音量
 //! - `new [-o project.json]`                生成一个示例工程 JSON（供 AI 参考格式）
 
+mod live;
 mod loop_edit;
 mod play;
 mod poly;
@@ -233,6 +234,13 @@ enum Command {
         /// 用本机声卡播放（声音从运行 muser 的这台机器出）。
         #[arg(long)]
         device: bool,
+    },
+
+    /// 现场演奏：agent 一段一段往后写，音乐由 muser 维持（从本机声卡出），不冷场。
+    /// `muser live start <模板>` 常驻（由 agent 启动、放在后台）；send / status / wait / autoplay / stop 控制它。
+    Live {
+        #[command(subcommand)]
+        command: LiveCommand,
     },
 
     /// 混音报告：渲染一遍整首，列出每条音轨/总线/主总线的响度（效果链前的干声、推子后），
@@ -681,6 +689,7 @@ fn run() -> Result<()> {
         Command::Midi { project, output, seed } => cmd_midi(&project, output, seed),
         Command::Audio { file, tempo, json } => cmd_audio(&file, tempo, json),
         Command::MixReport { project, sample_rate, tail, json } => cmd_mix_report(&project, sample_rate, tail, json),
+        Command::Live { command } => cmd_live(command),
         Command::View { project, port, open, sample_rate, tail, device } => {
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
             // 网页服务在后台线程，主线程留给插件（见 run_with_main_loop）。
@@ -1676,4 +1685,87 @@ fn cmd_new(output: Option<&str>) -> Result<()> {
         None => println!("{json}"),
     }
     Ok(())
+}
+
+#[derive(Subcommand)]
+enum LiveCommand {
+    /// 开始一场现场演奏（前台常驻，直到 muser live stop）。模板是普通工程：音轨、效果器、总线、速度，可带一段起始乐句。
+    Start {
+        /// 模板工程。
+        template: String,
+        /// 自主演奏多久（如 3m、90s；0 = 不限）。到时间后 wait 告诉 agent 交最后一段并停下，音乐继续循环。
+        #[arg(long, default_value = "3m")]
+        autoplay: String,
+        /// 整场写进这个工程文件（随时更新，演完能离线渲染、接着编辑）。
+        #[arg(long)]
+        record: Option<String>,
+        #[arg(long, default_value_t = 8747)]
+        port: u16,
+        /// 结尾余响秒数（循环与段落之间不用；只影响整场的最后）。
+        #[arg(long, default_value_t = 2.0)]
+        tail: f64,
+    },
+    /// 提交一段（JSON 文件，- 为标准输入）：{ "bars": 8, "time_signature": {...}, "at": "after"|"now", "tracks": [...] }。立即返回回执。
+    Send {
+        file: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// 现在第几小节、排到哪、是否在循环、每条轨、上一段写了什么。
+    Status {
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// 等到排好的音乐短于 --runway 秒（或自主演奏时间到了），最多 30 秒。
+    Wait {
+        #[arg(long, default_value_t = 8.0)]
+        runway: f64,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// 重设自主演奏的时长（从现在起，如 5m；0 = 不限）。
+    Autoplay {
+        duration: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// 结束演奏：写好录音工程，退出常驻进程。
+    Stop {
+        #[arg(long)]
+        port: Option<u16>,
+    },
+}
+
+fn cmd_live(command: LiveCommand) -> Result<()> {
+    let print = |v: serde_json::Value| -> Result<()> {
+        println!("{}", serde_json::to_string_pretty(&v)?);
+        Ok(())
+    };
+    match command {
+        LiveCommand::Start { template, autoplay, record, port, tail } => {
+            let autoplay = live::parse_duration(&autoplay)?;
+            let settings = RenderSettings { tail_seconds: tail, ..RenderSettings::default() };
+            muser_engine::plugin::run_with_main_loop(move || match live::serve(&template, settings, port, autoplay, record) {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("Error: {e:?}");
+                    1
+                }
+            })
+        }
+        LiveCommand::Send { file, port } => {
+            let text = if file == "-" {
+                let mut s = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)?;
+                s
+            } else {
+                std::fs::read_to_string(&file).with_context(|| format!("读不了 {file}"))?
+            };
+            print(live::request(port, "POST", "/api/change", Some(&text))?)
+        }
+        LiveCommand::Status { port } => print(live::request(port, "GET", "/api/status", None)?),
+        LiveCommand::Wait { runway, port } => print(live::request(port, "GET", &format!("/api/wait?runway={runway}"), None)?),
+        LiveCommand::Autoplay { duration, port } => print(live::request(port, "POST", "/api/autoplay", Some(&serde_json::json!({ "duration": duration }).to_string()))?),
+        LiveCommand::Stop { port } => print(live::request(port, "POST", "/api/stop", None)?),
+    }
 }
