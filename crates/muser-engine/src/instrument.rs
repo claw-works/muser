@@ -843,7 +843,7 @@ struct PluginInstrument {
     processor: manguebyte::host::any::AnyProcessor,
     opened: crate::plugin::Opened,
     pending: manguebyte::prelude::EventBuffer,
-    transport: manguebyte::prelude::Transport,
+    clock: crate::transport::Clock,
     sample_rate: f64,
     blocks: u32,
     /// 多声道输出：插件按全部主输出声道处理，再按 `@outputs` 混成立体声。
@@ -926,7 +926,8 @@ impl PluginInstrument {
         let start = std::time::Instant::now();
         while start.elapsed().as_secs_f64() < seconds {
             scratch.clear();
-            let ctx = ProcessContext::new(&none, &self.transport);
+            let transport = self.clock.now(self.sample_rate);
+            let ctx = ProcessContext::new(&none, &transport);
             Self::run(&mut self.processor, &mut self.wide, &mut scratch, &ctx);
             let _ = self.opened.plugin.pump();
             std::thread::sleep(std::time::Duration::from_secs_f64(frames as f64 / self.sample_rate));
@@ -960,10 +961,11 @@ impl Playable for PluginInstrument {
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         use manguebyte::prelude::ProcessContext;
-        let ctx = ProcessContext::new(&self.pending, &self.transport);
+        let transport = self.clock.now(self.sample_rate);
+        let ctx = ProcessContext::new(&self.pending, &transport);
         Self::run(&mut self.processor, &mut self.wide, buffer, &ctx);
         self.pending.clear();
-        self.transport.advance(buffer.num_frames(), self.sample_rate);
+        self.clock.advance(buffer.num_frames());
         self.blocks = self.blocks.wrapping_add(1);
         if self.blocks % 16 == 0 {
             let _ = self.opened.plugin.pump();
@@ -1002,7 +1004,7 @@ fn resolve_plugin(spec: &str, params: &InstrumentParams, ps: &ProcessSpec) -> Re
             processor,
             opened,
             pending: manguebyte::prelude::EventBuffer::with_capacity(256),
-            transport: crate::transport::start(),
+            clock: crate::transport::clock(),
             sample_rate: ps.sample_rate,
             blocks: 0,
             wide,

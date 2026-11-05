@@ -507,7 +507,7 @@ fn build_plugin(
         processor,
         opened,
         blocks: 0,
-        transport: crate::transport::start(),
+        clock: crate::transport::clock(),
         events: manguebyte::prelude::EventBuffer::with_capacity(1),
         sample_rate: spec.sample_rate,
     }))
@@ -531,7 +531,7 @@ pub struct HostedPlugin {
     opened: crate::plugin::Opened,
     blocks: u32,
     /// 按块推进的走带：tempo 同步的插件效果（延迟、LFO）跟随工程速度。
-    transport: manguebyte::prelude::Transport,
+    clock: crate::transport::Clock,
     events: manguebyte::prelude::EventBuffer,
     sample_rate: f64,
 }
@@ -556,9 +556,10 @@ impl Processor<f32> for HostedPlugin {
         }
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        let ctx = manguebyte::prelude::ProcessContext::new(&self.events, &self.transport);
+        let transport = self.clock.now(self.sample_rate);
+        let ctx = manguebyte::prelude::ProcessContext::new(&self.events, &transport);
         self.processor.process_with(buffer, &ctx);
-        self.transport.advance(buffer.num_frames(), self.sample_rate);
+        self.clock.advance(buffer.num_frames());
         // 定期回应插件的请求（参数回报、重启请求等），避免队列积压。
         self.blocks = self.blocks.wrapping_add(1);
         if self.blocks % 16 == 0 {

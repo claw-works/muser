@@ -34,32 +34,110 @@ pub mod plugin_edit;
 pub mod profile;
 pub mod vital;
 
-/// 当前线程正在渲染的工程速度与拍号，交给插件的走带（tempo 同步的 LFO、延迟等）。
 pub mod tuning;
+/// 当前线程正在渲染的工程速度与拍号表，交给插件的走带（tempo 同步的 LFO、延迟、按小节走的步进器等）。
+/// 段落各有拍号时，插件看到的拍号、小节起点、小节号跟着段落换。
 pub mod transport {
-    use std::cell::Cell;
+    use std::cell::RefCell;
+    use std::sync::Arc;
+
+    use manguebyte::dsp::timeline::{TempoMap, TimeSignature};
+    use manguebyte::prelude::Transport;
 
     thread_local! {
-        static CURRENT: Cell<(f64, u16, u16)> = const { Cell::new((120.0, 4, 4)) };
+        /// 速度表与新建的走带从第几帧开始（播放中跳转时不是 0）。
+        static CURRENT: RefCell<(Arc<TempoMap>, i64)> = RefCell::new((Arc::new(map(120.0, &[(0.0, 4, 4)], |_| 0)), 0));
     }
 
-    /// 设置当前线程的速度与拍号；返回的守卫在离开作用域时恢复原值。
-    pub fn set(tempo: f64, numerator: u16, denominator: u16) -> Guard {
-        let old = CURRENT.with(|c| c.replace((tempo, numerator, denominator)));
-        Guard(old)
+    /// 速度 + 拍号表（(起点拍, 分子, 分母)，第一项在 0）→ 速度表。`bar_of` 把起点拍换成小节号。不合法的拍号跳过。
+    fn map(tempo: f64, segs: &[(f64, u16, u16)], bar_of: impl Fn(f64) -> usize) -> TempoMap {
+        let sig = |n: u16, d: u16| TimeSignature { numerator: n, denominator: d };
+        let first = segs.first().map_or(sig(4, 4), |s| sig(s.1, s.2));
+        let mut m = TempoMap::new(tempo, first).or_else(|_| TempoMap::new(tempo, sig(4, 4))).unwrap_or_else(|_| TempoMap::new(120.0, sig(4, 4)).expect("120 bpm 4/4"));
+        for &(beat, n, d) in segs.iter().skip(1) {
+            let _ = m.set_signature(bar_of(beat) as i64, sig(n, d));
+        }
+        m
     }
 
-    /// 从工程开头开始播放的走带。
-    pub fn start() -> manguebyte::prelude::Transport {
-        let (tempo, n, d) = CURRENT.with(|c| c.get());
-        manguebyte::prelude::Transport { time_signature: Some((n, d)), ..manguebyte::prelude::Transport::playing_at(tempo) }
+    /// 设置当前线程的速度与拍号表（取自工程），之后新建的走带从第 `start` 帧开始；返回的守卫在离开作用域时恢复原值。
+    pub fn set(project: &muser_core::Project, start: usize) -> Guard {
+        let bars = project.bar_map();
+        let segs: Vec<(f64, u16, u16)> = bars.segs.iter().map(|(b, ts)| (*b, u16::from(ts.numerator), u16::from(ts.denominator))).collect();
+        let new = Arc::new(map(project.tempo, &segs, |b| bars.bar_at(b).0));
+        Guard(CURRENT.with(|c| c.replace((new, start as i64))))
     }
 
-    pub struct Guard((f64, u16, u16));
+    /// 当前线程的速度表（存起来，之后在别处用 [`set_shared`] 再设上）。
+    pub fn current() -> Arc<TempoMap> {
+        CURRENT.with(|c| Arc::clone(&c.borrow().0))
+    }
+
+    pub fn set_shared(map: &Arc<TempoMap>) -> Guard {
+        Guard(CURRENT.with(|c| c.replace((Arc::clone(map), 0))))
+    }
+
+    /// 新建的走带时钟（从 [`set`] 给的起点帧开始）。
+    pub fn clock() -> Clock {
+        CURRENT.with(|c| {
+            let (map, frame) = &*c.borrow();
+            Clock { map: Arc::clone(map), frame: *frame }
+        })
+    }
+
+    /// 新建的走带（只看第一块；之后要逐块推进用 [`clock`]）。
+    pub fn start() -> Transport {
+        clock().now(48_000.0)
+    }
+
+    /// 按块推进的走带：每块从速度表算出位置、拍号、小节起点。
+    #[derive(Clone)]
+    pub struct Clock {
+        map: Arc<TempoMap>,
+        frame: i64,
+    }
+
+    impl Clock {
+        /// 下一块开头的走带（播放中）。
+        pub fn now(&self, sample_rate: f64) -> Transport {
+            Transport { playing: true, ..self.map.transport_at_frame(self.frame, sample_rate) }
+        }
+        pub fn advance(&mut self, frames: usize) {
+            self.frame += frames as i64;
+        }
+    }
+
+    pub struct Guard((Arc<TempoMap>, i64));
 
     impl Drop for Guard {
         fn drop(&mut self) {
-            CURRENT.with(|c| c.set(self.0));
+            let old = (Arc::clone(&self.0 .0), self.0 .1);
+            CURRENT.with(|c| *c.borrow_mut() = old);
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn plugins_see_section_meters() {
+            // 4/4 两小节，然后 7/8：第 8 拍起是第 2 小节、7/8；第 11.5 拍是第 3 小节的开头。
+            let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 120,
+                "sections": { "a": { "bars": 2 }, "b": { "bars": 2, "time_signature": { "numerator": 7, "denominator": 8 } } },
+                "form": ["a", "b"], "tracks": [] })).unwrap();
+            let _g = super::set(&p, 0);
+            let mut c = super::clock();
+            let sr = 1000.0;
+            assert_eq!(c.now(sr).time_signature, Some((4, 4)));
+            c.advance(4000); // 120 bpm：每拍 500 帧，4000 帧 = 第 8 拍
+            let t = c.now(sr);
+            assert_eq!((t.time_signature, t.bar_number, t.bar_start_beats), (Some((7, 8)), Some(2), Some(8.0)));
+            c.advance(1750);
+            let t = c.now(sr);
+            assert_eq!((t.bar_number, t.bar_start_beats), (Some(3), Some(11.5)));
+            assert!(t.playing);
+            // 播放中跳转：从第 4000 帧新建的走带一开始就在第 2 小节。
+            let _g = super::set(&p, 4000);
+            assert_eq!(super::clock().now(sr).bar_number, Some(2));
         }
     }
 }

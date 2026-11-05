@@ -479,8 +479,7 @@ impl Worker {
         let (tx, rx) = std::sync::mpsc::sync_channel(Self::AHEAD);
         // 线程起不来时发送端随闭包丢弃，取音频时报"演奏线程已退出"。
         let _ = std::thread::Builder::new().name(format!("muser-track-{ti}")).spawn(move || {
-            let ts = project.time_signature;
-            let _t = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
+            let _t = crate::transport::set(&project, start);
             let _quiet = manguebyte::NoDenormals::new();
             let mut live = match LiveInstrument::new(&project, ti, &cx, beats, start) {
                 Ok(l) => l,
@@ -889,8 +888,8 @@ pub struct Renderer {
     /// 流式推进的段对齐（帧）。
     align: usize,
     pos: usize,
-    tempo: f64,
-    ts: (u16, u16),
+    /// 插件走带用的速度表（每次 process 都设到当前线程）。
+    tempo_map: std::sync::Arc<manguebyte::dsp::timeline::TempoMap>,
     beats: f64,
     meters: bool,
 }
@@ -926,13 +925,11 @@ impl Renderer {
         // 编曲层（form / parts）展开成普通 clip，之后只看展开后的工程。
         let arranged = crate::arrange::arranged(project).map_err(invalid)?;
         let project = &*arranged;
-        // shortcut: 插件看到的拍号是工程的，段落换拍号时插件的小节位置不跟着变；要跟时按 bar_map 每段更新 transport。
-        let ts = project.time_signature;
-        let _transport = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
         let cx = Ctx::new(project, settings);
         let bs = settings.block_size;
         let align = bs / gcd(bs, automate::BLOCK) * automate::BLOCK;
         let start = (start.min(cx.total_frames) / align) * align;
+        let _transport = crate::transport::set(project, start);
         let beats = automate::total_beats(project, settings.tail_seconds);
         let (key_nodes, master_keys) = sidechain_keys(project, &plan)?;
 
@@ -1076,8 +1073,7 @@ impl Renderer {
             plan,
             strips,
             pos: start,
-            tempo: project.tempo,
-            ts: (u16::from(ts.numerator), u16::from(ts.denominator)),
+            tempo_map: crate::transport::current(),
             beats,
             meters,
         })
@@ -1095,7 +1091,7 @@ impl Renderer {
 
     /// 渲染接下来的 `out.num_frames()` 帧（不超过结尾），返回实际写入的帧数；到结尾后返回 0。
     pub fn process(&mut self, out: &mut AudioBuffer<f32>) -> Result<usize, EngineError> {
-        let _transport = crate::transport::set(self.tempo, self.ts.0, self.ts.1);
+        let _transport = crate::transport::set_shared(&self.tempo_map);
         let _quiet = manguebyte::NoDenormals::new();
         let t = (self.pos + out.num_frames()).min(self.cx.total_frames);
         let n = t - self.pos;
