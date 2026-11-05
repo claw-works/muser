@@ -1424,7 +1424,22 @@ mod imp {
 
     /// 校验一组插件参数（会加载插件）。
     pub fn check_params(path: &str, id: Option<&str>, params: &serde_json::Map<String, Value>) -> Result<(), String> {
-        Opened::open(path, id)?.apply(params)
+        // 检查要真的打开插件、载入状态（Kontakt 要一秒上下）：同一组参数在这个进程里查过一次就记住。
+        // 现场演奏每换一次工程都要校验，不记的话每次都要把所有插件打开一遍。只记通过的；状态文件改了（修改时间变了）重新查。
+        static CHECKED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+        let state_mtime = params
+            .get("@state")
+            .and_then(Value::as_str)
+            .and_then(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok())
+            .map(|t| format!("{t:?}"));
+        let key = format!("{path}#{}|{}|{state_mtime:?}", id.unwrap_or(""), Value::Object(params.clone()));
+        let checked = CHECKED.get_or_init(Default::default);
+        if checked.lock().unwrap_or_else(|e| e.into_inner()).contains(&key) {
+            return Ok(());
+        }
+        Opened::open(path, id)?.apply(params)?;
+        checked.lock().unwrap_or_else(|e| e.into_inner()).insert(key);
+        Ok(())
     }
 
     /// 自动化：解析参数，返回（参数 id, 范围, 应用 base_params 后的当前值）以及文本转换器所在的插件。
