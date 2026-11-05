@@ -43,3 +43,47 @@ pub fn request(port: Option<u16>, method: &str, path: &str, body: Option<&str>) 
     }
     Ok(v)
 }
+
+/// 在后台启动 `muser live start …`，与调用它的进程完全脱离（unix 上新开一个会话，Windows 上脱离控制台）：
+/// 调用者（agent 的一条 shell 命令、muser-mcp）结束时音乐不跟着停。等到服务能回应（最多 10 秒）就返回它的状态；
+/// 输出写进临时目录的 `muser-live.log`。已经有一场在进行时报错。
+pub fn spawn_detached(muser: &std::path::Path, args: &[String]) -> Result<Value, String> {
+    if request(None, "GET", "/api/status", None).is_ok() {
+        return Err("已经有一场现场演奏在进行：先 muser live stop，或直接 send 接着写".into());
+    }
+    let log = std::env::temp_dir().join("muser-live.log");
+    let out = std::fs::File::create(&log).map_err(|e| e.to_string())?;
+    let err = out.try_clone().map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(muser);
+    cmd.args(["live", "start"]).args(args).stdin(std::process::Stdio::null()).stdout(out).stderr(err);
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: setsid 只改变子进程自己的会话，在 fork 之后、exec 之前调用是异步信号安全的。
+        cmd.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    let _ = std::fs::remove_file(port_file());
+    let mut child = cmd.spawn().map_err(|e| format!("启动 muser live 失败: {e}"))?;
+    for _ in 0..100 {
+        std::thread::sleep(Duration::from_millis(100));
+        if let Ok(v) = request(None, "GET", "/api/status", None) {
+            return Ok(v);
+        }
+        if let Ok(Some(_)) = child.try_wait() {
+            break;
+        }
+    }
+    Err(format!("muser live 没起来：{}", std::fs::read_to_string(&log).unwrap_or_default().trim()))
+}

@@ -10,6 +10,7 @@
 //! 录完换回只输出的流，麦克风随之释放。[`Player::measure_latency`] 放咔嗒声、听回来，量出驱动没报告的那部分延迟。
 
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
@@ -73,6 +74,8 @@ struct Shared {
     dropped: AtomicUsize,
     /// 现场模式：正在听到的这一小段各节点的峰值（[`Player::levels`]）。
     levels: Mutex<Vec<(String, f32)>>,
+    /// 现场模式：最近约一秒里各节点占了多少（一个核的比例，[`Player::loads`]）。
+    loads: Mutex<Vec<(String, f32)>>,
 }
 
 /// 一遍录音：从工程第 `start` 帧开始的单声道样本。
@@ -493,6 +496,11 @@ impl Player {
         self.shared.monitor.store(g.to_bits(), Ordering::Relaxed);
     }
 
+    /// 现场模式下最近约一秒各节点的负载（一个核的比例，1.0 = 一整个核），从高到低。
+    pub fn loads(&self) -> Vec<(String, f32)> {
+        self.shared.loads.lock().unwrap().clone()
+    }
+
     /// 现场模式下正在听到的各节点峰值（线性）：轨名 / 总线名，主总线是空串。
     pub fn levels(&self) -> Vec<(String, f32)> {
         self.shared.levels.lock().unwrap().clone()
@@ -531,6 +539,8 @@ fn flush(sh: &Shared) {
 fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>, cmds: mpsc::Receiver<Cmd>, tx: &mut spsc::Producer<[f32; 2]>, live: bool) {
     let mut project: Option<Project> = None;
     let mut renderer: Option<Renderer> = None;
+    // 负载：上次量的时刻与各节点用掉的时间。
+    let mut last_cost: Option<(std::time::Instant, HashMap<String, Duration>)> = None;
     let mut block = AudioBuffer::<f32>::new(2, CHUNK);
     let mut frames = vec![[0f32; 2]; CHUNK];
     let fail = |e: String| {
@@ -658,6 +668,23 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
         if live && wrote {
             if let Some(r) = &renderer {
                 *sh.levels.lock().unwrap() = r.levels(sh.position.load(Ordering::Acquire));
+                let now = std::time::Instant::now();
+                match &last_cost {
+                    Some((t, _)) if now.duration_since(*t) < Duration::from_secs(1) => {}
+                    _ => {
+                        let costs: HashMap<String, Duration> = r.costs().into_iter().collect();
+                        if let Some((t, prev)) = &last_cost {
+                            let wall = now.duration_since(*t).as_secs_f32();
+                            let mut loads: Vec<(String, f32)> = costs
+                                .iter()
+                                .map(|(n, c)| (n.clone(), c.saturating_sub(prev.get(n).copied().unwrap_or_default()).as_secs_f32() / wall))
+                                .collect();
+                            loads.sort_by(|a, b| b.1.total_cmp(&a.1));
+                            *sh.loads.lock().unwrap() = loads;
+                        }
+                        last_cost = Some((now, costs));
+                    }
+                }
             }
         }
         if tx.free_len() < CHUNK || renderer.as_ref().is_none_or(|r| r.position() >= r.total_frames()) {

@@ -128,8 +128,8 @@ random 自动化），不改文件。需要 device 特性（发行版都带；he
 
 ### `muser live start|send|status|wait|autoplay|stop`
 
-现场演奏（做法见 [skills/live.md](skills/live.md)）。`start <模板> [--autoplay 3m] [--record s.muser.json] [--open] [--port 8747]`
-常驻、占着本机声卡、只听 127.0.0.1；其余子命令控制它：`send <段.json|->` 提交一段（立即返回回执）、`status`、
+现场演奏（做法见 [skills/live.md](skills/live.md)）。`start <模板> [--detach] [--autoplay 3m] [--record s.muser.json] [--open] [--port 8747]`
+常驻、占着本机声卡、只听 127.0.0.1（`--detach` 在后台启动、开始演奏就返回，agent 用这个）；其余子命令控制它：`send <段.json|->` 提交一段（立即返回回执）、`status`、
 `wait [--runway 8]`（最多 30 秒）、`autoplay <时长>`、`stop`（写好录音工程并退出）。模板在 `samples/live/`。需要 device 特性。
 
 ### `muser loop edit|list|show|play|save|share`

@@ -896,6 +896,8 @@ struct Strip {
     record: Option<[Vec<f32>; 2]>,
     /// 响度表（[`Renderer::with_loudness`]）。
     loud: Option<Box<LoudMeters>>,
+    /// 这个节点的乐器与效果链一共用了多少时间（[`Renderer::costs`]）。
+    busy: std::time::Duration,
 }
 
 /// 主总线的"推子"：只有增益。
@@ -1156,6 +1158,7 @@ impl Renderer {
                 cache_key,
                 record: None,
                 loud: None,
+                busy: Default::default(),
             });
         }
         let MasterLanes { effects: fx_lanes, gain } = automate::compile_master(project, beats).map_err(invalid)?;
@@ -1195,6 +1198,7 @@ impl Renderer {
             cache_key: None,
             record: None,
             loud: None,
+            busy: Default::default(),
         });
         }
 
@@ -1354,6 +1358,7 @@ impl Renderer {
             let key_refs: Vec<Option<&AudioBuffer<f32>>> = keys.iter().map(|k| k.as_ref()).collect();
             let cx = &self.cx;
             let st = &mut self.strips[s];
+            let t0 = std::time::Instant::now();
             if let Some(src) = st.source.as_mut() {
                 src.fill(a, &mut buf, cx)?;
                 if let Some(rec) = st.record.as_mut() {
@@ -1367,6 +1372,7 @@ impl Renderer {
                 l.in_peak = l.in_peak.max(buf.peak());
             }
             effects::apply_chain(&mut st.chain, &mut buf, bs, &mut st.lanes.effects, &|f| cx.beat_at(a + f), &key_refs, &st.windows, a);
+            st.busy += t0.elapsed();
             st.wet.push(&buf, 0..n);
             st.pos = b;
 
@@ -1440,6 +1446,11 @@ impl Renderer {
             .iter()
             .map(|s| (s.ident.get(2..).unwrap_or("").to_string(), s.meter.get(w).map_or(0.0, |p| p[0].max(p[1]))))
             .collect()
+    }
+
+    /// 各节点（轨名 / 总线名，主总线是空串）的乐器与效果链到目前为止一共用了多少时间：找出最耗资源的轨。
+    pub fn costs(&self) -> Vec<(String, std::time::Duration)> {
+        self.strips.iter().map(|s| (s.ident.get(2..).unwrap_or("").to_string(), s.busy)).collect()
     }
 
     /// 同时记录各节点的电平（见 [`Renderer::meters`]）。

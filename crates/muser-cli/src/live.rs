@@ -27,6 +27,9 @@ const WAIT_MAX: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Change {
+    /// 这一段叫什么（如 "chorus"、"blues 2"）：录下的工程里段落名带上它，复盘方便。
+    #[serde(default)]
+    pub name: Option<String>,
     /// `"after"`（默认）：排在已经提交的音乐之后（在循环里时：这一遍放完再接）；`"now"`：下一条小节线就换（截断正在放的这段）。
     #[serde(default)]
     pub at: At,
@@ -37,6 +40,28 @@ pub struct Change {
     pub time_signature: Option<TimeSignature>,
     #[serde(default)]
     pub tracks: Vec<TrackChange>,
+    /// 总线（模板里建好的）：从这一段开头接入 / 撤下效果器、自动化（`gain_db`、`pan`、`effects[i]`）。
+    #[serde(default)]
+    pub buses: Vec<BusChange>,
+    /// （总线和主输出的变化只在这一段第一次放时生效；循环的重复里保持变化后的状态。）
+    /// 主输出：效果器（`effects_add` / `effects_off`）与自动化（`master_gain_db`、`master_effects[i]`；不写 `name`）。
+    /// 收尾的渐弱：`{ "target": "master_gain_db", "shape": "points", "points": [[0, 0], [16, -40]] }`。
+    #[serde(default)]
+    pub master: Option<BusChange>,
+}
+
+/// 一条总线（或主输出）在这一段里的变化。
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BusChange {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub effects_add: Vec<EffectSlot>,
+    #[serde(default)]
+    pub effects_off: Vec<usize>,
+    #[serde(default)]
+    pub automation: Vec<Automation>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
@@ -87,6 +112,8 @@ struct Seg {
     ts: TimeSignature,
     change: Arc<Change>,
     rep: bool,
+    /// 被后来的 `"now"` 截短了。
+    cut: bool,
 }
 
 impl Seg {
@@ -101,12 +128,14 @@ impl Seg {
 /// 提交的回执。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Receipt {
-    /// 生效在第几小节（从 1 起）、第几拍。
+    /// 生效在第几小节的第几拍（都从 1 起；段总是从小节线开始，所以拍是 1）。
     pub bar: usize,
-    pub beat: f64,
+    pub beat_in_bar: f64,
+    /// 从整场开头算第几拍（四分音符为一拍，从 0 起）。
+    pub absolute_beat: f64,
     /// 离生效还有几秒。
-    pub seconds: f64,
-    /// 排到了第几小节（这一段之后）。
+    pub starts_in_seconds: f64,
+    /// 已经排到第几小节（这一段的最后一小节）。
     pub queued_until_bar: usize,
 }
 
@@ -134,6 +163,9 @@ impl Session {
         let bpb = ts.beats_per_bar();
         let bars = ((arranged.duration_beats().0 / bpb) - 1e-9).ceil().max(1.0) as u32;
         let first = Change {
+            name: Some("template".into()),
+            buses: Vec::new(),
+            master: None,
             at: At::After,
             bars,
             time_signature: Some(ts),
@@ -151,7 +183,7 @@ impl Session {
         }
         base.form.clear();
         base.sections.clear();
-        let s = Session { base, segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false }] };
+        let s = Session { base, segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false }] };
         s.project()?;
         Ok(s)
     }
@@ -175,7 +207,7 @@ impl Session {
         let mut changed = false;
         while self.segs.last().is_some_and(|l| l.end() < until) {
             let start = self.segs.last().unwrap().end();
-            self.segs.push(Seg { start, rep: true, ..src.clone() });
+            self.segs.push(Seg { start, rep: true, cut: false, ..src.clone() });
             changed = true;
         }
         changed
@@ -208,7 +240,8 @@ impl Session {
         };
         self.extend(at);
         // 排着还没放的段里接入了效果器：效果链只能往后加，去不掉。
-        if self.segs.iter().any(|s| s.start >= at - 1e-9 && !s.rep && s.change.tracks.iter().any(|t| !t.effects_add.is_empty())) {
+        let adds = |c: &Change| c.tracks.iter().any(|t| !t.effects_add.is_empty()) || c.buses.iter().any(|b| !b.effects_add.is_empty()) || c.master.as_ref().is_some_and(|m| !m.effects_add.is_empty());
+        if self.segs.iter().any(|s| s.start >= at - 1e-9 && !s.rep && adds(&s.change)) {
             self.segs = before;
             bail!("后面排着的段接入了效果器，现在截不掉：等它开始放以后再用 \"now\"，或者用 \"after\"");
         }
@@ -217,17 +250,20 @@ impl Session {
         if let Some(last) = self.segs.last_mut() {
             if last.end() > at + 1e-9 {
                 last.bars = ((at - last.start) / last.ts.beats_per_bar()).round() as u32;
+                last.cut = true;
             }
         }
         let ts = change.time_signature.unwrap_or(self.base.time_signature);
-        self.segs.push(Seg { start: at, bars: change.bars, ts, change: Arc::new(change), rep: false });
+        self.segs.push(Seg { start: at, bars: change.bars, ts, change: Arc::new(change), rep: false, cut: false });
         match self.project() {
             Ok(p) => {
                 let map = p.bar_map();
+                let (bar, into) = map.bar_at(at);
                 Ok(Receipt {
-                    bar: map.bar_at(at).0 + 1,
-                    beat: at,
-                    seconds: ((at - now) * 60.0 / self.tempo()).max(0.0),
+                    bar: bar + 1,
+                    beat_in_bar: (into * 1000.0).round() / 1000.0 + 1.0,
+                    absolute_beat: at,
+                    starts_in_seconds: ((at - now) * 60.0 / self.tempo()).max(0.0),
                     queued_until_bar: map.bar_at(self.real_end()).0,
                 })
             }
@@ -248,7 +284,17 @@ impl Session {
         let mut p = self.base.clone();
         let mut sections = BTreeMap::new();
         for (k, seg) in self.segs.iter().enumerate().filter(|(_, s)| s.start < until || s.start == 0.0) {
-            let name = format!("{:03}", k + 1);
+            // 段落名：序号 + agent 起的名字，循环出来的重复、被截短的注明。
+            let mut name = format!("{:03}", k + 1);
+            if let Some(n) = &seg.change.name {
+                name = format!("{name} {n}");
+            }
+            if seg.rep {
+                name.push_str(" (repeat)");
+            }
+            if seg.cut {
+                name.push_str(" (cut)");
+            }
             sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None });
             p.form.push(muser_core::arrange::FormEntry::Name(name));
             apply(&mut p, seg).with_context(|| format!("第 {} 段", k + 1))?;
@@ -272,12 +318,14 @@ impl Session {
         let last = self.last_real();
         let looping = now >= real_end;
         let reps = self.segs.iter().filter(|s| s.rep && s.start >= real_end - 1e-9 && s.start <= now).count();
+        let (bar_now, into) = map.bar_at(now);
         json!({
-            "bar": map.bar_at(now).0 + 1,
-            "beat": now,
+            "bar": bar_now + 1,
+            "beat_in_bar": (into * 100.0).floor() / 100.0 + 1.0,
+            "absolute_beat": now,
             "tempo": self.tempo(),
             "time_signature": [seg.ts.numerator, seg.ts.denominator],
-            "segment": { "index": cur + 1, "start_bar": map.bar_at(seg.start).0 + 1, "bars": seg.bars, "repeat": seg.rep,
+            "segment": { "index": cur + 1, "name": seg.change.name, "start_bar": map.bar_at(seg.start).0 + 1, "bars": seg.bars, "repeat": seg.rep,
                          "seconds_to_end": ((seg.end() - now) * spb).max(0.0) },
             "queued_until_bar": map.bar_at(real_end).0,
             "runway_seconds": ((real_end - now) * spb).max(0.0),
@@ -315,7 +363,11 @@ impl Session {
 impl Change {
     /// 写回 JSON（给 status：agent 接着写下一段时参考）。
     fn to_json(&self) -> Value {
+        let bus = |b: &BusChange| json!({ "name": b.name, "effects_add": b.effects_add, "effects_off": b.effects_off, "automation": b.automation });
         json!({
+            "name": self.name,
+            "buses": self.buses.iter().map(bus).collect::<Vec<_>>(),
+            "master": self.master.as_ref().map(bus),
             "bars": self.bars,
             "time_signature": self.time_signature,
             "tracks": self.tracks.iter().map(|t| {
@@ -397,16 +449,50 @@ fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
             }
         }
         for a in &tc.automation {
-            let mut a = a.clone();
-            if let muser_core::automation::Shape::Points { points, .. } = &mut a.shape {
-                for pt in points.iter_mut() {
-                    pt.0 += off;
-                }
-            }
-            a.start = Some(Beats(off + a.start.map_or(0.0, |b| b.0)));
-            a.end = a.end.map(|b| Beats(off + b.0));
-            t.automation.push(a);
+            t.automation.push(shift(a, off));
         }
+    }
+    for bc in &seg.change.buses {
+        let b = p.buses.iter_mut().find(|b| b.name == bc.name).ok_or_else(|| anyhow!("没有叫 '{}' 的总线（总线要先在模板里建好）", bc.name))?;
+        // 总线、主输出的变化只在这一段第一次出现时：渐弱以后循环停在弱的那里，不会每遍重来。
+        if !seg.rep {
+            effects_change(&mut b.effects, bc, off, &format!("总线 '{}'", bc.name))?;
+            b.automation.extend(bc.automation.iter().map(|a| shift(a, off)));
+        }
+    }
+    if let Some(m) = &seg.change.master {
+        if !seg.rep {
+            effects_change(&mut p.master_effects, m, off, "主输出")?;
+            p.automation.extend(m.automation.iter().map(|a| shift(a, off)));
+        }
+    }
+    Ok(())
+}
+
+/// 自动化平移到这一段的开头，从这一段开头起生效。
+fn shift(a: &Automation, off: f64) -> Automation {
+    let mut a = a.clone();
+    if let muser_core::automation::Shape::Points { points, .. } = &mut a.shape {
+        for pt in points.iter_mut() {
+            pt.0 += off;
+        }
+    }
+    a.start = Some(Beats(off + a.start.map_or(0.0, |b| b.0)));
+    a.end = a.end.map(|b| Beats(off + b.0));
+    a
+}
+
+/// 总线 / 主输出的效果链：从 `off` 拍起撤下、接入。
+fn effects_change(effects: &mut Vec<EffectSlot>, bc: &BusChange, off: f64, what: &str) -> Result<()> {
+    for &k in &bc.effects_off {
+        let e = effects.get_mut(k).ok_or_else(|| anyhow!("{what} 没有 effects[{k}]"))?;
+        e.until = Some(Beats(e.until.map_or(off, |u| u.0.min(off))));
+    }
+    for e in &bc.effects_add {
+        let mut e = e.clone();
+        e.from = Some(Beats(off + e.from.map_or(0.0, |b| b.0)));
+        e.until = e.until.map(|b| Beats(off + b.0));
+        effects.push(e);
     }
     Ok(())
 }
@@ -423,7 +509,14 @@ struct Live {
     last_wait: Mutex<Option<Instant>>,
     last_gap: Mutex<Option<f64>>,
     started: Instant,
+    /// 最近一次掉帧（播放器的欠载数涨了）是什么时候，与当时的欠载数。
+    last_underrun: Mutex<(Option<Instant>, usize)>,
+    /// 已经 `stop`：声音停了，再留几秒让页面看到"已结束"。
+    stopped: std::sync::atomic::AtomicBool,
 }
+
+/// 掉帧后这么多秒内，status / wait 都提醒。
+const UNDERRUN_WARN: Duration = Duration::from_secs(30);
 
 impl Live {
     fn now_beat(&self) -> f64 {
@@ -453,11 +546,51 @@ impl Live {
         self.autoplay_until.lock().unwrap().map(|t| t.saturating_duration_since(Instant::now()).as_secs_f64())
     }
 
+    fn is_stopped(&self) -> bool {
+        self.stopped.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// 播放器的欠载数涨了就记下时刻（后台线程每 250 毫秒看一次）。
+    fn watch_underruns(&self) {
+        let n = self.player.status().underruns;
+        let mut u = self.last_underrun.lock().unwrap();
+        if n > u.1 {
+            *u = (Some(Instant::now()), n);
+        }
+    }
+
+    /// 每次提交写一行：什么时候、生效在哪、原文（复盘用）。
+    fn log_change(&self, body: &Value, receipt: &Receipt) {
+        let Some(path) = &self.record else { return };
+        let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
+        let stem = name.strip_suffix(".json").unwrap_or(&name);
+        let stem = stem.strip_suffix(".muser").unwrap_or(stem);
+        let log = path.with_file_name(format!("{stem}.changes.jsonl"));
+        let line = json!({ "elapsed_seconds": self.started.elapsed().as_secs_f64(), "receipt": receipt, "change": body }).to_string();
+        let r = std::fs::OpenOptions::new().create(true).append(true).open(&log).and_then(|mut f| std::io::Write::write_all(&mut f, (line + "\n").as_bytes()));
+        if let Err(e) = r {
+            eprintln!("[live] 写 {} 失败: {e}", log.display());
+        }
+    }
+
     fn status(&self) -> Value {
         let now = self.now_beat();
         let mut v = self.session.lock().unwrap().status(now);
         let st = self.player.status();
+        v["stopped"] = json!(self.is_stopped());
+        v["record"] = json!(self.record.as_ref().map(|p| p.display().to_string()));
         v["underruns"] = json!(st.underruns);
+        let loads = self.player.loads();
+        v["load"] = json!({ "total": loads.iter().map(|l| l.1).sum::<f32>(),
+            "heaviest": loads.iter().filter(|l| !l.0.is_empty()).take(3).map(|(n, l)| json!({ "name": n, "cores": (f64::from(*l) * 100.0).round() / 100.0 })).collect::<Vec<_>>() });
+        let recent = self.last_underrun.lock().unwrap().0.is_some_and(|t| t.elapsed() < UNDERRUN_WARN);
+        if recent {
+            let names: Vec<&str> = loads.iter().filter(|l| !l.0.is_empty()).take(3).map(|l| l.0.as_str()).collect();
+            v["warning"] = json!(format!(
+                "最近 {} 秒内掉过帧（电脑跟不上）：最耗资源的是 {}。让不用的轨休息（下一段不给它片段）、换轻一点的乐器，或少开几条轨",
+                UNDERRUN_WARN.as_secs(), names.join("、")
+            ));
+        }
         v["error"] = json!(st.error);
         v["autoplay_seconds_left"] = json!(self.autoplay_left());
         v["last_write_seconds"] = json!(*self.last_gap.lock().unwrap());
@@ -466,9 +599,13 @@ impl Live {
     }
 
     fn change(&self, body: Value) -> Result<Value> {
-        let change: Change = serde_json::from_value(body).context("改动的写法不对")?;
+        if self.is_stopped() {
+            bail!("演奏已经结束了");
+        }
+        let change: Change = serde_json::from_value(body.clone()).context("改动的写法不对")?;
         let now = self.now_beat();
         let receipt = self.session.lock().unwrap().submit(change, now)?;
+        self.log_change(&body, &receipt);
         if let Some(t) = self.last_wait.lock().unwrap().take() {
             *self.last_gap.lock().unwrap() = Some(t.elapsed().as_secs_f64());
         }
@@ -481,6 +618,9 @@ impl Live {
     fn wait(&self, runway: f64) -> Value {
         let t0 = Instant::now();
         let reason = loop {
+            if self.is_stopped() {
+                break "stopped";
+            }
             if self.autoplay_left().is_some_and(|s| s <= 0.0) {
                 break "autoplay_over";
             }
@@ -497,6 +637,7 @@ impl Live {
         let mut s = self.status();
         s["reason"] = json!(reason);
         s["hint"] = json!(match reason {
+            "stopped" => "演奏已经结束",
             "autoplay_over" => "自主演奏的时间到了：交最后一段（适合循环的乐句）就停下，等人类说话；音乐会一直循环",
             "runway" => "排好的音乐快放完了：写下一段并提交（没写也不会冷场，会循环最后一段）",
             _ => "还早：再调用一次 wait",
@@ -545,6 +686,8 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
         last_wait: Mutex::new(None),
         last_gap: Mutex::new(None),
         started: Instant::now(),
+        last_underrun: Mutex::new((None, 0)),
+        stopped: Default::default(),
     });
     {
         let tempo = live.session.lock().unwrap().tempo();
@@ -563,6 +706,10 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
         let l = Arc::clone(&live);
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_millis(250));
+            if l.is_stopped() {
+                continue;
+            }
+            l.watch_underruns();
             let now = l.now_beat();
             let changed = {
                 let mut s = l.session.lock().unwrap();
@@ -615,11 +762,17 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
                     }
                 }
                 (tiny_http::Method::Post, "/api/stop") => {
-                    l.save(l.now_beat());
-                    crate::web::respond_json(req, 200, &json!({ "ok": true, "saved": l.record.as_ref().map(|p| p.display().to_string()) }));
-                    let _ = std::fs::remove_file(muser_engine::live_client::port_file());
-                    std::thread::sleep(Duration::from_millis(200));
-                    std::process::exit(0);
+                    if !l.stopped.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                        l.player.pause();
+                        l.save(l.now_beat());
+                        let _ = std::fs::remove_file(muser_engine::live_client::port_file());
+                        // 再留几秒：页面看到"已结束"再退出。
+                        std::thread::spawn(|| {
+                            std::thread::sleep(Duration::from_secs(3));
+                            std::process::exit(0);
+                        });
+                    }
+                    (200, json!({ "ok": true, "saved": l.record.as_ref().map(|p| p.display().to_string()) }))
                 }
                 (tiny_http::Method::Get, "/") => {
                     let r = tiny_http::Response::from_string(include_str!("live.html"))
@@ -672,7 +825,7 @@ mod tests {
         assert_eq!(s.segs.len(), 3, "0–4、4–8、8–12");
         // 现在第 1.5 拍：排在已经提交的（模板那一小节，第 4 拍）之后——但那里离现在不到 1.5 秒（3 拍），等这一遍循环放完。
         let r = s.submit(change(json!({ "bars": 2, "tracks": [{ "name": "bass", "clips": [{ "start": 0, "length": 8, "notes": [{ "pitch": 36, "start": 0, "length": 1 }] }] }] })), 1.5).unwrap();
-        assert_eq!((r.beat, r.bar), (8.0, 3), "{r:?}");
+        assert_eq!((r.absolute_beat, r.bar, r.beat_in_bar), (8.0, 3, 1.0), "{r:?}");
         assert_eq!(s.segs.len(), 3, "模板、一遍循环、新的一段");
         let p = s.project().unwrap();
         assert_eq!(p.form.len(), 3);
@@ -683,7 +836,7 @@ mod tests {
             { "name": "lead", "instrument": "synth.poly", "output": "verb", "clips": [{ "start": 0, "length": 7, "notes": [{ "pitch": 72, "start": 0, "length": 1 }] }] },
             { "name": "bass", "effects_add": [{ "type": "eq", "shape": "lowpass", "frequency": 800 }],
               "automation": [{ "target": "effects[0]", "param": "frequency", "shape": "points", "points": [[0, 800], [7, 3000]] }] } ] })), 2.0).unwrap();
-        assert_eq!((r.beat, r.bar), (16.0, 5));
+        assert_eq!((r.absolute_beat, r.bar), (16.0, 5));
         let p = s.project().unwrap();
         let bass = p.tracks.iter().find(|t| t.name == "bass").unwrap();
         assert_eq!(bass.effects[0].from.map(|b| b.0), Some(16.0));
@@ -696,7 +849,7 @@ mod tests {
         assert_eq!(p.tracks.iter().find(|t| t.name == "lead").unwrap().clips.len(), s.segs.iter().filter(|g| g.start >= 16.0).count());
         // "now"：现在第 25 拍（循环里），下一条小节线在 1.5 秒（3 拍）之后的第 30 拍（23 + 2×3.5）。
         let r = s.submit(change(json!({ "at": "now", "bars": 1, "tracks": [] })), 25.0).unwrap();
-        assert_eq!(r.beat, 30.0);
+        assert_eq!(r.absolute_beat, 30.0);
         assert_eq!(s.segs[s.segs.len() - 2].bars, 2);
         // 出错不改：已有的轨不能换乐器。
         let n = s.segs.len();
@@ -705,6 +858,28 @@ mod tests {
         assert_eq!(s.segs.len(), n);
         // 录下来：只到现在开始的段。
         assert!(s.project_until(26.0).unwrap().form.len() < s.project().unwrap().form.len());
+    }
+
+    /// 总线、主输出的自动化与效果器，段落名（循环、截短的注明）。
+    #[test]
+    fn buses_master_and_names() {
+        let mut s = Session::new(&template()).unwrap();
+        s.submit(change(json!({ "name": "outro", "bars": 2,
+            "buses": [{ "name": "verb", "effects_add": [{ "type": "eq", "shape": "lowpass", "frequency": 2000 }],
+                        "automation": [{ "target": "gain_db", "shape": "points", "points": [[0, 0], [8, -12]] }] }],
+            "master": { "automation": [{ "target": "master_gain_db", "shape": "points", "points": [[0, 0], [8, -40]] }] } })), 2.0).unwrap();
+        s.extend(30.0);
+        let p = s.project().unwrap();
+        assert_eq!(p.buses[0].effects[1].from.map(|b| b.0), Some(8.0), "第 2 拍提交：模板那一小节再循环一遍，第 8 拍接上");
+        assert_eq!(p.buses[0].effects.len(), 2, "循环出来的不再接入");
+        assert_eq!(p.automation[0].start.map(|b| b.0), Some(8.0));
+        assert_eq!(p.automation.len(), 1, "主输出的渐弱不在循环里重来");
+        match &p.automation[0].shape { muser_core::automation::Shape::Points { points, .. } => assert_eq!(points[1].0, 16.0), _ => panic!() }
+        assert!(p.form.iter().any(|f| matches!(f, muser_core::arrange::FormEntry::Name(n) if n == "003 outro")));
+        assert!(p.form.iter().any(|f| matches!(f, muser_core::arrange::FormEntry::Name(n) if n == "004 outro (repeat)")));
+        assert!(s.submit(change(json!({ "bars": 1, "buses": [{ "name": "nope" }] })), 3.0).is_err(), "总线要先在模板里建好");
+        s.submit(change(json!({ "at": "now", "bars": 1 })), 9.0).unwrap();
+        assert!(s.project().unwrap().form.iter().any(|f| matches!(f, muser_core::arrange::FormEntry::Name(n) if n.ends_with("(cut)"))));
     }
 
     #[test]

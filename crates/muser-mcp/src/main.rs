@@ -458,9 +458,11 @@ struct LiveStartParams {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct LiveSendParams {
-    /// 一段：{ "bars": 8, "time_signature": {"numerator":7,"denominator":8}（可省）, "at": "after"（默认）| "now",
+    /// 一段：{ "name": "chorus"（可省）, "bars": 8, "time_signature": {"numerator":7,"denominator":8}（可省）, "at": "after"（默认）| "now",
     /// "tracks": [{ "name", "clips"（start 相对这一段开头）, "effects_add", "effects_off", "automation"（时间相对这一段开头）,
-    /// 新轨还要 "instrument"（可加 instrument_params / output / sends / gain_db / pan）}] }。没写到的轨在这一段里休息。
+    /// 新轨还要 "instrument"（可加 instrument_params / output / sends / gain_db / pan）}],
+    /// "buses": [{ "name", "effects_add", "effects_off", "automation" }], "master": { "effects_add", "automation"（master_gain_db 渐弱）} }。
+    /// 没写到的轨在这一段里休息。
     change: serde_json::Value,
 }
 
@@ -1413,39 +1415,21 @@ warnings 列出没声音的轨、推子后峰值过 0、送进主总线过载、
     #[tool(description = "开始一场现场演奏（muser live）：在本机声卡上常驻演奏，agent 之后用 live_send 一段一段往后写，\
 音乐由 muser 维持：排好的放完、还没有新的一段时，最后一段整体循环，不冷场。已经有一场在进行时报错。返回状态（同 live_status）。")]
     fn live_start(&self, Parameters(p): Parameters<LiveStartParams>) -> Result<CallToolResult, McpError> {
-        if muser_engine::live_client::request(None, "GET", "/api/status", None).is_ok() {
-            return Ok(user_err("已经有一场现场演奏在进行：先 live_stop，或直接 live_send 接着写"));
-        }
         let exe = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(if cfg!(windows) { "muser.exe" } else { "muser" })));
         let Some(exe) = exe.filter(|e| e.exists()) else {
             return Ok(user_err("找不到 muser 命令（应和 muser-mcp 在同一个目录）"));
         };
-        let mut cmd = std::process::Command::new(exe);
-        cmd.args(["live", "start", &p.template, "--autoplay", p.autoplay.as_deref().unwrap_or("3m")]);
-        if let Some(r) = &p.record {
-            cmd.args(["--record", r]);
+        let mut args = vec![p.template, "--autoplay".into(), p.autoplay.unwrap_or_else(|| "3m".into())];
+        if let Some(r) = p.record {
+            args.extend(["--record".into(), r]);
         }
         if p.open {
-            cmd.arg("--open");
+            args.push("--open".into());
         }
-        let log = std::env::temp_dir().join("muser-live.log");
-        let out = std::fs::File::create(&log).map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        let err = out.try_clone().map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        cmd.stdin(std::process::Stdio::null()).stdout(out).stderr(err);
-        // 单独的进程组：agent 会话结束、muser-mcp 退出时，音乐不跟着停。
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-        let _ = std::fs::remove_file(muser_engine::live_client::port_file());
-        if let Err(e) = cmd.spawn() {
-            return Ok(user_err(format!("启动 muser live 失败: {e}")));
+        match muser_engine::live_client::spawn_detached(&exe, &args) {
+            Ok(v) => json_result(&v),
+            Err(e) => Ok(user_err(e)),
         }
-        for _ in 0..100 {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            if let Ok(v) = muser_engine::live_client::request(None, "GET", "/api/status", None) {
-                return json_result(&v);
-            }
-        }
-        Ok(user_err(format!("muser live 没起来：{}", std::fs::read_to_string(&log).unwrap_or_default().trim())))
     }
 
     #[tool(description = "提交现场演奏的一段，立即返回回执：生效在第几小节、还有几秒、排到了第几小节。默认排在已经提交的之后\
@@ -1458,7 +1442,7 @@ warnings 列出没声音的轨、推子后峰值过 0、送进主总线过载、
     }
 
     #[tool(description = "现场演奏的状态：现在第几小节、拍号、排好的音乐还剩几秒（runway_seconds）、是否在循环、每条轨（乐器、效果器、这一段在不在演奏）、\
-上一段的完整写法（last_change，接着写时参考）、自主演奏还剩几秒、上次写一段用了几秒、掉帧次数。")]
+上一段的完整写法（last_change，接着写时参考）、自主演奏还剩几秒、上次写一段用了几秒、掉帧次数；最近掉过帧时有 warning，load.heaviest 是最耗资源的轨。")]
     fn live_status(&self) -> Result<CallToolResult, McpError> {
         match muser_engine::live_client::request(None, "GET", "/api/status", None) {
             Ok(v) => json_result(&v),

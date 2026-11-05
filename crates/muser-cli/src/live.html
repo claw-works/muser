@@ -30,6 +30,10 @@
   canvas { display: block; width: 100%; }
   .hint { margin-top: 10px; color: var(--faint); font-size: 12px; }
   #error { margin-top: 14px; color: var(--err); white-space: pre-wrap; }
+  #warning { margin-top: 14px; color: var(--warn); }
+  #ended { display: none; margin-top: 20px; padding: 18px; border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-size: 16px; }
+  button { min-height: 32px; padding: 0 14px; color: var(--text); background: #171b29; border: 1px solid #343c55; border-radius: 9px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--err); color: var(--err); }
 </style>
 </head>
 <body>
@@ -38,10 +42,13 @@
     <h1>muser <span>live</span></h1>
     <div class="big" id="pos">—</div>
     <div class="chips" id="chips"></div>
+    <button id="stop"></button>
   </header>
+  <div id="ended"></div>
   <div class="panel"><canvas id="tl" height="320"></canvas>
     <div class="hint" id="legend"></div>
   </div>
+  <div id="warning"></div>
   <div id="error"></div>
 </main>
 <script>
@@ -50,16 +57,31 @@ const T = zh ? {
   bar: (b, m) => `第 ${b} 小节 · ${m}`, looping: (n) => `循环中 · 第 ${n + 1} 遍`, queued: (s) => `排好 ${s} 秒`,
   autoplay: (s) => `自主演奏还剩 ${s}`, autoplayOver: "自主演奏结束（等对话里的新指令）", underruns: (n) => `掉帧 ${n}`,
   gone: "连不上 muser live（已经停了？）", legend: "上面一行是提交的段（浅色 = 循环出来的重复），下面每条轨在哪些段里演奏，右边是电平。竖线是正在听到的位置。",
-  master: "主输出",
+  master: "主输出", stop: "停止演奏", confirmStop: "停止这场演奏？（录音会写好）",
+  ended: (f) => `演奏结束了。${f ? `录音存在 ${f}` : ""}`, endedAway: "演奏结束了（muser live 已经退出）。",
+  load: (n, c) => `最耗：${n}（${Math.round(c * 100)}% 核）`,
 } : {
   bar: (b, m) => `Bar ${b} · ${m}`, looping: (n) => `Looping · pass ${n + 1}`, queued: (s) => `${s}s queued`,
   autoplay: (s) => `Autoplay ${s} left`, autoplayOver: "Autoplay over (waiting for the conversation)", underruns: (n) => `${n} dropouts`,
   gone: "Can't reach muser live (stopped?)", legend: "Top row: submitted segments (lighter = loop repeats); below, where each track plays; levels on the right. The line is what you hear now.",
-  master: "Master",
+  master: "Master", stop: "Stop", confirmStop: "Stop this session? (the recording will be saved)",
+  ended: (f) => `The session is over.${f ? ` Recording: ${f}` : ""}`, endedAway: "The session is over (muser live has exited).",
+  load: (n, c) => `Heaviest: ${n} (${Math.round(c * 100)}% of a core)`,
 };
 document.documentElement.lang = zh ? "zh" : "en";
 document.getElementById("legend").textContent = T.legend;
-let view = null, at = 0;
+let view = null, at = 0, over = false;
+document.getElementById("stop").textContent = T.stop;
+document.getElementById("stop").onclick = async () => {
+  if (over || !confirm(T.confirmStop)) return;
+  try { await fetch("/api/stop", { method: "POST" }); } catch (_) {}
+};
+function end(text) {
+  over = true;
+  const e = document.getElementById("ended"); e.textContent = text; e.style.display = "block";
+  document.getElementById("stop").style.display = "none";
+  document.getElementById("error").textContent = ""; document.getElementById("warning").textContent = "";
+}
 const $ = (id) => document.getElementById(id);
 const fmt = (s) => { s = Math.max(0, Math.round(s)); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`; };
 
@@ -67,9 +89,15 @@ async function poll() {
   try {
     const r = await fetch("/api/view", { cache: "no-store" });
     view = await r.json(); at = performance.now();
+    if (view.stopped) return end(T.ended(view.record));
     $("error").textContent = view.error || "";
+    $("warning").textContent = view.warning || "";
     renderChips();
-  } catch (_) { $("error").textContent = T.gone; }
+  } catch (_) {
+    // 之前连上过：多半是演奏结束、进程退出了。
+    if (view) return end(T.endedAway);
+    $("error").textContent = T.gone;
+  }
   setTimeout(poll, 150);
 }
 function renderChips() {
@@ -80,9 +108,12 @@ function renderChips() {
   if (v.autoplay_seconds_left != null) chip(v.autoplay_seconds_left > 0 ? T.autoplay(fmt(v.autoplay_seconds_left)) : T.autoplayOver, v.autoplay_seconds_left > 0 ? "" : "warn");
   chip(`${Math.round(v.tempo)} BPM`);
   if (v.underruns) chip(T.underruns(v.underruns), "err");
+  const h = v.load && v.load.heaviest && v.load.heaviest[0];
+  if (h && h.cores > 0.05) chip(T.load(h.name, h.cores), v.warning ? "warn" : "");
 }
 
 function draw() {
+  if (over) return;
   requestAnimationFrame(draw);
   if (!view) return;
   const cv = $("tl"), dpr = window.devicePixelRatio || 1;
