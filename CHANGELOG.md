@@ -3,19 +3,39 @@
 Each release's notes on GitHub are the section for its tag below (the release workflow copies it).
 Write the next version's section here before tagging; the heading must be `## vX.Y.Z`.
 
-## Unreleased
+## v0.5.0
+
+### Upgrade notes
+
+- SFZ instruments that use the built-in controller curves (`tune_curveccN=1` and the like) now play as designed: Ixox Flute, for one, was 50 cents sharp before and is in tune now, so projects using such libraries will sound different (better) after upgrading.
+
+### Live performance (`muser live`)
 
 - **Live performance (`muser live`)**: `muser live start <template>` keeps playing through this machine's sound card while an agent writes the music a section at a time (`send`), and never goes silent: when nothing new has arrived, the last section loops. Each section has its own bars and time signature; tracks, effects (`effects_add` / `effects_off`) and automation can join mid-song without a gap, since the engine swaps in the grown project while keeping every instrument's and effect's state. `status` / `wait` (runway, autoplay time limit) let an agent play on its own for a while and stop on a loop-friendly phrase; a page shows the playhead, the queued sections and levels; the whole session is written to `--record`. Six MCP tools (`live_start` … `live_stop`), three templates in `samples/live/`, and `skills/live.md`.
 - **`muser live`, after a first real session**: `start --detach` runs the session fully detached and returns once it plays (the MCP `live_start` uses it), since some agent environments end everything a finished command started; `stop` silences at once, the page shows that the session is over (and has a Stop button); sections can carry a `name` (kept in the recorded project's section names, with repeats and cut sections marked) and change buses and the master (`buses`, `master`: effects and automation such as a `master_gain_db` fade, applied on a section's first pass only); receipts and status give `bar`, `beat_in_bar`, `absolute_beat`, `starts_in_seconds`; `status` / `wait` warn after a dropout and name the heaviest tracks (`load`); every submission is logged next to the recording in `<name>.changes.jsonl`.
 - **Karaoke on the live page**: a section can carry `"lyrics"`, timed by a guide track whose notes have syllables (ABC `w:` lines) as in `muser view`; the page shows the current line in large type (sung words lit, the one being sung glowing), the next line under it, and a "get ready" cue just before a line starts.
 - **Patching the section that is playing**: `"at": "patch"` replaces the current section from the next bar while staying at the same place in its form — write the whole section as before (adding drums, a new part), muser works out which bar it is up to; clips that cross the join keep only the notes that start after it; the receipt's `section_bar` says where it took over, and the loop afterwards repeats the patched section from its top. For when someone is singing along.
 - **Mixing during a live session**: `muser live mix <track|bus|master> <dB>` (MCP `live_mix`) moves a fader within 0.3 s without a new section and without disturbing the form, recorded as automation from that moment; `status` lists every fader and its loudness right now (`mix`: `gain_db`, `rms_db`), so an agent can see that the sax is 10 dB under the piano before anyone says so.
-- **SFZ in live sessions**: looking an `sfz:` instrument up no longer parses the whole file (only `describe` needs its controls), so a reconcile with a large library takes ~5 ms instead of ~250 ms — the dropouts at the party; SFZ files with stray lines (such as `A0 bankname: …`) load with a warning instead of failing.
 - **`muser live` page and robustness**: the page puts the session's title on top (`start --title`, or `"title"` in a section), then what is playing now and what comes next with each section's one-line `note` (it flashes when a new section starts), the timeline, and a fixed status bar so nothing jumps; the playback queue is longer in live mode (about 340 ms, changes are scheduled 1.5 s ahead anyway); tracks and effect chains that have been silent for a second, with nothing coming up, are skipped; `status` lists slow moments in the playback thread (`slow`) and warns about dropouts since the agent last looked.
 - **Effects can start and stop mid-song**: `"from"` / `"until"` (beats) on an effect — untouched before (empty state, as if plugged in then), cut after.
+
+### Recording
+
 - **Recording with `muser view --device`**: the backing plays through this machine's sound card and muser records the default microphone in the same audio callback, lined up by the driver's reported round-trip latency plus the latency nudge; **Measure latency** works there too (clicks out of the speakers, heard back through the mic). The nudge is remembered separately for in-browser and sound-card recording.
+
+### SFZ
+
+- **SFZ in live sessions**: looking an `sfz:` instrument up no longer parses the whole file (only `describe` needs its controls), so a reconcile with a large library takes ~5 ms instead of ~250 ms — the dropouts at the party; SFZ files with stray lines (such as `A0 bankname: …`) load with a warning instead of failing.
+- **Built-in controller curves**: curves 1–3 (bipolar, inverted, inverted bipolar) on `tune` / `volume` / `pan` / `amplitude` controller modulations are applied — Ixox Flute's `tune_curvecc81=1` at its 0.5 default played 50 cents sharp.
+
+### Export and plugins
+
 - **ABC export**: sections with their own time signature get bars of the right length and an inline `[M:7/8]` where the meter changes; tracks with lyrics get `w:` lines (one syllable per sung note, `*` for notes without one). muser's ABC reader understands inline `[M:]` too.
 - **Plugins follow per-section meters**: hosted instruments and effects see the time signature, bar start and bar number of the section that is playing, and after a jump in `--device` playback they see the position they jumped to (they were told the song started there).
+
+### Engine
+
+- **manguebyte follows upstream 66ef3dc**: partial voicing (air, attacks, wind jitter) for `PartialBank`, an organ's space (windchest, early reflections, swell box), plugin tail reporting, render pool and MIDI port fixes. Renders of the built-in samples are bit-identical.
 
 ## v0.4.0
 
