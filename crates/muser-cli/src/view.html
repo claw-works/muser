@@ -498,7 +498,7 @@ const I18N = {
     recStart: "● Record from the playhead", recLoop: "● Record the loop range", recStop: "■ Stop recording",
     recHelp: "Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.",
     recCounting: "Count-in…", recRecording: "Recording… sing along", recUploading: "Saving the take…", recSaved: (f) => `Saved ${f}; press Save to keep it in the project`,
-    recNoMic: "No microphone: allow microphone access for this page", recDevice: "Recording works with in-browser playback (start muser view without --device)",
+    recNoMic: "No microphone: allow microphone access for this page", recDropped: "Part of the take was lost (the computer fell behind): record it again if you hear a gap",
     takeUse: "Use", takeDelete: "Delete", takeSavedHint: "Saved in the project: replace it with another take first", takeInUse: "in use", takeAt: (bar, secs) => `bar ${bar} · ${secs}s`, takePending: (f, bar) => `+ take ${f} at bar ${bar} (not saved yet)`,
     exportWavHint: "The whole song as you hear it now (faders, mutes and solo included), 16-bit WAV",
     exportMidiHint: "Notes of every instrument track as a standard MIDI file (audio tracks are not included)",
@@ -559,7 +559,7 @@ const I18N = {
     recStart: "● 从播放头开始录", recLoop: "● 录循环区间", recStop: "■ 停止录音",
     recHelp: "从播放头开始录；设了循环区间就只录那一段。每一遍都存在 recordings/ 里，点「保存」才把选定的那遍写进工程。",
     recCounting: "预备拍……", recRecording: "正在录，跟着唱", recUploading: "正在存这一遍……", recSaved: (f) => `已存 ${f}；满意就点「保存」写进工程`,
-    recNoMic: "没有麦克风：请允许这个页面使用麦克风", recDevice: "录音要用浏览器播放（启动 muser view 时不加 --device）",
+    recNoMic: "没有麦克风：请允许这个页面使用麦克风", recDropped: "这一遍有一小段丢了（电脑没跟上）：听到断口就重录",
     takeUse: "用这一遍", takeDelete: "删除", takeSavedHint: "已经保存在工程里：先换成别的一遍", takeInUse: "在用", takeAt: (bar, secs) => `第 ${bar} 小节 · ${secs} 秒`, takePending: (f, bar) => `+ 录音 ${f}，第 ${bar} 小节（还没保存）`,
     exportWavHint: "现在听到的整首（含推子、静音、独奏），16-bit WAV",
     exportMidiHint: "各乐器音轨的音符，标准 MIDI 文件（audio 音轨不包含）",
@@ -1447,6 +1447,7 @@ function bindClipEditing(lane, n) {
 // ---------- 录人声 ----------
 const barOf = (beat) => { const b = data.bar_starts || []; let i = 0; while (i + 1 < b.length && b[i + 1] <= beat + 1e-9) i++; return i + 1; };
 function renderTakes() {
+  if (!nudgeLoaded) { nudgeLoaded = true; $("rec-nudge").value = localStorage.getItem(nudgeKey()) || $("rec-nudge").value; }
   const ly = $("lyrics"); ly.hidden = !data.lyrics; ly.textContent = data.lyrics || "";
   const box = $("takes"); box.textContent = "";
   for (const { take, in_use, saved } of (data.takes || []).slice().reverse()) {
@@ -1472,8 +1473,36 @@ function wavBlob(samples, rate) {
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
   return new Blob([buf], { type: "audio/wav" });
 }
+// 声卡模式：伴奏和麦克风都在运行 muser 的这台机器上，录音由 muser 做（输入输出同一个声卡回调，按往返延迟对齐）。
+async function startDeviceRecording() {
+  const looped = hasLoopRange();
+  const from = looped ? loopStart : position();
+  const until = looped ? Math.min(loopEnd, total) : total;
+  const spb = 60 / data.tempo, bar = Math.round((data.bar_starts && data.bar_starts[1]) || data.beats_per_bar || 4);
+  const count = +$("rec-countin").value * bar;
+  const btn = $("rec-btn");
+  rec = { device: true };
+  btn.classList.add("recording"); btn.textContent = t("recStop");
+  $("rec-status").textContent = count ? t("recCounting") : t("recRecording");
+  try {
+    await post("/api/device/record", { action: "start", seconds: from / sr, count_beats: count, beat_seconds: spb, bar_beats: bar, nudge_ms: +$("rec-nudge").value || 0 });
+  } catch (_) { rec = null; btn.classList.remove("recording"); btn.textContent = t(hasLoopRange() ? "recLoop" : "recStart"); $("rec-status").textContent = t("recHelp"); return; }
+  if (count) setTimeout(() => { if (rec) $("rec-status").textContent = t("recRecording"); }, count * spb * 1000);
+  if (looped) rec.timer = setTimeout(stopRecording, (count * spb + (until - from) / sr) * 1000 + 300);
+}
+async function stopDeviceRecording(r) {
+  const btn = $("rec-btn"); btn.classList.remove("recording"); btn.textContent = t(hasLoopRange() ? "recLoop" : "recStart");
+  $("rec-status").textContent = t("recUploading");
+  try {
+    const j = await post("/api/device/record", { action: "stop", track: $("rec-track").value || "vocal" });
+    $("rec-status").textContent = t("recSaved", j.take.file.split("/").pop());
+    if (j.dropped) banner(t("recDropped"), "err");
+    await refresh();
+  } catch (_) { $("rec-status").textContent = t("recHelp"); }
+}
+const nudgeKey = () => (deviceMode() ? "muser.recNudgeDevice" : "muser.recNudge");
 async function startRecording() {
-  if (deviceMode()) return banner(t("recDevice"), "err");
+  if (deviceMode()) return startDeviceRecording();
   ensureCtx(); if (ctx.state === "suspended") await ctx.resume();
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
@@ -1505,6 +1534,7 @@ async function startRecording() {
 async function stopRecording() {
   if (!rec) return;
   const r = rec; rec = null; clearTimeout(r.timer);
+  if (r.device) return stopDeviceRecording(r);
   const stopAt = ctx.currentTime;
   r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); r.stream.getTracks().forEach((x) => x.stop());
   pause();
@@ -1529,11 +1559,22 @@ async function stopRecording() {
 }
 $("rec-btn").onclick = () => (rec ? stopRecording() : startRecording());
 // 延迟微调记在这台电脑上（每台机器、每副耳机都不一样）。
-$("rec-nudge").value = localStorage.getItem("muser.recNudge") || $("rec-nudge").value;
-$("rec-nudge").onchange = (e) => localStorage.setItem("muser.recNudge", e.target.value);
+// 浏览器播放和声卡播放的延迟不一样，分开记。
+let nudgeLoaded = false;
+$("rec-nudge").onchange = (e) => localStorage.setItem(nudgeKey(), e.target.value);
 // 测延迟：从扬声器放 8 下咔嗒声，麦克风听回来；录音时补的正是"放出去到录回来"的这段时间（减去浏览器已经报告的输出延迟）。
 $("rec-measure").onclick = async () => {
   if (rec) return;
+  if (deviceMode()) {
+    $("rec-status").textContent = t("recMeasuring"); $("rec-measure").disabled = true;
+    try {
+      const j = await post("/api/device/record", { action: "measure" });
+      $("rec-nudge").value = j.ms; localStorage.setItem(nudgeKey(), String(j.ms));
+      $("rec-status").textContent = t("recMeasured", j.ms);
+    } catch (_) { $("rec-status").textContent = t("recMeasureFailed"); }
+    $("rec-measure").disabled = false;
+    return;
+  }
   ensureCtx(); if (ctx.state === "suspended") await ctx.resume();
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
@@ -1570,7 +1611,7 @@ $("rec-measure").onclick = async () => {
   delays.sort((a, b) => a - b);
   const roundTrip = delays[delays.length >> 1];
   const ms = Math.round((roundTrip - (ctx.outputLatency || 0) - (ctx.baseLatency || 0)) * 1000);
-  $("rec-nudge").value = ms; localStorage.setItem("muser.recNudge", String(ms));
+  $("rec-nudge").value = ms; localStorage.setItem(nudgeKey(), String(ms));
   $("rec-status").textContent = t("recMeasured", ms);
 };
 

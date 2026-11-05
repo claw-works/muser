@@ -3,6 +3,12 @@
 Each release's notes on GitHub are the section for its tag below (the release workflow copies it).
 Write the next version's section here before tagging; the heading must be `## vX.Y.Z`.
 
+## Unreleased
+
+- **Recording with `muser view --device`**: the backing plays through this machine's sound card and muser records the default microphone in the same audio callback, lined up by the driver's reported round-trip latency plus the latency nudge; **Measure latency** works there too (clicks out of the speakers, heard back through the mic). The nudge is remembered separately for in-browser and sound-card recording.
+- **ABC export**: sections with their own time signature get bars of the right length and an inline `[M:7/8]` where the meter changes; tracks with lyrics get `w:` lines (one syllable per sung note, `*` for notes without one). muser's ABC reader understands inline `[M:]` too.
+- **Plugins follow per-section meters**: hosted instruments and effects see the time signature, bar start and bar number of the section that is playing, and after a jump in `--device` playback they see the position they jumped to (they were told the song started there).
+
 ## v0.4.0
 
 ### Upgrade notes

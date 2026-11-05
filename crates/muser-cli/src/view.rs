@@ -1331,6 +1331,42 @@ impl Shared {
         Err("没有用 --device 启动，声音在浏览器里播放".into())
     }
 
+    /// 声卡模式录音：`start`（`seconds` 从哪里录、`count_beats` 预备拍、`beat_seconds`、`bar_beats`、`nudge_ms`）、
+    /// `stop`（`track`：录进哪条轨；存成一遍并贴到工作副本，返回这一遍）、`measure`（测延迟，返回 `ms`）。
+    fn device_record(&self, body: &Value) -> Result<Value, String> {
+        #[cfg(feature = "device")]
+        if let Some(p) = &self.player {
+            let num = |k: &str| body.get(k).and_then(Value::as_f64).ok_or_else(|| format!("需要 {k}"));
+            return match body.get("action").and_then(Value::as_str) {
+                Some("start") => {
+                    let count = num("count_beats").unwrap_or(0.0).clamp(0.0, 64.0) as usize;
+                    let bar = num("bar_beats").unwrap_or(4.0).clamp(1.0, 64.0) as usize;
+                    p.record_start(num("seconds")?, count, num("beat_seconds")?, bar, num("nudge_ms").unwrap_or(0.0).clamp(-1000.0, 1000.0))?;
+                    Ok(json!({ "ok": true }))
+                }
+                Some("stop") => {
+                    let r = p.record_stop()?;
+                    if r.samples.len() < r.sample_rate as usize / 10 {
+                        return Err("录音太短".into());
+                    }
+                    let mut buf = muser_engine::AudioBuffer::<f32>::new(1, r.samples.len());
+                    buf.channel_mut(0).copy_from_slice(&r.samples);
+                    let mut wav = Vec::new();
+                    muser_engine::wav::write(&mut wav, &buf, r.sample_rate, muser_engine::WavFormat::Int24).map_err(|e| format!("{e:?}"))?;
+                    let tempo = self.state.lock().unwrap().working.as_ref().ok_or("工程尚未成功加载")?.tempo;
+                    let beat = r.start as f64 / f64::from(r.sample_rate) * tempo / 60.0;
+                    let track = body.get("track").and_then(Value::as_str).filter(|t| !t.trim().is_empty()).unwrap_or("vocal");
+                    let take = self.record(track, beat, &wav)?;
+                    Ok(json!({ "ok": true, "take": take, "dropped": r.dropped }))
+                }
+                Some("measure") => Ok(json!({ "ok": true, "ms": p.measure_latency()? })),
+                _ => Err("action 应为 start / stop / measure".into()),
+            };
+        }
+        let _ = body;
+        Err("没有用 --device 启动：录音在浏览器里做".into())
+    }
+
     /// 导出文件名的主干：工程文件名去掉 `.muser.json` / `.json`。
     fn export_stem(&self) -> String {
         let name = self.path.file_name().map_or("muser".into(), |n| n.to_string_lossy().into_owned());
@@ -1449,6 +1485,10 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
         },
         (Method::Post, "/api/transport") => match read_body::<Value>(&mut req).and_then(|b| shared.transport(&b)) {
             Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
+            Err(e) => respond_json(req, 400, &json!({ "error": e })),
+        },
+        (Method::Post, "/api/device/record") => match read_body::<Value>(&mut req).and_then(|b| shared.device_record(&b)) {
+            Ok(v) => respond_json(req, 200, &v),
             Err(e) => respond_json(req, 400, &json!({ "error": e })),
         },
         (Method::Get, "/api/sound/choices") => respond_json(req, 200, &json!(Shared::sound_choices())),

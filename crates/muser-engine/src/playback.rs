@@ -4,13 +4,17 @@
 //! 改推子、静音（[`Player::set_mix`]）在播放线程里从下一段起生效，听到的延迟约等于队列长度（几十毫秒）。
 //! 跳转像 DAW 一样直接从目标位置开始（[`Renderer::new_at`]）：那时还按着的音补发，效果器从空状态开始；
 //! 音轨乐器已在 [`RenderCache`] 里时用缓存的输出。SFZ 音色在进程里只加载一次，重建不用重新读采样。
+//!
+//! 录音（[`Player::record_start`]）时临时换成双工流（同一个回调里拿到麦克风输入和声卡输出）：
+//! 每一块输入对着的工程位置 = 这一块输出的工程位置 − 往返延迟（驱动报告的输入 + 输出延迟，再加用户的微调）。
+//! 录完换回只输出的流，麦克风随之释放。[`Player::measure_latency`] 放咔嗒声、听回来，量出驱动没报告的那部分延迟。
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use manguebyte::spsc;
-use manguebyte::devices::{OutputDevice, OutputStream};
+use manguebyte::devices::{CallbackInfo, DuplexSettings, DuplexStream, InputDevice, OutputDevice, OutputStream, StreamSettings};
 use manguebyte::prelude::AudioBuffer;
 use muser_core::Project;
 
@@ -20,6 +24,10 @@ use crate::{RenderCache, RenderSettings, Renderer};
 const QUEUE: usize = 2048;
 /// 渲染线程每次推进的帧数。
 const CHUNK: usize = 256;
+/// 声卡回调最大块长。
+const MAX_BLOCK: usize = 4096;
+/// 录音输入的队列（帧）：约 1.4 秒 @ 48 kHz，收集线程每 10 ms 取一次。
+const CAPTURE_QUEUE: usize = 1 << 16;
 
 enum Cmd {
     Load(Project),
@@ -27,6 +35,8 @@ enum Cmd {
     Play,
     Pause,
     Seek(usize),
+    /// 前面的命令都处理完了（跳转的渲染器已建好）就回一声。
+    Ack(mpsc::Sender<()>),
 }
 
 /// 播放线程与声卡回调共享的状态。
@@ -46,7 +56,166 @@ struct Shared {
     /// 正在快进（跳转后还没到目标位置）。
     seeking: AtomicBool,
     error: Mutex<Option<String>>,
+    /// 预备拍：还剩几帧、一共几帧、一拍几帧、一小节几拍。还剩 > 0 时回调放咔嗒声，放完开始播放。
+    count_left: AtomicUsize,
+    count_total: AtomicUsize,
+    beat_frames: AtomicUsize,
+    bar_beats: AtomicUsize,
+    /// 录音中：播放时把输入送进收集队列。
+    capturing: AtomicBool,
+    /// 录到的第一个样本对着工程的第几帧（还没录到时为 i64::MIN）。
+    first_frame: AtomicI64,
+    /// 往返延迟之外再补的帧数（延迟微调）。
+    nudge: AtomicI64,
+    /// 驱动报告的往返延迟（帧，测延迟时记下）。
+    round_trip: AtomicI64,
+    /// 收集队列满了、丢掉输入的次数。
+    dropped: AtomicUsize,
 }
+
+/// 一遍录音：从工程第 `start` 帧开始的单声道样本。
+pub struct Recording {
+    pub start: usize,
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+    /// 收集跟不上丢过输入（这一遍可能有断口）。
+    pub dropped: bool,
+}
+
+enum Stream {
+    Out(#[allow(dead_code)] OutputStream),
+    Duplex(#[allow(dead_code)] DuplexStream),
+}
+
+/// 正在录的一遍：从第几帧起、收集线程、让它停的开关。
+struct Rec {
+    from: usize,
+    stop: Arc<AtomicBool>,
+    collector: std::thread::JoinHandle<Vec<f32>>,
+}
+
+/// 声卡输出这一半（只输出的流和双工流共用）：从队列取音频，放预备拍。
+struct Out {
+    sh: Arc<Shared>,
+    rx: Arc<Mutex<spsc::Consumer<[f32; 2]>>>,
+    scratch: Vec<[f32; 2]>,
+    sr: f32,
+}
+
+impl Out {
+    /// 写这一块；在播放时返回这一块开头对着工程的第几帧。实时安全（锁只用 try_lock，只在换流时才有争用）。
+    fn fill(&mut self, buf: &mut AudioBuffer<f32>) -> Option<usize> {
+        let sh = &*self.sh;
+        let Ok(mut rx) = self.rx.try_lock() else { return None };
+        if sh.flush.load(Ordering::Acquire) {
+            let n = rx.len();
+            rx.skip(n);
+            sh.flushed.store(true, Ordering::Release);
+            return None;
+        }
+        let left = sh.count_left.load(Ordering::Acquire);
+        if left > 0 {
+            let n = buf.num_frames().min(left);
+            self.click(buf, n, sh.count_total.load(Ordering::Relaxed) - left);
+            sh.count_left.store(left - n, Ordering::Release);
+            if left == n {
+                sh.playing.store(true, Ordering::Release);
+            }
+            return None;
+        }
+        if !sh.playing.load(Ordering::Acquire) {
+            return None;
+        }
+        let n = buf.num_frames().min(MAX_BLOCK);
+        let got = rx.pop_slice(&mut self.scratch[..n]);
+        let g = f32::from_bits(sh.monitor.load(Ordering::Relaxed));
+        if buf.num_channels() == 1 {
+            for (o, s) in buf.channel_mut(0).iter_mut().zip(&self.scratch[..got]) {
+                *o = 0.5 * (s[0] + s[1]) * g;
+            }
+        } else {
+            // 多于两个声道的设备：只用前两个。
+            for c in 0..2 {
+                for (o, s) in buf.channel_mut(c).iter_mut().zip(&self.scratch[..got]) {
+                    *o = s[c] * g;
+                }
+            }
+        }
+        let start = sh.position.fetch_add(got, Ordering::AcqRel);
+        if got < n && start + got < sh.total.load(Ordering::Acquire) && !sh.seeking.load(Ordering::Acquire) {
+            sh.underruns.fetch_add(1, Ordering::Relaxed);
+        }
+        Some(start)
+    }
+
+    /// 预备拍的咔嗒声：每拍一下，小节头高一点。`at` 是这一块在预备拍里的第几帧。
+    fn click(&self, buf: &mut AudioBuffer<f32>, n: usize, at: usize) {
+        let (beat, bar) = (self.sh.beat_frames.load(Ordering::Relaxed).max(1), self.sh.bar_beats.load(Ordering::Relaxed).max(1));
+        for ch in 0..buf.num_channels() {
+            for (j, o) in buf.channel_mut(ch)[..n].iter_mut().enumerate() {
+                *o = click_sample(at + j, beat, bar, self.sr);
+            }
+        }
+    }
+}
+
+/// 第 `i` 帧的咔嗒声（每 `beat` 帧一下，每 `bar` 拍的第一下高八度）。
+fn click_sample(i: usize, beat: usize, bar: usize, sr: f32) -> f32 {
+    let within = (i % beat) as f32;
+    if within > 0.08 * sr {
+        return 0.0;
+    }
+    let hz = if (i / beat) % bar == 0 { 1320.0 } else { 880.0 };
+    0.3 * (-within / (0.015 * sr)).exp() * (std::f32::consts::TAU * hz * within / sr).sin()
+}
+
+/// 收集线程：把输入队列取空存进一个 Vec，直到 `stop` 且队列空了。
+fn collect(mut rx: spsc::Consumer<f32>, stop: Arc<AtomicBool>) -> std::io::Result<std::thread::JoinHandle<Vec<f32>>> {
+    std::thread::Builder::new().name("muser-capture".into()).spawn(move || {
+        let mut out = Vec::new();
+        let mut buf = vec![0f32; 8192];
+        loop {
+            let n = rx.pop_slice(&mut buf);
+            out.extend_from_slice(&buf[..n]);
+            if n == 0 {
+                if stop.load(Ordering::Acquire) {
+                    return out;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    })
+}
+
+/// 驱动报告的往返延迟（帧）；不知道时为 0。
+fn round_trip_frames(info: &CallbackInfo) -> i64 {
+    info.round_trip_latency().map_or(0, |d| (d.as_secs_f64() * info.sample_rate).round() as i64)
+}
+
+/// 测延迟：`input` 是从放第一声前就开始录的输入（与输出逐帧对齐），`clicks` 是每一下放出去的帧。
+/// 返回放出去到录回来的帧数（各下的中位数）；听到的少于一半时为 None。
+fn click_delay(input: &[f32], clicks: &[usize], window: usize) -> Option<f64> {
+    let first = clicks.first().copied().unwrap_or(0);
+    let pre = &input[..first.saturating_sub(window / 10).min(input.len())];
+    let floor = (pre.iter().map(|x| x * x).sum::<f32>() / pre.len().max(1) as f32).sqrt();
+    let mut delays: Vec<f64> = clicks
+        .iter()
+        .filter_map(|&c| {
+            let w = input.get(c..(c + window).min(input.len()))?;
+            let peak = w.iter().fold(0f32, |m, x| m.max(x.abs()));
+            if peak < (floor * 8.0).max(0.02) {
+                return None;
+            }
+            w.iter().position(|x| x.abs() > peak * 0.3).map(|k| k as f64)
+        })
+        .collect();
+    if delays.len() * 2 < clicks.len() {
+        return None;
+    }
+    delays.sort_by(f64::total_cmp);
+    Some(delays[delays.len() / 2])
+}
+
 
 /// 播放状态快照。
 #[derive(Debug, Clone, serde::Serialize)]
@@ -68,7 +237,10 @@ pub struct Player {
     shared: Arc<Shared>,
     sample_rate: u32,
     device: String,
-    _stream: OutputStream,
+    /// 声卡回调取音频的队列（换流时交给新的回调）。
+    rx: Arc<Mutex<spsc::Consumer<[f32; 2]>>>,
+    stream: Mutex<Option<Stream>>,
+    rec: Mutex<Option<Rec>>,
 }
 
 impl Player {
@@ -78,43 +250,9 @@ impl Player {
         let device = OutputDevice::open_default().map_err(|e| format!("打开声卡失败: {e}"))?;
         let sample_rate = device.sample_rate().round() as u32;
         let name = device.name().to_string();
-        let shared = Arc::new(Shared { monitor: AtomicU32::new(1f32.to_bits()), ..Default::default() });
-        let (mut tx, mut rx) = spsc::channel::<[f32; 2]>(QUEUE);
-        let max_block = 4096;
-        let mut scratch = vec![[0f32; 2]; max_block];
-        let sh = Arc::clone(&shared);
-        let stream = device
-            .start(max_block, move |buf: &mut AudioBuffer<f32>| {
-                if sh.flush.load(Ordering::Acquire) {
-                    rx.skip(rx.len());
-                    sh.flushed.store(true, Ordering::Release);
-                    return;
-                }
-                if !sh.playing.load(Ordering::Acquire) {
-                    return;
-                }
-                let n = buf.num_frames().min(max_block);
-                let got = rx.pop_slice(&mut scratch[..n]);
-                let g = f32::from_bits(sh.monitor.load(Ordering::Relaxed));
-                if buf.num_channels() == 1 {
-                    for (o, s) in buf.channel_mut(0).iter_mut().zip(&scratch[..got]) {
-                        *o = 0.5 * (s[0] + s[1]) * g;
-                    }
-                } else {
-                    // 多于两个声道的设备：只用前两个。
-                    for c in 0..2 {
-                        for (o, s) in buf.channel_mut(c).iter_mut().zip(&scratch[..got]) {
-                            *o = s[c] * g;
-                        }
-                    }
-                }
-                let pos = sh.position.fetch_add(got, Ordering::AcqRel) + got;
-                if got < n && pos < sh.total.load(Ordering::Acquire) && !sh.seeking.load(Ordering::Acquire) {
-                    sh.underruns.fetch_add(1, Ordering::Relaxed);
-                }
-            })
-            .map_err(|e| format!("启动声卡输出失败: {e}"))?;
-
+        let shared = Arc::new(Shared { monitor: AtomicU32::new(1f32.to_bits()), first_frame: AtomicI64::new(i64::MIN), ..Default::default() });
+        let (mut tx, rx) = spsc::channel::<[f32; 2]>(QUEUE);
+        let rx = Arc::new(Mutex::new(rx));
         let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
         let settings = RenderSettings { sample_rate, ..settings };
         let sh = Arc::clone(&shared);
@@ -122,7 +260,196 @@ impl Player {
             .name("muser-playback".into())
             .spawn(move || run(settings, cache, sh, cmd_rx, &mut tx))
             .map_err(|e| format!("启动播放线程失败: {e}"))?;
-        Ok(Player { cmd: cmd_tx, shared, sample_rate, device: name, _stream: stream })
+        let player = Player { cmd: cmd_tx, shared, sample_rate, device: name, rx, stream: Mutex::new(None), rec: Mutex::new(None) };
+        player.output_only(&device)?;
+        Ok(player)
+    }
+
+    fn out(&self) -> Out {
+        Out { sh: Arc::clone(&self.shared), rx: Arc::clone(&self.rx), scratch: vec![[0f32; 2]; MAX_BLOCK], sr: self.sample_rate as f32 }
+    }
+
+    /// 换成只输出的流（启动时；录音、测延迟完以后）。
+    fn output_only(&self, device: &OutputDevice) -> Result<(), String> {
+        let mut slot = self.stream.lock().unwrap();
+        *slot = None;
+        let mut out = self.out();
+        let stream = device
+            .start(MAX_BLOCK, move |buf: &mut AudioBuffer<f32>| {
+                out.fill(buf);
+            })
+            .map_err(|e| format!("启动声卡输出失败: {e}"))?;
+        *slot = Some(Stream::Out(stream));
+        Ok(())
+    }
+
+    fn restore_output(&self) {
+        let r = OutputDevice::open_default().map_err(|e| e.to_string()).and_then(|d| self.output_only(&d));
+        if let Err(e) = r {
+            *self.shared.error.lock().unwrap() = Some(format!("换回声卡输出失败: {e}"));
+        }
+    }
+
+    /// 换成双工流：默认输入（麦克风）+ 默认输出，按播放的采样率。`f` 在声卡线程上拿到这一块的输入、输出、
+    /// 时间信息和（播放时）这一块对着工程的第几帧；须实时安全。失败时换回只输出的流。
+    fn duplex<F>(&self, mut f: F) -> Result<(), String>
+    where
+        F: FnMut(&AudioBuffer<f32>, &mut AudioBuffer<f32>, &CallbackInfo, Option<usize>) + Send + 'static,
+    {
+        let rate = StreamSettings::default().with_sample_rate(self.sample_rate);
+        let input = InputDevice::open_default().map_err(|e| format!("打开麦克风失败: {e}"))?;
+        let input = if input.sample_rate().round() as u32 == self.sample_rate { input } else { input.with_settings(rate).map_err(|e| format!("麦克风不支持 {} Hz: {e}", self.sample_rate))? };
+        let output = OutputDevice::open_default().map_err(|e| format!("打开声卡失败: {e}"))?;
+        let output = if output.sample_rate().round() as u32 == self.sample_rate { output } else { output.with_settings(rate).map_err(|e| format!("{e}"))? };
+        let mut slot = self.stream.lock().unwrap();
+        *slot = None;
+        let mut out = self.out();
+        let started = DuplexStream::start_timed(
+            &input,
+            &output,
+            DuplexSettings::new(MAX_BLOCK),
+            move |i: &AudioBuffer<f32>, o: &mut AudioBuffer<f32>, info: &CallbackInfo| {
+                let pos = out.fill(o);
+                f(i, o, info, pos);
+            },
+            |e| eprintln!("[play] 声卡: {e}"),
+        );
+        match started {
+            Ok(s) => {
+                *slot = Some(Stream::Duplex(s));
+                Ok(())
+            }
+            Err(e) => {
+                drop(slot);
+                self.restore_output();
+                Err(format!("启动录音（麦克风 + 声卡）失败: {e}"))
+            }
+        }
+    }
+
+    /// 跳到第 `frame` 帧并等渲染器建好、队列填上（最多约 30 秒）。
+    fn seek_and_wait(&self, frame: usize) -> Result<(), String> {
+        let (tx, rx) = mpsc::channel();
+        let _ = self.cmd.send(Cmd::Seek(frame));
+        let _ = self.cmd.send(Cmd::Ack(tx));
+        rx.recv_timeout(Duration::from_secs(30)).map_err(|_| "跳转太久没有完成".to_string())?;
+        for _ in 0..500 {
+            if !self.shared.seeking.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(())
+    }
+
+    /// 开始录一遍：停下、跳到第 `from` 秒，放 `count_beats` 拍预备拍（每拍 `beat_seconds` 秒，一小节 `bar_beats` 拍），
+    /// 然后边放伴奏边录，直到 [`Player::record_stop`]。`nudge_ms`：往返延迟之外再补的毫秒数（正数 = 录音往前挪）。
+    pub fn record_start(&self, from: f64, count_beats: usize, beat_seconds: f64, bar_beats: usize, nudge_ms: f64) -> Result<(), String> {
+        let mut rec = self.rec.lock().unwrap();
+        if rec.is_some() {
+            return Err("已经在录了".into());
+        }
+        let sr = f64::from(self.sample_rate);
+        let from = (from.max(0.0) * sr) as usize;
+        self.pause();
+        self.seek_and_wait(from)?;
+        let sh = &self.shared;
+        let (mut cap_tx, cap_rx) = spsc::channel::<f32>(CAPTURE_QUEUE);
+        let stop = Arc::new(AtomicBool::new(false));
+        let collector = collect(cap_rx, Arc::clone(&stop)).map_err(|e| format!("启动录音线程失败: {e}"))?;
+        sh.first_frame.store(i64::MIN, Ordering::Release);
+        sh.nudge.store((nudge_ms / 1000.0 * sr).round() as i64, Ordering::Release);
+        sh.dropped.store(0, Ordering::Release);
+        sh.capturing.store(true, Ordering::Release);
+        let s2 = Arc::clone(sh);
+        let started = self.duplex(move |input, _, info, pos| {
+            // shortcut: 输出欠载时工程位置少走了几帧、输入照常进来，之后的录音会晚这么多；要精确时按欠载的帧数补齐。
+            let (Some(pos), true) = (pos, s2.capturing.load(Ordering::Acquire)) else { return };
+            let lat = round_trip_frames(info) + s2.nudge.load(Ordering::Relaxed);
+            let _ = s2.first_frame.compare_exchange(i64::MIN, pos as i64 - lat, Ordering::AcqRel, Ordering::Relaxed);
+            let x = input.channel(0);
+            if cap_tx.push_slice(x) < x.len() {
+                s2.dropped.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        if let Err(e) = started {
+            sh.capturing.store(false, Ordering::Release);
+            stop.store(true, Ordering::Release);
+            return Err(e);
+        }
+        let beat = (beat_seconds * sr).round().max(1.0) as usize;
+        sh.beat_frames.store(beat, Ordering::Relaxed);
+        sh.bar_beats.store(bar_beats.max(1), Ordering::Relaxed);
+        sh.count_total.store(count_beats * beat, Ordering::Relaxed);
+        if count_beats == 0 {
+            self.play();
+        } else {
+            sh.count_left.store(count_beats * beat, Ordering::Release);
+        }
+        *rec = Some(Rec { from, stop, collector });
+        Ok(())
+    }
+
+    /// 停止录音：停下播放、换回只输出的流（麦克风释放），返回从开始的位置起对齐好的这一遍。
+    pub fn record_stop(&self) -> Result<Recording, String> {
+        let r = self.rec.lock().unwrap().take().ok_or("没有在录")?;
+        let sh = &self.shared;
+        sh.capturing.store(false, Ordering::Release);
+        sh.count_left.store(0, Ordering::Release);
+        self.pause();
+        self.restore_output();
+        r.stop.store(true, Ordering::Release);
+        let mut samples = r.collector.join().map_err(|_| "录音线程出错".to_string())?;
+        let first = sh.first_frame.load(Ordering::Acquire);
+        if first == i64::MIN {
+            return Err("什么也没录到（伴奏开始前就停了）".into());
+        }
+        // 从开始录的位置起：之前的样本（往返延迟那一小段）去掉；第一个样本已经晚于开始位置时就从它起。
+        let skip = (r.from as i64 - first).max(0) as usize;
+        samples.drain(..skip.min(samples.len()));
+        Ok(Recording { start: (first.max(r.from as i64)) as usize, samples, sample_rate: self.sample_rate, dropped: sh.dropped.load(Ordering::Relaxed) > 0 })
+    }
+
+    /// 测延迟：停下，从声卡放 8 下咔嗒声、麦克风听回来（约 5 秒）。返回驱动报告的往返延迟之外还差几毫秒——
+    /// 就是录音时该填的延迟微调。听不清时报错（音量开大、摘下耳机再试）。
+    pub fn measure_latency(&self) -> Result<f64, String> {
+        if self.rec.lock().unwrap().is_some() {
+            return Err("正在录音".into());
+        }
+        self.pause();
+        let sr = self.sample_rate as usize;
+        let (t0, gap) = (sr * 6 / 10, sr / 2);
+        let clicks: Vec<usize> = (0..8).map(|k| t0 + k * gap).collect();
+        let total = t0 + 8 * gap + sr * 4 / 10;
+        let (mut cap_tx, cap_rx) = spsc::channel::<f32>(CAPTURE_QUEUE);
+        let stop = Arc::new(AtomicBool::new(false));
+        let collector = collect(cap_rx, Arc::clone(&stop)).map_err(|e| format!("启动录音线程失败: {e}"))?;
+        let sh = Arc::clone(&self.shared);
+        sh.round_trip.store(i64::MIN, Ordering::Release);
+        let marks = clicks.clone();
+        let mut n = 0usize;
+        let srf = sr as f32;
+        self.duplex(move |input, output, info, _| {
+            let _ = sh.round_trip.compare_exchange(i64::MIN, round_trip_frames(info), Ordering::AcqRel, Ordering::Relaxed);
+            for ch in 0..output.num_channels() {
+                for (j, o) in output.channel_mut(ch).iter_mut().enumerate() {
+                    let i = n + j;
+                    *o = marks.iter().find(|&&c| i >= c && i < c + gap).map_or(0.0, |&c| {
+                        let w = (i - c) as f32;
+                        if w < 0.02 * srf { 0.9 * (-w / (0.004 * srf)).exp() * (std::f32::consts::TAU * 2000.0 * w / srf).sin() } else { 0.0 }
+                    });
+                }
+            }
+            n += output.num_frames();
+            let _ = cap_tx.push_slice(input.channel(0));
+        })?;
+        std::thread::sleep(Duration::from_secs_f64(total as f64 / sr as f64));
+        self.restore_output();
+        stop.store(true, Ordering::Release);
+        let input = collector.join().map_err(|_| "录音线程出错".to_string())?;
+        let delay = click_delay(&input, &clicks, gap * 8 / 10).ok_or("没听清咔嗒声：摘下耳机、把音量开大，离麦克风近一点再测")?;
+        let rt = self.shared.round_trip.load(Ordering::Acquire).max(0) as f64;
+        Ok(((delay - rt) / sr as f64 * 1000.0).round())
     }
 
     /// 换上（新的）工程，保持当前播放位置。
@@ -261,6 +588,9 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
                 sh.playing.store(true, Ordering::Release);
             }
             Some(Cmd::Pause) => sh.playing.store(false, Ordering::Release),
+            Some(Cmd::Ack(tx)) => {
+                let _ = tx.send(());
+            }
             Some(Cmd::Seek(at)) => {
                 if let Some(p) = &project {
                     sh.position.store(at, Ordering::Release);
@@ -302,5 +632,34 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
         if busy && !wrote {
             std::thread::sleep(Duration::from_millis(2));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn click_delay_finds_the_echo() {
+        // 8 下咔嗒声，每下晚 300 帧录回来，带一点噪声；有一下没录到也行。
+        let (sr, gap) = (8000usize, 4000usize);
+        let clicks: Vec<usize> = (0..8).map(|k| 4800 + k * gap).collect();
+        let mut x: Vec<f32> = (0..40_000).map(|i| ((i * 7919) % 101) as f32 / 101.0 * 0.004 - 0.002).collect();
+        for &c in &clicks[1..] {
+            for k in 0..80 {
+                x[c + 300 + k] += 0.5 * (-(k as f32) / 20.0).exp() * if k % 2 == 0 { 1.0 } else { -1.0 };
+            }
+        }
+        assert_eq!(click_delay(&x, &clicks, gap * 8 / 10), Some(300.0));
+        assert_eq!(click_delay(&vec![0.0; 40_000], &clicks, gap * 8 / 10), None, "没声音时测不出");
+        let _ = sr;
+    }
+
+    #[test]
+    fn count_in_clicks_accent_the_bar() {
+        let sr = 48_000.0;
+        let peak = |from: usize| (from..from + 2000).map(|i| click_sample(i, 24_000, 4, sr).abs()).fold(0f32, f32::max);
+        assert!(peak(0) > 0.1 && peak(24_000) > 0.1);
+        assert_eq!(click_sample(10_000, 24_000, 4, sr), 0.0, "两下之间是静的");
     }
 }
