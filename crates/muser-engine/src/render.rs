@@ -105,6 +105,13 @@ impl Ctx {
     fn beat_at(&self, frame: usize) -> f64 {
         frame as f64 / self.sr * self.tempo / 60.0
     }
+    fn frame_at(&self, beat: f64) -> usize {
+        (beat * 60.0 / self.tempo * self.sr).round().max(0.0) as usize
+    }
+    /// 效果链里每格起作用的帧 `[from, until)`。
+    fn windows(&self, effects: &[muser_core::EffectSlot]) -> Vec<(usize, usize)> {
+        effects.iter().map(|e| (e.from.map_or(0, |b| self.frame_at(b.0)), e.until.map_or(usize::MAX, |b| self.frame_at(b.0)))).collect()
+    }
 }
 
 /// 一条音轨的全部演奏动作（样本帧, 动作），按时间排序；同帧先 Off 后 On。
@@ -841,6 +848,8 @@ struct Strip {
     /// 音轨的乐器。
     source: Option<Source>,
     chain: Vec<Fx>,
+    /// 每个效果器起作用的帧 `[from, until)`。
+    windows: Vec<(usize, usize)>,
     lanes: TrackLanes,
     latency: usize,
     gain_db: f64,
@@ -989,6 +998,7 @@ impl Renderer {
                 _ => None,
             };
             let chain = if active { effects::build_chain(effects_list, &cx.spec)? } else { Vec::new() };
+            let windows = cx.windows(effects_list);
             let keys = (0..effects_list.len())
                 .map(|ei| plan.sidechains.iter().find(|s| s.node == node && s.effect == ei).map(|s| index[&s.key]))
                 .collect();
@@ -999,6 +1009,7 @@ impl Renderer {
                 source,
                 latency: effects::chain_latency(&chain),
                 chain,
+                windows,
                 lanes,
                 gain_db,
                 pan,
@@ -1026,6 +1037,7 @@ impl Renderer {
             source: None,
             latency: effects::chain_latency(&chain),
             chain,
+            windows: cx.windows(&project.master_effects),
             lanes: TrackLanes { instrument: Vec::new(), effects: fx_lanes, gain, pan: Vec::new(), sends: Default::default() },
             gain_db: project.master_gain_db,
             pan: 0.0,
@@ -1210,7 +1222,7 @@ impl Renderer {
                 l.input.measure(&buf);
                 l.in_peak = l.in_peak.max(buf.peak());
             }
-            effects::apply_chain(&mut st.chain, &mut buf, bs, &mut st.lanes.effects, &|f| cx.beat_at(a + f), &key_refs);
+            effects::apply_chain(&mut st.chain, &mut buf, bs, &mut st.lanes.effects, &|f| cx.beat_at(a + f), &key_refs, &st.windows, a);
             st.wet.push(&buf, 0..n);
             st.pos = b;
 

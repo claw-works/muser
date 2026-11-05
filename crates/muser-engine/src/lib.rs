@@ -375,6 +375,27 @@ mod tests {
         assert_eq!(render(&bypassed), render(&no_reverb));
         assert_ne!(render(&project(serde_json::json!([{ "type": "reverb", "mix": 0.9 }, eq]))), render(&bypassed));
     }
+    /// from / until：之前与不加这个效果器一样，之后撤下；中间起作用；until 不晚于 from 时校验报错。
+    #[test]
+    fn effect_window_from_until() {
+        let project = |fx: serde_json::Value| -> muser_core::Project {
+            serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "poly.wurly", "effects": fx,
+                "clips": [{ "start": 0, "length": 8, "notes": [{ "pitch": 60, "start": 0, "length": 1 }, { "pitch": 64, "start": 2, "length": 1 }, { "pitch": 67, "start": 6, "length": 1 }] }] }] })).unwrap()
+        };
+        let render = |p: &muser_core::Project| crate::render(p, RenderSettings::default()).unwrap().channel(0).to_vec();
+        let dry = render(&project(serde_json::json!([])));
+        let fx = |w: serde_json::Value| { let mut e = serde_json::json!({ "type": "reverb", "mix": 0.8, "decay_seconds": 3.0 }); e.as_object_mut().unwrap().extend(w.as_object().unwrap().clone()); project(serde_json::json!([e])) };
+        let windowed = render(&fx(serde_json::json!({ "from": 2, "until": 4 })));
+        let always = render(&fx(serde_json::json!({})));
+        let f = |beat: f64| (beat / 2.0 * 48_000.0) as usize; // 120 BPM：每拍 0.5 秒
+        assert_eq!(&windowed[..f(2.0)], &dry[..f(2.0)], "from 之前和没有这个效果器一样");
+        assert_eq!(&windowed[f(4.0)..], &dry[f(4.0)..], "until 之后撤下");
+        assert_ne!(&windowed[f(2.0)..f(4.0)], &dry[f(2.0)..f(4.0)]);
+        assert_ne!(&windowed[f(2.0)..f(2.5)], &always[f(2.0)..f(2.5)], "从 from 起状态是空的，和一直开着的不一样");
+        let bad = fx(serde_json::json!({ "from": 4, "until": 4 }));
+        assert!(bad.validate().is_err());
+        assert_eq!(serde_json::to_value(&fx(serde_json::json!({ "from": 2 })).tracks[0].effects[0]).unwrap()["from"], 2.0, "写回 JSON 时保留");
+    }
     use manguebyte::prelude::AudioBuffer;
     use muser_core::{Clip, Note, Project, Track};
 

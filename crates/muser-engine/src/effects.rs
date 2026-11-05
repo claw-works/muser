@@ -591,6 +591,8 @@ pub fn chain_latency(chain: &[Fx]) -> usize {
 /// 把整条效果链分块施加到 `buffer`（in-place）。`lanes[i]` 是第 i 个效果器的自动化，
 /// 有自动化的效果器按 [`crate::automate::BLOCK`] 帧一块，每块开始前写入当前值。
 /// `keys[i]` 是第 i 个效果器的侧链信号（压缩器的触发、声码器的调制），与 `buffer` 帧对齐。
+/// `windows[i]`：第 i 个效果器起作用的帧 `[from, until)`（`from` / `until`），`at` 是 `buffer` 第一帧的位置；之外原样通过。
+#[allow(clippy::too_many_arguments)]
 pub fn apply_chain(
     chain: &mut [Fx],
     buffer: &mut AudioBuffer<f32>,
@@ -598,21 +600,29 @@ pub fn apply_chain(
     lanes: &mut [Vec<crate::automate::Lane>],
     beat_at: &dyn Fn(usize) -> f64,
     keys: &[Option<&AudioBuffer<f32>>],
+    windows: &[(usize, usize)],
+    at: usize,
 ) {
     let frames = buffer.num_frames();
     for (i, fx) in chain.iter_mut().enumerate() {
         let lanes = lanes.get_mut(i).map(|l| l.as_mut_slice()).unwrap_or(&mut []);
         let key = keys.get(i).copied().flatten();
+        let (w0, w1) = windows.get(i).copied().unwrap_or((0, usize::MAX));
+        if at + frames <= w0 || at >= w1 {
+            continue;
+        }
+        // 这一段里起作用的部分（相对 buffer）。
+        let (lo, hi) = (w0.saturating_sub(at), (w1 - at.min(w1)).min(frames));
         let step = if lanes.is_empty() { block_size } else { block_size.min(crate::automate::BLOCK) };
-        let mut start = 0;
-        while start < frames {
+        let mut start = lo;
+        while start < hi {
             let beat = beat_at(start);
             for lane in lanes.iter_mut() {
                 if let Some(v) = lane.poll(beat) {
                     fx.set_param(&lane.param, v);
                 }
             }
-            let end = (start + step).min(frames);
+            let end = (start + step).min(hi);
             match (key, fx.processor()) {
                 (Some(k), Some(p)) => {
                     let mut ctx = manguebyte::prelude::ProcessContext::empty().with_sidechain(k);

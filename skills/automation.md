@@ -11,6 +11,8 @@
   `sends.<总线>`（发送量 dB，须先在 `sends` 里写了该总线）。
 - 总线的 `automation`：目标 `effects[i]`、`gain_db`、`pan`、`sends.<总线>`（见 [routing.md](routing.md)）。
 - 工程的 `automation`：目标 `master_gain_db`、`master_effects[i]`。
+- 效果器只在一段时间里起作用（中途接入、撤下）：在效果器上写 `"from"` / `"until"`（拍）。之前不处理（状态是空的，像中途才插上），
+  之后撤下（尾巴截断）；要渐入渐出用 `mix` 的自动化。
 
 ```json
 {

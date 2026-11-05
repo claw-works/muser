@@ -10,12 +10,35 @@ use serde::{Deserialize, Serialize};
 
 /// 效果链里的一格：效果器本身，加上是否旁通（`"bypass": true` 时不处理声音，位置与参数保留，
 /// 自动化的 `effects[i]` 序号不变）。JSON 里 `bypass` 与效果器的字段写在一起。
+///
+/// `from` / `until`（拍）：只在这段时间里起作用——之前不处理（状态是空的，像中途才插上），
+/// 之后撤下（尾巴截断）。`muser live` 中途加、撤效果器就写成这样，离线渲染结果相同。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EffectSlot {
     #[serde(flatten)]
     pub effect: Effect,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub bypass: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<crate::Beats>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub until: Option<crate::Beats>,
+}
+
+impl EffectSlot {
+    /// 参数与起止时间是否合理。
+    pub fn validate(&self) -> Result<(), String> {
+        let ok = |b: Option<crate::Beats>| b.is_none_or(|b| b.0.is_finite() && b.0 >= 0.0);
+        if !ok(self.from) || !ok(self.until) {
+            return Err("from / until 应为不小于 0 的拍数".into());
+        }
+        if let (Some(a), Some(z)) = (self.from, self.until) {
+            if z.0 <= a.0 {
+                return Err(format!("until（{}）要晚于 from（{}）", z.0, a.0));
+            }
+        }
+        self.effect.validate()
+    }
 }
 
 impl std::ops::Deref for EffectSlot {
@@ -33,7 +56,7 @@ impl std::ops::DerefMut for EffectSlot {
 
 impl From<Effect> for EffectSlot {
     fn from(effect: Effect) -> Self {
-        Self { effect, bypass: false }
+        Self { effect, bypass: false, from: None, until: None }
     }
 }
 
