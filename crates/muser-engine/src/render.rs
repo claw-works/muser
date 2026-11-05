@@ -310,6 +310,8 @@ struct LiveInstrument {
     taps: Vec<SharedTape>,
     name: String,
     instrument: String,
+    /// 乐器参数（JSON 文本，对账时比较）。
+    params: String,
     /// 唱音节：叠在人声上的辅音，与排好的元音变化（帧, 元音 0–4）。
     consonants: Option<crate::lyric::Consonants>,
     vowels: Vec<(usize, f32)>,
@@ -347,12 +349,24 @@ impl LiveInstrument {
             taps: Vec::new(),
             name: track.name.clone(),
             instrument: track.instrument.clone(),
+            params: serde_json::to_string(&track.instrument_params).unwrap_or_default(),
             consonants: sings.then(|| {
                 let gain = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
                 crate::lyric::Consonants::new(cx.sr, gain)
             }),
             vowels: Vec::new(),
         })
+    }
+
+    /// 换成新工程里这条轨的排程与乐器自动化（现场模式对账）：还没执行的动作按新工程来，乐器状态不动。
+    /// 新工程在当前位置之前和旧的一样，所以按着的音会在新排程里照常松开。
+    fn reschedule(&mut self, project: &Project, ti: usize, cx: &Ctx, beats: f64) -> Result<(), EngineError> {
+        let frame = self.frame;
+        self.acts = schedule(project, ti, cx).into_iter().filter(|a| a.0 >= frame).collect();
+        self.next = 0;
+        self.bends |= self.acts.iter().any(|a| matches!(a.1, Act::Bend { .. }));
+        self.lanes = automate::compile_track(project, ti, beats).map_err(invalid)?.instrument;
+        Ok(())
     }
 
     /// 演奏到 `until` 帧（不超过工程结尾）。
@@ -764,7 +778,7 @@ fn level(meter: &LoudnessMeter, peak: f32) -> Level {
 pub fn render_loudness(project: &Project, settings: RenderSettings, cache: &mut RenderCache) -> Result<Vec<NodeLoudness>, EngineError> {
     crate::validate(project)?;
     let plan: Plan = routing::plan(project).map_err(invalid)?;
-    let mut r = Renderer::build(project, settings, plan, Some(cache), false, false, 0)?.recording().with_loudness();
+    let mut r = Renderer::build(project, settings, plan, Some(cache), false, false, 0, false, None)?.recording().with_loudness();
     let mut block = AudioBuffer::<f32>::new(2, 1 << 16);
     while r.process(&mut block)? > 0 {}
     r.store_instruments(cache);
@@ -816,7 +830,7 @@ fn render_inner(
     crate::validate(project)?;
     let plan: Plan = routing::plan(project).map_err(invalid)?;
     // 从头流式推进到结尾，直接写进整首的缓冲；缓存里没有的乐器边演奏边录下，渲染完存回缓存。
-    let mut r = Renderer::build(project, settings, plan, Some(cache), false, meters.is_some(), 0)?.recording();
+    let mut r = Renderer::build(project, settings, plan, Some(cache), false, meters.is_some(), 0, false, None)?.recording();
     let total_frames = r.total_frames();
     let mut master = AudioBuffer::<f32>::new(2, total_frames);
     let mut at = 0;
@@ -842,6 +856,10 @@ fn render_inner(
 struct Strip {
     /// `None` 是主总线。
     node: Option<Node>,
+    /// 对账（[`Renderer::reconcile`]）时认节点用：轨名、总线名，主总线是空串。
+    ident: String,
+    /// 效果链的写法（对账时比较）。
+    slots: Vec<muser_core::EffectSlot>,
     /// 要处理：未静音、作为侧链键，或要求静音节点也照常处理。
     active: bool,
     muted: bool,
@@ -901,6 +919,23 @@ pub struct Renderer {
     tempo_map: std::sync::Arc<manguebyte::dsp::timeline::TempoMap>,
     beats: f64,
     meters: bool,
+    settings: RenderSettings,
+    /// 现场模式（[`Renderer::live`]）：乐器都在当前线程边演奏边出声，可以 [`Renderer::reconcile`]。
+    live: bool,
+}
+
+/// 节点的身份：轨名 / 总线名（没名字时用序号），主总线是空串。
+fn ident(project: &Project, node: Option<Node>) -> String {
+    match node {
+        Some(Node::Track(i)) => format!("t:{}", if project.tracks[i].name.is_empty() { format!("#{i}") } else { project.tracks[i].name.clone() }),
+        Some(Node::Bus(i)) => format!("b:{}", project.buses[i].name),
+        None => String::new(),
+    }
+}
+
+/// 两条效果链写法上是否同一个效果器（不看 from / until）。
+fn same_slot(a: &muser_core::EffectSlot, b: &muser_core::EffectSlot) -> bool {
+    a.effect == b.effect && a.bypass == b.bypass
 }
 
 impl Renderer {
@@ -909,7 +944,7 @@ impl Renderer {
     pub fn new(project: &Project, settings: RenderSettings, cache: Option<&RenderCache>, all_nodes: bool) -> Result<Self, EngineError> {
         crate::validate(project)?;
         let plan = routing::plan(project).map_err(invalid)?;
-        Self::build(project, settings, plan, cache, all_nodes, false, 0)
+        Self::build(project, settings, plan, cache, all_nodes, false, 0, false, None)
     }
 
     /// 同 [`Renderer::new`]，但从第 `frame` 帧（向下对齐到处理段）开始，用于播放中跳转：不从头算，立即可播。
@@ -918,7 +953,85 @@ impl Renderer {
     pub fn new_at(project: &Project, settings: RenderSettings, cache: Option<&RenderCache>, all_nodes: bool, frame: usize) -> Result<Self, EngineError> {
         crate::validate(project)?;
         let plan = routing::plan(project).map_err(invalid)?;
-        Self::build(project, settings, plan, cache, all_nodes, false, frame)
+        Self::build(project, settings, plan, cache, all_nodes, false, frame, false, None)
+    }
+
+    /// 现场模式：从头开始，所有节点都处理（静音随时可开），乐器都在当前线程里演奏，之后可以 [`Renderer::reconcile`]。
+    /// 不支持音频轨（整轨干声要按整首长度铺好）。
+    pub fn live(project: &Project, settings: RenderSettings) -> Result<Self, EngineError> {
+        crate::validate(project)?;
+        if project.tracks.iter().any(|t| t.instrument.trim() == muser_core::audio::INSTRUMENT) {
+            return Err(invalid("现场模式不支持音频轨".into()));
+        }
+        let plan = routing::plan(project).map_err(invalid)?;
+        Self::build(project, settings, plan, None, true, false, 0, true, None)
+    }
+
+    /// 换成新的工程，不停、不重建：已有的节点（按轨名、总线名认）乐器与效果器的状态原样带过去，
+    /// 之后的音符、自动化、推子按新工程走，追加的效果器、新加的音轨从空状态开始。只用于现场模式。
+    ///
+    /// 新工程必须是在旧工程上"往后加"：已经演奏过的部分不变（改的只是还没演奏的音符与自动化）；音轨、效果器只加不删
+    /// （撤下用 `until`，停奏就是不再写片段）；不加总线、不换已有音轨的乐器；中途加的效果器不能带延迟（如限幅器）。
+    pub fn reconcile(&mut self, project: &Project) -> Result<(), EngineError> {
+        if !self.live {
+            return Err(invalid("只有现场模式的渲染器能换工程".into()));
+        }
+        crate::validate(project)?;
+        if project.tracks.iter().any(|t| t.instrument.trim() == muser_core::audio::INSTRUMENT) {
+            return Err(invalid("现场模式不支持音频轨".into()));
+        }
+        let plan = routing::plan(project).map_err(invalid)?;
+        // 先查，查过了才动现有的节点（出错时渲染器保持原样）。
+        let arranged = crate::arrange::arranged(project).map_err(invalid)?;
+        let p = &*arranged;
+        let old: HashMap<&str, &Strip> = self.strips.iter().map(|s| (s.ident.as_str(), s)).collect();
+        let buses: Vec<String> = (0..p.buses.len()).map(|i| ident(p, Some(Node::Bus(i)))).collect();
+        let old_buses = self.strips.iter().filter(|s| matches!(s.node, Some(Node::Bus(_)))).count();
+        if buses.len() != old_buses || buses.iter().any(|b| !old.contains_key(b.as_str())) {
+            return Err(invalid("现场演奏中不能加、删、改名总线（模板里先建好）".into()));
+        }
+        for (i, t) in p.tracks.iter().enumerate() {
+            let id = ident(p, Some(Node::Track(i)));
+            let Some(o) = old.get(id.as_str()) else { continue };
+            if let Some(Source::Live(l)) = &o.source {
+                if l.instrument != t.instrument || l.params != serde_json::to_string(&t.instrument_params).unwrap_or_default() {
+                    return Err(invalid(format!("音轨 '{}' 中途不能换乐器或乐器参数（参数用自动化；换乐器就新开一条轨）", t.name)));
+                }
+            }
+        }
+        let lists: Vec<(String, &[muser_core::EffectSlot])> = std::iter::once((String::new(), p.master_effects.as_slice()))
+            .chain(p.tracks.iter().enumerate().map(|(i, t)| (ident(p, Some(Node::Track(i))), t.effects.as_slice())))
+            .chain(p.buses.iter().enumerate().map(|(i, b)| (ident(p, Some(Node::Bus(i))), b.effects.as_slice())))
+            .collect();
+        for (id, list) in &lists {
+            let Some(o) = old.get(id.as_str()) else { continue };
+            if list.len() < o.slots.len() || !o.slots.iter().zip(list.iter()).all(|(a, b)| same_slot(a, b)) {
+                return Err(invalid(format!("{} 的效果链只能在后面追加（撤下用 until，改参数用自动化）", if id.is_empty() { "主总线" } else { &id[2..] })));
+            }
+            // shortcut: 插件效果器的延迟要打开才知道，这里不查（带延迟的插件中途加进来，那一轨会错开几毫秒）；要查时把这里建好的链传给 build 复用。
+            let builtin: Vec<muser_core::EffectSlot> = list[o.slots.len()..].iter().filter(|e| !matches!(e.effect, muser_core::Effect::Plugin { .. })).cloned().collect();
+            let tail = effects::build_chain(&builtin, &self.cx.spec)?;
+            if effects::chain_latency(&tail) > 0 {
+                return Err(invalid("中途加的效果器不能带延迟（如限幅器）：放进模板里".into()));
+            }
+        }
+        // 已有节点之间新加的连线：读的一方还没读到的部分要还在。
+        for e in &plan.edges {
+            let from = old.get(ident(p, Some(e.from)).as_str());
+            let to = old.get(ident(p, e.to.map(Node::Bus)).as_str());
+            if let (Some(f), Some(t)) = (from, to) {
+                if f.out.start > t.pos {
+                    return Err(invalid("这条新连线来不及接上：过一会儿再试".into()));
+                }
+            }
+        }
+        let start = self.strips.iter().map(|s| s.pos).min().unwrap_or(self.pos);
+        let pos = self.pos;
+        let mut reuse: HashMap<String, Strip> = self.strips.drain(..).map(|s| (s.ident.clone(), s)).collect();
+        let mut next = Self::build(project, self.settings, plan, None, true, self.meters, start, true, Some(&mut reuse))?;
+        next.pos = pos;
+        *self = next;
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -930,6 +1043,8 @@ impl Renderer {
         all_nodes: bool,
         meters: bool,
         start: usize,
+        live: bool,
+        mut reuse: Option<&mut HashMap<String, Strip>>,
     ) -> Result<Self, EngineError> {
         // 编曲层（form / parts）展开成普通 clip，之后只看展开后的工程。
         let arranged = crate::arrange::arranged(project).map_err(invalid)?;
@@ -972,6 +1087,22 @@ impl Renderer {
                 }
             };
             let active = all_nodes || !muted || key_nodes.contains(&node);
+            let keys: Vec<Option<usize>> = (0..effects_list.len())
+                .map(|ei| plan.sidechains.iter().find(|s| s.node == node && s.effect == ei).map(|s| index[&s.key]))
+                .collect();
+            let id = ident(project, Some(node));
+            if let Some(mut o) = reuse.as_mut().and_then(|r| r.remove(&id)) {
+                if let (Some(Source::Live(l)), Node::Track(i)) = (o.source.as_mut(), node) {
+                    l.reschedule(project, i, &cx, beats)?;
+                }
+                let tail = effects::build_chain(&effects_list[o.chain.len()..], &cx.spec)?;
+                o.chain.extend(tail);
+                (o.node, o.active, o.muted, o.gain_db, o.pan, o.law, o.lanes, o.keys) = (Some(node), active, muted, gain_db, pan, law, lanes, keys);
+                (o.windows, o.slots, o.rank) = (cx.windows(effects_list), effects_list.to_vec(), rank(node));
+                (o.inputs, o.tap_inputs, o.readers) = (Vec::new(), Vec::new(), Vec::new());
+                strips.push(o);
+                continue;
+            }
             // 有直接输出的音轨不进缓存（缓存只存立体声，存不下各路直接输出）。
             let cache_key = match node {
                 Node::Track(i) if !plan.taps.iter().any(|t| t.track == i) => Some(instrument_key(project, i, &cx)),
@@ -987,7 +1118,7 @@ impl Renderer {
                             let audio = crate::audio::track_buffer(project, i, settings.sample_rate, cx.total_frames).map_err(invalid)?;
                             Source::Cached(Arc::new(Cached::new(audio)))
                         }
-                        None if project.tracks[i].instrument.trim().starts_with("plugin:") => {
+                        None if live || project.tracks[i].instrument.trim().starts_with("plugin:") => {
                             let mut live = LiveInstrument::new(project, i, &cx, beats, start)?;
                             live.taps = plan.taps.iter().filter(|t| t.track == i).map(|_| Arc::new(std::sync::Mutex::new(Tape { start, ..Default::default() }))).collect();
                             Source::Live(Box::new(live))
@@ -999,11 +1130,10 @@ impl Renderer {
             };
             let chain = if active { effects::build_chain(effects_list, &cx.spec)? } else { Vec::new() };
             let windows = cx.windows(effects_list);
-            let keys = (0..effects_list.len())
-                .map(|ei| plan.sidechains.iter().find(|s| s.node == node && s.effect == ei).map(|s| index[&s.key]))
-                .collect();
             strips.push(Strip {
                 node: Some(node),
+                ident: id,
+                slots: effects_list.to_vec(),
                 active,
                 muted,
                 source,
@@ -1029,20 +1159,31 @@ impl Renderer {
             });
         }
         let MasterLanes { effects: fx_lanes, gain } = automate::compile_master(project, beats).map_err(invalid)?;
+        let master_lanes = TrackLanes { instrument: Vec::new(), effects: fx_lanes, gain, pan: Vec::new(), sends: Default::default() };
+        let master_keys: Vec<Option<usize>> = master_keys.iter().map(|k| k.map(|n| index[&n])).collect();
+        if let Some(mut o) = reuse.as_mut().and_then(|r| r.remove("")) {
+            let tail = effects::build_chain(&project.master_effects[o.chain.len()..], &cx.spec)?;
+            o.chain.extend(tail);
+            (o.gain_db, o.lanes, o.keys, o.windows, o.slots) = (project.master_gain_db, master_lanes, master_keys, cx.windows(&project.master_effects), project.master_effects.clone());
+            (o.inputs, o.tap_inputs, o.readers) = (Vec::new(), Vec::new(), Vec::new());
+            strips.push(o);
+        } else {
         let chain = effects::build_chain(&project.master_effects, &cx.spec)?;
         strips.push(Strip {
             node: None,
+            ident: String::new(),
+            slots: project.master_effects.clone(),
             active: true,
             muted: false,
             source: None,
             latency: effects::chain_latency(&chain),
             chain,
             windows: cx.windows(&project.master_effects),
-            lanes: TrackLanes { instrument: Vec::new(), effects: fx_lanes, gain, pan: Vec::new(), sends: Default::default() },
+            lanes: master_lanes,
             gain_db: project.master_gain_db,
             pan: 0.0,
             law: master_gains,
-            keys: master_keys.iter().map(|k| k.map(|n| index[&n])).collect(),
+            keys: master_keys,
             inputs: Vec::new(),
             tap_inputs: Vec::new(),
             readers: Vec::new(),
@@ -1055,6 +1196,7 @@ impl Renderer {
             record: None,
             loud: None,
         });
+        }
 
         let master = strips.len() - 1;
         let mut edges: Vec<usize> = (0..plan.edges.len()).collect();
@@ -1088,6 +1230,8 @@ impl Renderer {
             tempo_map: crate::transport::current(),
             beats,
             meters,
+            settings,
+            live,
         })
     }
 
@@ -1543,6 +1687,51 @@ mod tests {
     }
 
     /// 播放中静音、改推子立即生效。
+    /// 现场模式：放到一半换成"往后加了东西"的工程（已有轨的新片段、追加的效果器、自动化、一条新轨），
+    /// 接着放完——和离线渲染新工程逐样本一致。
+    #[test]
+    fn live_reconcile_matches_offline() {
+        let p1 = project();
+        let mut p2 = p1.clone();
+        let more = |pitch: u8| serde_json::json!({ "start": 2, "length": 2, "notes": (0..8).map(|i| serde_json::json!({ "pitch": pitch + (i % 4) as u8, "start": i as f64 * 0.25, "length": 0.2 })).collect::<Vec<_>>() });
+        p2.tracks[0].clips.push(serde_json::from_value(more(36)).unwrap());
+        p2.tracks[1].clips.push(serde_json::from_value(more(40)).unwrap());
+        p2.tracks[1].effects.push(serde_json::from_value(serde_json::json!({ "type": "eq", "shape": "lowpass", "frequency": 900, "from": 2 })).unwrap());
+        p2.tracks[1].automation.push(serde_json::from_value(serde_json::json!({ "target": "effects[1]", "param": "frequency", "shape": "points", "points": [[2, 900], [4, 3000]] })).unwrap());
+        p2.tracks.push(serde_json::from_value(serde_json::json!({ "name": "lead", "instrument": "synth.poly", "output": "grp",
+            "clips": [more(64)] })).unwrap());
+        let settings = RenderSettings::default();
+        let want = render(&p2, settings).unwrap();
+        let mut r = Renderer::live(&p1, settings).unwrap();
+        let mut block = AudioBuffer::<f32>::new(2, 1000);
+        let mut got: [Vec<f32>; 2] = Default::default();
+        let mut swapped = false;
+        while let n @ 1.. = r.process(&mut block).unwrap() {
+            for (c, g) in got.iter_mut().enumerate() {
+                g.extend_from_slice(&block.channel(c)[..n]);
+            }
+            if !swapped && got[0].len() >= 24_000 {
+                r.reconcile(&p2).unwrap();
+                swapped = true;
+            }
+        }
+        assert_eq!(got[0].len(), want.num_frames());
+        for (c, g) in got.iter().enumerate() {
+            let diff = g.iter().zip(want.channel(c)).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            assert!(diff < 1e-6, "声道 {c} 最大差 {diff}");
+        }
+        // 不合规的改动报错，渲染器不动。
+        let mut bad = p2.clone();
+        bad.tracks[1].effects.remove(0);
+        assert!(r.reconcile(&bad).is_err());
+        let mut bad = p2.clone();
+        bad.tracks[0].instrument = "drums.808".into();
+        assert!(r.reconcile(&bad).is_err());
+        let mut bad = p2.clone();
+        bad.buses.push(serde_json::from_value(serde_json::json!({ "name": "new" })).unwrap());
+        assert!(r.reconcile(&bad).is_err());
+    }
+
     #[test]
     fn live_mix() {
         let settings = RenderSettings { tail_seconds: 0.3, ..Default::default() };
