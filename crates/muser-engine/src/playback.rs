@@ -71,6 +71,8 @@ struct Shared {
     round_trip: AtomicI64,
     /// 收集队列满了、丢掉输入的次数。
     dropped: AtomicUsize,
+    /// 现场模式：正在听到的这一小段各节点的峰值（[`Player::levels`]）。
+    levels: Mutex<Vec<(String, f32)>>,
 }
 
 /// 一遍录音：从工程第 `start` 帧开始的单声道样本。
@@ -491,6 +493,11 @@ impl Player {
         self.shared.monitor.store(g.to_bits(), Ordering::Relaxed);
     }
 
+    /// 现场模式下正在听到的各节点峰值（线性）：轨名 / 总线名，主总线是空串。
+    pub fn levels(&self) -> Vec<(String, f32)> {
+        self.shared.levels.lock().unwrap().clone()
+    }
+
     pub fn status(&self) -> PlayerStatus {
         let sr = f64::from(self.sample_rate);
         let sh = &self.shared;
@@ -568,7 +575,7 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
             Some(Cmd::Load(p)) if live => {
                 let r = match renderer.as_mut() {
                     Some(r) => r.reconcile(&p).map_err(|e| format!("{e:#}")),
-                    None => Renderer::live(&p, settings).map(|r| renderer = Some(r)).map_err(|e| format!("{e:#}")),
+                    None => Renderer::live(&p, settings).map(|r| renderer = Some(r.with_meters())).map_err(|e| format!("{e:#}")),
                 };
                 match r {
                     Ok(()) => {
@@ -646,6 +653,11 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
                     renderer = None;
                     break;
                 }
+            }
+        }
+        if live && wrote {
+            if let Some(r) = &renderer {
+                *sh.levels.lock().unwrap() = r.levels(sh.position.load(Ordering::Acquire));
             }
         }
         if tx.free_len() < CHUNK || renderer.as_ref().is_none_or(|r| r.position() >= r.total_frames()) {

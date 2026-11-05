@@ -1431,6 +1431,17 @@ impl Renderer {
         Ok(())
     }
 
+    /// 第 `frame` 帧所在那一小段（[`METER_WINDOW`] 帧）各节点的峰值（线性，左右取大）：轨名 / 总线名，主总线是空串。
+    /// 要先 [`Renderer::with_meters`]。
+    // shortcut: 电平从头记到尾，现场演奏一小时每个节点约 1.4 MB；更长时改成只留最近一段。
+    pub fn levels(&self, frame: usize) -> Vec<(String, f32)> {
+        let w = frame / METER_WINDOW;
+        self.strips
+            .iter()
+            .map(|s| (s.ident.get(2..).unwrap_or("").to_string(), s.meter.get(w).map_or(0.0, |p| p[0].max(p[1]))))
+            .collect()
+    }
+
     /// 同时记录各节点的电平（见 [`Renderer::meters`]）。
     pub fn with_meters(mut self) -> Self {
         self.meters = true;

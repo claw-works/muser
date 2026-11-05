@@ -292,6 +292,26 @@ impl Session {
     }
 }
 
+impl Session {
+    /// 给页面画时间线：每一段（秒、小节、拍号、是不是循环出来的、哪些轨在演奏）。
+    pub fn timeline(&self) -> Value {
+        let spb = 60.0 / self.tempo();
+        let mut bar = 1u32;
+        let segs: Vec<Value> = self
+            .segs
+            .iter()
+            .map(|s| {
+                let v = json!({ "start": s.start * spb, "end": s.end() * spb, "bar": bar, "bars": s.bars,
+                    "meter": [s.ts.numerator, s.ts.denominator], "repeat": s.rep,
+                    "tracks": s.change.tracks.iter().filter(|t| !t.clips.is_empty()).map(|t| t.name.clone()).collect::<Vec<_>>() });
+                bar += s.bars;
+                v
+            })
+            .collect();
+        json!({ "segments": segs, "queued_until": self.real_end() * spb })
+    }
+}
+
 impl Change {
     /// 写回 JSON（给 status：agent 接着写下一段时参考）。
     fn to_json(&self) -> Value {
@@ -515,7 +535,7 @@ fn port_file() -> PathBuf {
 }
 
 /// 启动一场现场演奏（前台常驻，直到 `muser live stop`）。
-pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>) -> Result<()> {
+pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>, open: bool) -> Result<()> {
     let text = std::fs::read_to_string(template).with_context(|| format!("读不了模板 {template}"))?;
     let tpl = Project::from_json(&text).map_err(|e| anyhow!("{e}"))?.at_file(std::path::Path::new(template));
     let session = Session::new(&tpl)?;
@@ -538,6 +558,9 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
     std::fs::write(port_file(), json!({ "port": port, "pid": std::process::id(), "template": template }).to_string())?;
     let st = live.player.status();
     println!("muser live 已开始：http://127.0.0.1:{port}/  （只监听本机）  声卡：{}（{} Hz）", st.device, st.sample_rate);
+    if open {
+        crate::web::open_browser(&format!("http://127.0.0.1:{port}/"));
+    }
     println!("用 muser live send / status / wait / autoplay / stop 控制；整场写进 {}", live.record.as_ref().map_or("（没有 --record，不保存）".into(), |p| p.display().to_string()));
     // 循环往后排：保持至少 KEEP_SECONDS 秒。
     {
@@ -573,6 +596,13 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
             let num = |k: &str, d: f64| q.get(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(d);
             let (code, v) = match (req.method(), path.as_str()) {
                 (tiny_http::Method::Get, "/api/status") => (200, l.status()),
+                (tiny_http::Method::Get, "/api/view") => {
+                    let mut v = l.status();
+                    v["position"] = json!(l.player.status().position);
+                    v["timeline"] = l.session.lock().unwrap().timeline();
+                    v["levels"] = json!(l.player.levels().into_iter().map(|(n, p)| json!([n, p])).collect::<Vec<_>>());
+                    (200, v)
+                }
                 (tiny_http::Method::Get, "/api/wait") => (200, l.wait(num("runway", 8.0))),
                 (tiny_http::Method::Post, "/api/change") => match serde_json::from_str::<Value>(&body).map_err(anyhow::Error::from).and_then(|b| l.change(b)) {
                     Ok(v) => (200, v),
@@ -596,9 +626,14 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
                     std::process::exit(0);
                 }
                 (tiny_http::Method::Get, "/") => {
-                    let r = tiny_http::Response::from_string(format!("muser live：第 {} 小节（页面在做）", l.status()["bar"]))
-                        .with_header(crate::web::header("Content-Type", "text/plain; charset=utf-8"));
+                    let r = tiny_http::Response::from_string(include_str!("live.html"))
+                        .with_header(crate::web::header("Content-Type", "text/html; charset=utf-8"))
+                        .with_header(crate::web::header("Cache-Control", "no-store"));
                     let _ = req.respond(r);
+                    return;
+                }
+                (tiny_http::Method::Get, "/favicon.ico") => {
+                    let _ = req.respond(tiny_http::Response::empty(204));
                     return;
                 }
                 _ => (404, json!({ "error": "没有这个接口" })),

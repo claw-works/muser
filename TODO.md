@@ -34,7 +34,7 @@
 ## 0.4 · 大
 
 11. **Agent 现场演奏（`muser live`）**——见下。进度：✅ 效果器 from / until、渲染器对账；✅ 常驻进程（start / send / status / wait / autoplay / stop、乐句循环、录成工程）；
-    页面、MCP 工具、模板、skill 还没做。
+    ✅ 页面（位置、段、循环、各轨电平）；MCP 工具、模板、skill 还没做。
 
 ## 0.5 · 主线：yinse（音色）——muser 自己的合成器，给 AI 用
 

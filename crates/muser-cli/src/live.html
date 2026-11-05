@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muser live</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #080a11; --panel: rgba(18, 22, 35, .88); --line: #262c40; --text: #f3f5fb; --dim: #8d95aa; --faint: #5c6479;
+    --accent: #72e5c2; --accent-2: #8a7dff; --warn: #ffc46b; --err: #ff7c8b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text); background: radial-gradient(circle at 12% -10%, rgba(138,125,255,.13), transparent 30rem), var(--bg);
+    font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  }
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 28px 40px; }
+  header { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
+  h1 span { color: var(--accent); }
+  .big { font: 600 44px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.02em; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .chip { padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); background: var(--panel); white-space: nowrap; }
+  .chip b { color: var(--text); font-weight: 600; }
+  .chip.loop { color: #07130f; background: var(--accent-2); border-color: var(--accent-2); }
+  .chip.warn { color: #1b1203; background: var(--warn); border-color: var(--warn); }
+  .chip.err { color: #1b0306; background: var(--err); border-color: var(--err); }
+  .panel { margin-top: 20px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+  canvas { display: block; width: 100%; }
+  .hint { margin-top: 10px; color: var(--faint); font-size: 12px; }
+  #error { margin-top: 14px; color: var(--err); white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>muser <span>live</span></h1>
+    <div class="big" id="pos">—</div>
+    <div class="chips" id="chips"></div>
+  </header>
+  <div class="panel"><canvas id="tl" height="320"></canvas>
+    <div class="hint" id="legend"></div>
+  </div>
+  <div id="error"></div>
+</main>
+<script>
+const zh = (navigator.language || "").toLowerCase().startsWith("zh");
+const T = zh ? {
+  bar: (b, m) => `第 ${b} 小节 · ${m}`, looping: (n) => `循环中 · 第 ${n + 1} 遍`, queued: (s) => `排好 ${s} 秒`,
+  autoplay: (s) => `自主演奏还剩 ${s}`, autoplayOver: "自主演奏结束（等对话里的新指令）", underruns: (n) => `掉帧 ${n}`,
+  gone: "连不上 muser live（已经停了？）", legend: "上面一行是提交的段（浅色 = 循环出来的重复），下面每条轨在哪些段里演奏，右边是电平。竖线是正在听到的位置。",
+  master: "主输出",
+} : {
+  bar: (b, m) => `Bar ${b} · ${m}`, looping: (n) => `Looping · pass ${n + 1}`, queued: (s) => `${s}s queued`,
+  autoplay: (s) => `Autoplay ${s} left`, autoplayOver: "Autoplay over (waiting for the conversation)", underruns: (n) => `${n} dropouts`,
+  gone: "Can't reach muser live (stopped?)", legend: "Top row: submitted segments (lighter = loop repeats); below, where each track plays; levels on the right. The line is what you hear now.",
+  master: "Master",
+};
+document.documentElement.lang = zh ? "zh" : "en";
+document.getElementById("legend").textContent = T.legend;
+let view = null, at = 0;
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => { s = Math.max(0, Math.round(s)); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`; };
+
+async function poll() {
+  try {
+    const r = await fetch("/api/view", { cache: "no-store" });
+    view = await r.json(); at = performance.now();
+    $("error").textContent = view.error || "";
+    renderChips();
+  } catch (_) { $("error").textContent = T.gone; }
+  setTimeout(poll, 150);
+}
+function renderChips() {
+  const v = view, box = $("chips"); box.textContent = "";
+  const chip = (text, cls) => { const c = document.createElement("div"); c.className = "chip " + (cls || ""); c.textContent = text; box.appendChild(c); };
+  $("pos").textContent = T.bar(v.bar, `${v.time_signature[0]}/${v.time_signature[1]}`);
+  if (v.looping) chip(T.looping(v.loop.repeats_played), "loop"); else chip(T.queued(v.runway_seconds.toFixed(1)));
+  if (v.autoplay_seconds_left != null) chip(v.autoplay_seconds_left > 0 ? T.autoplay(fmt(v.autoplay_seconds_left)) : T.autoplayOver, v.autoplay_seconds_left > 0 ? "" : "warn");
+  chip(`${Math.round(v.tempo)} BPM`);
+  if (v.underruns) chip(T.underruns(v.underruns), "err");
+}
+
+function draw() {
+  requestAnimationFrame(draw);
+  if (!view) return;
+  const cv = $("tl"), dpr = window.devicePixelRatio || 1;
+  const tracks = view.tracks.map((t) => t.name);
+  const rowH = 26, top = 38, H = top + rowH * (tracks.length + 1) + 12;
+  const W = cv.clientWidth;
+  if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px"; }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const now = view.position + (performance.now() - at) / 1000;
+  const labelW = 110, meterW = 70, x0 = labelW, x1 = W - meterW - 10;
+  const span = 60, from = now - span * 0.3, px = (x1 - x0) / span;
+  const X = (s) => x0 + (s - from) * px;
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const accent = css("--accent"), accent2 = css("--accent-2"), dim = css("--dim"), faint = css("--faint"), line = css("--line");
+  g.font = "12px ui-sans-serif, system-ui, sans-serif"; g.textBaseline = "middle";
+  // 段
+  for (const s of view.timeline.segments) {
+    if (s.end < from || s.start > from + span) continue;
+    const a = Math.max(x0, X(s.start)), b = Math.min(x1, X(s.end));
+    if (b <= a) continue;
+    g.fillStyle = s.repeat ? "rgba(138,125,255,.18)" : "rgba(114,229,194,.22)";
+    g.fillRect(a, 6, b - a - 2, 24);
+    g.fillStyle = s.repeat ? accent2 : accent;
+    if (b - a > 36) g.fillText(`${s.bar}${s.meter[0] !== 4 || s.meter[1] !== 4 ? ` · ${s.meter[0]}/${s.meter[1]}` : ""}`, a + 6, 18);
+    tracks.forEach((name, i) => {
+      if (!s.tracks.includes(name)) return;
+      g.fillStyle = s.repeat ? "rgba(138,125,255,.32)" : "rgba(114,229,194,.45)";
+      g.fillRect(a, top + i * rowH + 5, b - a - 2, rowH - 10);
+    });
+  }
+  // 轨名与电平
+  const levels = Object.fromEntries((view.levels || []).map(([n, p]) => [n, p]));
+  [...tracks, ""].forEach((name, i) => {
+    const y = top + i * rowH;
+    g.strokeStyle = line; g.beginPath(); g.moveTo(0, y + rowH - .5); g.lineTo(W, y + rowH - .5); g.stroke();
+    g.fillStyle = name ? dim : faint; g.fillText(name || T.master, 8, y + rowH / 2, labelW - 14);
+    const p = levels[name] || 0, db = p > 0 ? 20 * Math.log10(p) : -90, w = Math.max(0, Math.min(1, (db + 60) / 60)) * meterW;
+    g.fillStyle = "rgba(255,255,255,.06)"; g.fillRect(W - meterW - 4, y + 8, meterW, rowH - 16);
+    g.fillStyle = db > -1 ? css("--err") : db > -9 ? css("--warn") : accent; g.fillRect(W - meterW - 4, y + 8, w, rowH - 16);
+  });
+  // 排到哪、正在听到的位置
+  const q = X(view.timeline.queued_until);
+  if (q > x0 && q < x1) { g.strokeStyle = accent; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(q, 4); g.lineTo(q, H - 8); g.stroke(); g.setLineDash([]); }
+  const n = X(now);
+  g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.moveTo(n, 2); g.lineTo(n, H - 6); g.stroke(); g.lineWidth = 1;
+}
+poll(); draw();
+</script>
+</body>
+</html>
