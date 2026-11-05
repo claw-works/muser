@@ -36,6 +36,10 @@ pub struct Change {
     /// 给整场换个标题（页面最上面，从这一段起）。
     #[serde(default)]
     pub title: Option<String>,
+    /// 这一段的歌词原文（页面上卡拉 OK 大字幕显示）。唱的时间来自这一段里第一条音符带 `lyric`（ABC 的 `w:` 行）的轨：
+    /// 汉字一个字对一个音节，英文按词；字数和音节数对不上时显示音节本身。
+    #[serde(default)]
+    pub lyrics: Option<String>,
     /// `"after"`（默认）：排在已经提交的音乐之后（在循环里时：这一遍放完再接）；`"now"`：下一条小节线就换（截断正在放的这段）；
     /// `"patch"`：改正在放的这一段——写的是完整的一段（从它的开头写起），从下一小节起接着这一段的同一位置往下放（曲式不乱）。
     #[serde(default)]
@@ -126,6 +130,8 @@ struct Seg {
     offset: f64,
     /// 是 `"patch"` 改出来的：新轨的写法（instrument 等）允许和已有的重复。
     patch: bool,
+    /// 这一段的卡拉 OK 字幕（时间是秒，相对这一段写的内容的开头）。
+    karaoke: Arc<Vec<muser_engine::lyric::KaraokeLine>>,
 }
 
 impl Seg {
@@ -205,6 +211,7 @@ impl Session {
             name: Some("template".into()),
             note: None,
             title: None,
+            lyrics: None,
             buses: Vec::new(),
             master: None,
             at: At::After,
@@ -225,7 +232,7 @@ impl Session {
         base.form.clear();
         base.sections.clear();
         let title = if template.name.is_empty() { "muser live".to_string() } else { template.name.clone() };
-        let s = Session { base, title, mixes: Vec::new(), segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false, offset: 0.0, patch: false }] };
+        let s = Session { base, title, mixes: Vec::new(), segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false, offset: 0.0, patch: false, karaoke: Default::default() }] };
         s.project()?;
         Ok(s)
     }
@@ -318,7 +325,8 @@ impl Session {
         let ts = change.time_signature.unwrap_or(self.base.time_signature);
         let skip = patch_from.unwrap_or(0);
         let offset = f64::from(skip) * ts.beats_per_bar();
-        self.segs.push(Seg { start: at, bars: change.bars - skip, ts, change: Arc::new(change), rep: false, cut: false, offset, patch: patch_from.is_some() });
+        let karaoke = Arc::new(karaoke_of(&change, &self.base, ts));
+        self.segs.push(Seg { start: at, bars: change.bars - skip, ts, change: Arc::new(change), rep: false, cut: false, offset, patch: patch_from.is_some(), karaoke });
         match self.project() {
             Ok(p) => {
                 let map = p.bar_map();
@@ -463,15 +471,27 @@ impl Session {
 }
 
 impl Session {
-    /// 给页面画时间线：每一段（秒、小节、拍号、是不是循环出来的、哪些轨在演奏）。
-    pub fn timeline(&self) -> Value {
+    /// 给页面画时间线：每一段（秒、小节、拍号、是不是循环出来的、哪些轨在演奏）；`now`（拍）附近的段带上卡拉 OK 字幕（秒，整场的时间）。
+    pub fn timeline(&self, now: f64) -> Value {
         let spb = 60.0 / self.tempo();
         let mut bar = 1u32;
         let segs: Vec<Value> = self
             .segs
             .iter()
             .map(|s| {
-                let v = json!({ "start": s.start * spb, "end": s.end() * spb, "bar": bar, "bars": s.bars, "name": s.change.name,
+                let near = s.end() * spb > now * spb - 10.0 && s.start * spb < now * spb + 60.0;
+                let base = (s.start - s.offset) * spb;
+                let karaoke: Vec<Value> = if near {
+                    s.karaoke
+                        .iter()
+                        .filter(|l| base + l.end > s.start * spb && base + l.start < s.end() * spb)
+                        .map(|l| json!({ "start": base + l.start, "end": base + l.end,
+                            "tokens": l.tokens.iter().map(|t| json!({ "text": t.text, "start": base + t.start, "end": base + t.end })).collect::<Vec<_>>() }))
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let v = json!({ "start": s.start * spb, "end": s.end() * spb, "bar": bar, "bars": s.bars, "name": s.change.name, "karaoke": karaoke,
                     "meter": [s.ts.numerator, s.ts.denominator], "repeat": s.rep,
                     "tracks": s.change.tracks.iter().filter(|t| !t.clips.is_empty()).map(|t| t.name.clone()).collect::<Vec<_>>() });
                 bar += s.bars;
@@ -517,6 +537,21 @@ fn empty(name: &str) -> TrackChange {
         effects_off: Vec::new(),
         automation: Vec::new(),
     }
+}
+
+/// 一段的卡拉 OK 字幕：只用这一段写的内容算（时间相对它的开头）。乐器：新轨写的、模板里的，否则随便一个音高乐器（只为展开音符）。
+fn karaoke_of(change: &Change, base: &Project, ts: TimeSignature) -> Vec<muser_engine::lyric::KaraokeLine> {
+    let tracks: Vec<Value> = change
+        .tracks
+        .iter()
+        .filter(|t| !t.clips.is_empty())
+        .map(|t| {
+            let inst = t.instrument.clone().or_else(|| base.tracks.iter().find(|b| b.name == t.name).map(|b| b.instrument.clone())).unwrap_or_else(|| "synth.poly".into());
+            json!({ "name": t.name, "instrument": inst, "clips": t.clips })
+        })
+        .collect();
+    let tmp = json!({ "tempo": base.tempo, "time_signature": ts, "lyrics": change.lyrics, "tracks": tracks });
+    serde_json::from_value::<Project>(tmp).map(|p| muser_engine::lyric::karaoke(&p)).unwrap_or_default()
 }
 
 /// 把一段写进工程：片段、自动化平移到这一段的开头；新轨在这里建；效果器从这里接入 / 撤下。
@@ -951,7 +986,8 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
                 (tiny_http::Method::Get, "/api/view") => {
                     let mut v = l.status();
                     v["position"] = json!(l.player.status().position);
-                    v["timeline"] = l.session.lock().unwrap().timeline();
+                    let now = l.now_beat();
+                    v["timeline"] = l.session.lock().unwrap().timeline(now);
                     v["levels"] = json!(l.player.levels().into_iter().map(|(n, p)| json!([n, p])).collect::<Vec<_>>());
                     (200, v)
                 }
@@ -1146,6 +1182,23 @@ mod tests {
         c.bars = 1;
         c.at = At::Patch;
         assert!(s.submit(c, 21.0).is_err());
+    }
+
+    /// 一段带歌词：时间线上有卡拉 OK 字幕，每个字的时间是整场的秒数。
+    #[test]
+    fn karaoke_in_the_timeline() {
+        let mut s = Session::new(&template()).unwrap();
+        s.submit(change(json!({ "bars": 2, "lyrics": "一闪一闪\n亮晶晶", "tracks": [{ "name": "guide", "instrument": "choir.solo", "gain_db": -80,
+            "clips": [{ "start": 0, "length": 8, "abc": "L:1/4\nK:C\nCCGG | AAG2 |\nw: yi shan yi shan liang jing jing" }] }] })), 0.0).unwrap();
+        let t = s.timeline(4.0);
+        let seg = &t["segments"][1];
+        let lines = seg["karaoke"].as_array().unwrap();
+        assert_eq!(lines.len(), 2, "{seg}");
+        // 120 BPM：这一段从第 4 拍（2 秒）开始，"一" 在 2 秒，"亮" 在第 2 小节开头（4 秒）。
+        assert_eq!(lines[0]["tokens"][0]["text"], "一");
+        assert_eq!(lines[0]["tokens"][0]["start"], 2.0);
+        assert_eq!(lines[1]["tokens"][0]["text"], "亮");
+        assert_eq!(lines[1]["start"], 4.0);
     }
 
     #[test]

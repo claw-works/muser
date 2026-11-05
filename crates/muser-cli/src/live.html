@@ -29,6 +29,13 @@
   #next { margin-top: 6px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #notice.flash { animation: flash 1.6s ease-out; }
   @keyframes flash { 0% { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(114,229,194,.35); } 100% { border-color: var(--line); box-shadow: none; } }
+  /* 卡拉 OK 大字幕：出现过一次就一直占着位置（不跳） */
+  #karaoke { display: none; height: 150px; text-align: center; overflow: hidden; }
+  #k-cue { height: 22px; color: var(--warn); font-weight: 600; letter-spacing: .08em; }
+  #k-now { font-size: 46px; font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--faint); }
+  #k-now .sung { color: var(--accent); }
+  #k-now .singing { color: #fff; text-shadow: 0 0 18px rgba(114,229,194,.8); }
+  #k-next { margin-top: 6px; font-size: 22px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #ended { display: none; height: 108px; padding: 18px; border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-size: 18px; margin-top: 18px; }
   canvas { display: block; width: 100%; }
   .hint { margin-top: 10px; color: var(--faint); font-size: 12px; }
@@ -51,6 +58,7 @@
   <h1 id="title">muser live</h1>
   <div class="panel" id="notice"><div id="now">—</div><div id="now-note"></div><div id="next"></div></div>
   <div id="ended"></div>
+  <div class="panel" id="karaoke"><div id="k-cue"></div><div id="k-now"></div><div id="k-next"></div></div>
   <div class="panel"><canvas id="tl" height="320"></canvas><div class="hint" id="legend"></div></div>
   <div class="panel" id="status">
     <div class="cell" id="c-bar">—</div><div class="cell" id="c-loop"></div><div class="cell" id="c-auto"></div>
@@ -65,7 +73,7 @@ const T = zh ? {
   autoplay: (s) => `自主演奏还剩 ${s}`, autoplayOver: "自主演奏结束", autoplayOff: "自主演奏：不限时",
   dropouts: (n) => `掉帧 ${n}`, load: (n, c) => `最耗：${n}（${Math.round(c * 100)}% 核）`,
   gone: "连不上 muser live（已经停了？）", master: "主输出", stop: "停止演奏", confirmStop: "停止这场演奏？（录音会写好）",
-  ended: (f) => `演奏结束了。${f ? `录音存在 ${f}` : ""}`, endedAway: "演奏结束了（muser live 已经退出）。",
+  ready: "▶ 准备", ended: (f) => `演奏结束了。${f ? `录音存在 ${f}` : ""}`, endedAway: "演奏结束了（muser live 已经退出）。",
   legend: "上面一行是每一段（浅色 = 循环出来的重复），下面每条轨在哪些段里演奏，右边是电平。白线是正在听到的位置，虚线是排到哪里。",
 } : {
   now: (n) => `Now ▶ <b>${n}</b>`, next: (n, b, s) => `Next: ${n} · bar ${b} · in ${s}s`, noNext: "Then: this section loops until the next instruction",
@@ -73,7 +81,7 @@ const T = zh ? {
   autoplay: (s) => `Autoplay ${s} left`, autoplayOver: "Autoplay over", autoplayOff: "Autoplay: no limit",
   dropouts: (n) => `${n} dropouts`, load: (n, c) => `Heaviest: ${n} (${Math.round(c * 100)}% of a core)`,
   gone: "Can't reach muser live (stopped?)", master: "Master", stop: "Stop", confirmStop: "Stop this session? (the recording will be saved)",
-  ended: (f) => `The session is over.${f ? ` Recording: ${f}` : ""}`, endedAway: "The session is over (muser live has exited).",
+  ready: "▶ Get ready", ended: (f) => `The session is over.${f ? ` Recording: ${f}` : ""}`, endedAway: "The session is over (muser live has exited).",
   legend: "Top row: each section (lighter = loop repeats); below, where each track plays; levels on the right. The white line is what you hear, the dashed one how far it is queued.",
 };
 document.documentElement.lang = zh ? "zh" : "en";
@@ -130,8 +138,26 @@ function render() {
   else cell("c-info", h && h.cores > 0.05 ? T.load(esc(h.name), h.cores) : "", h && h.cores > 0.05 ? "" : "empty");
 }
 
+// 卡拉 OK：时间线上附近各段的字幕，按现在听到的时间高亮。
+let karaokeShown = false;
+function karaoke() {
+  if (!view || over) return;
+  const now = view.position + (performance.now() - at) / 1000;
+  const lines = view.timeline.segments.flatMap((s) => s.karaoke || []).sort((a, b) => a.start - b.start);
+  if (!lines.length && !karaokeShown) return;
+  if (lines.length && !karaokeShown) { karaokeShown = true; $("karaoke").style.display = "block"; }
+  // 当前这一句：正在唱的，或者 2 秒内就要开始的。
+  let i = lines.findIndex((l) => now < l.end + 0.3);
+  const cur = i >= 0 && lines[i].start - now < 2.0 ? lines[i] : null;
+  const next = cur ? lines[i + 1] : i >= 0 ? lines[i] : null;
+  $("k-cue").textContent = cur && now < cur.start ? T.ready : "";
+  $("k-now").innerHTML = cur ? cur.tokens.map((t) => `<span class="${now >= t.end ? "sung" : now >= t.start ? "singing" : ""}">${esc(t.text)}</span>`).join(cur.tokens.every((t) => [...t.text].length === 1) ? "" : " ") : "";
+  $("k-next").textContent = next && next !== cur ? next.tokens.map((t) => t.text).join(next.tokens.every((t) => [...t.text].length === 1) ? "" : " ") : "";
+}
+
 function draw() {
   if (over) return;
+  karaoke();
   requestAnimationFrame(draw);
   if (!view) return;
   const cv = $("tl"), dpr = window.devicePixelRatio || 1;
