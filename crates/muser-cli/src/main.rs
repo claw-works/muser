@@ -1704,6 +1704,9 @@ enum LiveCommand {
         /// 用系统浏览器打开现场页面（正在放的位置、往后排的段、各轨电平）。
         #[arg(long)]
         open: bool,
+        /// 整场的标题（页面最上面）；按人要的写，如"从电子到乡村"。之后某一段写 "title" 可以改。
+        #[arg(long)]
+        title: Option<String>,
         /// 在后台启动：与当前终端 / 调用的程序完全脱离，等它开始演奏就返回（agent 用这个）。输出写进临时目录的 muser-live.log。
         #[arg(long)]
         detach: bool,
@@ -1748,8 +1751,11 @@ fn cmd_live(command: LiveCommand) -> Result<()> {
         Ok(())
     };
     match command {
-        LiveCommand::Start { template, autoplay, record, port, open, detach: true, tail } => {
+        LiveCommand::Start { template, autoplay, record, port, open, title, detach: true, tail } => {
             let mut args = vec![template, "--autoplay".into(), autoplay, "--port".into(), port.to_string(), "--tail".into(), tail.to_string()];
+            if let Some(t) = title {
+                args.extend(["--title".into(), t]);
+            }
             if let Some(r) = record {
                 args.extend(["--record".into(), r]);
             }
@@ -1761,10 +1767,10 @@ fn cmd_live(command: LiveCommand) -> Result<()> {
             println!("muser live 已在后台开始（第 {} 小节）；页面 http://127.0.0.1:{port}/；日志 {}", v["bar"], std::env::temp_dir().join("muser-live.log").display());
             Ok(())
         }
-        LiveCommand::Start { template, autoplay, record, port, open, detach: false, tail } => {
+        LiveCommand::Start { template, autoplay, record, port, open, title, detach: false, tail } => {
             let autoplay = live::parse_duration(&autoplay)?;
             let settings = RenderSettings { tail_seconds: tail, ..RenderSettings::default() };
-            muser_engine::plugin::run_with_main_loop(move || match live::serve(&template, settings, port, autoplay, record, open) {
+            muser_engine::plugin::run_with_main_loop(move || match live::serve(&template, settings, port, autoplay, record, open, title) {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("Error: {e:?}");

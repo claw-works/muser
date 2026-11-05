@@ -16,100 +16,118 @@
     font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
   }
   main { max-width: 1280px; margin: 0 auto; padding: 28px 28px 40px; }
-  header { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
-  h1 span { color: var(--accent); }
-  .big { font: 600 44px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.02em; }
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
-  .chip { padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); background: var(--panel); white-space: nowrap; }
-  .chip b { color: var(--text); font-weight: 600; }
-  .chip.loop { color: #07130f; background: var(--accent-2); border-color: var(--accent-2); }
-  .chip.warn { color: #1b1203; background: var(--warn); border-color: var(--warn); }
-  .chip.err { color: #1b0306; background: var(--err); border-color: var(--err); }
-  .panel { margin-top: 20px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+  .brand { color: var(--faint); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  .brand span { color: var(--accent); }
+  h1 { margin: 6px 0 0; font-size: 34px; line-height: 1.15; letter-spacing: -.01em; min-height: 40px;
+       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .panel { margin-top: 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+  /* 变奏提示：高度固定，内容多少不影响下面 */
+  #notice { height: 108px; overflow: hidden; position: relative; }
+  #now { font-size: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #now b { color: var(--accent); }
+  #now-note { margin-top: 2px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #next { margin-top: 6px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #notice.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { 0% { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(114,229,194,.35); } 100% { border-color: var(--line); box-shadow: none; } }
+  #ended { display: none; height: 108px; padding: 18px; border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-size: 18px; margin-top: 18px; }
   canvas { display: block; width: 100%; }
   .hint { margin-top: 10px; color: var(--faint); font-size: 12px; }
-  #error { margin-top: 14px; color: var(--err); white-space: pre-wrap; }
-  #warning { margin-top: 14px; color: var(--warn); }
-  #ended { display: none; margin-top: 20px; padding: 18px; border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-size: 16px; }
-  button { min-height: 32px; padding: 0 14px; color: var(--text); background: #171b29; border: 1px solid #343c55; border-radius: 9px; cursor: pointer; font: inherit; }
+  /* 状态栏：每一格位置、宽度固定，不换行 */
+  #status { display: grid; grid-template-columns: 210px 170px 210px 90px 1fr auto; gap: 10px; align-items: center; height: 56px; }
+  .cell { height: 32px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--dim);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell b { color: var(--text); font-weight: 600; }
+  .cell.loop { color: #07130f; background: var(--accent-2); border-color: var(--accent-2); }
+  .cell.warn { color: #1b1203; background: var(--warn); border-color: var(--warn); }
+  .cell.err { color: #1b0306; background: var(--err); border-color: var(--err); }
+  .cell.empty { border-color: transparent; }
+  button { height: 32px; padding: 0 14px; color: var(--text); background: #171b29; border: 1px solid #343c55; border-radius: 9px; cursor: pointer; font: inherit; }
   button:hover { border-color: var(--err); color: var(--err); }
 </style>
 </head>
 <body>
 <main>
-  <header>
-    <h1>muser <span>live</span></h1>
-    <div class="big" id="pos">—</div>
-    <div class="chips" id="chips"></div>
-    <button id="stop"></button>
-  </header>
+  <div class="brand">muser <span>live</span></div>
+  <h1 id="title">muser live</h1>
+  <div class="panel" id="notice"><div id="now">—</div><div id="now-note"></div><div id="next"></div></div>
   <div id="ended"></div>
-  <div class="panel"><canvas id="tl" height="320"></canvas>
-    <div class="hint" id="legend"></div>
+  <div class="panel"><canvas id="tl" height="320"></canvas><div class="hint" id="legend"></div></div>
+  <div class="panel" id="status">
+    <div class="cell" id="c-bar">—</div><div class="cell" id="c-loop"></div><div class="cell" id="c-auto"></div>
+    <div class="cell" id="c-bpm"></div><div class="cell" id="c-info"></div><button id="stop"></button>
   </div>
-  <div id="warning"></div>
-  <div id="error"></div>
 </main>
 <script>
 const zh = (navigator.language || "").toLowerCase().startsWith("zh");
 const T = zh ? {
-  bar: (b, m) => `第 ${b} 小节 · ${m}`, looping: (n) => `循环中 · 第 ${n + 1} 遍`, queued: (s) => `排好 ${s} 秒`,
-  autoplay: (s) => `自主演奏还剩 ${s}`, autoplayOver: "自主演奏结束（等对话里的新指令）", underruns: (n) => `掉帧 ${n}`,
-  gone: "连不上 muser live（已经停了？）", legend: "上面一行是提交的段（浅色 = 循环出来的重复），下面每条轨在哪些段里演奏，右边是电平。竖线是正在听到的位置。",
-  master: "主输出", stop: "停止演奏", confirmStop: "停止这场演奏？（录音会写好）",
+  now: (n) => `现在 ▶ <b>${n}</b>`, next: (n, b, s) => `下一段：${n} · 第 ${b} 小节 · ${s} 秒后`, noNext: "之后：循环这一段，直到下一个指令",
+  repeat: "（循环）", bar: (b, m) => `第 <b>${b}</b> 小节 · ${m}`, looping: (n) => `循环中 · 第 ${n + 1} 遍`, queued: (s) => `排好 ${s} 秒`,
+  autoplay: (s) => `自主演奏还剩 ${s}`, autoplayOver: "自主演奏结束", autoplayOff: "自主演奏：不限时",
+  dropouts: (n) => `掉帧 ${n}`, load: (n, c) => `最耗：${n}（${Math.round(c * 100)}% 核）`,
+  gone: "连不上 muser live（已经停了？）", master: "主输出", stop: "停止演奏", confirmStop: "停止这场演奏？（录音会写好）",
   ended: (f) => `演奏结束了。${f ? `录音存在 ${f}` : ""}`, endedAway: "演奏结束了（muser live 已经退出）。",
-  load: (n, c) => `最耗：${n}（${Math.round(c * 100)}% 核）`,
+  legend: "上面一行是每一段（浅色 = 循环出来的重复），下面每条轨在哪些段里演奏，右边是电平。白线是正在听到的位置，虚线是排到哪里。",
 } : {
-  bar: (b, m) => `Bar ${b} · ${m}`, looping: (n) => `Looping · pass ${n + 1}`, queued: (s) => `${s}s queued`,
-  autoplay: (s) => `Autoplay ${s} left`, autoplayOver: "Autoplay over (waiting for the conversation)", underruns: (n) => `${n} dropouts`,
-  gone: "Can't reach muser live (stopped?)", legend: "Top row: submitted segments (lighter = loop repeats); below, where each track plays; levels on the right. The line is what you hear now.",
-  master: "Master", stop: "Stop", confirmStop: "Stop this session? (the recording will be saved)",
+  now: (n) => `Now ▶ <b>${n}</b>`, next: (n, b, s) => `Next: ${n} · bar ${b} · in ${s}s`, noNext: "Then: this section loops until the next instruction",
+  repeat: " (loop)", bar: (b, m) => `Bar <b>${b}</b> · ${m}`, looping: (n) => `Looping · pass ${n + 1}`, queued: (s) => `${s}s queued`,
+  autoplay: (s) => `Autoplay ${s} left`, autoplayOver: "Autoplay over", autoplayOff: "Autoplay: no limit",
+  dropouts: (n) => `${n} dropouts`, load: (n, c) => `Heaviest: ${n} (${Math.round(c * 100)}% of a core)`,
+  gone: "Can't reach muser live (stopped?)", master: "Master", stop: "Stop", confirmStop: "Stop this session? (the recording will be saved)",
   ended: (f) => `The session is over.${f ? ` Recording: ${f}` : ""}`, endedAway: "The session is over (muser live has exited).",
-  load: (n, c) => `Heaviest: ${n} (${Math.round(c * 100)}% of a core)`,
+  legend: "Top row: each section (lighter = loop repeats); below, where each track plays; levels on the right. The white line is what you hear, the dashed one how far it is queued.",
 };
 document.documentElement.lang = zh ? "zh" : "en";
-document.getElementById("legend").textContent = T.legend;
-let view = null, at = 0, over = false;
-document.getElementById("stop").textContent = T.stop;
-document.getElementById("stop").onclick = async () => {
+const $ = (id) => document.getElementById(id);
+$("legend").textContent = T.legend;
+$("stop").textContent = T.stop;
+let view = null, at = 0, over = false, lastSeg = null;
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (s) => { s = Math.max(0, Math.round(s)); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`; };
+$("stop").onclick = async () => {
   if (over || !confirm(T.confirmStop)) return;
   try { await fetch("/api/stop", { method: "POST" }); } catch (_) {}
 };
 function end(text) {
   over = true;
-  const e = document.getElementById("ended"); e.textContent = text; e.style.display = "block";
-  document.getElementById("stop").style.display = "none";
-  document.getElementById("error").textContent = ""; document.getElementById("warning").textContent = "";
+  $("notice").style.display = "none";
+  const e = $("ended"); e.textContent = text; e.style.display = "block";
+  $("stop").style.visibility = "hidden";
 }
-const $ = (id) => document.getElementById(id);
-const fmt = (s) => { s = Math.max(0, Math.round(s)); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`; };
-
 async function poll() {
   try {
     const r = await fetch("/api/view", { cache: "no-store" });
     view = await r.json(); at = performance.now();
     if (view.stopped) return end(T.ended(view.record));
-    $("error").textContent = view.error || "";
-    $("warning").textContent = view.warning || "";
-    renderChips();
+    render();
   } catch (_) {
-    // 之前连上过：多半是演奏结束、进程退出了。
     if (view) return end(T.endedAway);
-    $("error").textContent = T.gone;
+    $("c-info").textContent = T.gone; $("c-info").className = "cell err";
   }
   setTimeout(poll, 150);
 }
-function renderChips() {
-  const v = view, box = $("chips"); box.textContent = "";
-  const chip = (text, cls) => { const c = document.createElement("div"); c.className = "chip " + (cls || ""); c.textContent = text; box.appendChild(c); };
-  $("pos").textContent = T.bar(v.bar, `${v.time_signature[0]}/${v.time_signature[1]}`);
-  if (v.looping) chip(T.looping(v.loop.repeats_played), "loop"); else chip(T.queued(v.runway_seconds.toFixed(1)));
-  if (v.autoplay_seconds_left != null) chip(v.autoplay_seconds_left > 0 ? T.autoplay(fmt(v.autoplay_seconds_left)) : T.autoplayOver, v.autoplay_seconds_left > 0 ? "" : "warn");
-  chip(`${Math.round(v.tempo)} BPM`);
-  if (v.underruns) chip(T.underruns(v.underruns), "err");
+function cell(id, html, cls) { const c = $(id); c.innerHTML = html; c.className = "cell " + (cls || ""); }
+function render() {
+  const v = view, seg = v.segment;
+  if (v.title && $("title").textContent !== v.title) { $("title").textContent = v.title; document.title = `${v.title} · muser live`; }
+  // 变奏提示：换到新的一段（不是循环的重复）时闪一下。
+  const name = seg.name || `#${seg.index}`;
+  $("now").innerHTML = T.now(esc(name)) + (seg.repeat ? esc(T.repeat) : "");
+  $("now-note").textContent = seg.note || "";
+  $("next").textContent = v.next ? T.next(v.next.name || "…", v.next.bar, Math.round(v.next.starts_in_seconds)) + (v.next.note ? ` — ${v.next.note}` : "") : T.noNext;
+  if (!seg.repeat && lastSeg !== null && lastSeg !== seg.index) {
+    const n = $("notice"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash");
+  }
+  if (!seg.repeat) lastSeg = seg.index;
+  cell("c-bar", T.bar(v.bar, `${v.time_signature[0]}/${v.time_signature[1]}`));
+  cell("c-loop", v.looping ? T.looping(v.loop.repeats_played) : T.queued(v.runway_seconds.toFixed(1)), v.looping ? "loop" : "");
+  const a = v.autoplay_seconds_left;
+  cell("c-auto", a == null ? T.autoplayOff : a > 0 ? T.autoplay(fmt(a)) : T.autoplayOver, a != null && a <= 0 ? "warn" : "");
+  cell("c-bpm", `${Math.round(v.tempo)} BPM`);
   const h = v.load && v.load.heaviest && v.load.heaviest[0];
-  if (h && h.cores > 0.05) chip(T.load(h.name, h.cores), v.warning ? "warn" : "");
+  if (v.error) cell("c-info", esc(v.error), "err");
+  else if (v.warning) cell("c-info", esc(v.warning), "warn");
+  else if (v.underruns) cell("c-info", T.dropouts(v.underruns) + (h ? ` · ${T.load(esc(h.name), h.cores)}` : ""), "");
+  else cell("c-info", h && h.cores > 0.05 ? T.load(esc(h.name), h.cores) : "", h && h.cores > 0.05 ? "" : "empty");
 }
 
 function draw() {
@@ -129,7 +147,6 @@ function draw() {
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const accent = css("--accent"), accent2 = css("--accent-2"), dim = css("--dim"), faint = css("--faint"), line = css("--line");
   g.font = "12px ui-sans-serif, system-ui, sans-serif"; g.textBaseline = "middle";
-  // 段
   for (const s of view.timeline.segments) {
     if (s.end < from || s.start > from + span) continue;
     const a = Math.max(x0, X(s.start)), b = Math.min(x1, X(s.end));
@@ -137,14 +154,14 @@ function draw() {
     g.fillStyle = s.repeat ? "rgba(138,125,255,.18)" : "rgba(114,229,194,.22)";
     g.fillRect(a, 6, b - a - 2, 24);
     g.fillStyle = s.repeat ? accent2 : accent;
-    if (b - a > 36) g.fillText(`${s.bar}${s.meter[0] !== 4 || s.meter[1] !== 4 ? ` · ${s.meter[0]}/${s.meter[1]}` : ""}`, a + 6, 18);
+    const label = `${s.bar}${s.meter[0] !== 4 || s.meter[1] !== 4 ? ` · ${s.meter[0]}/${s.meter[1]}` : ""}${!s.repeat && s.name ? ` · ${s.name}` : ""}`;
+    if (b - a > 36) { g.save(); g.beginPath(); g.rect(a, 6, b - a - 4, 24); g.clip(); g.fillText(label, a + 6, 18); g.restore(); }
     tracks.forEach((name, i) => {
       if (!s.tracks.includes(name)) return;
       g.fillStyle = s.repeat ? "rgba(138,125,255,.32)" : "rgba(114,229,194,.45)";
       g.fillRect(a, top + i * rowH + 5, b - a - 2, rowH - 10);
     });
   }
-  // 轨名与电平
   const levels = Object.fromEntries((view.levels || []).map(([n, p]) => [n, p]));
   [...tracks, ""].forEach((name, i) => {
     const y = top + i * rowH;
@@ -154,7 +171,6 @@ function draw() {
     g.fillStyle = "rgba(255,255,255,.06)"; g.fillRect(W - meterW - 4, y + 8, meterW, rowH - 16);
     g.fillStyle = db > -1 ? css("--err") : db > -9 ? css("--warn") : accent; g.fillRect(W - meterW - 4, y + 8, w, rowH - 16);
   });
-  // 排到哪、正在听到的位置
   const q = X(view.timeline.queued_until);
   if (q > x0 && q < x1) { g.strokeStyle = accent; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(q, 4); g.lineTo(q, H - 8); g.stroke(); g.setLineDash([]); }
   const n = X(now);

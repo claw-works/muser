@@ -27,9 +27,15 @@ const WAIT_MAX: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Change {
-    /// 这一段叫什么（如 "chorus"、"blues 2"）：录下的工程里段落名带上它，复盘方便。
+    /// 这一段叫什么（如 "chorus"、"blues 2"）：录下的工程里段落名带上它，页面上也显示。
     #[serde(default)]
     pub name: Option<String>,
+    /// 一句话说明这一段变了什么（"换成 6/8 校园民谣，木吉他分解和弦"）：换段时页面上提示。
+    #[serde(default)]
+    pub note: Option<String>,
+    /// 给整场换个标题（页面最上面，从这一段起）。
+    #[serde(default)]
+    pub title: Option<String>,
     /// `"after"`（默认）：排在已经提交的音乐之后（在循环里时：这一遍放完再接）；`"now"`：下一条小节线就换（截断正在放的这段）。
     #[serde(default)]
     pub at: At,
@@ -143,6 +149,8 @@ pub struct Receipt {
 pub struct Session {
     base: Project,
     segs: Vec<Seg>,
+    /// 整场的标题（`--title`，或某一段的 `title`）。
+    title: String,
 }
 
 impl Session {
@@ -164,6 +172,8 @@ impl Session {
         let bars = ((arranged.duration_beats().0 / bpb) - 1e-9).ceil().max(1.0) as u32;
         let first = Change {
             name: Some("template".into()),
+            note: None,
+            title: None,
             buses: Vec::new(),
             master: None,
             at: At::After,
@@ -183,9 +193,16 @@ impl Session {
         }
         base.form.clear();
         base.sections.clear();
-        let s = Session { base, segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false }] };
+        let title = if template.name.is_empty() { "muser live".to_string() } else { template.name.clone() };
+        let s = Session { base, title, segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false }] };
         s.project()?;
         Ok(s)
+    }
+
+    pub fn set_title(&mut self, title: &str) {
+        if !title.trim().is_empty() {
+            self.title = title.trim().to_string();
+        }
     }
 
     pub fn tempo(&self) -> f64 {
@@ -252,6 +269,9 @@ impl Session {
                 last.bars = ((at - last.start) / last.ts.beats_per_bar()).round() as u32;
                 last.cut = true;
             }
+        }
+        if let Some(t) = change.title.as_ref().filter(|t| !t.trim().is_empty()) {
+            self.title = t.trim().to_string();
         }
         let ts = change.time_signature.unwrap_or(self.base.time_signature);
         self.segs.push(Seg { start: at, bars: change.bars, ts, change: Arc::new(change), rep: false, cut: false });
@@ -325,7 +345,10 @@ impl Session {
             "absolute_beat": now,
             "tempo": self.tempo(),
             "time_signature": [seg.ts.numerator, seg.ts.denominator],
-            "segment": { "index": cur + 1, "name": seg.change.name, "start_bar": map.bar_at(seg.start).0 + 1, "bars": seg.bars, "repeat": seg.rep,
+            "title": self.title,
+            "next": self.segs.iter().skip(cur + 1).find(|s| !s.rep).map(|s| json!({ "name": s.change.name, "note": s.change.note,
+                "bar": map.bar_at(s.start).0 + 1, "starts_in_seconds": ((s.start - now) * spb).max(0.0) })),
+            "segment": { "index": cur + 1, "name": seg.change.name, "note": seg.change.note, "start_bar": map.bar_at(seg.start).0 + 1, "bars": seg.bars, "repeat": seg.rep,
                          "seconds_to_end": ((seg.end() - now) * spb).max(0.0) },
             "queued_until_bar": map.bar_at(real_end).0,
             "runway_seconds": ((real_end - now) * spb).max(0.0),
@@ -349,7 +372,7 @@ impl Session {
             .segs
             .iter()
             .map(|s| {
-                let v = json!({ "start": s.start * spb, "end": s.end() * spb, "bar": bar, "bars": s.bars,
+                let v = json!({ "start": s.start * spb, "end": s.end() * spb, "bar": bar, "bars": s.bars, "name": s.change.name,
                     "meter": [s.ts.numerator, s.ts.denominator], "repeat": s.rep,
                     "tracks": s.change.tracks.iter().filter(|t| !t.clips.is_empty()).map(|t| t.name.clone()).collect::<Vec<_>>() });
                 bar += s.bars;
@@ -366,6 +389,7 @@ impl Change {
         let bus = |b: &BusChange| json!({ "name": b.name, "effects_add": b.effects_add, "effects_off": b.effects_off, "automation": b.automation });
         json!({
             "name": self.name,
+            "note": self.note,
             "buses": self.buses.iter().map(bus).collect::<Vec<_>>(),
             "master": self.master.as_ref().map(bus),
             "bars": self.bars,
@@ -513,6 +537,8 @@ struct Live {
     last_underrun: Mutex<(Option<Instant>, usize)>,
     /// 已经 `stop`：声音停了，再留几秒让页面看到"已结束"。
     stopped: std::sync::atomic::AtomicBool,
+    /// agent 上次看状态时的欠载数（之后又多了就提醒，不管隔了多久）。
+    underruns_seen: Mutex<usize>,
 }
 
 /// 掉帧后这么多秒内，status / wait 都提醒。
@@ -573,6 +599,18 @@ impl Live {
         }
     }
 
+    /// 给 agent 的状态：上次看过以后又掉过帧就提醒（页面的轮询不算"看过"）。
+    fn agent_status(&self) -> Value {
+        let mut v = self.status();
+        let n = v["underruns"].as_u64().unwrap_or(0) as usize;
+        let mut seen = self.underruns_seen.lock().unwrap();
+        if n > *seen && v["warning"].is_null() {
+            v["warning"] = json!(format!("上次看过以后掉了 {} 次帧：看 slow（慢在哪）和 load.heaviest（最耗资源的轨）", n - *seen));
+        }
+        *seen = n;
+        v
+    }
+
     fn status(&self) -> Value {
         let now = self.now_beat();
         let mut v = self.session.lock().unwrap().status(now);
@@ -580,6 +618,8 @@ impl Live {
         v["stopped"] = json!(self.is_stopped());
         v["record"] = json!(self.record.as_ref().map(|p| p.display().to_string()));
         v["underruns"] = json!(st.underruns);
+        let slow = self.player.slow_events();
+        v["slow"] = json!(slow.iter().rev().take(5).collect::<Vec<_>>());
         let loads = self.player.loads();
         v["load"] = json!({ "total": loads.iter().map(|l| l.1).sum::<f32>(),
             "heaviest": loads.iter().filter(|l| !l.0.is_empty()).take(3).map(|(n, l)| json!({ "name": n, "cores": (f64::from(*l) * 100.0).round() / 100.0 })).collect::<Vec<_>>() });
@@ -634,7 +674,7 @@ impl Live {
             std::thread::sleep(Duration::from_millis(100));
         };
         *self.last_wait.lock().unwrap() = Some(Instant::now());
-        let mut s = self.status();
+        let mut s = self.agent_status();
         s["reason"] = json!(reason);
         s["hint"] = json!(match reason {
             "stopped" => "演奏已经结束",
@@ -672,10 +712,14 @@ pub fn parse_duration(s: &str) -> Result<Option<Duration>> {
 }
 
 /// 启动一场现场演奏（前台常驻，直到 `muser live stop`）。
-pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>, open: bool) -> Result<()> {
+#[allow(clippy::too_many_arguments)]
+pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>, open: bool, title: Option<String>) -> Result<()> {
     let text = std::fs::read_to_string(template).with_context(|| format!("读不了模板 {template}"))?;
     let tpl = Project::from_json(&text).map_err(|e| anyhow!("{e}"))?.at_file(std::path::Path::new(template));
-    let session = Session::new(&tpl)?;
+    let mut session = Session::new(&tpl)?;
+    if let Some(t) = &title {
+        session.set_title(t);
+    }
     let player = muser_engine::playback::Player::start_live(settings).map_err(|e| anyhow!(e))?;
     let (server, port) = crate::web::bind(port)?;
     let live = Arc::new(Live {
@@ -688,6 +732,7 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
         started: Instant::now(),
         last_underrun: Mutex::new((None, 0)),
         stopped: Default::default(),
+        underruns_seen: Mutex::new(0),
     });
     {
         let tempo = live.session.lock().unwrap().tempo();
@@ -738,7 +783,7 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
             let q = crate::web::query(&url);
             let num = |k: &str, d: f64| q.get(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(d);
             let (code, v) = match (req.method(), path.as_str()) {
-                (tiny_http::Method::Get, "/api/status") => (200, l.status()),
+                (tiny_http::Method::Get, "/api/status") => (200, l.agent_status()),
                 (tiny_http::Method::Get, "/api/view") => {
                     let mut v = l.status();
                     v["position"] = json!(l.player.status().position);

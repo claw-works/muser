@@ -454,11 +454,14 @@ struct LiveStartParams {
     /// 同时用系统浏览器打开现场页面。
     #[serde(default)]
     open: bool,
+    /// 整场的标题（页面最上面），按人要的写。
+    #[serde(default)]
+    title: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct LiveSendParams {
-    /// 一段：{ "name": "chorus"（可省）, "bars": 8, "time_signature": {"numerator":7,"denominator":8}（可省）, "at": "after"（默认）| "now",
+    /// 一段：{ "name": "chorus"（可省）, "note": "一句话说明变了什么（页面提示）", "title": "改整场标题（可省）", "bars": 8, "time_signature": {"numerator":7,"denominator":8}（可省）, "at": "after"（默认）| "now",
     /// "tracks": [{ "name", "clips"（start 相对这一段开头）, "effects_add", "effects_off", "automation"（时间相对这一段开头）,
     /// 新轨还要 "instrument"（可加 instrument_params / output / sends / gain_db / pan）}],
     /// "buses": [{ "name", "effects_add", "effects_off", "automation" }], "master": { "effects_add", "automation"（master_gain_db 渐弱）} }。
@@ -1425,6 +1428,9 @@ warnings 列出没声音的轨、推子后峰值过 0、送进主总线过载、
         }
         if p.open {
             args.push("--open".into());
+        }
+        if let Some(t) = p.title {
+            args.extend(["--title".into(), t]);
         }
         match muser_engine::live_client::spawn_detached(&exe, &args) {
             Ok(v) => json_result(&v),

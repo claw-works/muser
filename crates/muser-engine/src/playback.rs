@@ -23,6 +23,10 @@ use crate::{RenderCache, RenderSettings, Renderer};
 
 /// 队列长度（帧）：渲染线程最多领先声卡这么多。约 43 ms @ 48 kHz。
 const QUEUE: usize = 2048;
+/// 现场模式的队列（帧）：约 340 ms @ 48 kHz。改动本来就提前一秒半排好，队列长一些不影响生效时间，却能扛住几百毫秒的卡顿。
+const LIVE_QUEUE: usize = 1 << 14;
+/// 播放线程里一次渲染、换工程，或两次填队列之间超过这么久，记成慢事件（[`Player::slow_events`]）。
+const SLOW_MS: f64 = 15.0;
 /// 渲染线程每次推进的帧数。
 const CHUNK: usize = 256;
 /// 声卡回调最大块长。
@@ -76,6 +80,31 @@ struct Shared {
     levels: Mutex<Vec<(String, f32)>>,
     /// 现场模式：最近约一秒里各节点占了多少（一个核的比例，[`Player::loads`]）。
     loads: Mutex<Vec<(String, f32)>>,
+    /// 最近的慢事件：(在第几秒, 是什么, 毫秒)。
+    slow: Mutex<std::collections::VecDeque<SlowEvent>>,
+}
+
+/// 播放线程里慢了的一下（掉帧的嫌疑）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SlowEvent {
+    /// 当时听到第几秒。
+    pub at_seconds: f64,
+    pub what: &'static str,
+    pub ms: f64,
+}
+
+impl Shared {
+    fn slow(&self, what: &'static str, ms: f64, sr: f64) {
+        if ms < SLOW_MS {
+            return;
+        }
+        let at_seconds = self.position.load(Ordering::Acquire) as f64 / sr;
+        let mut q = self.slow.lock().unwrap();
+        q.push_back(SlowEvent { at_seconds, what, ms });
+        while q.len() > 20 {
+            q.pop_front();
+        }
+    }
 }
 
 /// 一遍录音：从工程第 `start` 帧开始的单声道样本。
@@ -266,7 +295,7 @@ impl Player {
         let sample_rate = device.sample_rate().round() as u32;
         let name = device.name().to_string();
         let shared = Arc::new(Shared { monitor: AtomicU32::new(1f32.to_bits()), first_frame: AtomicI64::new(i64::MIN), ..Default::default() });
-        let (mut tx, rx) = spsc::channel::<[f32; 2]>(QUEUE);
+        let (mut tx, rx) = spsc::channel::<[f32; 2]>(if live { LIVE_QUEUE } else { QUEUE });
         let rx = Arc::new(Mutex::new(rx));
         let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
         let settings = RenderSettings { sample_rate, ..settings };
@@ -496,6 +525,11 @@ impl Player {
         self.shared.monitor.store(g.to_bits(), Ordering::Relaxed);
     }
 
+    /// 最近的慢事件（最多 20 个，旧的在前）：一次渲染、换工程或播放线程被耽搁超过 15 毫秒。
+    pub fn slow_events(&self) -> Vec<SlowEvent> {
+        self.shared.slow.lock().unwrap().iter().cloned().collect()
+    }
+
     /// 现场模式下最近约一秒各节点的负载（一个核的比例，1.0 = 一整个核），从高到低。
     pub fn loads(&self) -> Vec<(String, f32)> {
         self.shared.loads.lock().unwrap().clone()
@@ -541,6 +575,9 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
     let mut renderer: Option<Renderer> = None;
     // 负载：上次量的时刻与各节点用掉的时间。
     let mut last_cost: Option<(std::time::Instant, HashMap<String, Duration>)> = None;
+    // 上次填完队列的时刻（播放中两次之间隔太久 = 播放线程被耽搁）。
+    let mut last_fill: Option<std::time::Instant> = None;
+    let sr = f64::from(settings.sample_rate);
     let mut block = AudioBuffer::<f32>::new(2, CHUNK);
     let mut frames = vec![[0f32; 2]; CHUNK];
     let fail = |e: String| {
@@ -583,10 +620,12 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
         };
         match cmd {
             Some(Cmd::Load(p)) if live => {
+                let t0 = std::time::Instant::now();
                 let r = match renderer.as_mut() {
                     Some(r) => r.reconcile(&p).map_err(|e| format!("{e:#}")),
                     None => Renderer::live(&p, settings).map(|r| renderer = Some(r.with_meters())).map_err(|e| format!("{e:#}")),
                 };
+                sh.slow("换上新工程", t0.elapsed().as_secs_f64() * 1000.0, sr);
                 match r {
                     Ok(()) => {
                         if let Some(r) = &renderer {
@@ -648,8 +687,18 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
         // 把队列填满。
         let Some(r) = renderer.as_mut() else { continue };
         let mut wrote = false;
+        if live && busy {
+            if let Some(t) = last_fill {
+                sh.slow("播放线程被耽搁", t.elapsed().as_secs_f64() * 1000.0, sr);
+            }
+        }
         while tx.free_len() >= CHUNK && r.position() < r.total_frames() {
-            match r.process(&mut block) {
+            let t0 = std::time::Instant::now();
+            let step = r.process(&mut block);
+            if live {
+                sh.slow("渲染一块", t0.elapsed().as_secs_f64() * 1000.0, sr);
+            }
+            match step {
                 Ok(0) => break,
                 Ok(n) => {
                     for (i, f) in frames[..n].iter_mut().enumerate() {
@@ -697,6 +746,7 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
         if busy && !wrote {
             std::thread::sleep(Duration::from_millis(2));
         }
+        last_fill = busy.then(std::time::Instant::now);
     }
 }
 
