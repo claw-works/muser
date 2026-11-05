@@ -1895,6 +1895,41 @@ mod tests {
         assert!(r.reconcile(&bad).is_err());
     }
 
+    /// 演奏中换上一个第 4 拍起渐慢到 90 BPM 的工程：和离线渲染逐样本一致（之前排好的不动，之后按新的速度表排）。
+    #[test]
+    fn live_reconcile_with_a_tempo_ramp_matches_offline() {
+        let p1 = project();
+        let mut p2: Project = serde_json::from_value({
+            let mut v = serde_json::to_value(&p1).unwrap();
+            v["sections"] = serde_json::json!({ "a": { "bars": 1 }, "b": { "bars": 1, "tempo": 90, "tempo_ramp_bars": 1 } });
+            v["form"] = serde_json::json!(["a", "b"]);
+            v
+        })
+        .unwrap();
+        p2.tracks[1].clips.push(serde_json::from_value(serde_json::json!({ "start": 4, "length": 4,
+            "notes": (0..16).map(|i| serde_json::json!({ "pitch": 40 + (i % 5) as u8, "start": i as f64 * 0.25, "length": 0.2 })).collect::<Vec<_>>() })).unwrap());
+        let settings = RenderSettings { tail_seconds: 0.3, ..Default::default() };
+        let want = render(&p2, settings).unwrap();
+        let mut r = Renderer::live(&p1, settings).unwrap();
+        let mut block = AudioBuffer::<f32>::new(2, 1000);
+        let mut got: [Vec<f32>; 2] = Default::default();
+        let mut swapped = false;
+        while let n @ 1.. = r.process(&mut block).unwrap() {
+            for (c, g) in got.iter_mut().enumerate() {
+                g.extend_from_slice(&block.channel(c)[..n]);
+            }
+            if !swapped && got[0].len() >= 24_000 {
+                r.reconcile(&p2).unwrap();
+                swapped = true;
+            }
+        }
+        assert_eq!(got[0].len(), want.num_frames());
+        for (c, g) in got.iter().enumerate() {
+            let diff = g.iter().zip(want.channel(c)).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            assert!(diff < 1e-6, "声道 {c} 最大差 {diff}");
+        }
+    }
+
     #[test]
     fn live_mix() {
         let settings = RenderSettings { tail_seconds: 0.3, ..Default::default() };
