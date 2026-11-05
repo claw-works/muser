@@ -530,10 +530,6 @@ pub fn parse_duration(s: &str) -> Result<Option<Duration>> {
     Ok((total > 0.0).then(|| Duration::from_secs_f64(total)))
 }
 
-fn port_file() -> PathBuf {
-    std::env::temp_dir().join("muser-live.json")
-}
-
 /// 启动一场现场演奏（前台常驻，直到 `muser live stop`）。
 pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>, open: bool) -> Result<()> {
     let text = std::fs::read_to_string(template).with_context(|| format!("读不了模板 {template}"))?;
@@ -555,7 +551,7 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
         live.session.lock().unwrap().extend(KEEP_SECONDS * tempo / 60.0);
     }
     live.push()?;
-    std::fs::write(port_file(), json!({ "port": port, "pid": std::process::id(), "template": template }).to_string())?;
+    std::fs::write(muser_engine::live_client::port_file(), json!({ "port": port, "pid": std::process::id(), "template": template }).to_string())?;
     let st = live.player.status();
     println!("muser live 已开始：http://127.0.0.1:{port}/  （只监听本机）  声卡：{}（{} Hz）", st.device, st.sample_rate);
     if open {
@@ -621,7 +617,7 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
                 (tiny_http::Method::Post, "/api/stop") => {
                     l.save(l.now_beat());
                     crate::web::respond_json(req, 200, &json!({ "ok": true, "saved": l.record.as_ref().map(|p| p.display().to_string()) }));
-                    let _ = std::fs::remove_file(port_file());
+                    let _ = std::fs::remove_file(muser_engine::live_client::port_file());
                     std::thread::sleep(Duration::from_millis(200));
                     std::process::exit(0);
                 }
@@ -646,36 +642,9 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
 
 // ---------- 客户端（muser live send / status / …） ----------
 
-/// 找到正在跑的 `muser live` 的端口。
-fn find_port(port: Option<u16>) -> Result<u16> {
-    if let Some(p) = port {
-        return Ok(p);
-    }
-    let text = std::fs::read_to_string(port_file()).map_err(|_| anyhow!("没有正在进行的现场演奏：先 muser live start <模板>"))?;
-    let v: Value = serde_json::from_str(&text)?;
-    v["port"].as_u64().map(|p| p as u16).ok_or_else(|| anyhow!("{} 写坏了", port_file().display()))
-}
-
-/// 向本机的 `muser live` 发一个请求（不加 HTTP 依赖：直接写 HTTP/1.1）。
+/// 向本机的 `muser live` 发一个请求。
 pub fn request(port: Option<u16>, method: &str, path: &str, body: Option<&str>) -> Result<Value> {
-    use std::io::{Read, Write};
-    let port = find_port(port)?;
-    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|_| anyhow!("连不上 muser live（127.0.0.1:{port}）：它还在跑吗？"))?;
-    s.set_read_timeout(Some(WAIT_MAX + Duration::from_secs(10)))?;
-    let body = body.unwrap_or("");
-    write!(s, "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())?;
-    let mut out = String::new();
-    s.read_to_string(&mut out)?;
-    let (head, rest) = out.split_once("\r\n\r\n").ok_or_else(|| anyhow!("muser live 的回应不完整"))?;
-    let code: u16 = head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
-    // tiny_http 对小回应不分块；分块时取第一块之后的 JSON。
-    let json_text = rest.find('{').map_or(rest, |i| &rest[i..]);
-    let json_text = json_text.rfind('}').map_or(json_text, |j| &json_text[..=j]);
-    let v: Value = serde_json::from_str(json_text).with_context(|| format!("muser live 的回应不是 JSON：{rest}"))?;
-    if code >= 400 {
-        bail!("{}", v["error"].as_str().unwrap_or("muser live 报错"));
-    }
-    Ok(v)
+    muser_engine::live_client::request(port, method, path, body).map_err(|e| anyhow!(e))
 }
 
 #[cfg(test)]

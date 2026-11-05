@@ -1,0 +1,17 @@
+{
+  "name": "live-electronic",
+  "tempo": 124,
+  "buses": [
+    { "name": "verb", "effects": [{ "type": "eq", "shape": "highpass", "frequency": 250 }, { "type": "reverb", "mix": 1.0, "decay_seconds": 2.8, "size": 0.8 }], "gain_db": -4 },
+    { "name": "echo", "effects": [{ "type": "delay", "time_seconds": 0.363, "feedback": 0.45, "mix": 1.0 }, { "type": "eq", "shape": "lowpass", "frequency": 5000 }], "gain_db": -8 }
+  ],
+  "tracks": [
+    { "name": "drums", "instrument": "drums.909", "gain_db": -4,
+      "clips": [{ "start": 0, "length": 8, "grid": { "kick": "x...x...x...x...x...x...x...x...", "hat": "..x...x...x...x...x...x...x...xx" } }] },
+    { "name": "bass", "instrument": "poly.rolling_bass", "gain_db": -9, "clips": [] },
+    { "name": "chords", "instrument": "poly.rave_chord_stab", "gain_db": -14, "sends": { "verb": -10, "echo": -14 }, "clips": [] },
+    { "name": "pad", "instrument": "poly.warm_analog_pad", "gain_db": -18, "sends": { "verb": -6 }, "clips": [] },
+    { "name": "lead", "instrument": "poly.future_pluck", "gain_db": -14, "sends": { "verb": -12, "echo": -8 }, "clips": [] }
+  ],
+  "master_effects": [{ "type": "compressor", "threshold_db": -14, "ratio": 2.5 }, { "type": "limiter", "ceiling_db": -1 }]
+}

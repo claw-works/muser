@@ -73,6 +73,7 @@ Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/i
 | 给音乐配画面 / 做可视化（音符、段落、自动化、音量包络） | `muser export-data <工程> -o data.json [--fps 30]` | `export_data` |
 | 把乐谱交给读 ABC 的模型（如 YuE2） | `muser abc <工程> [--yue2 --vocal 旋律轨 --sections verse:8,chorus:8]` | `export_abc` |
 | 让人快速听一下草稿 | `muser play <file> [--seed N]`、`muser loop play <名字>` | — |
+| 现场演奏：一段一段往后写，muser 在本机声卡上不停地演奏（流程见 [skills/live.md](skills/live.md)） | `muser live start <模板> --record s.muser.json --open`，然后 `muser live send / status / wait / autoplay / stop` | `live_start` `live_send` `live_status` `live_wait` `live_autoplay` `live_stop` |
 | 插件有没有现成的使用经验（别名、预设） | `muser plugin profile show <插件> --markdown` | `get_profile` / `list_profiles` |
 
 加 `--json` 得到机器可读输出。`validate` 会指出越界参数和未知乐器的具体位置，例如
@@ -120,6 +121,7 @@ Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/i
 | 人声 | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
 | 音频文件（录音、采样、loop） | [audio.md](skills/audio.md) | `"instrument": "audio"`，clip 写 `"audio": { "file": "vocal.wav" }` |
 | 帮用户录人声（准备、录、检查节奏、混音、氛围、收尾、交付的方法） | [recording.md](skills/recording.md) | `muser view` 的录人声面板、`muser takes`、工程的 `lyrics` |
+| 现场演奏（开始、一段怎么写、自主演奏的循环、BPM 不变的变速、收尾） | [live.md](skills/live.md) | `muser live`、模板在 `samples/live/` |
 | SFZ 音色库 | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz` 或相对 `MUSER_SFZ_PATH` 的路径（内置采样器，无需插件） |
 | 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 

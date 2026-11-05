@@ -38,6 +38,10 @@ You don't need to know how to program. If you use an AI agent that can run comma
 
 > Open it in `muser view` so I can adjust the volumes myself.
 
+Or have it play live and steer it as you listen:
+
+> Start a muser live session with the electronic template and keep developing it for 5 minutes; I'll tell you what to change.
+
 **4. Take it with you**:
 
 > Export it as a WAV file and a MIDI file.
@@ -79,6 +83,7 @@ muser is open source and free. Every piece of the *Electric Sheep* suite was mad
 - **Per-note pitch bend** (`"bend"`: guitar bends, scoops, falls, on their own MIDI channel) and **effect bypass** (`"bypass": true`, toggled by clicking the effect in `muser view`)
 - `muser play`: play a project through the sound card and exit — quick listening for the sketch-first workflow
 - Two AI interfaces: **CLI** (shell calls) and **MCP server** (direct tool calls from the agent)
+- **Live performance** (`muser live`): the agent writes the music a section at a time while muser plays it through this machine's sound card and never stops — when nothing new has arrived, the last section loops. Each section has its own length and time signature and can bring in new tracks, effects and automation without a gap (reverb tails carry on); you steer it in the conversation, a page shows what is playing and what is queued, and the whole session is saved as a project you can render or edit. Templates in `samples/live/`
 - **Record your own voice** in `muser view`: record a phrase or a loop range over the backing (count-in, latency measurement), keep every take, swap takes, cut clips with scissors, drag and nudge them; the project's lyrics run as karaoke at the bottom of the screen. `muser takes --timing` tells an agent which phrase is early or late
 - **Hum lyrics**: notes on `choir.*` can carry syllables (`"lyric"`, or ABC `w:` lines); the voice sings their vowels
 - **Change key in one place**: `"transpose": 3` (or the Key − / + control in `muser view`) moves every pitched track without touching the notes

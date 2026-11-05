@@ -126,6 +126,12 @@ poly 合成器的完整音色（振荡器、sub / 噪声、两个滤波器、四
 用本机声卡把工程从头放一遍，放完退出：给人快速试听草稿（不开网页）。`--seed` 临时换一遍演奏（humanize / drummer /
 random 自动化），不改文件。需要 device 特性（发行版都带；headless 版没有，用 `render` 再听）。
 
+### `muser live start|send|status|wait|autoplay|stop`
+
+现场演奏（做法见 [skills/live.md](skills/live.md)）。`start <模板> [--autoplay 3m] [--record s.muser.json] [--open] [--port 8747]`
+常驻、占着本机声卡、只听 127.0.0.1；其余子命令控制它：`send <段.json|->` 提交一段（立即返回回执）、`status`、
+`wait [--runway 8]`（最多 30 秒）、`autoplay <时长>`、`stop`（写好录音工程并退出）。模板在 `samples/live/`。需要 device 特性。
+
 ### `muser loop edit|list|show|play|save|share`
 
 片段库：鼓的节奏型（`grid`）与旋律 / 动机 / 和声音型（`notes`）。三处，同名时近的优先：
@@ -229,7 +235,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（41 个）
+### 已实现的 Tools（47 个）
 
 | tool | 作用 |
 |---|---|
@@ -274,6 +280,12 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `describe_instrument` | 查看某个乐器的详情与可调参数（含该预设当前值） |
 | `list_effects` | 列出所有效果器及说明 |
 | `describe_effect` | 查看某个效果器的参数（范围/默认/单位/听感）、放置建议与 JSON 示例 |
+| `live_start` | 开始一场现场演奏（在后台启动 `muser live start`，单独的进程组，agent 会话结束音乐也不停） |
+| `live_send` | 提交一段（小节数、拍号、各轨片段 / 效果器 / 自动化，时间相对这一段开头），立即返回生效的小节与秒数 |
+| `live_status` | 现在第几小节、排好的还剩几秒、是否在循环、各轨、上一段的写法、自主演奏还剩多久 |
+| `live_wait` | 等到跑道短于 N 秒或自主演奏时间到（最多 30 秒），返回原因 |
+| `live_autoplay` | 重设自主演奏的时长 |
+| `live_stop` | 结束演奏，写好录音工程 |
 
 工程以**内存会话**（`project_id → Project`）管理。agent 的标准用法是**顺序**调用
 （等每个工具返回后再发下一个），这与真实 MCP 客户端行为一致。

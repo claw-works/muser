@@ -1,0 +1,17 @@
+{
+  "name": "live-band",
+  "tempo": 96,
+  "buses": [
+    { "name": "room", "effects": [{ "type": "reverb", "mix": 1.0, "decay_seconds": 1.4, "size": 0.5 }], "gain_db": -6 }
+  ],
+  "tracks": [
+    { "name": "drums", "instrument": "drums.acoustic", "gain_db": -3, "sends": { "room": -14 },
+      "clips": [{ "start": 0, "length": 8, "grid": { "kick": "x.....x...x.....x.....x...x.....", "snare": "....x.......x.......x.......x...", "hat": "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x." } }] },
+    { "name": "bass", "instrument": "bass.finger", "gain_db": -6, "clips": [] },
+    { "name": "keys", "instrument": "poly.wurly", "gain_db": -11, "sends": { "room": -10 }, "clips": [] },
+    { "name": "guitar", "instrument": "guitar.steel", "gain_db": -10, "pan": -0.3, "sends": { "room": -10 }, "clips": [] },
+    { "name": "organ", "instrument": "organ.ballad", "gain_db": -18, "pan": 0.3, "sends": { "room": -12 }, "clips": [] },
+    { "name": "sax", "instrument": "wind.sax", "gain_db": -9, "pan": 0.15, "sends": { "room": -8 }, "clips": [] }
+  ],
+  "master_effects": [{ "type": "compressor", "threshold_db": -14, "ratio": 2 }, { "type": "limiter", "ceiling_db": -1 }]
+}

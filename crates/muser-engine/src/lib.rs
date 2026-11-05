@@ -141,6 +141,7 @@ pub mod transport {
         }
     }
 }
+pub mod live_client;
 pub mod render;
 pub mod sfz;
 pub mod presets;

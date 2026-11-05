@@ -1,0 +1,18 @@
+{
+  "name": "live-ambient",
+  "tempo": 72,
+  "buses": [
+    { "name": "verb", "effects": [{ "type": "reverb", "mix": 1.0, "decay_seconds": 6.0, "size": 0.95, "damping": 0.4 }], "gain_db": -2 },
+    { "name": "echo", "effects": [{ "type": "delay", "time_seconds": 0.625, "feedback": 0.55, "mix": 1.0 }, { "type": "eq", "shape": "lowpass", "frequency": 3500 }], "gain_db": -8 }
+  ],
+  "tracks": [
+    { "name": "drone", "instrument": "poly.dark_drone", "gain_db": -16, "sends": { "verb": -8 },
+      "clips": [{ "start": 0, "length": 16, "notes": [{ "pitch": 38, "start": 0, "length": 16 }, { "pitch": 45, "start": 0, "length": 16 }] }] },
+    { "name": "pad", "instrument": "poly.shimmer_pad", "gain_db": -18, "sends": { "verb": -4 }, "clips": [] },
+    { "name": "bells", "instrument": "mallet.celesta", "gain_db": -14, "sends": { "verb": -6, "echo": -6 }, "clips": [] },
+    { "name": "bass", "instrument": "poly.deep_sub", "gain_db": -12, "clips": [] },
+    { "name": "melody", "instrument": "wind.flute", "gain_db": -12, "sends": { "verb": -6, "echo": -12 }, "clips": [] },
+    { "name": "pulse", "instrument": "drums.lofi", "gain_db": -14, "sends": { "verb": -16 }, "clips": [] }
+  ],
+  "master_effects": [{ "type": "limiter", "ceiling_db": -1 }]
+}

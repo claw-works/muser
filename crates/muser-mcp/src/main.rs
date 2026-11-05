@@ -442,6 +442,42 @@ struct SaveStateParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct LiveStartParams {
+    /// 模板工程文件（音轨、效果器、总线、速度，可带一段起始乐句）。音轨都要有名字，不要音频轨；总线要先在模板里建好。
+    template: String,
+    /// 自主演奏多久，如 "3m"、"90s"；"0" 不限。默认 3m。
+    #[serde(default)]
+    autoplay: Option<String>,
+    /// 把整场写进这个工程文件（随时更新，演完能离线渲染、接着编辑）。
+    #[serde(default)]
+    record: Option<String>,
+    /// 同时用系统浏览器打开现场页面。
+    #[serde(default)]
+    open: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct LiveSendParams {
+    /// 一段：{ "bars": 8, "time_signature": {"numerator":7,"denominator":8}（可省）, "at": "after"（默认）| "now",
+    /// "tracks": [{ "name", "clips"（start 相对这一段开头）, "effects_add", "effects_off", "automation"（时间相对这一段开头）,
+    /// 新轨还要 "instrument"（可加 instrument_params / output / sends / gain_db / pan）}] }。没写到的轨在这一段里休息。
+    change: serde_json::Value,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct LiveWaitParams {
+    /// 排好的音乐短于这么多秒就返回（设得比自己写一段用的时间长；status 里的 last_write_seconds 是上次用的时间）。默认 8。
+    #[serde(default)]
+    runway: Option<f64>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct LiveAutoplayParams {
+    /// 从现在起自主演奏多久，如 "5m"；"0" 不限。
+    duration: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct NameParams {
     /// 名称，如 "reverb" / "guitar.nylon" / "poly.moog_bass"。
     name: String,
@@ -1374,6 +1410,87 @@ warnings 列出没声音的轨、推子后峰值过 0、送进主总线过载、
     }
 
 
+    #[tool(description = "开始一场现场演奏（muser live）：在本机声卡上常驻演奏，agent 之后用 live_send 一段一段往后写，\
+音乐由 muser 维持：排好的放完、还没有新的一段时，最后一段整体循环，不冷场。已经有一场在进行时报错。返回状态（同 live_status）。")]
+    fn live_start(&self, Parameters(p): Parameters<LiveStartParams>) -> Result<CallToolResult, McpError> {
+        if muser_engine::live_client::request(None, "GET", "/api/status", None).is_ok() {
+            return Ok(user_err("已经有一场现场演奏在进行：先 live_stop，或直接 live_send 接着写"));
+        }
+        let exe = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(if cfg!(windows) { "muser.exe" } else { "muser" })));
+        let Some(exe) = exe.filter(|e| e.exists()) else {
+            return Ok(user_err("找不到 muser 命令（应和 muser-mcp 在同一个目录）"));
+        };
+        let mut cmd = std::process::Command::new(exe);
+        cmd.args(["live", "start", &p.template, "--autoplay", p.autoplay.as_deref().unwrap_or("3m")]);
+        if let Some(r) = &p.record {
+            cmd.args(["--record", r]);
+        }
+        if p.open {
+            cmd.arg("--open");
+        }
+        let log = std::env::temp_dir().join("muser-live.log");
+        let out = std::fs::File::create(&log).map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let err = out.try_clone().map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        cmd.stdin(std::process::Stdio::null()).stdout(out).stderr(err);
+        // 单独的进程组：agent 会话结束、muser-mcp 退出时，音乐不跟着停。
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+        let _ = std::fs::remove_file(muser_engine::live_client::port_file());
+        if let Err(e) = cmd.spawn() {
+            return Ok(user_err(format!("启动 muser live 失败: {e}")));
+        }
+        for _ in 0..100 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Ok(v) = muser_engine::live_client::request(None, "GET", "/api/status", None) {
+                return json_result(&v);
+            }
+        }
+        Ok(user_err(format!("muser live 没起来：{}", std::fs::read_to_string(&log).unwrap_or_default().trim())))
+    }
+
+    #[tool(description = "提交现场演奏的一段，立即返回回执：生效在第几小节、还有几秒、排到了第几小节。默认排在已经提交的之后\
+（正在循环时：这一遍放完再接）。不允许的改动会报错（中途换乐器、删效果器、加总线等）：参数变化用 automation，换乐器就新开一条轨。")]
+    fn live_send(&self, Parameters(p): Parameters<LiveSendParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::live_client::request(None, "POST", "/api/change", Some(&p.change.to_string())) {
+            Ok(v) => json_result(&v),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "现场演奏的状态：现在第几小节、拍号、排好的音乐还剩几秒（runway_seconds）、是否在循环、每条轨（乐器、效果器、这一段在不在演奏）、\
+上一段的完整写法（last_change，接着写时参考）、自主演奏还剩几秒、上次写一段用了几秒、掉帧次数。")]
+    fn live_status(&self) -> Result<CallToolResult, McpError> {
+        match muser_engine::live_client::request(None, "GET", "/api/status", None) {
+            Ok(v) => json_result(&v),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "自主演奏时等待：排好的音乐短于 runway 秒、或自主演奏时间到了就返回（最多 30 秒）。返回状态与 reason：\
+runway = 写下一段；autoplay_over = 交最后一段（适合循环的乐句）就停下、等人类说话（音乐会一直循环）；idle = 再调用一次。")]
+    fn live_wait(&self, Parameters(p): Parameters<LiveWaitParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::live_client::request(None, "GET", &format!("/api/wait?runway={}", p.runway.unwrap_or(8.0)), None) {
+            Ok(v) => json_result(&v),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "重设现场演奏的自主时长（从现在起，如 \"5m\"；\"0\" 不限）。人类让你\"自己接着发展\"时用。")]
+    fn live_autoplay(&self, Parameters(p): Parameters<LiveAutoplayParams>) -> Result<CallToolResult, McpError> {
+        match muser_engine::live_client::request(None, "POST", "/api/autoplay", Some(&serde_json::json!({ "duration": p.duration }).to_string())) {
+            Ok(v) => json_result(&v),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "结束现场演奏：写好录音工程（live_start 的 record），停止声音，退出常驻进程。")]
+    fn live_stop(&self) -> Result<CallToolResult, McpError> {
+        match muser_engine::live_client::request(None, "POST", "/api/stop", None) {
+            Ok(v) => json_result(&v),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
     #[tool(description = "列出所有效果器及一句话说明。效果器用于 track.effects（轨级）或 master_effects（主总线），按数组顺序串联。")]
     fn list_effects(&self) -> Result<CallToolResult, McpError> {
         let list: Vec<_> = muser_core::EFFECT_SPECS
@@ -1422,7 +1539,8 @@ random 自动化由工程 seed 决定，set_seed 换种子即换一种变化。\
 有画像（get_profile）的插件可用短别名与 \"@preset\"；save_plugin_state 存音色，参数里写 \"@state\" 加载；摸清插件后 save_profile 留存经验。\
 混音路由：set_bus 建总线（共用混响/延迟、鼓组编组），音轨用 output 指向总线、用 sends 按 dB 送一份到总线；\
 压缩器写 \"sidechain\": \"<音轨或总线名>\" 做底鼓压贝斯的泵感；get_routing 查看信号流。\
-validate_project 会指出越界参数与未知乐器的具体位置。"
+validate_project 会指出越界参数与未知乐器的具体位置。\
+现场演奏：live_start 模板 → live_send 一段一段写（自主演奏时 live_wait 等跑道）→ 时间到交一段适合循环的乐句就停下，音乐不停；做法见 skills/live.md。"
 )]
 impl ServerHandler for Muser {}
 
