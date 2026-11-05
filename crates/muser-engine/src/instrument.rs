@@ -578,7 +578,8 @@ fn lookup(name: &str) -> Option<(InstrumentInfo, Patch)> {
                 polyphony: SFZ_VOICES,
                 description: format!("SFZ 采样器：{}", path.display()),
                 params: Vec::new(),
-                params_note: sfz_controls_note(&path),
+                // 说明要解析整个 SFZ 文件（大音色库要几百毫秒）：只在 describe 里生成（param_info），校验、建乐器时不要。
+                params_note: Default::default(),
             },
             Patch::Sfz(path, Default::default()),
         ));

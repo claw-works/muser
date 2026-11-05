@@ -124,10 +124,21 @@ impl manguebyte::sampler::SampleSource for MuserSource {
 
 /// .sfz 文本里采样器不认的写法：
 /// - 写在别的内容后面、同一行里的 `#include` / `#define`（如 `<group> #include "x.sfz"`）挪到新的一行；
-/// - `sample=*noise` 换成 [`NOISE_FILE`]。
+/// - `sample=*noise` 换成 [`NOISE_FILE`]；
+/// - 既不是 `<header>`、`opcode=value`、`#` 指令也不是注释的行（有的音色库开头写着 `A0 bankname: …` 这种说明）当注释跳过：
+///   一个音色库写得不规范，不该让整个工程都出不了声。
 fn normalize(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 64);
+    let mut skipped = 0usize;
     for line in text.lines() {
+        let code = line.split("//").next().unwrap_or("").trim();
+        if !code.is_empty() && !code.contains('<') && !code.contains('=') && !code.starts_with('#') {
+            skipped += 1;
+            out.push_str("// ");
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
         // 注释（`//` 之后）里的不动；位置来自 match_indices，都在字符边界上。
         let code = line.split("//").next().unwrap_or("").len();
         let mut cuts: Vec<usize> = ["#include", "#define"]
@@ -145,6 +156,9 @@ fn normalize(text: &str) -> String {
         let rest = &line[last..];
         out.push_str(&rest.replace("*noise", NOISE_FILE));
         out.push('\n');
+    }
+    if skipped > 0 {
+        eprintln!("[sfz] 跳过 {skipped} 行认不出的内容（不是 <header>、opcode=value 或 #指令）");
     }
     out
 }
@@ -572,6 +586,13 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stray_lines_are_skipped() {
+        let t = normalize("A0 bankname: jRhodes3d\n// comment\n<region> sample=a.wav\n#define $X 1\nlokey=60\n");
+        assert!(t.starts_with("// A0 bankname"), "{t}");
+        assert!(manguebyte::sampler::sfz::Sfz::parse(&t).is_ok(), "{t}");
+    }
 
     #[test]
     fn fills_in_what_the_sampler_does_not_read() {
