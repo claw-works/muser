@@ -124,7 +124,7 @@
         },
         "b": {
           "legato": true,
-          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c2 B2 A2 G2 | E5 D E2- | E8 |\nw: wo zai deng ni | ni zai na li | ni zai na"
+          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 G2 E4- | E D E6 |\nw: wo zai deng ni | ni zai | na li ni | zai na"
         },
         "b2": {
           "legato": true,
