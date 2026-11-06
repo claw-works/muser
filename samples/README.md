@@ -222,7 +222,7 @@ muser play samples/abc/kesh-jig.muser.json
 
 | 工程 | 内容 |
 |---|---|
-| `moon-rising` | 《月亮升起来了》，`choir.solo` 按歌词哼唱：ABC 的 `w:` 行对上音符，每个音唱音节里的元音（yue → ü-e、liang → i-a 哼、lai → a-i），`legato` 让元音连着滑；尼龙吉他分解和弦、贝斯、弦乐，副歌后段加 `choir.ooh` 铺底，结尾借用 Cm |
+| `moon-rising` | 《月亮升起来了》完整版（约 3 分钟，原创词曲），`choir.solo` 按歌词哼唱：ABC 的 `w:` 行对上音符，每个音唱音节里的元音（yue → ü-e、liang → i-a 哼、lai → a-i），`legato` 让元音连着滑。前奏（长笛）→ 主歌一 → 副歌 → 长笛间奏 → 主歌二（新词，同一段旋律）→ 副歌（加刷子鼓、`choir.ooh` 铺底）→ 桥段（Em Bm C D 上哼唱）→ 最后一遍副歌（弦乐升八度、长笛对旋律、军鼓进来）→ 首句再现 → 尾声借用 Cm。`lyrics` 有 13 行，`muser view` 里卡拉 OK 逐字亮起；能量曲线 2 → 10 → 7 |
 | `odd-clockwork` | 104 BPM，D 多利亚。主歌、副歌 4/4，过门段 `turn` 7/8（`"time_signature": { "numerator": 7, "denominator": 8 }`），间奏 `odd` 5/4：和弦、贝斯、键盘、鼓都按各段的小节长度走。两条 CR-78 时钟——7 步的 claves 和 13 步的 rim——写在 `parts."*"` 里、加了 `"align": "global"`，从第 1 拍一直数下去，穿过三种拍号也不重置，和主节奏不停地错开又对上 |
 
 ```bash

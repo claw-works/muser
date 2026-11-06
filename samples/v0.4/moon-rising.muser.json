@@ -1,40 +1,382 @@
 {
   "name": "moon-rising",
-  "lyrics": "[A] 月亮升起来了，风吹过山冈\n[A] 星星登上天空，照着回家路\n[B] 我在等你，你在哪里，你在哪\n[A] 月亮升起来了，风吹过山冈\n[尾声] 呜呜啊呜",
+  "lyrics": "[主歌] 月亮升起来了，风吹过山冈\n[主歌] 星星登上天空，照着回家路\n[副歌] 我在等你，你在哪里，你在哪\n[副歌] 月光轻轻，照着回家的小路\n[主歌] 竹林静静睡了，河水轻轻唱\n[主歌] 灯火一盏两盏，亮在小窗前\n[副歌] 我在等你，你在哪里，你在哪\n[副歌] 月光轻轻，照着回家的小路\n[桥] 呜呜呜呜\n[副歌] 我在等你，你在哪里，你在哪\n[副歌] 月光轻轻，照着回家的小路\n[主歌] 月亮升起来了，风吹过山冈\n[尾声] 呜呜啊呜",
   "tempo": 80,
   "seed": 11,
   "sections": {
-    "intro": { "bars": 2, "chords": "G" },
-    "a":     { "bars": 4, "chords": "G Em C G" },
-    "b":     { "bars": 4, "chords": "Am C D Em" },
-    "outro": { "bars": 4, "chords": "C G Cm G" }
+    "intro": {
+      "bars": 4,
+      "chords": "G Em C D"
+    },
+    "a": {
+      "bars": 4,
+      "chords": "G Em C G"
+    },
+    "b": {
+      "bars": 4,
+      "chords": "Am C D Em"
+    },
+    "b2": {
+      "bars": 4,
+      "chords": "Am C D G"
+    },
+    "inter": {
+      "bars": 4,
+      "chords": "G Em C D"
+    },
+    "bridge": {
+      "bars": 4,
+      "chords": "Em Bm C D"
+    },
+    "outro": {
+      "bars": 4,
+      "chords": "C G Cm G"
+    }
   },
-  "form": ["intro", "a", "a", "b", "a", "outro"],
-  "buses": [{ "name": "hall", "effects": [{ "type": "eq", "shape": "highpass", "frequency": 220 }, { "type": "reverb", "mix": 1.0, "decay_seconds": 2.8 }] }],
-  "master_effects": [{ "type": "compressor", "threshold_db": -18, "ratio": 2 }, { "type": "limiter", "ceiling_db": -1 }],
+  "form": [
+    "intro",
+    "a",
+    "a",
+    "b",
+    "b2",
+    "inter",
+    "a",
+    "a",
+    "b",
+    "b2",
+    "bridge",
+    "b",
+    "b2",
+    "a",
+    "outro"
+  ],
+  "buses": [
+    {
+      "name": "hall",
+      "effects": [
+        {
+          "type": "eq",
+          "shape": "highpass",
+          "frequency": 220
+        },
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.8
+        }
+      ],
+      "gain_db": -4
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "compressor",
+      "threshold_db": -18,
+      "ratio": 2
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
   "tracks": [
-    { "name": "voice", "instrument": "choir.solo", "gain_db": 1, "sends": { "hall": -9 },
-      "instrument_params": { "vibrato_depth": 22, "breathiness": 0.22 },
-      "humanize": { "timing_ms": 12, "drift": 0.4, "velocity": 0.05 },
+    {
+      "name": "voice",
+      "instrument": "choir.solo",
+      "gain_db": 1,
+      "sends": {
+        "hall": -9
+      },
+      "instrument_params": {
+        "vibrato_depth": 22,
+        "breathiness": 0.22
+      },
+      "humanize": {
+        "timing_ms": 12,
+        "drift": 0.4,
+        "velocity": 0.05
+      },
       "parts": {
-        "a":   { "legato": true, "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang" },
-        "a#2": { "legato": true, "abc": "L:1/8\nK:G\nd2 d2 B2 G2 | A4 B4 | c2 B2 A2 F2 | G8 |\nw: xing xing deng shang | tian kong | zhao zhe hui jia | lu" },
-        "b":   { "legato": true, "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 G2 E2 D2 | E8 |\nw: wo zai deng ni | ni zai | na li ni zai | na" },
-        "outro": { "legato": true, "abc": "L:1/8\nK:G\nG4 A4 | B8 | c4 B4 | G8 |\nw: u _ | u | a _ | u" }
-      } },
-    { "name": "guitar", "instrument": "guitar.nylon", "gain_db": -6, "pan": -0.25, "sends": { "hall": -14 },
-      "humanize": { "timing_ms": 8, "velocity": 0.08 },
-      "parts": { "*": { "chordal": "1 5 8 5 3' 5 8 5", "octave": 3 } } },
-    { "name": "bass", "instrument": "bass.finger", "gain_db": -6,
-      "parts": { "a": { "chordal": "1 - - - 5 - - -", "octave": 2 }, "b": { "chordal": "1 - - - 5 - - -", "octave": 2 },
-                 "outro": { "chordal": "1 - - - - - - -", "octave": 2 } } },
-    { "name": "strings", "instrument": "strings.ensemble", "gain_db": -5, "pan": 0.2, "sends": { "hall": -8 },
-      "parts": { "a#2": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.4 },
-                 "b": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.5 },
-                 "a#3": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.45 },
-                 "outro": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.35 } } },
-    { "name": "hum", "instrument": "choir.ooh", "gain_db": -19, "sends": { "hall": -6 },
-      "parts": { "b": { "chordal": "c - - -", "step": 1, "octave": 4, "velocity": 0.3 },
-                 "outro": { "chordal": "c - - -", "step": 1, "octave": 4, "velocity": 0.25 } } }
+        "a": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang"
+        },
+        "a#2": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nd2 d2 B2 G2 | A4 B4 | c2 B2 A2 F2 | G8 |\nw: xing xing deng shang | tian kong | zhao zhe hui jia | lu"
+        },
+        "a#3": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: zhu lin jing jing | shui le | he shui qing qing | chang"
+        },
+        "a#4": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nd2 d2 B2 G2 | A4 B4 | c2 B2 A2 F2 | G8 |\nw: deng huo yi zhan | liang zhan | liang zai xiao chuang | qian"
+        },
+        "a#5": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang"
+        },
+        "b": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 F2 E2 D2 | E8 |\nw: wo zai deng ni | ni zai | na li ni zai | na"
+        },
+        "b2": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 e4 | d2 B2 A2 F2 | G8 |\nw: yue guang qing qing | zhao zhe | hui jia de xiao | lu"
+        },
+        "bridge": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nE8 | F8 | G8 | A8 |\nw: u | u | u | u"
+        },
+        "outro": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nG4 A4 | B8 | c4 B4 | G8 |\nw: u _ | u | a _ | u"
+        }
+      }
+    },
+    {
+      "name": "guitar",
+      "instrument": "guitar.nylon",
+      "gain_db": -6,
+      "pan": -0.25,
+      "sends": {
+        "hall": -14
+      },
+      "humanize": {
+        "timing_ms": 8,
+        "velocity": 0.08
+      },
+      "parts": {
+        "*": {
+          "chordal": "1 5 8 5 3' 5 8 5",
+          "octave": 3
+        },
+        "bridge": {
+          "chordal": "1 5 8 5 3' 8 5 3",
+          "octave": 3,
+          "velocity": 0.7
+        }
+      }
+    },
+    {
+      "name": "bass",
+      "instrument": "bass.finger",
+      "gain_db": -6,
+      "parts": {
+        "a": {
+          "chordal": "1 - - - 5 - - -",
+          "octave": 2
+        },
+        "b": {
+          "chordal": "1 - - - 5 - - -",
+          "octave": 2
+        },
+        "b2": {
+          "chordal": "1 - - - 5 - - -",
+          "octave": 2
+        },
+        "inter": {
+          "chordal": "1 - - - 5 - - -",
+          "octave": 2
+        },
+        "bridge": {
+          "chordal": "1 - - - - - - -",
+          "octave": 2
+        },
+        "outro": {
+          "chordal": "1 - - - - - - -",
+          "octave": 2
+        }
+      }
+    },
+    {
+      "name": "strings",
+      "instrument": "strings.ensemble",
+      "gain_db": -5,
+      "pan": 0.2,
+      "sends": {
+        "hall": -8
+      },
+      "parts": {
+        "a#2": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.4
+        },
+        "b": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.5
+        },
+        "b2": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.5
+        },
+        "inter": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.35
+        },
+        "a#4": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.45
+        },
+        "bridge": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.55
+        },
+        "b#3": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.6
+        },
+        "b2#3": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.6
+        },
+        "a#5": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.45
+        },
+        "outro": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.35
+        }
+      }
+    },
+    {
+      "name": "hum",
+      "instrument": "choir.ooh",
+      "gain_db": -19,
+      "sends": {
+        "hall": -6
+      },
+      "parts": {
+        "b#2": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.3
+        },
+        "b2#2": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.3
+        },
+        "bridge": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.35
+        },
+        "b#3": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.35
+        },
+        "b2#3": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.35
+        },
+        "outro": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 4,
+          "velocity": 0.25
+        }
+      }
+    },
+    {
+      "name": "flute",
+      "instrument": "wind.flute",
+      "gain_db": -1,
+      "pan": 0.3,
+      "sends": {
+        "hall": -8
+      },
+      "humanize": {
+        "timing_ms": 10,
+        "velocity": 0.06
+      },
+      "parts": {
+        "intro": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nz4 B2 d2 | e4 d4 | c2 B2 A2 F2 | A8 |"
+        },
+        "inter": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nB2 d2 e2 d2 | B4 G4 | c2 e2 d2 B2 | A8 |"
+        },
+        "b2#3": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nz8 | g4 e4 | f4 d4 | g8 |"
+        },
+        "outro": {
+          "legato": true,
+          "abc": "L:1/8\nK:G\nz8 | d8 | z8 | B8 |"
+        }
+      }
+    },
+    {
+      "name": "brushes",
+      "instrument": "drums.lofi",
+      "gain_db": -12,
+      "sends": {
+        "hall": -16
+      },
+      "humanize": {
+        "timing_ms": 6,
+        "velocity": 0.1
+      },
+      "parts": {
+        "b#2": {
+          "grid": {
+            "kick": "x.......x.......",
+            "hat": "..x...x...x...x."
+          }
+        },
+        "b2#2": {
+          "grid": {
+            "kick": "x.......x.......",
+            "hat": "..x...x...x...x."
+          }
+        },
+        "b#3": {
+          "grid": {
+            "kick": "x.......x.......",
+            "snare": "....x.......x...",
+            "hat": "x.x.x.x.x.x.x.x."
+          }
+        },
+        "b2#3": {
+          "grid": {
+            "kick": "x.......x.......",
+            "snare": "....x.......x...",
+            "hat": "x.x.x.x.x.x.x.x."
+          }
+        }
+      }
+    }
   ]
 }
