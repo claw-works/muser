@@ -1,8 +1,8 @@
-# 编曲层：段落、曲式、和弦、按和弦写的音型、变换
+# Arrangement layer: sections, form, chords, chord-following patterns, transforms
 
-写一首完整的歌，不要一个个 clip 手算起点：**段落定义一次，曲式按名字排；和弦写在段落上，各声部跟着和弦走**。
-一首 9 段、6 轨、56 小节的歌大约 40 行（示例：[samples/arrange/night-drive](../samples/arrange/night-drive.muser.json)）。
-渲染前展开成普通 clip，view、`mix-report`、MIDI / ABC 导出看到的都是展开后的。
+To write a whole song, do not compute each clip's start by hand: **define a section once and order the form by name; write chords on the section, and every part follows the chords**.
+A song with 9 sections, 6 tracks and 56 bars takes about 40 lines (example: [samples/arrange/night-drive](../samples/arrange/night-drive.muser.json)).
+Before rendering, everything is expanded into ordinary clips; view, `mix-report`, and MIDI / ABC export all see the expanded form.
 
 ```json
 "sections": {
@@ -23,110 +23,110 @@
 
 ## sections / form
 
-- `sections`：段落名 → `bars`（小节数）与 `chords`（可省略），可选 `time_signature`：这一段自己的拍号，
-  如 `"bridge": { "bars": 4, "time_signature": { "numerator": 7, "denominator": 8 } }`（不写用工程的）。和弦按这一段的小节长度排，
-  `analyze` 的小节号、MIDI 导出（每次换拍号写一个拍号事件）、`muser view` 的小节线都跟着变。
-  注意：`drummer` 的鼓型按 4 拍一小节写，在别的拍号里用 `grid` / `abc`；ABC 导出换拍号处写内联 `[M:]`。
-- 段落还可以有自己的速度：`"tempo": 140`，从这一段开头起换成 140 BPM，之后的段落没写就一直保持；
-  加 `"tempo_ramp_bars": 4` 是在这一段的前 4 小节里从当时的速度渐变过去（渐快 / 渐慢，按时间均匀变；不写或 0 是直接换）。
-  片段、自动化的时间仍按拍写，速度变了它们跟着拍走；插件拿到的走带、MIDI 导出的速度表（渐变写成每拍一个速度）、
-  ABC 的内联 `[Q:]`、`muser view` 的小节线都跟着变。
-- `form`：从工程开头起按顺序演奏的段落。一项可以是名字，或带这一遍的参数：
-  - `transpose`：这一遍移调（半音；和弦、chordal、旋律一起移，鼓组不动）。最后一遍副歌升调用它。
-  - `mute`：这一遍休息的音轨名。
-  - `seed`：这一遍换一种随机（鼓手、`vary`、humanize）。
-- 原来的 `clips`（绝对拍）照常可用，和 parts 混写。
+- `sections`: section name -> `bars` (number of bars) and `chords` (optional), plus an optional `time_signature`: this section's own time signature,
+  such as `"bridge": { "bars": 4, "time_signature": { "numerator": 7, "denominator": 8 } }` (if omitted, the project's is used). Chords are laid out by this section's bar length;
+  the bar numbers in `analyze`, the MIDI export (a time signature event is written at each change), and the bar lines in `muser view` all follow.
+  Note: the drum patterns of `drummer` are written for 4 beats per bar; in other time signatures use `grid` / `abc`; the ABC export writes an inline `[M:]` where the time signature changes.
+- A section can also have its own tempo: `"tempo": 140` switches to 140 BPM from the start of this section, and later sections that do not write it keep it;
+  adding `"tempo_ramp_bars": 4` ramps from the current tempo over the first 4 bars of this section (accelerando / ritardando, uniform in time; omitted or 0 switches directly).
+  Clip and automation times are still written in beats, and follow the beats when the tempo changes; the transport that plugins receive, the tempo map in MIDI export (a ramp is written as one tempo per beat),
+  the inline `[Q:]` in ABC, and the bar lines in `muser view` all follow.
+- `form`: the sections played in order from the start of the project. An entry can be a name, or carry parameters for this pass:
+  - `transpose`: transpose this pass (in semitones; chords, chordal and melody move together, the drum kit does not). Use it for a key change on the last chorus.
+  - `mute`: names of tracks that rest during this pass.
+  - `seed`: use a different randomization for this pass (drummer, `vary`, humanize).
+- The original `clips` (absolute beats) still work as usual, and can be mixed with parts.
 
-## parts：这条轨在每个段落里演奏什么
+## parts: what this track plays in each section
 
-- 键：`"verse"`；`"verse#2"`（只第 2 次 verse，覆盖 `"verse"`）；`"*"`（没单独写的段落都用它）。没有匹配的段落，这条轨休息。
-- 内容就是 clip 的写法：`notes` / `abc` / `grid` / `drummer` / `chordal`，加 `humanize`、`legato`、`pedal`、`transform`。
-- `length`（拍）：内容按这个长度循环铺满段落。缺省：普通内容 = 整段（不循环），chordal = 音型长度。
-- `"align": "global"`：循环从工程开头（第 0 拍）算起，跨段落不重置（缺省 `"section"`：每段从头开始）。polymeter 用它：
-  `"*": { "grid": { "hat": "x......" }, "align": "global" }`（7 步）配另一条 13 步的轨，段落怎么改都一直漂移，不用改写成绝对拍的 clips。连续几段用同一个 global part 时合成一段（长音跨过段落线照常响，`muser view` 里是一整条）。
-- `end`：每一遍段落的最后 `beats` 拍换成这里的内容（过门、转折、句尾变化），写法同 part。
-- `drummer` 写整段（不写 `length`）时，按段落长度打过门；每一遍段落的种子不同，所以每一遍都不完全一样。
+- Keys: `"verse"`; `"verse#2"` (only the 2nd verse, overrides `"verse"`); `"*"` (used by every section not written separately). If no section matches, the track rests.
+- The content is written as a clip: `notes` / `abc` / `grid` / `drummer` / `chordal`, plus `humanize`, `legato`, `pedal`, `transform`.
+- `length` (beats): the content loops at this length to fill the section. Default: ordinary content = the whole section (no loop), chordal = the pattern length.
+- `"align": "global"`: the loop is counted from the start of the project (beat 0) and does not reset across sections (default `"section"`: each section starts over). Use it for polymeter:
+  `"*": { "grid": { "hat": "x......" }, "align": "global" }` (7 steps) against another track of 13 steps keeps drifting however the sections change, with no need to rewrite as absolute-beat clips. When several consecutive sections use the same global part they are merged into one (long notes crossing a section line sound as usual, and in `muser view` it is one whole strip).
+- `end`: the last `beats` beats of every pass of the section are replaced by this content (fill, turnaround, phrase-end variation); written like a part.
+- When `drummer` writes the whole section (no `length`), it plays fills according to the section length; each pass of the section has a different seed, so no two passes are exactly the same.
 
-## chords：和弦进行
+## chords: chord progression
 
-- 空格分开的和弦，每个占一小节：`"Am7 F C G"`。
-- 用 `|` 分小节时，一小节里的几个和弦平分这一小节：`"F G | Em Am | Dm7 G7 C"`。
-- 进行比段落短时循环（8 小节的段落写 4 个和弦 = 走两遍）。
-- 写法：根音（`C` `F#` `Bb`）+ 性质：`m` `7` `maj7` `m7` `dim` `dim7` `m7b5` `aug` `sus2` `sus4` `7sus4` `6` `m6`
-  `9` `maj9` `m9` `add9` `11` `13` `5` `m(maj7)`，变化音 `b9` `#9` `#11` `b13` `b5` `#5`（如 `G7b9`、`C7#11`），斜线低音 `C/E`。
+- Chords separated by spaces, each taking one bar: `"Am7 F C G"`.
+- When bars are separated with `|`, the chords within a bar split that bar equally: `"F G | Em Am | Dm7 G7 C"`.
+- A progression shorter than the section loops (an 8-bar section with 4 chords = two passes).
+- Notation: root (`C` `F#` `Bb`) + quality: `m` `7` `maj7` `m7` `dim` `dim7` `m7b5` `aug` `sus2` `sus4` `7sus4` `6` `m6`
+  `9` `maj9` `m9` `add9` `11` `13` `5` `m(maj7)`, altered tones `b9` `#9` `#11` `b13` `b5` `#5` (such as `G7b9`, `C7#11`), slash bass `C/E`.
 
-## chordal：按当前和弦写的音型
+## chordal: patterns written against the current chord
 
 ```json
 { "chordal": "1 . 5 . 8 . 5 3", "step": 0.5, "octave": 2, "velocity": 0.8 }
 ```
 
-每格 `step` 拍（默认 0.5 = 八分音符），按那一刻的和弦取音：
+Each cell is `step` beats (default 0.5 = an eighth note), and notes are picked from the chord of that moment:
 
-| 符号 | 含义 |
+| Symbol | Meaning |
 |---|---|
-| `1` `3` `5` `7` | 和弦实际的根音、三音、五音、七音（小三和弦的 3 是小三度，减和弦的 5 是减五度；没有七音的和弦 `7` 取八度） |
-| `8` `9` `11` `13` | 高八度根音、九音、十一音、十三音（和弦里写了 b9 / #11 等就用它） |
-| `2` `4` `6` | 大二度、纯四度、大六度（经过音） |
-| `b7` `#11` `b9`… | 显式升降：按大调音阶的级数再升降（不看和弦） |
-| `B` | 低音：斜线和弦的低音（`C/E` 的 E），否则根音 |
-| `c` | 整个和弦：密集排列，自动选和上一个和弦衔接最近的转位（声部进行），避开小二度的排法 |
-| `'` `,` | 加在后面升 / 降八度：`3'`、`1,`、`c'` |
-| `!` | 加在后面为重音：`1!`、`c!` |
-| `.` / `-` | 休止 / 延长上一格 |
+| `1` `3` `5` `7` | The chord's actual root, third, fifth and seventh (the 3 of a minor chord is a minor third, the 5 of a diminished chord is a diminished fifth; for chords with no seventh, `7` takes the octave) |
+| `8` `9` `11` `13` | Octave root, ninth, eleventh, thirteenth (if the chord names b9 / #11 etc., those are used) |
+| `2` `4` `6` | Major second, perfect fourth, major sixth (passing tones) |
+| `b7` `#11` `b9`... | Explicit flat / sharp: raised or lowered from the major-scale degree (ignores the chord) |
+| `B` | Bass: the bass of a slash chord (the E of `C/E`), otherwise the root |
+| `c` | The whole chord: close voicing, automatically choosing the inversion nearest to the previous chord (voice leading), avoiding voicings with a minor second |
+| `'` `,` | Appended to raise / lower an octave: `3'`, `1,`, `c'` |
+| `!` | Appended for an accent: `1!`, `c!` |
+| `.` / `-` | Rest / extend the previous cell |
 
-- `octave`：音区。根音放在这一组（C4 = 中央 C），默认 3；`c` 以这一组的 G 为中心排转位。贝斯 2，和弦 3–4，琶音 5。
-- 常用：贝斯 `1 . . 1 . 5 8 .`、`1 1 5 5 8 8 5 5`；行走贝斯 `1 3 5 6`；琶音 `1 5 8 3' 5' 3' 8 5`（`step: 0.25`）；
-  铺底 `c - - -`（`step: 1`，一小节一个）；切分扫弦 `c . c c . c . .`；倚音式 `B . 5 .`。
-- **改和弦**：只改 `sections.<段落>.chords`，所有 chordal 声部一起变，旋律另改。
+- `octave`: register. The root is placed in this octave (C4 = middle C), default 3; `c` voices inversions centered on the G of this octave. Bass 2, chords 3-4, arpeggios 5.
+- Common ones: bass `1 . . 1 . 5 8 .`, `1 1 5 5 8 8 5 5`; walking bass `1 3 5 6`; arpeggio `1 5 8 3' 5' 3' 8 5` (`step: 0.25`);
+  pad `c - - -` (`step: 1`, one per bar); syncopated strum `c . c c . c . .`; grace-note style `B . 5 .`.
+- **Changing chords**: only change `sections.<section>.chords`, and all chordal parts change together; change the melody separately.
 
-## transform：变换
+## transform: transformations
 
-写在 part（每一遍循环施加）或普通 clip 上，按顺序施加，每个对象只写一种：
+Written on a part (applied on every loop pass) or an ordinary clip, applied in order, with only one kind per object:
 
 ```json
 "transform": [{ "transpose": 5 }, { "every": 4, "then": [{ "reverse": true }] }, { "vary": 0.2 }]
 ```
 
-| 变换 | 作用 |
+| Transform | Effect |
 |---|---|
-| `transpose: n` / `octave: n` | 移调 n 个半音 / 升降 n 个八度（鼓组不受影响） |
-| `reverse: true` | 逆行：时间倒过来 |
-| `invert: 60` | 倒影：以这个音高为轴上下翻转 |
-| `stretch: 2` | 时值放大一倍（0.5 = 缩小一半），循环长度一起变 |
-| `shift: 0.5` | 错位：往后挪半拍，挪出循环的绕回开头 |
-| `sequence: [0, -1, -2, -3]` | 模进：第 k 遍循环按第 k 个数移几个音阶级（音阶取这一段和弦里的音）。动机逐级下行 / 上行——流行歌里最常用的发展手法 |
-| `fragment: 2` | 裁截：只留前 2 拍，循环长度也变成 2 拍。常和 `sequence` 连用：`[{ "fragment": 2 }, { "sequence": [0, 1, 2] }]` 把动机开头逐级上推 |
-| `every: 4, then: [...]` | 每第 4 遍（第 4、8…遍）才施加 `then` 里的变换：句尾变化、第 4 小节加花 |
-| `vary: 0.2` | 随机变奏：每个音 20% 的概率换成相邻的和弦音（没写和弦时，换成音型里出现过的相邻音高），少数省掉；鼓组改为省音、变力度。同一种子结果相同，`seed` 或 `form` 的 `seed` 换一种 |
+| `transpose: n` / `octave: n` | Transpose by n semitones / raise or lower by n octaves (the drum kit is unaffected) |
+| `reverse: true` | Retrograde: time runs backward |
+| `invert: 60` | Inversion: flip up/down around this pitch as the axis |
+| `stretch: 2` | Double the durations (0.5 = halve), and the loop length changes with them |
+| `shift: 0.5` | Offset: move half a beat later, with what moves past the end of the loop wrapping to the start |
+| `sequence: [0, -1, -2, -3]` | Sequence: on the k-th loop pass, shift by the k-th number of scale degrees (the scale is taken from the notes in this section's chords). The motif steps down / up -- the most common development technique in pop songs |
+| `fragment: 2` | Truncate: keep only the first 2 beats, and the loop length also becomes 2 beats. Often combined with `sequence`: `[{ "fragment": 2 }, { "sequence": [0, 1, 2] }]` pushes the start of the motif up step by step |
+| `every: 4, then: [...]` | Apply the transforms in `then` only on every 4th pass (the 4th, 8th...): phrase-end variation, ornament on bar 4 |
+| `vary: 0.2` | Random variation: each note has a 20% chance of becoming a neighboring chord tone (when no chords are written, a neighboring pitch that appears in the pattern), and a few are dropped; for the drum kit, notes are dropped and velocities vary. The same seed gives the same result; change it with `seed` or the `seed` in `form` |
 
-## 写完之后：`muser analyze`
+## After writing: `muser analyze`
 
-`muser analyze song.muser.json`（MCP `analyze`）按段落报告密度、各轨音区、和弦、重复度、冲突，最后给出建议；
-加 `--audio` 再渲染一遍，给每段的响度与频谱重心。按建议改完再跑一次：
+`muser analyze song.muser.json` (MCP `analyze`) reports, per section, density, each track's register, chords, repetition and conflicts, and ends with suggestions;
+adding `--audio` renders once more and gives the loudness and spectral centroid of each section. After editing per the suggestions, run it again:
 
-- **副歌没有起来**：副歌的密度 / 响度不比主歌高 → 加声部（arp、pad）、提高旋律音区、鼓手 `intensity` / `complexity` 调高。
-- **重复太多**：大部分小节和前面某小节一模一样 → `vary`、`every`、`end` 过门、`verse#2` 换一种写法。
-- **只有一个和弦**：写 `chords`。
-- **音区掩蔽**：两条轨在同一音区长时间同时发声 → 改其中一条的 `octave`，或让它在这一段休息（不写这一段的 part）。
-- **避免音**：拍点上的长音比某个和弦音高半音（♭9、大三和弦上的 4、♭6）→ 换成和弦音，或改和弦。
-- **小二度 / 小九度**：两条轨同时长音只差半音（含隔一个八度）→ 换转位、拉开音区，或改和弦（如 Fmaj7 → F）。
-- **偏暗 / 偏亮**（`--audio`）：频谱重心低于 1000 Hz / 高于 4500 Hz。
+- **The chorus does not lift**: the chorus's density / loudness is not higher than the verse -> add parts (arp, pad), raise the melody's register, raise the drummer's `intensity` / `complexity`.
+- **Too much repetition**: most bars are identical to an earlier bar -> `vary`, `every`, an `end` fill, a different way of writing `verse#2`.
+- **Only one chord**: write `chords`.
+- **Register masking**: two tracks sound at the same time in the same register for a long stretch -> change the `octave` of one of them, or let it rest in this section (do not write this section's part).
+- **Avoid notes**: a long note on a beat is a semitone above a chord tone (b9, the 4 over a major chord, b6) -> change it to a chord tone, or change the chord.
+- **Minor second / minor ninth**: two tracks hold notes only a semitone apart (including a compound interval across an octave) -> change the inversion, spread the registers apart, or change the chord (e.g. Fmaj7 -> F).
+- **Too dark / too bright** (`--audio`): spectral centroid below 1000 Hz / above 4500 Hz.
 
-### 能量曲线与 AI 味检查
+### Energy curve and the "sounds like AI" check
 
-报告最上面是能量曲线（每段 0–10，按密度、在场声部数、力度，`--audio` 时加响度），下面是"AI 味"检查——
-真实编曲里几乎总有、机器默认写法常缺的特征，命中（✗）的会写进建议：
+At the top of the report is the energy curve (0-10 per section, from density, the number of parts present, and velocity, plus loudness with `--audio`), followed by the "sounds like AI" check --
+features that real arrangements almost always have and machine defaults often lack; those that hit (marked x) are written into the suggestions:
 
-| # | 命中条件 | 怎么改 |
+| # | Triggered when | How to fix |
 |---|---|---|
-| 1 | 三段以上、段落全是 8 小节的倍数 | 前奏 / 预副歌 / 尾声改成 2、4、6、10、12 小节，或加 2 小节过渡 |
-| 2 | 能量从不下降 | 间奏、bridge、最后一遍副歌前撤掉几件乐器（`form` 的 `mute`，或这一段不写 part） |
-| 3 | 每条轨每段都在 | 让乐器有进有出：前奏少几件，副歌再进 |
-| 4 | 每段同一个进行，或全曲只用调内和弦且不转调 | 给 pre / bridge 写不同的 `chords`，用一个离调和弦（借用 iv、bVII，副属 V/vi），或最后一遍 `transpose` |
-| 5 | 过门几乎每 4 小节一次 | drummer 不写 `fill_every`（自动），或用 `end` 写过门 |
-| 7 | （`--audio`）各段响度差不到 1.5 LU，或频谱重心几乎不变 | 前奏 / 间奏更空更暗，副歌更满更亮 |
-| 8 | 旋律 / 和声轨全都没有 humanize | 加 `humanize`（鼓组可以保持对齐） |
-| 11 | 副歌每遍音符一模一样 | `chorus#2` 换写法、加声部、`vary`，或最后一遍 `transpose` |
+| 1 | Three or more sections, and every section is a multiple of 8 bars | Change the intro / pre-chorus / outro to 2, 4, 6, 10 or 12 bars, or add a 2-bar transition |
+| 2 | Energy never drops | Before the interlude, bridge and last chorus, take out a few instruments (`mute` in `form`, or do not write the part in that section) |
+| 3 | Every track is present in every section | Let instruments come and go: fewer in the intro, bring them in at the chorus |
+| 4 | Every section has the same progression, or the whole song uses only diatonic chords with no key change | Write different `chords` for pre / bridge, use a borrowed or non-diatonic chord (borrowed iv, bVII, secondary dominant V/vi), or `transpose` the last pass |
+| 5 | A fill nearly every 4 bars | Do not write `fill_every` on the drummer (automatic), or write fills with `end` |
+| 7 | (`--audio`) Sections differ by less than 1.5 LU in loudness, or the spectral centroid barely changes | Make the intro / interlude emptier and darker, and the chorus fuller and brighter |
+| 8 | None of the melody / harmony tracks has humanize | Add `humanize` (the drum kit can stay aligned) |
+| 11 | The chorus has identical notes on every pass | Write `chorus#2` differently, add parts, `vary`, or `transpose` the last pass |
 
-这些是"像人做的"常见特征，不是铁律：有意为之（比如 loop 型的电子乐只用一个进行）就保留，心里有数即可。
+These are common traits of "sounding human-made", not iron rules: if it is intentional (for example a loop-based electronic piece using a single progression), keep it, just be aware of it.

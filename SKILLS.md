@@ -1,245 +1,245 @@
-# muser Skill：如何用 muser 编曲
+# muser Skill: how to compose with muser
 
-> 写给 **AI agent** 的操作手册：把用户的音乐意图翻译成 muser 工程 JSON，再渲染成音频。
-> 这里是总入口；每个乐器类别、每个效果器的细节在 [`skills/`](skills/) 下的子 skill 里，按需查阅。
+> An operating manual for **AI agents**: translate the user's musical intent into a muser project JSON, then render it to audio.
+> This is the main entry point; the details of each instrument family and each effect are in the sub-skills under [`skills/`](skills/) - consult them as needed.
 
-## 你的角色
+## Your role
 
-用户用自然语言描述想要的音乐（"做一个 90bpm 的 lo-fi 节拍，钢琴+鼓"）。你的工作：
+The user describes the music they want in natural language ("make a 90bpm lo-fi beat, piano + drums"). Your job:
 
-1. 选乐器、写音符、配效果器，产出一个 **Project JSON**。
-2. 先 `validate`，再渲染成 WAV。
-3. 根据反馈**增量修改** JSON，重新渲染。
+1. Pick instruments, write notes, and set up effects, producing a **Project JSON**.
+2. `validate` first, then render to WAV.
+3. **Modify the JSON incrementally** based on feedback, and render again.
 
-你只在 Project JSON 这一层工作，不需要懂底层 DSP。
+You work only at the Project JSON level and do not need to understand the underlying DSP.
 
-用户让你安装或更新 muser 时：没装过就运行一行安装脚本（macOS / Linux：
-`curl -fsSL https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.sh | sh`；
-Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 | iex`），装过就 `muser self-update`
-（`--check` 只查不装）。装完把脚本最后打印的几行（版本、命令在哪、要不要先 `export PATH`）用大白话转告用户。
-更新以后，旧版本写的工程可能听起来不一样（比如 0.3.1 校准了内置乐器音量）：问清工程是为哪个版本写的，
-`muser migrate <工程> --from 0.3.0` 先看要改什么，再加 `--write` 写回。
+When the user asks you to install or update muser: if it is not installed, run the one-line install script (macOS / Linux:
+`curl -fsSL https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.sh | sh`;
+Windows: `irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 | iex`); if it is installed, run `muser self-update`
+(`--check` only checks without installing). After installing, relay in plain language the few lines the script prints at the end (the version, where the command is, whether to `export PATH` first).
+After an update, projects written with an older version may sound different (for example, 0.3.1 calibrated the built-in instrument volumes): ask which version the project was written for,
+run `muser migrate <project> --from 0.3.0` to see what would change, then add `--write` to write it back.
 
-## 先听后写：和人一起创作的流程
+## Listen first, write later: the workflow for creating with a person
 
-音乐创作是感性的：**先拿草稿给人听，再写整首**。不要一上来就编配完整的曲子。
+Making music is subjective: **play a draft for the person first, then write the whole piece**. Do not start by arranging a complete song.
 
-1. **出草稿**：用户描述想法后，先写 4–8 小节的草稿，最好一次给 2–3 个版本（A / B / C：同一段旋律配不同节奏、
-   不同 loop、不同速度或音色）。旋律用 `abc`、鼓用 loop / `drummer`、律动用 `humanize`（见 [skills/notation.md](skills/notation.md)），
-   一个版本几行 JSON，不要写脚本生成音符。
-2. **一句话 + 一条命令**：每个版本说一句它是什么感觉，给出试听命令 `muser play sketch-a.muser.json`
-   （用声卡放一遍就退出）。鼓型单独试 `muser loop play <名字>`。
-3. **问具体的问题**，而不是"你觉得怎么样"：快一点还是慢一点？旋律更跳还是更平？鼓更满还是更空？更亮还是更暗？
-   要不要换一种乐器？哪个版本最接近？
-4. **按反馈改草稿**，再听；同一个版本"换一遍演奏"：`muser play sketch-a.muser.json --seed 2`。
-5. **满意了再展开**：在定下来的草稿上编配整首——用编曲层写（`sections` + `form` + 各轨 `parts`，和弦写在段落上，
-   贝斯、和声、琶音用 `chordal` 跟着和弦走，见 [skills/arrange.md](skills/arrange.md)），不要手算一个个 clip 的起点。
-   写完跑 `muser analyze` 自查（能量曲线有没有起伏、副歌有没有起来、重复、掩蔽、冲突、"AI 味"检查），按建议改；最后 `mix-report` 平衡音量，`muser view` 交给人微调。
+1. **Make a draft**: after the user describes an idea, first write a 4-8 bar draft, preferably 2-3 versions at once (A / B / C: the same melody with different rhythms,
+   different loops, different tempos or sounds). Use `abc` for the melody, a loop / `drummer` for the drums, and `humanize` for the groove (see [skills/notation.md](skills/notation.md)),
+   a few lines of JSON per version; do not write scripts to generate notes.
+2. **One sentence + one command**: for each version, say in one sentence what it feels like, and give the audition command `muser play sketch-a.muser.json`
+   (plays it once on the sound card and exits). To audition a drum pattern alone, use `muser loop play <name>`.
+3. **Ask specific questions**, not "what do you think?": faster or slower? Is the melody more bouncy or flatter? Busier or sparser drums? Brighter or darker?
+   Should the instrument change? Which version is closest?
+4. **Revise the draft per the feedback**, then listen again; for another take of the same version: `muser play sketch-a.muser.json --seed 2`.
+5. **Expand once they are happy**: arrange the whole piece on top of the settled draft - write with the arrangement layer (`sections` + `form` + each track's `parts`, with chords written on the sections;
+   bass, harmony, and arpeggios follow the chords with `chordal`, see [skills/arrange.md](skills/arrange.md)), and do not hand-calculate each clip's start.
+   When done, self-check with `muser analyze` (does the energy curve rise and fall, does the chorus lift, repetition, masking, clashes, the "AI tells" checks) and revise per the suggestions; finally balance volumes with `mix-report`, and hand it to a person with `muser view` for fine-tuning.
 
-人可以先给动机：`muser loop edit --open` 打开编辑器，人在卷帘里画几小节或对着麦克风哼一段（自动转成音符），存到项目的 `loops/`，你读出来续写 / 扩写成几个版本
-（存成新的 loop，编辑器里能直接试听、修改），见 [skills/notation.md](skills/notation.md) 的"人给动机，agent 续写"。
+A person can supply the motif first: `muser loop edit --open` opens the editor, where the person draws a few bars on the piano roll or hums a phrase into the microphone (automatically converted to notes) and saves it to the project's `loops/`; you read it out and continue / expand it into several versions
+(saved as new loops that can be auditioned and modified directly in the editor); see "A person supplies the motif, the agent continues it" in [skills/notation.md](skills/notation.md).
 
-用户这样说时进入草稿流程（不要直接改整首）："先听听""来几个版本""随便哼一段""感觉不对""这段再活泼点""换个感觉"。
+Enter the draft workflow (do not edit the whole piece directly) when the user says things like: "let me hear first", "give me a few versions", "hum something", "it doesn't feel right", "make this part livelier", "change the feel".
 
-## 先查再写：可发现性
+## Look it up before writing: discoverability
 
-不要凭记忆写乐器名和效果器参数，先查：
+Do not write instrument names and effect parameters from memory; look them up first:
 
-| 想知道 | CLI | MCP tool |
+| To find out | CLI | MCP tool |
 |---|---|---|
-| 有哪些乐器 | `muser instruments [--family F]` | `list_instruments` |
-| 本机所有能用的音色（内置、SFZ、乐器插件）| `muser sounds list [--kind builtin\|sfz\|plugin] [--filter 词]` | — |
-| 一个音色听起来怎样（亮度、起音、延音、音域、力度、立体声、音高）| `muser sounds describe <音色> [--params JSON]` | — |
-| 某乐器的音高约定、音域、复音数、**可调参数与预设当前值** | `muser instruments <名称>` | `describe_instrument` |
-| 有哪些效果器 | `muser effects` | `list_effects` |
-| 某效果器的参数、范围、默认值、示例 | `muser effects <名称>` | `describe_effect` |
-| 工程是否合法、错在哪 | `muser validate <file>` | `validate_project` |
-| 本机有哪些外置插件 | `muser plugin scan` | `scan_plugins` |
-| 插件的参数、选项文字 | `muser plugin params <插件> --filter <词>`、`muser plugin values <插件> <参数>` | `list_plugin_params`、`plugin_param_values` |
-| 某个参数到底起什么作用 | `muser audition ... --param <名> --values ...` | `audition` |
-| 各轨音量是否均衡 | `muser mix-report <file>` | `mix_report` |
-| 信号怎么走：每条轨 / 总线送到哪、发送量、侧链、处理顺序 | `muser routing <file>` | `get_routing` |
-| 编曲好不好：密度、音区、和弦、重复、冲突与建议 | `muser analyze <file> [--audio]` | `analyze` |
-| 有哪些现成的鼓型 / 动机（loop），拿一个放进工程 | `muser loop list [--style S]`、`muser loop show <名字> [--abc]` | — |
-| 让人画一段动机 / 鼓型，或对着麦克风哼一段（编辑器，存到项目） | `muser loop edit --open` | — |
-| 把哼唱 / 口哨录音转成音符 | `muser loop hum <音频> --tempo T --name N` | — |
-| 本机音色库里的 poly 音色 | `muser poly list`、`muser poly show <名字>` | — |
-| 音频文件的格式、时长（换算成拍） | `muser audio <文件> [--tempo T]` | — |
-| 把编曲交给 DAW / 分析工具 | `muser midi <工程> [-o x.mid]` | `export_midi` |
-| 整首换调（换人唱、找合适的音域） | 工程写 `"transpose": N`（半音，音符不改，鼓和音频轨不动）；view 播放条上有「变调 − / +」 | — |
-| 用户想自己唱 / 录人声（流程见 [skills/recording.md](skills/recording.md)） | `muser view <工程> --open`，右边"录人声"面板（工程写 `lyrics` 会显示歌词）；录完 `muser takes <工程>` 看每一遍，改音频片段的 `offset` / `start` / `length` / `fade_in` / `fade_out` 剪辑对齐（用户也可以在 view 里用 ✂ 剪开、拖动挪位置、← → 微调） | — |
-| 交给 DAW（Live / Cubase / Logic）接着做：MIDI + 分轨 + 混音 + 导入说明 | `muser export-daw <工程> -o <文件夹>` | `export_daw` |
-| 只要分轨（每轨一个 WAV） | `muser render <工程> --stems <目录>` | `export_stems` |
-| 给音乐配画面 / 做可视化（音符、段落、自动化、音量包络） | `muser export-data <工程> -o data.json [--fps 30]` | `export_data` |
-| 把乐谱交给读 ABC 的模型（如 YuE2） | `muser abc <工程> [--yue2 --vocal 旋律轨 --sections verse:8,chorus:8]` | `export_abc` |
-| 让人快速听一下草稿 | `muser play <file> [--seed N]`、`muser loop play <名字>` | — |
-| 现场演奏：一段一段往后写，muser 在本机声卡上不停地演奏（流程见 [skills/live.md](skills/live.md)） | `muser live start <模板> --record s.muser.json --open`，然后 `muser live send / status / wait / autoplay / stop` | `live_start` `live_send` `live_status` `live_wait` `live_autoplay` `live_stop` |
-| 插件有没有现成的使用经验（别名、预设） | `muser plugin profile show <插件> --markdown` | `get_profile` / `list_profiles` |
+| Which instruments exist | `muser instruments [--family F]` | `list_instruments` |
+| All sounds usable on this machine (built-in, SFZ, instrument plugins) | `muser sounds list [--kind builtin\|sfz\|plugin] [--filter word]` | - |
+| What a sound is like (brightness, attack, sustain, range, velocity, stereo, pitch) | `muser sounds describe <sound> [--params JSON]` | - |
+| An instrument's pitch convention, range, polyphony, **tunable parameters and the preset's current values** | `muser instruments <name>` | `describe_instrument` |
+| Which effects exist | `muser effects` | `list_effects` |
+| An effect's parameters, ranges, defaults, examples | `muser effects <name>` | `describe_effect` |
+| Whether the project is valid, and where it is wrong | `muser validate <file>` | `validate_project` |
+| Which external plugins are on this machine | `muser plugin scan` | `scan_plugins` |
+| A plugin's parameters and option text | `muser plugin params <plugin> --filter <word>`, `muser plugin values <plugin> <param>` | `list_plugin_params`, `plugin_param_values` |
+| What a parameter actually does | `muser audition ... --param <name> --values ...` | `audition` |
+| Whether track volumes are balanced | `muser mix-report <file>` | `mix_report` |
+| How the signal flows: where each track / bus goes, send amounts, sidechain, processing order | `muser routing <file>` | `get_routing` |
+| Whether the arrangement is good: density, register, chords, repetition, clashes, and suggestions | `muser analyze <file> [--audio]` | `analyze` |
+| Which ready-made drum patterns / motifs (loops) exist, and put one into the project | `muser loop list [--style S]`, `muser loop show <name> [--abc]` | - |
+| Let a person draw a motif / drum pattern, or hum into the microphone (editor, saved to the project) | `muser loop edit --open` | - |
+| Convert a humming / whistling recording into notes | `muser loop hum <audio> --tempo T --name N` | - |
+| The poly sounds in this machine's sound library | `muser poly list`, `muser poly show <name>` | - |
+| An audio file's format and duration (converted to beats) | `muser audio <file> [--tempo T]` | - |
+| Hand the arrangement to a DAW / analysis tool | `muser midi <project> [-o x.mid]` | `export_midi` |
+| Change the key of the whole piece (for another singer, to find a suitable range) | Write `"transpose": N` in the project (semitones; notes unchanged, drums and audio tracks do not move); the view playback bar has "Transpose − / +" | - |
+| The user wants to sing / record vocals themselves (workflow in [skills/recording.md](skills/recording.md)) | `muser view <project> --open`, the "Record vocals" panel on the right (the project's `lyrics` are shown when written); after recording, `muser takes <project>` shows each take, and you edit and align by changing the audio clip's `offset` / `start` / `length` / `fade_in` / `fade_out` (the user can also split with ✂ in view, drag to move, and nudge with ← →) | - |
+| Hand off to a DAW (Live / Cubase / Logic) to continue: MIDI + stems + mix + import notes | `muser export-daw <project> -o <folder>` | `export_daw` |
+| Stems only (one WAV per track) | `muser render <project> --stems <dir>` | `export_stems` |
+| Score visuals / make a visualization (notes, sections, automation, volume envelope) | `muser export-data <project> -o data.json [--fps 30]` | `export_data` |
+| Hand the score to a model that reads ABC (such as YuE2) | `muser abc <project> [--yue2 --vocal melody-track --sections verse:8,chorus:8]` | `export_abc` |
+| Let a person quickly hear a draft | `muser play <file> [--seed N]`, `muser loop play <name>` | - |
+| Live session: write one section after another while muser keeps playing on this machine's sound card (workflow in [skills/live.md](skills/live.md)) | `muser live start <template> --record s.muser.json --open`, then `muser live send / status / wait / autoplay / stop` | `live_start` `live_send` `live_status` `live_wait` `live_autoplay` `live_stop` |
+| Whether a plugin already has usage experience (aliases, presets) | `muser plugin profile show <plugin> --markdown` | `get_profile` / `list_profiles` |
 
-加 `--json` 得到机器可读输出。`validate` 会指出越界参数和未知乐器的具体位置，例如
-`tracks[0].effects[0]: reverb.mix = 1.8 超出范围 [0, 1]`。
-`validate` 与 `render` 还会用 `⚠` 列出合法但多半不是本意的地方（不改退出码）：ABC 小节时值和拍号对不上、
-段落里的内容只占一小段又没写 `length`（之后就不出声了）、音符远在乐器推荐音域之外、`render` 后主输出削波。**看到 ⚠ 先确认再往下走。**
+Add `--json` for machine-readable output. `validate` points to the exact location of out-of-range parameters and unknown instruments, for example
+`tracks[0].effects[0]: reverb.mix = 1.8 out of range [0, 1]`.
+`validate` and `render` also list with `⚠` things that are legal but probably not what was intended (the exit code is unchanged): ABC bar durations that do not match the time signature,
+section content that fills only a short stretch with no `length` written (so it goes silent afterward), notes far outside the instrument's recommended range, and master clipping after `render`. **When you see a ⚠, confirm before moving on.**
 
-## 核心心智模型
+## Core mental model
 
-- **Project**：一个 `tempo`（速度）+ 若干 **Track**（音轨）+ 可选的 `master_effects`。
-- **Track**：一件 `instrument`（乐器）+ 可选的 `instrument_params`（调音色）+ 可选的 `effects` + 可选的 `automation`（随时间变化）+ 若干 **Clip**（片段）。
-- **Clip**：在时间线上有 `start` 和 `length`，里面是若干 **Note**（音符）。
-- **时间单位是拍 (beats)**，`1.0` = 一个四分音符，与 tempo 无关。
-- Clip 的 `start` 从**工程开头**算；Note 的 `start` 从**所在 clip 的开头**算。
+- **Project**: one `tempo` + several **Tracks** + optional `master_effects`.
+- **Track**: one `instrument` + optional `instrument_params` (shape the sound) + optional `effects` + optional `automation` (change over time) + several **Clips**.
+- **Clip**: has a `start` and `length` on the timeline, and contains several **Notes**.
+- **The time unit is beats**: `1.0` = one quarter note, independent of tempo.
+- A clip's `start` is counted from the **start of the project**; a note's `start` is counted from the **start of its clip**.
 
-## 时间速查（4/4 拍）
+## Time cheat sheet (4/4)
 
-| 音符 | 全音符 | 二分 | 四分 | 八分 | 十六分 | 一小节 |
+| Note | Whole | Half | Quarter | Eighth | Sixteenth | One bar |
 |---|---|---|---|---|---|---|
 | beats | 4.0 | 2.0 | 1.0 | 0.5 | 0.25 | 4.0 |
 
-## 音高速查
+## Pitch cheat sheet
 
-- 旋律乐器用 **MIDI 音高**：`60` = 中央 C (C4)，+12 升八度，+1 升半音。
-  `C4=60 D4=62 E4=64 F4=65 G4=67 A4=69 B4=71 C5=72`；贝斯常用 `C2=36`、`E1=28`。
-- 鼓组（`drums.*`）用 **GM 鼓键**：36=底鼓, 38=军鼓, 39=拍手, 42=闭镲, 46=开镲, 49=吊镲, 51=叮叮镲。
-  完整键位与每套鼓支持的键见 [skills/instruments/drums.md](skills/instruments/drums.md)。
-- `velocity`（力度）0-1，默认 0.8。
-- `accent`（重音）true/false，默认 false。鼓组与 `bass.acid*` 的重音更响更亮（acid 的 303 味道主要靠它）；其它乐器忽略。
-- `bend`（弯音，吉他推弦等）`[[拍, 半音], ...]`，见下文"弯音：bend"。
+- Melodic instruments use **MIDI pitch**: `60` = middle C (C4), +12 is an octave up, +1 is a semitone up.
+  `C4=60 D4=62 E4=64 F4=65 G4=67 A4=69 B4=71 C5=72`; bass commonly uses `C2=36`, `E1=28`.
+- Drum kits (`drums.*`) use **GM drum keys**: 36=kick, 38=snare, 39=clap, 42=closed hat, 46=open hat, 49=crash, 51=ride.
+  For the full key map and the keys each kit supports, see [skills/instruments/drums.md](skills/instruments/drums.md).
+- `velocity` is 0-1, default 0.8.
+- `accent` is true/false, default false. For drum kits and `bass.acid*` an accent is louder and brighter (acid's 303 character mostly comes from it); other instruments ignore it.
+- `bend` (pitch bend, guitar string bends, etc.) is `[[beat, semitones], ...]`; see "Pitch bend: bend" below.
 
-## 乐器索引（共 115 个内置 + SFZ 音色库 + 外置 VSTi）
+## Instrument index (115 built-in + SFZ sound libraries + external VSTi)
 
-| 类别 | 子 skill | 代表 |
+| Family | Sub-skill | Representatives |
 |---|---|---|
-| 鼓组 | [drums.md](skills/instruments/drums.md) | `drums.808` `drums.909` `drums.acoustic` `drums.trap` `drums.lofi` … 10 套 |
-| 合成器预设 | [poly.md](skills/instruments/poly.md) | 68 个：`poly.moog_bass` `poly.trance_supersaw` `poly.warm_analog_pad` `poly.juno_keys` …；完整音色 `patch` 与本机音色库（`muser poly list / show`） |
-| 通用合成器 | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
-| 吉他 | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` |
-| 贝斯 | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
-| 风琴 | [organ.md](skills/instruments/organ.md) | `organ.jazz` `organ.gospel` `organ.full` `organ.ballad` |
-| 打击旋律 | [mallet.md](skills/instruments/mallet.md) | `mallet.marimba` `mallet.vibraphone` `mallet.kalimba` … |
-| 弦乐 | [strings.md](skills/instruments/strings.md) | `strings.violin` `strings.cello` `strings.ensemble` `*_pizz` … |
-| 管乐 | [wind.md](skills/instruments/wind.md) | `wind.flute` `wind.sax` `wind.trumpet` … |
-| 人声 | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
-| 音频文件（录音、采样、loop） | [audio.md](skills/audio.md) | `"instrument": "audio"`，clip 写 `"audio": { "file": "vocal.wav" }` |
-| 帮用户录人声（准备、录、检查节奏、混音、氛围、收尾、交付的方法） | [recording.md](skills/recording.md) | `muser view` 的录人声面板、`muser takes`、工程的 `lyrics` |
-| 现场演奏（开始、一段怎么写、自主演奏的循环、BPM 不变的变速、收尾） | [live.md](skills/live.md) | `muser live`、模板在 `samples/live/` |
-| SFZ 音色库 | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz` 或相对 `MUSER_SFZ_PATH` 的路径（内置采样器，无需插件） |
-| 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
+| Drum kits | [drums.md](skills/instruments/drums.md) | `drums.808` `drums.909` `drums.acoustic` `drums.trap` `drums.lofi` ... 10 kits |
+| Synth presets | [poly.md](skills/instruments/poly.md) | 68: `poly.moog_bass` `poly.trance_supersaw` `poly.warm_analog_pad` `poly.juno_keys` ...; the full sound `patch` and the machine's sound library (`muser poly list / show`) |
+| General synths | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
+| Guitar | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` |
+| Bass | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
+| Organ | [organ.md](skills/instruments/organ.md) | `organ.jazz` `organ.gospel` `organ.full` `organ.ballad` |
+| Mallet percussion | [mallet.md](skills/instruments/mallet.md) | `mallet.marimba` `mallet.vibraphone` `mallet.kalimba` ... |
+| Strings | [strings.md](skills/instruments/strings.md) | `strings.violin` `strings.cello` `strings.ensemble` `*_pizz` ... |
+| Winds | [wind.md](skills/instruments/wind.md) | `wind.flute` `wind.sax` `wind.trumpet` ... |
+| Voice | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
+| Audio files (recordings, samples, loops) | [audio.md](skills/audio.md) | `"instrument": "audio"`, with the clip written as `"audio": { "file": "vocal.wav" }` |
+| Helping the user record vocals (how to prepare, record, check timing, mix, add atmosphere, finish, deliver) | [recording.md](skills/recording.md) | `muser view`'s record-vocals panel, `muser takes`, the project's `lyrics` |
+| Live session (starting, how to write a section, the autoplay loop, tempo changes with unchanged BPM, finishing) | [live.md](skills/live.md) | `muser live`, templates in `samples/live/` |
+| SFZ sound libraries | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz` or a path relative to `MUSER_SFZ_PATH` (built-in sampler, no plugin needed) |
+| External VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 
-所有内置音源都由 manguebyte 实时合成（物理建模、模态合成、FM、减法合成等），不依赖系统 MIDI 音源。
+All built-in sound sources are synthesized in real time by manguebyte (physical modeling, modal synthesis, FM, subtractive synthesis, etc.) and do not depend on the system MIDI synth.
 
-## 选音色：先"听"，再记成用户自己的 skill
+## Choosing sounds: "listen" first, then record it as the user's own skill
 
-你听不到声音，但 muser 可以替你听：`muser sounds describe` 渲染一组探测音（音阶乐器在 C2–C6 各弹一个音、再轻弹一下；
-鼓组敲底鼓、军鼓、镲片），把测量结果写成文字卡片，缓存在用户本机（同一音色、参数与文件不变时直接读缓存，`--refresh` 重听）。
+You cannot hear sound, but muser can listen for you: `muser sounds describe` renders a set of probe notes (pitched instruments play one note each from C2 to C6, then a light tap;
+drum kits hit kick, snare, and cymbals), writes the measurements as a text card, and caches it on the user's machine (when the sound, parameters, and files are unchanged it reads the cache; `--refresh` listens again).
 
 ```bash
-muser sounds list --filter "piano"                 # 候选：内置、$MUSER_SFZ_PATH 里的 SFZ、乐器插件；♪ 是听过的
-muser sounds describe poly.wurly                   # 很暗、起音柔和、慢衰减、松开即停；音域约 C2–C6 + 逐项数据
+muser sounds list --filter "piano"                 # candidates: built-in, SFZ in $MUSER_SFZ_PATH, instrument plugins; ♪ means already listened to
+muser sounds describe poly.wurly                   # very dark, soft attack, slow decay, stops when released; range about C2-C6 + item-by-item data
 muser sounds describe "sfz:Salamander…/Salamander….sfz"
-muser sounds describe "plugin:<路径>#<id>" --params '{"@state": "<状态文件>"}'   # 插件：按这份状态听
+muser sounds describe "plugin:<path>#<id>" --params '{"@state": "<state-file>"}'   # plugin: listen with this state
 ```
 
-1. **按需求列 2–5 个候选**，各听一遍，对照卡片挑：
-   | 想要 | 看卡片里的 |
+1. **List 2-5 candidates per the requirement**, listen to each, and pick by comparing the cards:
+   | Want | Look at on the card |
    |---|---|
-   | 抒情、温暖的和弦 / 铺底 | 亮度"偏暗、温暖"、起音"柔和"或"慢"、延音"持续"或"慢衰减" |
-   | 穿透的主旋律 | 亮度"明亮"、起音"快"、音域覆盖旋律所在的音区 |
-   | 打击感、节奏型伴奏 | 起音"瞬间"、"快衰减" |
-   | 低音线 | 音域里 C2 发声、亮度不太亮 |
-   | 能表现强弱的独奏 | 力度"表现大"、重弹明显更亮 |
-   | 要合成单声道 / 和别的宽声部叠加 | 立体声不要"侧信号比中间还强" |
-   卡片是测量换来的，不是真正的听感：选定后放进曲子里渲染，用 `muser analyze --audio` 看效果，最后请人听一下。
-2. **插件的音色由它的状态决定**，别把插件当成只有一种声音。先看插件自带哪些音色：
+   | Lyrical, warm chords / pads | brightness "dark, warm", attack "soft" or "slow", sustain "sustained" or "slow decay" |
+   | A penetrating lead melody | brightness "bright", attack "fast", range covering the register the melody sits in |
+   | Percussive, rhythmic accompaniment | attack "instant", "fast decay" |
+   | Bass line | sounds at C2 in the range, brightness not too bright |
+   | A solo that conveys dynamics | velocity "highly expressive", harder notes clearly brighter |
+   | To be summed to mono / layered with other wide parts | stereo not "side signal stronger than mid" |
+   The card comes from measurement, not true listening: after choosing, put it in the piece and render, check the result with `muser analyze --audio`, and finally ask a person to listen.
+2. **A plugin's sound is determined by its state**, so do not treat a plugin as having only one sound. First see what sounds the plugin ships with:
    ```bash
-   muser sounds presets "<插件>" --filter "pad evolving"   # 名字、音色库、类别、标签；[自动] [已采集] [需载入]
-   muser sounds state "<插件>" "<音色名>"                    # [自动] / [已采集]：给出 @state 文件和工程里的写法
+   muser sounds presets "<plugin>" --filter "pad evolving"   # name, sound library, category, tags; [auto] [captured] [needs loading]
+   muser sounds state "<plugin>" "<sound-name>"                # [auto] / [captured]: gives the @state file and how to write it in the project
    ```
-   - **[自动]**：VST3 标准预设（`.vstpreset`）、Surge 的 `.fxp` 等能直接换成插件状态，`sounds state` 就能用。
-   - **[需载入]**：Kontakt 的乐器（`.nki`）只能在它自己的界面里载入。载入一次后状态存进用户本机的音色库
-     （`~/.config/muser/sound-library/`），之后变成 [已采集]，和自动的一样直接用。载入方式见下面"用 computer use 载入"；
-     没有 computer use 时请人在 `muser view` 的 🎛 → 插件 → 点这个音色，或 `muser sounds capture` 里载入。
-   - **我的音色**：在 `muser view` 的 🎛 里自己调出来、起了名字的插件音色，完成时会另存一份进音色库，
-     出现在 `sounds presets` 的最前面（类别"我的音色"），换个工程也能直接用。
-   - 拿到一份不知道是什么的状态：`muser sounds identify "<插件>" <状态文件>` 认出里面载入的是哪个音色
-     （比对音色文件的原样字节；能认出音色库与乐器，同一乐器的几个变体之间分不太清）。
-   - 有了状态就能 `muser sounds describe "<插件>" --params '{"@state": "<文件>"}'` 听，再调插件公开的参数
-     （`muser plugin params "<插件>" --params '{"@state": …}'`，如 Kontakt 乐器的旋钮）。
+   - **[auto]**: VST3 standard presets (`.vstpreset`), Surge's `.fxp`, and the like can be converted straight into plugin state, and `sounds state` works on them.
+   - **[needs loading]**: Kontakt instruments (`.nki`) can only be loaded in its own UI. After loading once, the state is stored in the user's machine-local sound library
+     (`~/.config/muser/sound-library/`) and becomes [captured], used directly just like the automatic ones. For how to load, see "Loading with computer use" below;
+     without computer use, ask the person to load it from `muser view`'s 🎛 -> plugin -> click this sound, or in `muser sounds capture`.
+   - **My sounds**: a plugin sound that the user tweaks in `muser view`'s 🎛 and gives a name is also saved to the sound library on completion,
+     appearing at the very top of `sounds presets` (category "My sounds"), and usable directly in another project.
+   - To handle a state of unknown origin: `muser sounds identify "<plugin>" <state-file>` recognizes which sound is loaded in it
+     (it compares the sound file's raw bytes; it can recognize sound libraries and instruments, but cannot easily tell apart several variants of the same instrument).
+   - Once you have a state you can listen with `muser sounds describe "<plugin>" --params '{"@state": "<file>"}'`, then adjust the parameters the plugin exposes
+     (`muser plugin params "<plugin>" --params '{"@state": …}'`, such as a Kontakt instrument's knobs).
 
-   **用 computer use 载入（[需载入] 的音色，macOS）**——只有你有 computer use（能截屏、点鼠标、打字）时才这样做：
-   1. 后台运行 `muser sounds capture "<插件>" "<音色名或文件>"`（会一直等到窗口关闭）。它打开插件窗口，标题是
-      「载入：<音色>（<音色库>）— 载入后关闭窗口 · muser」。
-   2. **每一步都先截屏、看清楚再点**，不要用固定坐标连着操作：插件每次打开的界面布局可能不同（Kontakt 有时是大浏览器，
-      有时是左栏），点偏了会载入列表里别的音色。
-   3. 用插件自己的浏览器载入：Kontakt 点顶部的 Search 框，输入音色名，截屏确认结果里只剩这一个，双击它。
-   4. 等它载入完，**截屏核对机架里显示的乐器名就是要的那个**，再关窗口（左上角红色按钮）。加密音色库（如 Hypha）的状态里
-      认不出载入的是哪个音色，muser 无法替你检查，只有截屏能确认；不加密的（如 Piano Uno）muser 会认出来并纠正名字。
-   5. 命令会先听一遍：有声音才打印"已采集 …"和一句听感；没声音（没载入完就关了）会报错且不记进音色库，重来一次。
-   6. 一次只载入一个。遇到授权、激活、"找不到音色库"、更新提示之类的对话框不要自己点掉——停下来告诉用户。
-      不要改插件的设置、不要删东西。
-   批量采集时逐个做、每个都确认听感不是"没有声音"，做完把采集过的音色和听感记进用户自己的 skill（下一条）。
-   **loop 套件（Kontakt 的 Leap kit 等）：按住一个键就是一段跟着工程速度走的 loop**。音频轨不做时间拉伸，
-   要用别的速度的现成鼓 loop，就用这种套件：插件按工程的 tempo 拉伸，音符按多久就打多久，起点对齐小节就对齐节拍。
-   - 载入：在 Kontakt 的 **Instruments** 里搜套件名（如 "Alter Kit"）双击——整套 loop 分在不同的键上。不要在 Loops 标签里
-     双击单条 loop：那只会得到一条 loop 的 Leap 自定义套件。载入后用 `muser sounds save "<插件>" "<名字>" <状态文件>`
-     存进"我的音色"（`muser plugin edit … -o <文件>` 存下的状态，或 view 里"载入新音色"完成时自动存）。
-   - 摸清键位：`muser sounds describe "<插件>" --params '{"@state": "<文件>"}' --keys --from 57 --to 89 --tempo <工程速度>`
-     每个键按住 4 小节，列出哪些键有声、几小节一圈、每小节起音几次、响度、亮度。例：Acoustic Drums 的 Alter Kit 是
-     C4–D6（Kontakt 标为 C3–D5）的 16 个白键，F4、A4、B4 是 2 小节的 loop，其余 1 小节；越往高音越密越响。
-   - 另一类是**分轨套件**（Lo-Fi Vibes 的 Cozy Kit 等）：一首曲子拆成 16 条分轨，每个白键一条——Cozy Kit 的 C4–G4 是
-     底鼓、军鼓、踩镲、开镲、刷子，A4 起是贝斯、和弦、吉他、键盘、长笛、弦乐、钟琴、萨克斯、人声，D6 是黑胶噪声；
-     同时按住几个键就是几条分轨一起放（分轨是同一首曲子，调和速度对得上），想分开调音量就放到几条用同一状态的音轨上。
-   - 键位卡里的"几小节一圈"是声音重复的周期：有的 loop 后半段和前半段一样，会报得比 loop 文件短（4 小节报成 2），
-     照这个长度写音符节拍仍然对齐。4 小节的乐句要 `--hold 8` 才测得出来。
-   - 写法：一个音符就是一段 loop，`length` 是播放的拍数，最好是 loop 长度的整数倍（1 小节的 loop 写 4、8、16 拍）。
-     换 loop 就换音高：主歌用稀疏的键、副歌用密的，每 4 / 8 小节最后一小节换一个键当过门。
-   - 要叠在别的鼓上时，加 `eq` highpass（几百 Hz）只留镲片和军鼓的空气感，再接到底鼓的侧链上一起"呼吸"。
+   **Loading with computer use ([needs loading] sounds, macOS)** - do this only if you have computer use (can take screenshots, click the mouse, and type):
+   1. Run `muser sounds capture "<plugin>" "<sound-name-or-file>"` in the background (it waits until the window closes). It opens the plugin window, with the title
+      "Load: <sound> (<library>) - close the window after loading · muser".
+   2. **At every step, take a screenshot and look carefully before clicking**; do not chain operations with fixed coordinates: the plugin's layout may differ each time it opens (Kontakt is sometimes a large browser,
+      sometimes a left column), and a misplaced click will load a different sound from the list.
+   3. Load with the plugin's own browser: in Kontakt click the Search box at the top, type the sound name, take a screenshot to confirm only this one remains in the results, and double-click it.
+   4. Wait for it to finish loading, **take a screenshot to verify that the instrument name shown in the rack is the one you want**, then close the window (the red button at the top left). In the state of an encrypted sound library (such as Hypha),
+      muser cannot tell which sound is loaded and cannot check for you; only a screenshot can confirm. For an unencrypted one (such as Piano Uno) muser will recognize it and correct the name.
+   5. The command listens once first: only if there is sound does it print "Captured …" and a line on how it sounds; with no sound (closed before loading finished) it reports an error and does not record it in the sound library, so try again.
+   6. Load only one at a time. For dialogs such as licensing, activation, "sound library not found", or update prompts, do not dismiss them yourself - stop and tell the user.
+      Do not change the plugin's settings and do not delete anything.
+   When capturing in bulk, do them one at a time and confirm each does not sound like "no sound"; when done, record the captured sounds and how they sound in the user's own skill (the next item).
+   **Loop kits (Kontakt's Leap kit and the like): holding one key is one loop that follows the project tempo**. Audio tracks do no time stretching,
+   so to use a ready-made drum loop at a different tempo, use this kind of kit: the plugin stretches to the project's tempo, a note plays for as long as it is held, and a start aligned to the bar line is aligned to the beat.
+   - Loading: in Kontakt's **Instruments**, search for the kit name (such as "Alter Kit") and double-click - the whole set of loops is spread across different keys. Do not
+     double-click a single loop in the Loops tab: that gives only a Leap custom kit of one loop. After loading, use `muser sounds save "<plugin>" "<name>" <state-file>`
+     to store it in "My sounds" (a state saved with `muser plugin edit … -o <file>`, or saved automatically when "load new sound" finishes in view).
+   - Mapping the keys: `muser sounds describe "<plugin>" --params '{"@state": "<file>"}' --keys --from 57 --to 89 --tempo <project-tempo>`
+     holds each key for 4 bars and lists which keys sound, how many bars per cycle, onsets per bar, loudness, and brightness. Example: Acoustic Drums' Alter Kit is
+     16 white keys from C4 to D6 (Kontakt labels them C3-D5), where F4, A4, and B4 are 2-bar loops and the rest are 1 bar; the higher the key, the denser and louder.
+   - Another kind is the **stem kit** (Lo-Fi Vibes' Cozy Kit and the like): one song split into 16 stems, one per white key - in Cozy Kit C4-G4 are
+     kick, snare, hi-hat, open hat, and brushes; from A4 are bass, chords, guitar, keys, flute, strings, glockenspiel, sax, and vocals; D6 is vinyl noise;
+     holding several keys at once plays that many stems together (the stems are the same song, so key and tempo match); to adjust their volumes separately, put them on several tracks that use the same state.
+   - The "bars per cycle" on the key map card is the period at which the sound repeats: in some loops the second half equals the first, so it will report shorter than the loop file (a 4-bar loop reported as 2);
+     notes written to this length still stay aligned to the beat. A 4-bar phrase needs `--hold 8` to be measured.
+   - How to write: one note is one loop, and `length` is the number of beats to play, best as an integer multiple of the loop length (for a 1-bar loop write 4, 8, 16 beats).
+     To change loops, change the pitch: use sparse keys in the verse and dense ones in the chorus, and in the last bar of every 4 / 8 bars switch to another key as a fill.
+   - When layering over other drums, add an `eq` highpass (a few hundred Hz) to keep only the cymbals and the air of the snare, then connect it to the kick's sidechain so they "breathe" together.
 
-3. **听完把结论记成用户自己的 skill**，下次直接用，不用重听。写在你（agent）自己的 skill / 记忆目录里，例如 Claude Code 的
-   `~/.claude/skills/my-sounds/SKILL.md`；**不要**写进 muser 的仓库或工程目录——里面是用户本机的音色库、插件与路径。已有就更新，不要另建一份：
+3. **After listening, record the conclusions as the user's own skill** so next time you can use them directly without listening again. Write it in your own (the agent's) skill / memory directory, for example Claude Code's
+   `~/.claude/skills/my-sounds/SKILL.md`; **do not** write it into the muser repo or the project directory - it holds the user's machine-local sound library, plugins, and paths. If one already exists, update it rather than making another:
 
    ```markdown
    ---
    name: my-sounds
-   description: 这台机器上用 muser 听过的音色（内置、SFZ、插件状态）与适合的用途。选音色前先看这里。
+   description: Sounds listened to with muser on this machine (built-in, SFZ, plugin states) and what they suit. Check here before choosing a sound.
    ---
-   | 音色（instrument） | 参数 / 状态 | 听感（muser sounds describe） | 适合 | 备注 |
+   | Sound (instrument) | Parameters / state | Character (muser sounds describe) | Suits | Notes |
    |---|---|---|---|---|
-   | `sfz:Salamander…/Salamander….sfz` | — | 偏暗、起音快、快衰减、宽立体声；C2–C6 | 古典钢琴、抒情伴奏 | 加载约 10 秒 |
-   | `plugin:…/Kontakt 8.vst3#…` | `@state: ~/…/song.piano.muserstate`（`@label` Piano Uno） | 偏暗、起音瞬间、很宽 | 流行钢琴 | 人在 🎛 里选的 |
+   | `sfz:Salamander…/Salamander….sfz` | - | dark, fast attack, fast decay, wide stereo; C2-C6 | classical piano, lyrical accompaniment | loads in about 10 seconds |
+   | `plugin:…/Kontakt 8.vst3#…` | `@state: ~/…/song.piano.muserstate` (`@label` Piano Uno) | dark, instant attack, very wide | pop piano | chosen by a person in 🎛 |
    ```
-   只记描述与用途，不复制采样或插件状态的内容。描述通用音源（某个免费 SFZ 库、某个插件的出厂预设）的这类 skill，以后可以分享给别人。
+   Record only descriptions and uses; do not copy the contents of samples or plugin states. A skill like this that describes generic sound sources (a free SFZ library, a plugin's factory presets) can be shared with others later.
 
-## 连奏：legato
+## Legato: legato
 
-clip 写 `"legato": true`：每个音自动延长到与下一个**不同音高**的音重叠约 40 毫秒，乐器按连奏演奏——
-SFZ 音色的连奏采样（`trigger=legato`，如 Sonatina 的 `* Legato.sfz`）在前一个音还按着时换用无起音的过渡采样，
-单音合成器（`Polyphony 1` + `Legato On` 的插件、acid 贝斯）会滑过去。
+Write `"legato": true` on a clip: each note is automatically extended to overlap the next note of a **different pitch** by about 40 milliseconds, and the instrument plays legato -
+SFZ sounds' legato samples (`trigger=legato`, such as Sonatina's `* Legato.sfz`) switch to the attackless transition sample while the previous note is still held,
+and monophonic synths (plugins with `Polyphony 1` + `Legato On`, acid bass) glide across.
 
-- 一个乐句一个 clip：乐句内连，句与句之间断开（空隙超过 1/4 拍视为休止，不连；同音重复会重新发音）。
-- 弦乐、木管、铜管唱旋律时用；和弦、伴奏、断奏不用。连奏音色的第一个音起音较慢，乐句开头可以略早一点。
-- 不想全连时，不写 `legato`，而是让想连的两个音手动重叠（前一个音结束晚于后一个音开始）。
-- MCP：`add_clip` 可带 `legato`。
+- One phrase per clip: connected within a phrase, broken between phrases (a gap over 1/4 beat counts as a rest and is not connected; a repeated same pitch is re-articulated).
+- Use it when strings, woodwinds, and brass sing a melody; do not use it for chords, accompaniment, or staccato. The first note of a legato sound has a slower attack, so the start of a phrase can be slightly early.
+- To avoid connecting everything, do not write `legato`; instead overlap the two notes you want connected by hand (the previous note ends later than the next one starts).
+- MCP: `add_clip` can carry `legato`.
 
-## 弯音：bend（吉他推弦、滑进音、尾音下滑）
+## Pitch bend: bend (guitar string bends, slides into notes, falling tails)
 
-音符上的 `bend` 是 `[[拍, 半音], ...]` 折线：拍相对音符起点、递增，半音在 ±2 之内（弯音轮的标准范围）；
-第一个点之前取第一个点的值，点与点之间直线过渡。每个带 `bend` 的音只弯自己，同时响着的其它音不受影响。
+A note's `bend` is a `[[beat, semitones], ...]` polyline: beats are relative to the note start and increasing, semitones within ±2 (the standard pitch wheel range);
+before the first point the first point's value applies, and between points it moves in straight lines. Each note with `bend` bends only itself; other notes sounding at the same time are unaffected.
 
 ```json
 { "pitch": 74, "start": 1, "length": 1.5, "bend": [[0, 0], [0.3, 2]] }
 ```
 
-- 推弦（全音）：`[[0, 0], [0.3, 2]]`；半音推：`[[0, 0], [0.15, 1]]`。推得越快越"抽"，0.2–0.4 拍是常见的手感。
-- 预推再放：`[[0, 2], [0.6, 2], [1.1, 0]]`（先推好再拨，慢慢放回原音）。
-- 推弦揉弦：推到位后在 1.7–2 之间来回，如 `[[0, 0], [0.3, 2], [0.6, 1.7], [0.9, 2], [1.2, 1.7]]`。
-- 滑进音（人声、萨克斯的 scoop）：`[[0, -1], [0.15, 0]]`；尾音下滑（fall）：`[[0, 0], [0.7, 0], [1, -2]]`。
-- 支持：内置乐器（吉他、合成器、管弦等）、SFZ 采样器（按区域的 `bend_up` / `bend_down`，默认 ±2 半音）、插件乐器（发弯音轮，范围由插件决定，多为 ±2）。鼓组忽略。
-- MIDI 导出写成弯音轮事件（一个音轨一个通道，所以导出后会带上同时响着的其它音）。
-- MCP：`add_notes` 的音符可带 `bend`。
+- Full-tone bend: `[[0, 0], [0.3, 2]]`; semitone bend: `[[0, 0], [0.15, 1]]`. The faster the bend, the more it "snaps"; 0.2-0.4 beats is a common feel.
+- Pre-bend and release: `[[0, 2], [0.6, 2], [1.1, 0]]` (bend first, then pluck, slowly releasing back to the original pitch).
+- Bend vibrato: after reaching pitch, oscillate between 1.7 and 2, such as `[[0, 0], [0.3, 2], [0.6, 1.7], [0.9, 2], [1.2, 1.7]]`.
+- Slide into a note (a scoop for voice or sax): `[[0, -1], [0.15, 0]]`; falling tail (fall): `[[0, 0], [0.7, 0], [1, -2]]`.
+- Supported: built-in instruments (guitar, synths, orchestral, etc.), the SFZ sampler (per-region `bend_up` / `bend_down`, default ±2 semitones), and plugin instruments (sends pitch wheel; the range is up to the plugin, mostly ±2). Drum kits ignore it.
+- MIDI export writes pitch wheel events (one channel per track, so the export carries along other notes sounding at the same time).
+- MCP: notes in `add_notes` can carry `bend`.
 
-## 调律：tuning（纯律、历史律制、微分音、Scala）
+## Tuning: tuning (just intonation, historical temperaments, microtones, Scala)
 
-工程上写 `tuning`，有音高的内置乐器与 SFZ 采样器就照它发音；鼓组保持标准音高，插件乐器不受影响（用插件自己的调律设置）。
+Write `tuning` on the project, and pitched built-in instruments and the SFZ sampler sound according to it; drum kits keep standard pitch, and plugin instruments are unaffected (they use the plugin's own tuning settings).
 
 ```json
 "tuning": { "scale": "werckmeister_iii" }
@@ -250,37 +250,37 @@ SFZ 音色的连奏采样（`trigger=legato`，如 Sonatina 的 `* Legato.sfz`�
 "tuning": { "reference_hz": 415 }
 ```
 
-- 十二个音的律制，音符照常写（ABC、`pitch`、和弦都不变），只是每个音高一点低一点：
-  `just`（五度纯律，大三度纯 5/4，`key` 是主音，转调后会走音）、`pythagorean`、`meantone`（四分之一音差中庸全音律，文艺复兴、早期巴洛克）、
-  `werckmeister_iii` / `kirnberger_iii` / `vallotti` / `young`（巴赫时代的好律，所有调都能弹、各调色彩不同）。
-- `custom`：`deviations` 是 12 个数，从 `key` 起每个半音偏多少音分。阿拉伯木卡姆 Rast：E、B 各 -50（四分之三音）；波斯、土耳其音乐同理。
-- `equal` + `divisions`：微分音平均律，**每个 MIDI 键一级**（24 平均律里相邻两个键差四分之一音），所以这时不要用 ABC / 和弦，直接写 `pitch`。
-- `scala`：`.scl` 文件（相对工程文件所在目录），可配 `kbm` 键位映射；没有 `kbm` 时音阶第 0 级在中央 C（60），一个键一级。甘美兰、实验律制的现成文件很多（Scala 档案库）。
-- `reference_hz`（默认 440，巴洛克常用 415）、`reference_key`（默认 69 = A4）、`detune_cents` 整体偏移。
-- MIDI / ABC 导出写的是键，不带调律。
+- Twelve-tone temperaments: notes are written as usual (ABC, `pitch`, and chords are all unchanged), only each pitch is a little lower or higher:
+  `just` (pure fifths, pure 5/4 major third; `key` is the tonic, and it goes out of tune after modulating), `pythagorean`, `meantone` (quarter-comma meantone, Renaissance and early Baroque),
+  `werckmeister_iii` / `kirnberger_iii` / `vallotti` / `young` (Bach-era good temperaments: every key is playable, each key with its own color).
+- `custom`: `deviations` is 12 numbers, the cents of deviation of each semitone starting from `key`. Arabic maqam Rast: E and B each -50 (three-quarter tones); Persian and Turkish music likewise.
+- `equal` + `divisions`: equal temperament with microtones, **one step per MIDI key** (in 24-EDO adjacent keys differ by a quarter tone), so do not use ABC / chords here - write `pitch` directly.
+- `scala`: a `.scl` file (relative to the directory of the project file), optionally with a `kbm` key mapping; without a `kbm`, scale degree 0 is at middle C (60), one step per key. There are plenty of ready-made gamelan and experimental-tuning files (the Scala archive).
+- `reference_hz` (default 440, 415 is common for Baroque), `reference_key` (default 69 = A4), and `detune_cents` shift everything.
+- MIDI / ABC export writes keys, without the tuning.
 
-## 延音踏板：pedal
+## Sustain pedal: pedal
 
-clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`（拍，相对 clip 起点，递增、不重叠）。踩着时松开的键继续发声，
-抬起时一起释音。内置合成器、SFZ 采样器、插件乐器都支持，鼓组忽略。
+A clip's `pedal` is the ranges `[[start, end], ...]` during which the sustain pedal (CC64) is down (in beats, relative to the clip start, increasing, non-overlapping). Keys released while it is down keep sounding,
+and they are released together when it comes up. Built-in synths, the SFZ sampler, and plugin instruments all support it; drum kits ignore it.
 
 ```json
 { "start": 0, "length": 8, "pedal": [[0.1, 4.03], [4.1, 8.0]], "notes": [ ... ] }
 ```
 
-- 钢琴写法：音符按谱上的实际时值写（手指松开），延音交给踏板；不要把每个音拉长来模拟踏板。
-- **每换和弦换一次踏板**，用"切分踏板"：新和弦的第一个音弹下之后（约 0.1 拍）再踩下，前一个区间延续到这一刻稍后抬起，
-  这样新音不会混进旧和弦、也不会断开。不换踏板会把不同和弦糊在一起。
-- MCP：`add_clip` 可带 `pedal`，或用 `set_pedal` 设置。
-- 完整写法、怎么踩与示例：[skills/pedal.md](skills/pedal.md)。
+- Piano writing: write notes at their actual written durations (the fingers release) and leave the sustain to the pedal; do not lengthen every note to imitate the pedal.
+- **Change the pedal on every chord change**, using "syncopated pedaling": press down after the first note of the new chord is played (about 0.1 beat later), and the previous range continues until slightly past that moment before lifting,
+  so the new notes do not blend into the old chord and nothing is cut off. Without changing the pedal, different chords blur together.
+- MCP: `add_clip` can carry `pedal`, or set it with `set_pedal`.
+- Full syntax, how to pedal, and examples: [skills/pedal.md](skills/pedal.md).
 
-### 人性化演奏（humanize）
+### Humanize: humanize
 
-音轨或 clip 上写 `"humanize": { "timing_ms": 6, "drift": 0.6, "velocity": 0.08, "swing": 58 }`，时间、力度、时值像真人一样有偏移，
-再加 swing、整体提前/拖后。同一种子每次渲染一样；换工程 `seed`（或 `muser render --seed N`）就换一遍。
-- 字段、量化含义与各风格的起点：[skills/humanize.md](skills/humanize.md)。
+Write `"humanize": { "timing_ms": 6, "drift": 0.6, "velocity": 0.08, "swing": 58 }` on a track or clip, and timing, velocity, and duration are offset like a real player's,
+with swing and an overall push-ahead / lay-back added. The same seed renders identically every time; change the project `seed` (or `muser render --seed N`) for another take.
+- Fields, what the quantization means, and the starting points for each style: [skills/humanize.md](skills/humanize.md).
 
-## 写整首：段落、曲式、和弦（编曲层）
+## Writing a whole piece: sections, form, chords (the arrangement layer)
 
 ```json
 "sections": { "verse": { "bars": 8, "chords": "Am7 Fmaj7 C G" }, "chorus": { "bars": 8, "chords": "F G | Em Am" } },
@@ -289,29 +289,29 @@ clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`
     "verse": { "chordal": "1 . . 1 . 5 8 .", "octave": 2 }, "chorus": { "chordal": "1 1 5 5 8 8 5 5", "octave": 2 } } }]
 ```
 
-- `sections` 定义段落（小节数、和弦进行），`form` 按名字排顺序（可带 `transpose` / `mute` / `seed`），
-  每条轨的 `parts` 写它在各段落里演奏什么（`"verse#2"` 只第 2 次、`"*"` 其余段落），`end` 替换段落最后几拍（过门）。
-- `chordal` 按当前和弦取音：`1 3 5 7` 和弦音、`8` 八度、`c` 整个和弦（自动转位）、`B` 低音、`.` 休止、`-` 延长。改和弦只改 `chords`。
-- `transform`：`transpose` `octave` `reverse` `invert` `stretch` `shift` `sequence`（模进）`fragment`（裁截）`every`+`then` `vary`（带种子的随机变奏）。
-- 写完 `muser analyze` 看建议。完整写法：[skills/arrange.md](skills/arrange.md)。
+- `sections` defines the sections (bar count, chord progression), and `form` orders them by name (can carry `transpose` / `mute` / `seed`);
+  each track's `parts` writes what it plays in each section (`"verse#2"` only the 2nd time, `"*"` the remaining sections), and `end` replaces the last few beats of a section (a fill).
+- `chordal` picks notes from the current chord: `1 3 5 7` chord tones, `8` octave, `c` the whole chord (auto-inverted), `B` bass, `.` rest, `-` sustain. To change the chords, change only `chords`.
+- `transform`: `transpose` `octave` `reverse` `invert` `stretch` `shift` `sequence` (sequencing) `fragment` (trimming) `every`+`then` `vary` (seeded random variation).
+- When done, check the suggestions with `muser analyze`. Full syntax: [skills/arrange.md](skills/arrange.md).
 
-## 直接放音频：audio 音轨
+## Placing audio directly: audio tracks
 
-人声、录音、现成的 loop、音效直接放在音轨上：音轨写 `"instrument": "audio"`，clip 写 `audio` 而不是音符。
+Vocals, recordings, ready-made loops, and sound effects go straight onto a track: write `"instrument": "audio"` on the track, and write `audio` instead of notes on the clip.
 
 ```json
 { "name": "vocal", "instrument": "audio", "clips": [{ "start": 8, "length": 16, "audio": { "file": "vocal.wav", "offset": 1.5, "fade_out": 0.5 } }] }
 ```
 
-- `file` 相对工程文件所在目录；`offset`、淡入淡出单位是秒；clip 的 `start` / `length` 仍是拍。
-- 按原速播放，不随 tempo 拉伸、不变调。先 `muser audio <文件> --tempo T` 看时长（拍）再写 `length`。
-- 之后效果器、推子、总线、发送、侧链、`mix-report` 照常用。字段与格式：[skills/audio.md](skills/audio.md)。
-- **给录音加音效**（收音机、电话、水下、隧道、远处、扩音器、机器人声…）：audio 轨上串效果器即可，配方见 [skills/audio.md](skills/audio.md)；
-  只给某几句加就把它们放到单独的 audio 轨。装了 Airwindows 插件时还有失真、lo-fi、变调等几百种。
+- `file` is relative to the directory of the project file; `offset` and the fades are in seconds; the clip's `start` / `length` are still beats.
+- It plays at its original speed, with no tempo stretching and no pitch change. First run `muser audio <file> --tempo T` to see the duration (in beats) and then write `length`.
+- After that, effects, faders, buses, sends, sidechain, and `mix-report` work as usual. Fields and formats: [skills/audio.md](skills/audio.md).
+- **Adding effects to a recording** (radio, telephone, underwater, tunnel, distant, loudspeaker, robot voice...): just chain effects on the audio track; recipes are in [skills/audio.md](skills/audio.md);
+  to apply one to only a few lines, put them on a separate audio track. With the Airwindows plugin installed there are also hundreds more, such as distortion, lo-fi, and pitch shifting.
 
-## 调音色：instrument_params
+## Shaping sounds: instrument_params
 
-每个内置乐器都开放一组常用参数，在所选乐器/预设的音色**之上覆盖**，只写想改的项：
+Every built-in instrument exposes a set of common parameters, which **override** the sound of the chosen instrument/preset; write only the items you want to change:
 
 ```json
 { "instrument": "poly.moog_bass", "instrument_params": { "cutoff": 900, "resonance": 0.5, "release": 0.15 } }
@@ -320,34 +320,34 @@ clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`
 { "instrument": "drums.808",      "instrument_params": { "kick": { "tune": -3, "decay": 1.8 }, "snare": { "snap": 0.8 } } }
 ```
 
-- 参数名在各乐器间统一：`attack` / `decay` / `sustain` / `release`（秒）、`tone`（Hz，最终明暗）、
-  `cutoff` / `resonance`（滤波）、`vibrato_rate`（Hz）/ `vibrato_depth`（音分）。用真实单位，不是 0-1。
-- 每个乐器有哪些参数、范围、**该预设当前值**：`muser instruments <名称>`（MCP `describe_instrument`）。
-  先看当前值再改，比凭空写数更稳。
-- 鼓组按鼓件设置，键用 GM 鼓键数字或别名（kick / snare / clap / closed_hat / open_hat / crash / ride …）。
-- 写错参数名、越界、类型不对，`validate` 都会指出，例如
-  `instrument_params 无效: cutoff: 99999 超出范围 [30, 8000] Hz`。
-- 各类参数表与调音示例见对应的乐器子 skill。
-- 外置插件（`plugin:` 乐器、`plugin` 效果器）同样用 `instrument_params` / `params`，键是插件参数名，
-  值写插件显示的文字（如 `"2000 Hz"`、`"LP 24 dB"`）。遇到陌生插件按 [skills/plugins.md](skills/plugins.md) 的流程：
-  scan → info → 搜参数 → 看选项 → 试听 → 写进工程 → 存成画像。
-- 有画像的插件（`muser plugin profile list`）可以用短别名（`"cutoff"`）和预设（`"@preset": "pad"`），
-  画像的 `setup` 会自动应用（`"@setup": false` 关闭）。完整音色可以存成状态文件，用 `"@state": "<文件>"` 加载。
-- muser 内置这些开源插件的画像（装了就能直接用，英文 skill）：
+- Parameter names are uniform across instruments: `attack` / `decay` / `sustain` / `release` (seconds), `tone` (Hz, the final brightness),
+  `cutoff` / `resonance` (filter), `vibrato_rate` (Hz) / `vibrato_depth` (cents). Real units are used, not 0-1.
+- Which parameters each instrument has, their ranges, and the **preset's current values**: `muser instruments <name>` (MCP `describe_instrument`).
+  Looking at the current values before changing them is steadier than writing numbers from thin air.
+- Drum kits are set per drum piece, with keys as GM drum key numbers or aliases (kick / snare / clap / closed_hat / open_hat / crash / ride ...).
+- Misspelled parameter names, out-of-range values, and wrong types are all pointed out by `validate`, for example
+  `instrument_params invalid: cutoff: 99999 out of range [30, 8000] Hz`.
+- Parameter tables and tuning examples for each family are in the matching instrument sub-skill.
+- External plugins (`plugin:` instruments, `plugin` effects) likewise use `instrument_params` / `params`, with the keys being the plugin's parameter names
+  and the values being the text the plugin displays (such as `"2000 Hz"`, `"LP 24 dB"`). For an unfamiliar plugin, follow the flow in [skills/plugins.md](skills/plugins.md):
+  scan -> info -> search parameters -> view options -> audition -> write into the project -> save as a profile.
+- A plugin with a profile (`muser plugin profile list`) can use short aliases (`"cutoff"`) and presets (`"@preset": "pad"`),
+  and the profile's `setup` is applied automatically (`"@setup": false` turns it off). A full sound can be saved as a state file and loaded with `"@state": "<file>"`.
+- muser ships profiles for these open-source plugins (usable directly once installed; English skills):
 
-  | 插件 | 用途 | 要点 |
+  | Plugin | Use | Highlights |
   |---|---|---|
-  | [Surge XT](skills/plugins/surge-xt.md) | 音源 | 混合合成器，bass / pad / pluck / lead 预设 |
-  | [Surge XT Effects](skills/plugins/surge-xt-effects.md) | 效果器 | `type` 选 28 种效果 |
-  | [Vital](skills/plugins/vital.md) | 音源 | 波表合成器：`@wavetable` 选波表、`@modulations` 接调制；bass / sub / reese / supersaw / pad / pluck / wobble / pwm_lead / keys 预设 |
-  | [Airwindows Consolidated](skills/plugins/airwindows-consolidated.md) | 效果器 | 约 470 个效果，`"effect": "<名称>"` 选择（混响、磁带、饱和、调音台、lo-fi…），参数随效果变化 |
-  | [Plasma](skills/plugins/plasma.md) | 效果器 | 双级失真：warm / bass_grit / drum_crush / lofi / scream 预设 |
+  | [Surge XT](skills/plugins/surge-xt.md) | Instrument | Hybrid synth, with bass / pad / pluck / lead presets |
+  | [Surge XT Effects](skills/plugins/surge-xt-effects.md) | Effect | `type` selects among 28 effects |
+  | [Vital](skills/plugins/vital.md) | Instrument | Wavetable synth: `@wavetable` picks the wavetable, `@modulations` connects modulation; bass / sub / reese / supersaw / pad / pluck / wobble / pwm_lead / keys presets |
+  | [Airwindows Consolidated](skills/plugins/airwindows-consolidated.md) | Effect | About 470 effects, chosen with `"effect": "<name>"` (reverb, tape, saturation, console, lo-fi...), with parameters varying by effect |
+  | [Plasma](skills/plugins/plasma.md) | Effect | Two-stage distortion: warm / bass_grit / drum_crush / lofi / scream presets |
 
-  插件路径可写 `~/`（如 `~/.clap/Airwindows Consolidated.clap`）。
+  Plugin paths may be written with `~/` (such as `~/.clap/Airwindows Consolidated.clap`).
 
-## 让声音动起来：automation
+## Making sound move: automation
 
-参数可以随时间变化：滤波扫频、淡入淡出、声像摆动、带种子的随机游走。写在音轨或工程的 `automation` 里：
+Parameters can change over time: filter sweeps, fade in / out, pan swings, seeded random walks. Write them in a track's or the project's `automation`:
 
 ```json
 "automation": [
@@ -357,36 +357,36 @@ clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`
 ]
 ```
 
-- `target`：音轨上 `instrument` / `effects[i]` / `gain_db` / `pan` / `sends.<总线>`；总线上 `effects[i]` / `gain_db` / `pan` / `sends.<总线>`；
-  工程上 `master_gain_db` / `master_effects[i]`。
-- `shape`：`points`（时间点曲线）、`lfo`（周期摆动）、`random`（随机）。时间单位都是拍。
-- `random` 由工程 `seed` 决定：同一 seed 每次渲染一样，换 seed 换一种变化——可以多渲染几版挑一个。
-- 哪些参数能自动化：`muser instruments <名称>` 里标了 `[可自动化]` / `[可自动化·下个音生效]`；插件参数用插件参数名，取值可写文字。
-- 完整说明与示例：[skills/automation.md](skills/automation.md)。
+- `target`: on a track `instrument` / `effects[i]` / `gain_db` / `pan` / `sends.<bus>`; on a bus `effects[i]` / `gain_db` / `pan` / `sends.<bus>`;
+  on the project `master_gain_db` / `master_effects[i]`.
+- `shape`: `points` (a curve through time points), `lfo` (periodic swing), `random`. The time unit is always beats.
+- `random` is determined by the project `seed`: the same seed renders identically every time, and changing the seed gives a different variation - you can render several versions and pick one.
+- Which parameters can be automated: `muser instruments <name>` marks `[automatable]` / `[automatable - takes effect on the next note]`; for plugin parameters use the plugin's parameter names, and values can be written as text.
+- Full description and examples: [skills/automation.md](skills/automation.md).
 
-## 给人听：muser view
+## Let a person listen: muser view
 
-`muser view` 起本地服务、打开播放页（时间线、播放、每条音轨与总线的推子 / 静音 / 独奏，改动由引擎重新渲染）。
-由你判断何时给人听：
+`muser view` starts a local server and opens the playback page (timeline, playback, and a fader / mute / solo for every track and bus; changes are re-rendered by the engine).
+You decide when to let a person listen:
 
-- **该给人听**：一首曲子完成一版（结构、配器、混音都有了）；混音或编曲有大改动；用户说"让我听听"；
-  需要人来判断音量平衡、选 A/B 版本时。
-- **不必**：每次小改参数、自己用 `muser audition` / `muser render` 自检时——先确认能渲染、没有明显问题再给人。
+- **Let them listen**: when a piece reaches a finished version (structure, instrumentation, and mix are all there); when the mix or arrangement changes a lot; when the user says "let me hear";
+  when a person is needed to judge volume balance or choose between A/B versions.
+- **No need**: for every small parameter tweak, or when you are self-checking with `muser audition` / `muser render` - first confirm it renders and has no obvious problems before giving it to a person.
 
 ```bash
-muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:8737/
+muser view song.muser.json --open      # runs in the background; page at http://127.0.0.1:8737/
 ```
 
-- 服务保持运行时，你改工程文件，页面会自动重新渲染刷新。用户在页面点「保存」会直接改工程的 `gain_db` / `muted`——
-  **改工程前先重新读文件**，别覆盖用户刚保存的改动。用完结束该进程。
-- 打开后告诉用户听什么（如"对比 Drop 1 与 Drop 2 的贝斯"），以及推子改动要点「保存」才写回工程。
-- 用户复制给你的改动 JSON 形如 `{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`：
-  按 `node` 把对应音轨/总线的字段改成给出的值（MCP：`update_track` / `set_bus`）。
-- 没有图形界面的环境（远程/容器）：照常启动，让用户用 SSH 端口转发（`ssh -L 8737:127.0.0.1:8737 …`）在本机浏览器打开。
+- While the server keeps running, when you change the project file the page re-renders and refreshes automatically. When the user clicks "Save" on the page, it directly changes the project's `gain_db` / `muted` -
+  **re-read the file before changing the project** so you do not overwrite what the user just saved. End the process when done.
+- After opening, tell the user what to listen for (such as "compare the bass in Drop 1 and Drop 2"), and that fader changes must be saved with "Save" to be written back to the project.
+- A changes JSON the user copies to you looks like `{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`:
+  change the matching track / bus fields to the given values by `node` (MCP: `update_track` / `set_bus`).
+- In an environment with no GUI (remote / container): start it as usual and have the user open it in a local browser through SSH port forwarding (`ssh -L 8737:127.0.0.1:8737 …`).
 
-## 混音路由：总线、发送、侧链
+## Mix routing: buses, sends, sidechain
 
-默认每条轨直接进主总线。要让几条轨"一起处理"或"共用一个效果"，用工程的 `buses`（多输出插件——Kontakt 鼓组、多麦克风鼓——还能把每一路直接送进各自的总线：`@outputs` 的 `bus`，见 [plugins.md](skills/plugins.md) 第 9 节）：
+By default every track goes straight to the master. To have several tracks "processed together" or "share one effect", use the project's `buses` (multi-output plugins - Kontakt drum kits, multi-mic drums - can also send each output directly to its own bus: `@outputs`' `bus`, see section 9 of [plugins.md](skills/plugins.md)):
 
 ```json
 "buses": [
@@ -400,57 +400,57 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 ]
 ```
 
-- `output`：整份信号去哪（`"master"` 默认，或总线名）。鼓组编组、分组处理用它。
-- `sends`：额外送一份到效果总线，`{总线: dB}`，推子后发送。共用混响/延迟用它，总线里效果器 `mix: 1`。
-- `sidechain`：compressor 由另一条轨/总线的信号触发——底鼓压 pad/贝斯的泵感。触发轨 muted 也照样触发。
-- 总线可以有自己的 `effects` / `gain_db` / `pan` / `output` / `sends` / `automation`，总线可以送进总线，不能成环。
-- `muser routing <工程>` 打印信号流，改完先看一眼。完整说明与混音经验：[skills/routing.md](skills/routing.md)。
-- 平衡各轨音量：`muser mix-report <工程>` 给出每条轨的干声与推子后响度、相对最响轨的差，见 [skills/mixing.md](skills/mixing.md)。
+- `output`: where the whole signal goes (`"master"` by default, or a bus name). Use it for drum grouping and group processing.
+- `sends`: send an extra copy to an effect bus, `{bus: dB}`, post-fader. Use it for a shared reverb/delay, with the effect in the bus at `mix: 1`.
+- `sidechain`: the compressor is triggered by another track's/bus's signal - the kick ducking the pad/bass for a pumping feel. A muted trigger track still triggers.
+- A bus can have its own `effects` / `gain_db` / `pan` / `output` / `sends` / `automation`; a bus can send into a bus, but cycles are not allowed.
+- `muser routing <project>` prints the signal flow; take a look after changes. Full description and mixing experience: [skills/routing.md](skills/routing.md).
+- To balance track volumes: `muser mix-report <project>` gives each track's dry and post-fader loudness and its difference from the loudest track; see [skills/mixing.md](skills/mixing.md).
 
-## 效果器索引
+## Effect index
 
-效果器写在 `track.effects`（轨级，在该轨增益/声像之前）、总线的 `effects` 或 `master_effects`（主总线，在主增益之前），
-按数组顺序串联。每个参数都可省略，`{ "type": "reverb" }` 就是一个可用的混响。
-任何效果器都可加 `"bypass": true` 临时关掉（旁通：声音原样通过，参数与位置保留，自动化的 `effects[i]` 不变）；`muser view` 上点效果器标签切换。
+Effects go in `track.effects` (track level, before that track's gain/pan), a bus's `effects`, or `master_effects` (the master, before the master gain),
+chained in array order. Every parameter can be omitted; `{ "type": "reverb" }` is a usable reverb.
+Any effect can take `"bypass": true` to be turned off temporarily (bypass: the sound passes through unchanged, parameters and position are kept, and the automation's `effects[i]` stays the same); click the effect's tag in `muser view` to toggle.
 
-| type | 作用 | 子 skill |
+| type | Purpose | Sub-skill |
 |---|---|---|
-| `eq` | 均衡/滤波一个频段 | [eq.md](skills/effects/eq.md) |
-| `compressor` | 压缩动态 | [compressor.md](skills/effects/compressor.md) |
-| `chorus` | 加厚、加宽 | [chorus.md](skills/effects/chorus.md) |
-| `phaser` | 扫频流动感 | [phaser.md](skills/effects/phaser.md) |
-| `flanger` | 金属感扫动 | [flanger.md](skills/effects/flanger.md) |
-| `delay` | 回声 | [delay.md](skills/effects/delay.md) |
-| `reverb` | 空间感 | [reverb.md](skills/effects/reverb.md) |
-| `limiter` | 限峰防爆（主总线最后） | [limiter.md](skills/effects/limiter.md) |
-| `multiband_compressor` | 三段压缩（母带、鼓总线） | [multiband_compressor.md](skills/effects/multiband_compressor.md) |
-| `transient_shaper` | 起音 / 延音塑形（鼓） | [transient_shaper.md](skills/effects/transient_shaper.md) |
-| `tape` | 磁带饱和与跑调感（温暖、lo-fi） | [tape.md](skills/effects/tape.md) |
-| `bitcrusher` | 降位降采样（8-bit、老采样器） | [bitcrusher.md](skills/effects/bitcrusher.md) |
-| `tremolo` | 音量颤动、斩波 | [tremolo.md](skills/effects/tremolo.md) |
-| `auto_pan` | 左右自动摆动 | [auto_pan.md](skills/effects/auto_pan.md) |
-| `widener` | 立体声加宽（低频保持单声道） | [widener.md](skills/effects/widener.md) |
-| `ring_mod` | 金属、钟、机器人 | [ring_mod.md](skills/effects/ring_mod.md) |
-| `frequency_shifter` | 移频、无尽螺旋 | [frequency_shifter.md](skills/effects/frequency_shifter.md) |
-| `formant_filter` | 元音滤波，让合成器"说话" | [formant_filter.md](skills/effects/formant_filter.md) |
-| `granular_delay` | 颗粒延迟、shimmer 氛围 | [granular_delay.md](skills/effects/granular_delay.md) |
-| `vocoder` | 声码器（`sidechain` 写人声那条轨） | [vocoder.md](skills/effects/vocoder.md) |
-| `plugin` | 第三方 VST3/CLAP/LV2 | [plugin.md](skills/effects/plugin.md) |
+| `eq` | Equalize / filter a frequency band | [eq.md](skills/effects/eq.md) |
+| `compressor` | Compress dynamics | [compressor.md](skills/effects/compressor.md) |
+| `chorus` | Thicken, widen | [chorus.md](skills/effects/chorus.md) |
+| `phaser` | Sweeping, flowing feel | [phaser.md](skills/effects/phaser.md) |
+| `flanger` | Metallic sweep | [flanger.md](skills/effects/flanger.md) |
+| `delay` | Echo | [delay.md](skills/effects/delay.md) |
+| `reverb` | Sense of space | [reverb.md](skills/effects/reverb.md) |
+| `limiter` | Peak limiting against overs (last on the master) | [limiter.md](skills/effects/limiter.md) |
+| `multiband_compressor` | Three-band compression (mastering, drum bus) | [multiband_compressor.md](skills/effects/multiband_compressor.md) |
+| `transient_shaper` | Shape attack / sustain (drums) | [transient_shaper.md](skills/effects/transient_shaper.md) |
+| `tape` | Tape saturation and wobble (warm, lo-fi) | [tape.md](skills/effects/tape.md) |
+| `bitcrusher` | Bit and sample-rate reduction (8-bit, old samplers) | [bitcrusher.md](skills/effects/bitcrusher.md) |
+| `tremolo` | Volume wobble, chopping | [tremolo.md](skills/effects/tremolo.md) |
+| `auto_pan` | Automatic left-right swing | [auto_pan.md](skills/effects/auto_pan.md) |
+| `widener` | Stereo widening (lows stay mono) | [widener.md](skills/effects/widener.md) |
+| `ring_mod` | Metallic, bell, robot | [ring_mod.md](skills/effects/ring_mod.md) |
+| `frequency_shifter` | Frequency shifting, endless spiral | [frequency_shifter.md](skills/effects/frequency_shifter.md) |
+| `formant_filter` | Vowel filter, making a synth "talk" | [formant_filter.md](skills/effects/formant_filter.md) |
+| `granular_delay` | Granular delay, shimmer atmosphere | [granular_delay.md](skills/effects/granular_delay.md) |
+| `vocoder` | Vocoder (`sidechain` names the vocal track) | [vocoder.md](skills/effects/vocoder.md) |
+| `plugin` | Third-party VST3/CLAP/LV2 | [plugin.md](skills/effects/plugin.md) |
 
-### 推荐串联顺序
+### Recommended chain order
 
-- 单条轨：`eq → transient_shaper → compressor → tape/bitcrusher → chorus/phaser/flanger/tremolo → delay → reverb`（用不到的跳过）。
-- 主总线：`eq → compressor 或 multiband_compressor → limiter`，limiter 永远在最后。
-- 贝斯、底鼓一般不加 reverb / chorus；其它轨用 `eq` highpass 150Hz 左右给它们让出低频。
+- Single track: `eq → transient_shaper → compressor → tape/bitcrusher → chorus/phaser/flanger/tremolo → delay → reverb` (skip what you do not need).
+- Master: `eq → compressor or multiband_compressor → limiter`, with the limiter always last.
+- Bass and kick generally get no reverb / chorus; for other tracks use an `eq` highpass around 150Hz to leave the low end to them.
 
-## 工作流示例
+## Workflow example
 
-**用户**："做一个 90bpm 的 lo-fi 节拍，4 拍循环，鼓 + 贝斯 + 电钢和弦。"
+**User**: "Make a 90bpm lo-fi beat, a 4-beat loop, drums + bass + electric piano chords."
 
-1. 查乐器：`muser instruments --family drums`、`muser instruments --family poly`，
-   选 `drums.lofi`、`bass.finger`、`poly.wurly`。
-2. 查效果器：`muser effects reverb`，给电钢加一点混响。
-3. 写工程：
+1. Look up instruments: `muser instruments --family drums`, `muser instruments --family poly`,
+   and pick `drums.lofi`, `bass.finger`, `poly.wurly`.
+2. Look up effects: `muser effects reverb`, and add a little reverb to the electric piano.
+3. Write the project:
 
 ```json
 {
@@ -508,25 +508,25 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 }
 ```
 
-4. `muser validate beat.muser.json` → `muser render beat.muser.json -o beat.wav`。
-5. 把 wav 路径、时长、峰值告诉用户，按反馈增量修改。
+4. `muser validate beat.muser.json` → `muser render beat.muser.json -o beat.wav`.
+5. Tell the user the wav path, duration, and peak, and modify incrementally per their feedback.
 
-## 编曲常见套路
+## Common arrangement patterns
 
-- **重复多小节**：复制 clip 并把 `start` 后移 4 拍（第 2 小节 `start: 4.0`），或在一个长 clip 里铺满。
-- **和弦**：多个音符 `start` 相同、`pitch` 不同。C 大三 = 60/64/67，A 小三 = 57/60/64。
-- **层次**：不同角色放不同 track（鼓 / 贝斯 / 和弦 / 旋律），用 `gain_db` 平衡，用 `pan`（-1 左 ~ 1 右）分开。
-  内置乐器已按音量校准：`gain_db` 为 0 时各乐器大致一样响，所以 `gain_db` 直接表示"比别的轻/响多少"（伴奏常在 -4 到 -10）。
-  SFZ 与插件不校准：`muser sounds describe` 的"音量"一行给出它比内置乐器响/轻多少、`gain_db` 从哪起调；最后用 `muser mix-report` 核对。
-- **音量**：乐器本体音量差别很大，`gain_db` 不要凭感觉定。写完一版跑 `muser mix-report`，按角色把各轨调到目标相对响度，
-  主总线最后放 `limiter`。流程与各角色目标见 [skills/mixing.md](skills/mixing.md)。
+- **Repeat several bars**: copy the clip and move `start` back by 4 beats (bar 2 is `start: 4.0`), or fill one long clip.
+- **Chords**: several notes with the same `start` and different `pitch`. C major triad = 60/64/67, A minor triad = 57/60/64.
+- **Layers**: put different roles on different tracks (drums / bass / chords / melody), balance with `gain_db`, and separate with `pan` (-1 left to 1 right).
+  Built-in instruments are volume-calibrated: at `gain_db` 0 the instruments are roughly equally loud, so `gain_db` directly expresses "how much quieter/louder than the others" (accompaniment is often -4 to -10).
+  SFZ and plugins are not calibrated: the "volume" line of `muser sounds describe` says how much louder/quieter it is than the built-in instruments and where to start `gain_db`; finally verify with `muser mix-report`.
+- **Volume**: the instruments' own volumes differ a lot, so do not set `gain_db` by feel. After writing a version, run `muser mix-report` and tune each track to the target relative loudness for its role,
+  with a `limiter` last on the master. For the workflow and the targets for each role, see [skills/mixing.md](skills/mixing.md).
 
-## 排错
+## Troubleshooting
 
-- 渲染前**务必** `validate`；它会给出出错的具体字段与可选值。
-- 鼓组没声音或声音不对 → 用了音阶音高，或用了该套鼓不支持的键（见 drums.md）。
-- 音色不对 → 先 `muser instruments <名称>` 看预设当前值，再用 `instrument_params` 小步调整。
-- 渲染报"输出数值发散" → 某个乐器参数取了极端值（如很短的 release），往常规范围调。
-- 拉奏弦乐/管乐短音听起来很弱 → 音符太短，弦乐短音改用 `*_pizz`。
-- 混响尾音被截断 → 渲染时加大 `--tail`（默认 2 秒）。
-- 整体发闷/发浑 → 非贝斯轨加 `eq` highpass，减少多条轨上的 reverb。
+- **Always** `validate` before rendering; it gives the exact field that is wrong and the allowed values.
+- A drum kit with no sound or wrong sound -> pitched notes were used, or a key the kit does not support (see drums.md).
+- Wrong sound -> first look at the preset's current values with `muser instruments <name>`, then adjust in small steps with `instrument_params`.
+- Render reports "output values diverged" -> some instrument parameter took an extreme value (such as a very short release); move it back to a normal range.
+- Short bowed string / wind notes sound weak -> the notes are too short; for short string notes use `*_pizz` instead.
+- Reverb tail is cut off -> increase `--tail` when rendering (default 2 seconds).
+- Overall muddy / murky -> add an `eq` highpass on non-bass tracks and reduce the reverb on many tracks.

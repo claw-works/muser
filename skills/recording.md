@@ -1,67 +1,67 @@
-# 帮用户录人声
+# Helping the user record vocals
 
-用户想自己唱、让 agent 帮忙录、剪、混时的做法。这里是**方法和起点**：具体数值都只是第一版的起点，
-音乐是品味，最后以用户的意图和耳朵为准——先给一版，说清楚做了什么，再按反馈改。
+How to work when the user wants to sing themselves and have the agent help record, edit and mix. This is the **method and a starting point**: all specific numbers are only a first-version starting point,
+music is taste, and in the end the user's intent and ears decide -- give a version first, say clearly what you did, then change it according to feedback.
 
-## 准备
+## Preparation
 
-- **在用户的工程目录里录**：录音写进工程文件旁边的 `recordings/`。示例曲、模板先复制到用户的工作目录再录，
-  别往 muser 自带的 `samples/` 里写东西。
-- **歌词**：工程的 `lyrics` 写歌词原文（`[A]` 这类段落标记会被忽略），`muser view` 底部按卡拉 OK 显示。
-- **引导旋律**：有一条音符带 `lyric`（ABC 的 `w:` 行）的轨时，卡拉 OK 才知道每个字什么时候唱，
-  事后检查节奏也拿它对照。可以用 `choir.solo` 写，用户录好以后静音它（别删）。
-  汉字一字对一个音节：`lyrics` 里要唱的字数和音节数一致（标题、注释性的文字不要混进去），否则只能按音节显示。
+- **Record in the user's project directory**: recordings are written to `recordings/` beside the project file. Copy example songs and templates into the user's working directory first and then record,
+  and do not write anything into muser's own `samples/`.
+- **Lyrics**: write the original lyrics in the project's `lyrics` (section markers like `[A]` are ignored); `muser view` shows them at the bottom as karaoke.
+- **Guide melody**: only when there is a track whose notes carry `lyric` (the `w:` line in ABC) does karaoke know when each word is sung,
+  and the later timing check also compares against it. You can write it with `choir.solo`, and after the user has recorded, mute it (do not delete it).
+  One Chinese character per syllable: the number of characters to sing in `lyrics` must equal the number of syllables (do not mix in titles or annotation text), otherwise it can only show by syllable.
 
-## 录
+## Recording
 
-`muser view <工程> --open`（浏览器播放、浏览器录）或加 `--device`（伴奏从本机声卡出、muser 直接从默认麦克风录，
-声卡驱动报告的延迟会自动补上，用外置声卡时更准）。muser 跑在远程机器上时不要加 `--device`。告诉用户：
+`muser view <project> --open` (play in the browser, record in the browser) or add `--device` (the backing track goes out of this machine's sound card, and muser records directly from the default microphone,
+with the latency reported by the sound card driver compensated automatically; more accurate with an external sound card). Do not add `--device` when muser runs on a remote machine. Tell the user:
 
-- 戴耳机，伴奏才不会漏进麦克风。
-- 在时间尺上右键拖出要录的那一段，点「● 录循环区间」（有预备拍）；不框区间就从播放头录到停。
-- 同一段可以录很多遍：新的一遍替换同一位置的片段，旧的留在列表里，可以「用这一遍」或「删除」。
-- 剪刀（✂ / C）在换气处剪开，拖动挪位置，选中后 ← → 微调。
-- 满意了再点「保存」，之前工程文件不变。
+- Wear headphones, so the backing track does not leak into the microphone.
+- Right-drag on the time ruler to mark the section to record, and click "● Record the loop range" (with a count-in); if no region is marked, it records from the playhead until stop.
+- The same section can be recorded many times: a new take replaces the clip at the same position, and old ones stay in the list, where you can "Use" or "Delete" it.
+- Scissors (✂ / C) cut at breath points, drag to move position, and use the left/right arrows to nudge once selected.
+- Click "Save" when satisfied; until then the project file is unchanged.
 
-把歌的段落、小节号、对应的歌词列成表给用户，分段录比一口气录完容易得多。
+Give the user a table of the song's sections, bar numbers and the corresponding lyrics; recording section by section is much easier than recording in one go.
 
-**调不合适**（换了人唱、女声 / 男声、唱不上去）：先用 view 播放条上的「变调 − / +」试，整首升降几个半音，音符不改；
-合适了点「保存」（工程的 `"transpose": N`）再录。已经录好的人声不会跟着变调，换调后要重录。
+**Key does not fit** (a different person singing, female / male voice, cannot reach the notes): first try "Transpose - / +" on the view playback bar, shifting the whole song by some semitones without changing the notes;
+when it fits, click "Save" (the project's `"transpose": N`) and then record. Vocals already recorded do not transpose with it, so re-record after changing the key.
 
-## 检查与对齐
+## Checking and alignment
 
-- `muser takes <工程>` 看每一遍：起点、长度、电平、实际唱的部分、工程用了没有。
-- **节奏**：`muser takes <工程> --timing` 逐句给出比引导旋律早 / 晚多少毫秒（它把录音的音高曲线和引导旋律比对，比相对音高，八度不同也行）；
-  吻合度差（平均误差超过一两个半音）时结论不可信，换一种看法或直接问用户。
-  - 每一遍、每一句都偏同一方向、差不多同样多 → 多半是录音链路的延迟，让用户在「延迟微调」里补上再录。
-    最直接的是录音面板的「测延迟」（摘下耳机、音量开大，自动测出并填好）；也可以让用户跟着拍子拍手录一段，拍手比唱准。
-  - 个别句子偏 → 是演唱。人耳对人声和拍子差几十毫秒就能察觉，但也不是越齐越好：轻微的前后是人味。
-    用户说哪里慢了，就量那里；没说的不主动"修正"。
-  - 挪的方法：在那句前面的换气处剪开（`muser clip split <工程> --track vocal --at <拍>`），挪后半段（`muser clip move … --clip N --by-ms -60`）；
-    两段之间不要重叠（重叠会听到同一句两遍），接缝各加几十毫秒的 `fade_in` / `fade_out`。挪完再量一次，告诉用户改了哪里、多少毫秒。
-- **选遍**：用户说了用哪一遍就用哪一遍；没说时可以按"唱的部分完整、电平正常、节奏偏差小"挑，并说明理由。
+- `muser takes <project>` shows each take: start, length, level, the part actually sung, and whether the project uses it.
+- **Timing**: `muser takes <project> --timing` gives, for each phrase, how many milliseconds early / late it is relative to the guide melody (it compares the recording's pitch contour with the guide melody by relative pitch, so a different octave is fine);
+  when the match is poor (average error over a semitone or two) the conclusion is not trustworthy, so look at it a different way or ask the user directly.
+  - Every take and every phrase off in the same direction by about the same amount -> most likely latency in the recording chain; have the user compensate in "latency fine-tune" and record again.
+    The most direct is "Measure latency" in the recording panel (take off the headphones, turn the volume up, and it measures and fills in automatically); you can also have the user clap along to the beat for a recording, since clapping is more accurate than singing.
+  - Individual phrases off -> it is the singing. The human ear notices a vocal and the beat differing by a few tens of milliseconds, but tighter is not always better: slight ahead/behind is the human feel.
+    Where the user says something is slow, measure there; do not "correct" what they did not mention on your own initiative.
+  - Method of moving: cut at the breath before that phrase (`muser clip split <project> --track vocal --at <beat>`), and move the latter half (`muser clip move ... --clip N --by-ms -60`);
+    do not let the two pieces overlap (the overlap would play the same phrase twice), and add a `fade_in` / `fade_out` of a few tens of milliseconds at the seam. Measure again after moving, and tell the user what was changed and by how many milliseconds.
+- **Choosing a take**: if the user said which take to use, use that one; if not, you can choose by "the sung part is complete, level is normal, timing deviation is small" and give your reasons.
 
-## 混音
+## Mixing
 
-- 家用麦克风录的人声往往偏小、偏干，常见的起点：
-  - 效果链：高通（切掉喷麦和低频嗡声）→ 适当削一点 200–400 Hz（去闷）→ 压缩（让轻声的字也听得清）→
-    视需要提一点 2–5 kHz（吐字）和高频（空气感）。
-  - 空间：一条人声专用的混响总线（混响里切掉低频和最高频，免得发浑、刺耳），再加一点跟着拍子的回声；
-    也往伴奏用的混响里送一点，人声和乐器才像在同一个空间。
-  - 音量：主唱一般在混音的最前面，用 `mix-report` 对着最响的乐器调。
-- **湿度、音量、明暗都是品味**：抒情歌、流行、说唱、实验音乐要的完全不同。先给一个中庸的版本，说清楚混响大概比干声低多少，
-  让用户说"太湿 / 太干 / 再大一点"，按反馈调。
+- Vocals recorded with a home microphone are often quiet and dry; common starting points:
+  - Effect chain: highpass (cut plosives and low rumble) -> cut a little at 200-400 Hz (remove muddiness) -> compression (so soft words are also clear) ->
+    boost a little at 2-5 kHz (diction) and the high frequencies (air) as needed.
+  - Space: a dedicated reverb bus for the vocal (cut the lows and the highest frequencies in the reverb so it does not get muddy or harsh), plus a little echo that follows the beat;
+    also send a little to the reverb used by the backing, so the vocal and instruments feel like they are in the same space.
+  - Volume: the lead vocal is generally at the front of the mix; use `mix-report` and set it against the loudest instrument.
+- **Wetness, volume, and brightness are all taste**: ballads, pop, rap and experimental music want completely different things. Give a middle-of-the-road version first, say roughly how many dB the reverb is below the dry signal,
+  let the user say "too wet / too dry / a bit louder", and adjust to the feedback.
 
-## 氛围声与收尾
+## Ambience and endings
 
-- 加氛围声（风、雨、人群、环境）前先弄清它的角色：
-  - **背景**：只是营造感觉，通常比主唱低很多（几十 LU），切掉和人声、主乐器打架的频段，响度随段落起落。
-  - **前景**：本身就是表现的一部分（风暴、雷雨、刻意的噪音墙），按用户要的程度来。
-  - 不确定时问一句，或者先给偏轻的版本再问要不要加强。
-- **结尾**：歌曲最后的音被突然截断时，常见的做法是加一个结尾段——主和弦的长音、扫弦或琶音，铺底的声部渐弱——
-  并在渲染时留出余音（`--tail`）。用户想要突然停（硬切）时就保留硬切。
+- Before adding ambience (wind, rain, crowd, environment), work out its role:
+  - **Background**: only creates a feeling, usually far below the lead vocal (tens of LU), with the bands that fight with the vocal and main instruments cut out, and its loudness rising and falling with the sections.
+  - **Foreground**: a part of the expression itself (storm, thunderstorm, a deliberate wall of noise); follow the degree the user wants.
+  - When unsure, ask, or give a lighter version first and then ask whether to strengthen it.
+- **Ending**: when the last note of a song is abruptly cut off, the common remedy is to add an ending section -- a long tonic chord, a strum or arpeggio, with the bed parts fading out --
+  and leave tail when rendering (`--tail`). When the user wants a sudden stop (hard cut), keep the hard cut.
 
-## 交付
+## Delivery
 
-- 改用户的工程之前先备份一份，并告诉用户备份在哪。
-- 导出：`muser render <工程> -o song.wav`，或 `-o song.mp3` 直接出 MP3。要对比版本（比如合成哼唱 vs 真人）就另存临时工程渲染，不动用户的工程。
+- Before changing the user's project, back it up first and tell the user where the backup is.
+- Export: `muser render <project> -o song.wav`, or `-o song.mp3` to output an MP3 directly. To compare versions (for example synthesized humming vs. a real person), save a temporary project and render that, leaving the user's project untouched.

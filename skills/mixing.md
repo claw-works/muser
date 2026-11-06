@@ -1,65 +1,65 @@
-# 混音平衡：用 mix-report 调各轨音量
+# Mix balance: set track volumes with mix-report
 
-不同乐器的本体音量差很多（同样 `gain_db: 0`，干声可以差 15 LU 以上），凭感觉设 `gain_db` 常常不均衡。
-不要分轨导出再自己测，用 `mix-report` 一次拿到整首每条轨的响度。
+Different instruments differ a lot in native volume (with the same `gain_db: 0`, the dry signal can differ by more than 15 LU), so setting `gain_db` by feel is often unbalanced.
+Do not export stems and measure them yourself; use `mix-report` to get the loudness of every track of the whole song in one go.
 
 ```bash
-muser mix-report song.muser.json          # 表格
-muser mix-report song.muser.json --json   # 给程序解析
+muser mix-report song.muser.json          # table
+muser mix-report song.muser.json --json   # for programs to parse
 ```
 
-MCP：`mix_report { project_id }`。乐器输出有缓存，只改 `gain_db` / 效果后再跑很快。
+MCP: `mix_report { project_id }`. Instrument output is cached, so running it again after changing only `gain_db` / effects is fast.
 
-## 报告里的字段
+## Fields in the report
 
-| 字段 | 含义 | 用途 |
+| Field | Meaning | Use |
 |---|---|---|
-| `input`（输入） | 效果链之前。音轨是**乐器干声**，总线/主总线是送进来的信号之和 | 看音源本身有多响 |
-| `output`（输出） | 推子后（效果链、gain_db、pan 之后） | 实际送进混音的电平 |
-| `lufs` | 积分响度（EBU R128，自动去掉静音段） | 比较各轨的主依据 |
-| `max_short_lufs` | 3 秒窗响度的最大值 | 只在副歌/Drop 出现的轨，看它最响时有多响 |
-| `peak_db` | 峰值 dBFS | 查过响、削波 |
-| `at_master_lufs`（到主总线） | 输出 + 直接输出路径上各总线的 `gain_db`；路径上有静音总线时为空 | **估计**：不计总线效果器与发送，见下面"总线里的轨" |
-| `rel_lu`（相对LU） | `at_master_lufs` 减最响的音轨 | 直接进主总线的轨之间是准的读数，0 是最响 |
-| `warnings` | 没声音的轨、推子后峰值过 0、送进主总线过载、主输出削波 | 先处理这些 |
+| `input` | Before the effect chain. For a track it is the **instrument dry signal**; for a bus/master it is the sum of the signals sent into it | See how loud the source itself is |
+| `output` | After the fader (after effect chain, gain_db and pan) | The level actually sent into the mix |
+| `lufs` | Integrated loudness (EBU R128, silent stretches removed automatically) | The main basis for comparing tracks |
+| `max_short_lufs` | Maximum of the 3-second-window loudness | For tracks that appear only in the chorus/drop, how loud they are at their loudest |
+| `peak_db` | Peak in dBFS | Check for overs and clipping |
+| `at_master_lufs` | Output + the `gain_db` of each bus along the direct output path; empty if a muted bus is on the path | **An estimate**: it ignores bus effects and sends, see "Tracks in buses" below |
+| `rel_lu` | `at_master_lufs` minus the loudest track | An accurate reading among tracks going straight to master; 0 is the loudest |
+| `warnings` | Tracks with no sound, post-fader peak over 0, overload into master, master output clipping | Deal with these first |
 
-## 流程
+## Workflow
 
-1. **先定锚点**：鼓（kick）或贝斯是混音的基准，其他轨相对它定。
+1. **Set the anchor first**: the drums (kick) or bass is the reference of the mix, and the other tracks are set relative to it.
 
-   **总线里的轨**：`at_master_lufs` / `rel_lu` 只加了总线的 `gain_db`。总线上有压缩、EQ 时，实测会差 2–5 LU
-   （总线压缩器对整组起作用，单条轨过总线后的响度本来就分不开）。这时分两层比，用的都是实测值：
-   - **同一总线里的轨之间**：比各音轨的 `output.lufs`（推子后、进总线前）。
-   - **组与组之间、组与直连主总线的轨之间**：比各总线的 `output.lufs` 和直连轨的 `output.lufs`。
-   直接进主总线的轨，`rel_lu` 就是准的。
-2. **按角色对目标**（起点，不是标准答案，按曲风和用户反馈调）：
+   **Tracks in buses**: `at_master_lufs` / `rel_lu` only add the bus's `gain_db`. When a bus has compression or EQ, the measured result differs by 2-5 LU
+   (a bus compressor acts on the whole group, and the loudness of a single track after passing through the bus cannot be separated out). In that case compare at two levels, both using measured values:
+   - **Between tracks in the same bus**: compare each track's `output.lufs` (post-fader, before the bus).
+   - **Between groups, and between a group and tracks going straight to master**: compare each bus's `output.lufs` and the direct tracks' `output.lufs`.
+   For tracks going straight to master, `rel_lu` is accurate.
+2. **Aim by role** (a starting point, not the standard answer; adjust to the style and the user's feedback):
 
-   | 角色 | 相对锚点（`rel_lu`） |
+   | Role | Relative to anchor (`rel_lu`) |
    |---|---|
-   | kick / sub 贝斯 | 0 ~ -2 |
-   | 军鼓 / 拍手 | -2 ~ -6 |
-   | 主旋律 / 人声 / lead | -2 ~ -6 |
-   | 贝斯（非 sub）、和弦主体（keys、吉他） | -4 ~ -10 |
-   | pad、弦乐铺底 | -8 ~ -16 |
-   | 镲、hats、打击乐点缀 | -10 ~ -20 |
-   | 氛围层、riser、FX | -12 ~ -25 |
+   | kick / sub bass | 0 to -2 |
+   | snare / clap | -2 to -6 |
+   | lead melody / vocal / lead | -2 to -6 |
+   | bass (non-sub), main chord body (keys, guitar) | -4 to -10 |
+   | pad, string bed | -8 to -16 |
+   | cymbals, hats, percussion accents | -10 to -20 |
+   | ambience layers, riser, FX | -12 to -25 |
 
-   零星出现的轨（crash、riser、impact）积分响度偏低，看 `max_short_lufs` 更准。
-3. **改 gain_db**：差多少 LU 就改多少 dB（推子前后线性对应；经过压缩器的总线会被压掉一部分，再跑一次确认）。
-   组内某条轨偏了改音轨的 `gain_db`；整组一起偏就改总线的。
-4. **再跑一次** `mix-report` 确认，一般一两轮就够。
-5. **看主总线**：
-   - `master.input.peak_db` 超过 0（有 warning）：各轨整体太响、全靠主 limiter 硬压，会发扁。
-     把所有轨（或各总线）一起降几 dB，不要只加 limiter。
-   - 主输出 `peak_db` 接近 0：主总线最后放 `limiter`（`ceiling_db: -1`）。
-   - 整体响度（`master.output.lufs`）流媒体常见 -14 左右。要更响：在 limiter **前面**放一个温和的 `compressor`
-     （如 `threshold_db: -20, ratio: 2, makeup_db: 3`）把整体推上去，或把各轨 / 各总线的 `gain_db` 一起抬，前提是 input 不过载。
-     **不要抬 `master_gain_db`**：它在主效果链**之后**，limiter 管不到它，抬了会削波（mix-report 会报"主输出峰值……会削波"）。
-6. **最后交给人听**：数字只保证没有明显失衡，细平衡用 `muser view` 让用户在推子上微调。
+   Tracks that appear only sporadically (crash, riser, impact) have low integrated loudness; `max_short_lufs` is more accurate for them.
+3. **Change gain_db**: change by as many dB as the LU difference (linear before and after the fader; a bus with a compressor will squash part of it, so run again to confirm).
+   If one track in a group is off, change that track's `gain_db`; if the whole group is off, change the bus's.
+4. **Run `mix-report` again** to confirm; one or two rounds are usually enough.
+5. **Check the master**:
+   - `master.input.peak_db` over 0 (with a warning): the tracks as a whole are too loud and rely entirely on the master limiter to squash them, which sounds flat.
+     Lower all tracks (or all buses) together by a few dB; do not just add a limiter.
+   - Master output `peak_db` close to 0: put a `limiter` (`ceiling_db: -1`) last on the master.
+   - Overall loudness (`master.output.lufs`) is commonly around -14 for streaming. To be louder: put a gentle `compressor` **before** the limiter
+     (e.g. `threshold_db: -20, ratio: 2, makeup_db: 3`) to push the whole up, or raise the `gain_db` of all tracks / buses together, provided the input does not overload.
+     **Do not raise `master_gain_db`**: it sits **after** the master effect chain, so the limiter cannot control it, and raising it will clip (mix-report warns "master output peak ... will clip").
+6. **Finally, hand it over to be listened to**: the numbers only guarantee there is no obvious imbalance; for fine balance use `muser view` and let the user adjust on the faders.
 
-## 常见情况
+## Common situations
 
-- 干声特别响的音源（`input.lufs` 比别的高 10 LU 以上）：直接给更低的 `gain_db` 起步，别等加完效果再救。
-- 加了压缩/失真后变响：比较 `input` 与 `output` 的差，差值大说明效果链在加响度，在效果器的输出/`makeup_db` 上收，或降 `gain_db`。
-- 某轨 `lufs` 为空且有 "没有声音" warning：音符不在音域、鼓键不对、或被自动化拉到 -80，先排错。
-- 用 sidechain 压的轨（pad、贝斯）实际听感比数字轻，可以比表里目标高 1–2 LU。
+- Sources with an especially loud dry signal (`input.lufs` more than 10 LU above the others): start directly with a lower `gain_db`, rather than waiting until effects are added to rescue it.
+- It got louder after adding compression/distortion: compare `input` and `output`; a big difference means the effect chain is adding loudness. Rein it in on the effect's output/`makeup_db`, or lower `gain_db`.
+- A track's `lufs` is empty with a "no sound" warning: the notes are outside the range, the drum keys are wrong, or automation pulled it to -80; debug that first.
+- Tracks ducked by sidechain (pad, bass) sound quieter in practice than the numbers, so they can be 1-2 LU above the targets in the table.

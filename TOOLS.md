@@ -1,322 +1,322 @@
-# muser 工具清单 (CLI + MCP 设计)
+# muser tool list (CLI + MCP design)
 
-muser 的接口层以两种形态暴露给 AI：
+muser's interface layer is exposed to AI in two forms:
 
-1. **CLI**（已实现）：AI 通过 shell 调用 `muser <子命令>`。
-2. **MCP server**（规划中）：把同一批能力包成 agent 可直接调用的 tools。
+1. **CLI** (implemented): the AI calls `muser <subcommand>` through the shell.
+2. **MCP server** (planned): wraps the same capabilities as tools an agent can call directly.
 
-两者共享同一组语义，保证行为一致。
+Both share the same semantics, so behavior is consistent.
 
 ---
 
-## 一、CLI（已实现）
+## 1. CLI (implemented)
 
-可执行文件名：`muser`（来自 `muser-cli` crate）。
+Executable name: `muser` (from the `muser-cli` crate).
 
 ### `muser render <project> [options]`
-读工程 JSON，离线渲染为 WAV。
-- `<project>`：工程文件路径（`.json`）
-- `-o, --output <path>`：输出路径（默认 `out.wav`）；以 `.mp3` 结尾时直接写 MP3（320 kbit/s）。WAV 里带每个段落起点的标记（cue point）
-- `--stems <dir>`：分轨导出代替整首：每条没静音的音轨一个 24 位 WAV（带效果器与发送，不带主总线效果器，各轨同长）
-- `--sample-rate <hz>`：采样率（默认 48000）
-- `--tail <seconds>`：结尾余响秒数（默认 2.0）
-- `--seed <n>`：临时换工程的随机种子（不改文件）：`humanize` 与 random 自动化换一遍
-- **输出**：`已渲染 '<name>' → <out>: <时长>s, 峰值 <dBFS>`
+Read a project JSON and render it offline to WAV.
+- `<project>`: project file path (`.json`)
+- `-o, --output <path>`: output path (default `out.wav`); a path ending in `.mp3` writes MP3 directly (320 kbit/s). The WAV carries a marker (cue point) at the start of each section
+- `--stems <dir>`: export stems instead of the full mix: one 24-bit WAV per unmuted track (with effects and sends, without master effects, all tracks the same length)
+- `--sample-rate <hz>`: sample rate (default 48000)
+- `--tail <seconds>`: seconds of tail at the end (default 2.0)
+- `--seed <n>`: temporarily override the project's random seed (the file is not changed): `humanize` and random automation take another pass
+- **Output**: `Rendered '<name>' -> <out>: <duration>s, peak <dBFS>`
 
 ```bash
 muser render beat.muser.json -o beat.wav
 ```
 
 ### `muser validate <project>`
-校验工程 JSON：tempo、clip、音符、声像、乐器名，以及每个效果器参数是否在允许范围内。
-错误信息给出具体位置，如 `tracks[0].effects[0]: reverb.mix = 1.8 超出范围 [0, 1]`。
-- **输出**：`OK: '<name>' 合法 — tempo <t>, <n> 轨, 时长 <d> 拍`，或非零退出码 + 错误。
+Validate the project JSON: tempo, clips, notes, pan, instrument names, and whether every effect parameter is within its allowed range.
+Error messages give the exact location, e.g. `tracks[0].effects[0]: reverb.mix = 1.8 out of range [0, 1]`.
+- **Output**: `OK: '<name>' is valid - tempo <t>, <n> tracks, duration <d> beats`, or a non-zero exit code + the errors.
 
 ### `muser instruments [name] [--family <F>] [--json]`
-- 无参数：按类别列出全部 115 个内置乐器及说明。
-- `--family`：只列某类（drums / synth / poly / guitar / bass / organ / mallet / strings / wind / choir）。
-- `<name>`：显示该乐器的类别、音高约定（GM 鼓键 / 音阶音高）、推荐音域、复音数、说明，
-  以及可调参数（`instrument_params` 的键、范围、单位、说明、该预设当前值、能否自动化）。
-- `--json`：机器可读输出。
+- No argument: list all 115 built-in instruments with descriptions.
+- `--family`: list only one family (drums / synth / poly / guitar / bass / organ / mallet / strings / wind / choir).
+- `<name>`: show the instrument's family, pitch convention (GM drum keys / pitched notes), recommended range, polyphony, description,
+  and its tunable parameters (the keys of `instrument_params`, ranges, units, descriptions, the preset's current values, and whether each can be automated).
+- `--json`: machine-readable output.
 
 ### `muser effects [name] [--json]`
-- 无参数：列出全部效果器及一句话说明。
-- `<name>`：显示该效果器的放置建议、每个参数的默认值/范围/单位/听感说明，以及 JSON 示例。
-- `--json`：机器可读输出（即代码中的效果器描述表）。
+- No argument: list all effects with a one-line description.
+- `<name>`: show the effect's placement advice, each parameter's default / range / unit / sonic description, and a JSON example.
+- `--json`: machine-readable output (the effect description table from the code).
 
 ### `muser plugin scan|info|params|values`
-- `scan [--kind instrument|effect] [--refresh]`：扫描本机标准插件目录（每个插件在独立进程读取，有缓存），给出 `path#id`。
-- `info <插件>`：名称、厂商、类型、是否接收音符、输入输出、参数总数与按名称分组统计、同文件其它插件。
-- `params <插件> [--filter 关键词] [--params JSON] [--limit N] [--all]`：参数名、范围、当前值与文字、id；
-  `--params` 先应用基础参数（参数含义随它变化时用）。
-- `values <插件> <参数> [--params JSON]`：该参数可写的文字值（选项类即全部选项）。
-- `profile list|show|draft|check|path`：插件画像（常用参数别名、预设、setup、经验的数据文件）。
-  `show <插件|画像.json> [--markdown]`；`draft <插件> [--audition] [--save | -o 文件]`；`check <画像.json> [--plugin <插件>]`。
-- `save-state <插件> [--params JSON] -o <文件>`：保存插件完整状态，工程里用 `"@state": "<文件>"` 加载。
-- `edit <插件> [--params JSON] -o <文件>`（macOS）：打开插件自己的界面让人选音色，关窗口时保存状态；`muser view` 的 🎛 面板用的就是它。
-- `<插件>` 是路径，可带 `#插件id`。都支持 `--json`。
+- `scan [--kind instrument|effect] [--refresh]`: scan the machine's standard plugin directories (each plugin is read in a separate process; results are cached) and give `path#id`.
+- `info <plugin>`: name, vendor, type, whether it accepts notes, inputs and outputs, total parameter count and counts grouped by name, other plugins in the same file.
+- `params <plugin> [--filter keyword] [--params JSON] [--limit N] [--all]`: parameter name, range, current value and text, id;
+  `--params` applies base parameters first (use it when a parameter's meaning changes with them).
+- `values <plugin> <param>`: the text values the parameter accepts (for choice parameters, all the options).
+- `profile list|show|draft|check|path`: plugin profiles (data files holding common parameter aliases, presets, setup, and experience notes).
+  `show <plugin|profile.json> [--markdown]`; `draft <plugin> [--audition] [--save | -o file]`; `check <profile.json> [--plugin <plugin>]`.
+- `save-state <plugin> [--params JSON] -o <file>`: save the plugin's full state; load it in a project with `"@state": "<file>"`.
+- `edit <plugin> [--params JSON] -o <file>` (macOS): open the plugin's own UI so a person can pick a sound, and save the state when the window closes; the 🎛 panel of `muser view` uses this.
+- `<plugin>` is a path and may carry `#plugin-id`. All support `--json`.
 
 ### `muser sounds list|describe`
 
-- `list [--kind builtin|sfz|plugin] [--filter 词] [--json]`：本机能用的音色（内置乐器、`$MUSER_SFZ_PATH` 里的 SFZ、扫描到的乐器插件），听过的附一句卡片描述。
-- `presets <插件> [--filter 词] [--json]`：插件的内置音色（VST3 标准预设、Surge `.fxp`、Kontakt `.nki` 的名字 / 音色库 / 类别 / 标签），
-  标出能不能直接用：auto（直接换成状态）/ captured（采集过）/ manual（要在插件窗口里载入一次）。
-- `state <插件> <音色>`：取这个音色的状态文件（在本机音色库 `~/.config/muser/sound-library/`），打印工程里的写法。
-- `save <插件> <名字> <状态文件>`：把一份插件状态存进音色库的"我的音色"（同名覆盖），之后在 `presets` 与 view 的抽屉里可用。
-- `describe <音色> --keys [--from 36 --to 96 --tempo 120 --hold 4]`：键位卡——每个键按住几小节，测有没有声、是不是跟着速度循环的
-  loop、几小节一圈、每小节起音、响度、亮度（loop 套件、鼓组、分区音色）。
-- `identify <插件> <状态文件>`：认出状态里载入的是哪个内置音色（比对音色文件的原样字节）。
-- `capture <插件> <音色>`（macOS）：打开插件窗口、在 Finder 里选中音色文件，人或 agent（computer use）载入后关窗口，状态存进音色库。
-- `describe <音色> [--params JSON] [--drums] [--refresh] [--json]`："听"一个音色：渲染探测音，测亮度、起音、延音、余音、音域、力度、立体声、音高，
-  写成文字卡片，缓存在本机（`~/Library/Caches/muser/sounds`、`~/.cache/muser/sounds`）。插件用 `--params '{"@state": …}'` 指定音色。
+- `list [--kind builtin|sfz|plugin] [--filter word] [--json]`: the sounds available on this machine (built-in instruments, SFZ in `$MUSER_SFZ_PATH`, scanned instrument plugins); ones already listened to carry a one-line card description.
+- `presets <plugin> [--filter word] [--json]`: a plugin's built-in sounds (name / sound library / category / tags of VST3 standard presets, Surge `.fxp`, Kontakt `.nki`),
+  marked by whether they can be used directly: auto (converted straight to a state) / captured (already captured) / manual (must be loaded once in the plugin window).
+- `state <plugin> <sound>`: fetch this sound's state file (in the machine's sound library `~/.config/muser/sound-library/`) and print how to write it in a project.
+- `save <plugin> <name> <state-file>`: save a plugin state into "My sounds" in the sound library (same name overwrites); afterward it is available in `presets` and the view drawer.
+- `describe <sound> --keys [--from 36 --to 96 --tempo 120 --hold 4]`: key map card - hold each key for a few bars and measure whether it sounds, whether it is a loop that follows the tempo,
+  how many bars per cycle, onsets per bar, loudness, brightness (loop kits, drum kits, multi-zone sounds).
+- `identify <plugin> <state-file>`: identify which built-in sound the state has loaded (compares the sound file's raw bytes).
+- `capture <plugin> <sound>` (macOS): open the plugin window and select the sound file in Finder; a person or an agent (computer use) loads it and closes the window, and the state is saved into the sound library.
+- `describe <sound> [--params JSON] [--drums] [--refresh] [--json]`: "listen" to a sound: render probe notes and measure brightness, attack, sustain, decay, range, velocity response, stereo, and pitch,
+  write them as a text card, and cache it on this machine (`~/Library/Caches/muser/sounds`, `~/.cache/muser/sounds`). For plugins, use `--params '{"@state": …}'` to specify the sound.
 
 ### `muser audition`
-试听一个参数的作用：`--instrument <乐器>`（或 `--effect '<效果器 JSON>'` + `--source <乐器>`），
-`--params '<基础参数 JSON>'`，`--param <参数名> --values=a,b,c`（数字或插件可解析的文字），
-`--pitch` `--hold` `--tail` `--out <目录>`（写出每版 wav）`--json`。
-报告峰值、RMS、LUFS、频谱重心、低/中/高频占比、起音时间、余音长度。内置与外置都可用。
-`--record` 把结果记进该插件的用户画像。
+Audition what a parameter does: `--instrument <instrument>` (or `--effect '<effect JSON>'` + `--source <instrument>`),
+`--params '<base parameter JSON>'`, `--param <param-name> --values=a,b,c` (numbers, or text the plugin can parse),
+`--pitch` `--hold` `--tail` `--out <dir>` (write each version's wav) `--json`.
+Reports peak, RMS, LUFS, spectral centroid, low / mid / high band shares, attack time, and decay length. Works for built-in and external sounds.
+`--record` writes the result into that plugin's user profile.
 
 ### `muser audio <file> [--tempo T] [--json]`
 
-音频文件的格式、时长、采样率、声道；给了 `--tempo` 时换算成拍（写 audio 音轨 clip 的 `length` 用）。见 [skills/audio.md](skills/audio.md)。
+An audio file's format, duration, sample rate, and channels; with `--tempo` it converts the duration to beats (use it to write an audio-track clip's `length`). See [skills/audio.md](skills/audio.md).
 
 ### `muser routing <project>`
 
-打印信号流：处理顺序、每条音轨/总线的去向（output、发送量）、效果链与侧链关系。改完路由先看一眼。
+Print the signal flow: processing order, where each track / bus goes (output, send amounts), effect chains, and sidechain relationships. Take a look after changing routing.
 
 ### `muser mix-report <project> [--json]`
 
-混音报告：渲染一遍整首，列出每条音轨/总线/主总线的响度——输入（效果链前，音轨即乐器干声）与输出（推子后）的
-积分 LUFS、短时最大 LUFS、峰值；音轨到主总线的估计响度（加上输出路径上各总线 gain_db）与相对最响音轨的差；
-以及没声音、过响、主总线过载、削波等提示。用来平衡各轨 `gain_db`，流程见 [skills/mixing.md](skills/mixing.md)。
+Mix report: render the whole piece once and list the loudness of every track / bus / master - integrated LUFS, maximum short-term LUFS, and peak of the input
+(before the effect chain; for a track, the dry instrument) and the output (after the fader); each track's estimated loudness at the master (adding the `gain_db` of the buses on its output path) and its difference from the loudest track;
+plus warnings such as silent, too loud, master overload, and clipping. Use it to balance each track's `gain_db`; for the workflow see [skills/mixing.md](skills/mixing.md).
 
 ### `muser view <project> [--port 8737] [--open]`
 
-给人听的播放页：在 `127.0.0.1` 起本地服务，浏览器打开 `http://127.0.0.1:8737/`（`--open` 自动打开）。
-时间线（波形、clip、音符）、播放/循环/跳转（空格键随时播放/暂停），每条音轨和总线的音量推子、静音、独奏、电平表、
-信号链（效果器方块 → 去向、发送量），以及整体信号流图（输出、发送、侧链连线）。
+A playback page for people to listen: starts a local server on `127.0.0.1` and opens `http://127.0.0.1:8737/` in the browser (`--open` opens it automatically).
+Timeline (waveform, clips, notes), play / loop / seek (the space bar plays / pauses at any time), a volume fader, mute, solo, and level meter for every track and bus,
+signal chain (effect blocks -> destination, send amounts), and an overall signal-flow diagram (output, send, and sidechain connections).
 
-- 页面按播放进度向服务分段取已经混好的音频，浏览器只占几秒钟的内存，曲子多长都行。
-- 改音量、静音、独奏：交给引擎重新渲染（乐器输出有缓存，只重跑效果、总线、主总线；2 分钟的 15 轨曲子约 1.7 秒），
-  新版本从当前播放位置无缝换上，结果是准确的。独奏只用于试听，不写进工程。
-- 有音量自动化（`gain_db`）的轨：自动化是绝对 dB，推子改动会把它整体平移同样的量（trim），保存时一并写回。
-- 「保存到工程文件」只写回页面上改过的东西（推子、静音、效果器旁通、录音、剪开 / 挪动的音频片段、整首变调）；「撤销改动」回到文件里的值；「复制改动 JSON」交给 AI。
-- **录人声**（右边面板）：从播放头或循环区间录，预备拍、延迟微调、「测延迟」；每一遍存在 `recordings/<轨名>-take-NN.wav`（清单 `recordings/takes.json`），
-  贴到音频轨上（待保存）；列表里「用这一遍」「删除」。工程的 `lyrics` 在屏幕底部按卡拉 OK 显示（「歌词」开关）。
-- **音频片段**：✂（或 C）剪开，拖动挪位置（Shift 对齐 1/16），选中后 ← → 每次 10 毫秒。**变调 − / +**：整首移调（`transpose`）。
-- 工程文件被别人（AI）改了：自动重新渲染、页面刷新（页面上未保存的改动丢弃）。
-- 只监听本机、无鉴权（拒绝非本机 Host/Origin 的请求）。远程机器上用 SSH 端口转发访问。请用 release 构建。
+- The page fetches already-mixed audio from the server in segments as playback advances, so the browser holds only a few seconds in memory, however long the piece is.
+- Changing volume, mute, or solo is handed to the engine to re-render (instrument output is cached; only effects, buses, and master are rerun; a 2-minute, 15-track piece takes about 1.7 seconds),
+  and the new version is swapped in seamlessly from the current playback position; the result is accurate. Solo is for auditioning only and is not written to the project.
+- A track with volume automation (`gain_db`): the automation is absolute dB, and a fader change shifts it as a whole by the same amount (trim), written back together on save.
+- "Save to project file" writes back only what was changed on the page (faders, mutes, effect bypass, recordings, split / moved audio clips, whole-piece transpose); "Undo changes" returns to the values in the file; "Copy changes JSON" hands the changes to the AI.
+- **Record vocals** (right panel): record from the playhead or the loop range, with count-in, fine latency adjustment, and "measure latency"; each take is stored at `recordings/<track-name>-take-NN.wav` (manifest `recordings/takes.json`),
+  and pasted onto the audio track (pending save); in the list, "Use" and "Delete". The project's `lyrics` are shown at the bottom of the screen as karaoke (the "Lyrics" toggle).
+- **Audio clips**: ✂ (or C) splits, drag to move (Shift snaps to 1/16), and with a clip selected ← → nudge by 10 ms each. **Transpose − / +**: transpose the whole piece (`transpose`).
+- If the project file is changed by someone else (the AI): it re-renders automatically and the page refreshes (unsaved changes on the page are discarded).
+- Listens on the local machine only, with no authentication (requests with a non-local Host/Origin are rejected). On a remote machine, access it with SSH port forwarding. Use a release build.
 
-改动 JSON 格式：`{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`。
-分享作品：分享工程 JSON（和插件状态文件）或渲染好的 WAV。
+Changes JSON format: `{"changes": [{"node": "tracks[3]", "gain_db": -9}, {"node": "buses[1]", "muted": true}]}`.
+Sharing your work: share the project JSON (and the plugin state files) or the rendered WAV.
 
 ### `muser poly edit|list|show|schema`
 
-poly 合成器的完整音色（振荡器、sub / 噪声、两个滤波器、四个包络、三个 LFO、16 槽调制矩阵）。
-- `edit [--port 8739] [--open]`：本地网页音色编辑器（只监听 127.0.0.1）。从预设或本机音色库开始，改参数后自动渲染一段
-  试听乐句（和弦、单音、贝斯线、琶音、连奏旋律，可选根音），存进本机音色库 `~/.config/muser/poly/<名字>.json`。
-- `list [--json]`：本机音色库里的音色。
-- `show <名字> [--sound]`：输出写进工程音轨的 JSON（`"instrument": "synth.poly"` + `instrument_params.patch` 完整音色）；
-  名字可以是音色库里的、`poly.<预设>` 或 `synth.poly`。`--sound` 输出音色文件本身。
-- `schema`：完整音色的结构（每个字段的类型、范围、选项、说明），`instrument_params.patch` 按它写。
+The poly synth's full sound (oscillators, sub / noise, two filters, four envelopes, three LFOs, a 16-slot modulation matrix).
+- `edit [--port 8739] [--open]`: a local web sound editor (listens on 127.0.0.1 only). Start from a preset or the machine's sound library; after you change parameters it automatically renders a short
+  audition phrase (chord, single note, bass line, arpeggio, legato melody, optional root note) and saves into the machine's sound library `~/.config/muser/poly/<name>.json`.
+- `list [--json]`: the sounds in the machine's sound library.
+- `show <name> [--sound]`: print the JSON to write into a project track (`"instrument": "synth.poly"` + the full sound in `instrument_params.patch`);
+  the name can be one in the sound library, `poly.<preset>`, or `synth.poly`. `--sound` prints the sound file itself.
+- `schema`: the structure of the full sound (each field's type, range, options, description); write `instrument_params.patch` according to it.
 
-### `muser play <project> [--seed N] [--from 秒]`
+### `muser play <project> [--seed N] [--from seconds]`
 
-用本机声卡把工程从头放一遍，放完退出：给人快速试听草稿（不开网页）。`--seed` 临时换一遍演奏（humanize / drummer /
-random 自动化），不改文件。需要 device 特性（发行版都带；headless 版没有，用 `render` 再听）。
+Play the project from the start on the machine's sound card and exit when done: a quick listen to a draft for a person (no web page). `--seed` temporarily takes another pass of the performance (humanize / drummer /
+random automation) without changing the file. Needs the device feature (release builds include it; the headless build does not - use `render` and then listen).
 
 ### `muser live start|send|status|wait|autoplay|stop`
 
-现场演奏（做法见 [skills/live.md](skills/live.md)）。`start <模板> [--detach] [--autoplay 3m] [--record s.muser.json] [--open] [--port 8747]`
-常驻、占着本机声卡、只听 127.0.0.1（`--detach` 在后台启动、开始演奏就返回，agent 用这个）；其余子命令控制它：`send <段.json|->` 提交一段（立即返回回执）、`status`、
-`wait [--runway 8]`（最多 30 秒）、`mix <轨|总线|master> <dB>`（演奏中调音量，0.3 秒渐变，不打乱曲式）、`autoplay <时长>`、`stop`（写好录音工程并退出）。模板在 `samples/live/`。需要 device 特性。
+Live session (for how, see [skills/live.md](skills/live.md)). `start <template> [--detach] [--autoplay 3m] [--record s.muser.json] [--open] [--port 8747]`
+is long-running, holds the machine's sound card, and listens on 127.0.0.1 only (`--detach` starts in the background and returns once playing begins; agents use this); the other subcommands control it: `send <section.json|->` submits a section (returns a receipt immediately), `status`,
+`wait [--runway 8]` (at most 30 seconds), `mix <track|bus|master> <dB>` (adjust volume during the session with a 0.3-second ramp, without disturbing the form), `autoplay <duration>`, `stop` (write the recorded project and exit). Templates are in `samples/live/`. Needs the device feature.
 
 ### `muser loop edit|list|show|play|save|share`
 
-片段库：鼓的节奏型（`grid`）与旋律 / 动机 / 和声音型（`notes`）。三处，同名时近的优先：
-项目（工程旁的 `loops/`，没有工程时当前目录的 `loops/`）> 全局（`~/.config/muser/loops/`）> 内置（17 个常见鼓型）。
-各命令的 `--project <工程文件>` 指定项目目录。
-- `edit [名字] [--project P] [--port 8739] [--open]`：loop / 动机编辑器（本地网页，只听本机）。旋律用卷帘（点、拖、改长度、
-  力度、移调、撤销、对齐网格或自由时值），鼓用步进网格；用 muser 的乐器渲染、循环试听；「● 哼唱录音」用麦克风哼一段直接转成音符；
-  存到项目或全局，或把项目里的分享到全局。
-  agent 改了 loop 文件，页面自动重新读入（有未保存的改动时提示）。
-- `list [--style S] [--json]`：列出（标出 项目 `+` / 全局 `*`），按风格或标签筛。
-- `show <名字> [--start 拍] [--repeat N] [--file | --abc]`：输出写进工程的 clip（`grid` / `notes` + `humanize` 内嵌，`from` 标注来源）；
-  `--file` 输出 loop 文件（含建议乐器、调、和弦）；`--abc` 输出 ABC 记谱。
-- `play <名字> [--instrument X] [--tempo BPM] [--repeat N]`：声卡试听。
-- `save <project> --track I [--clip J] --name N [--style S] [--description D] [--step 0.25] [--global] [--overwrite]`：
-  把工程里的 clip 存成 loop（鼓：grid，普通音符量化成网格；旋律：音符），缺省存到工程旁的 `loops/`。
-- `share <名字> [--overwrite]`：把项目里的 loop 复制到全局，别的项目也能用。
-- `hum <音频> [--name N] [--tempo 100] [--grid 1/16|1/8|1/8t|0.25|off] [--from-start] [--key Am] [--instrument X] [--global]`：
-  哼唱转谱（不用 AI）。单旋律录音（哼、唱、口哨、单音乐器）→ 音符，存成旋律 loop，并打印 ABC。McLeod 法测音高（每 10 ms），
-  中值滤波、整体音准校正，按停顿 / 音高跳变 / 同音高上的响度起伏切音，减掉整体的早晚后对齐网格，估计调。
-  `--from-start` 保留录音开头到第一个音的空白（跟着节拍器录时用）。编辑器里的「● 哼唱录音」是同一套（浏览器录麦克风，可带一小节预备拍与节拍器）。
-- loop 文件格式（`format: "muser.loop"`, `version: 2`）：`name` `bars` `tempo` `style` `description` `tags` `kit` / `instrument`
-  `key` `chords` `grid` / `notes` `humanize`。drummer 的 `loop` 也能引用项目或全局里的鼓 loop。
-clip 上的简写（`abc` / `grid` / `drummer`）与 `humanize` 见 [skills/notation.md](skills/notation.md)、[skills/humanize.md](skills/humanize.md)。
+The loop library: drum rhythm patterns (`grid`) and melody / motif / harmony patterns (`notes`). Three locations; when names collide, the nearer wins:
+project (the `loops/` next to the project, or the current directory's `loops/` when there is no project) > global (`~/.config/muser/loops/`) > built-in (17 common drum patterns).
+Each command's `--project <project-file>` specifies the project directory.
+- `edit [name] [--project P] [--port 8739] [--open]`: the loop / motif editor (local web page, listens on the local machine only). Melodies use a piano roll (click, drag, change length,
+  velocity, transpose, undo, snap to the grid or free durations); drums use a step grid; it renders with muser's instruments and auditions in a loop; "● Hum to record" uses the microphone to hum a phrase and converts it directly to notes;
+  save to the project or global, or share one from the project to global.
+  When the agent changes a loop file, the page re-reads it automatically (and warns if there are unsaved changes).
+- `list [--style S] [--json]`: list them (marking project `+` / global `*`), filtered by style or tag.
+- `show <name> [--start beat] [--repeat N] [--file | --abc]`: print the clip to write into a project (`grid` / `notes` + inline `humanize`, with `from` noting the source);
+  `--file` prints the loop file (with suggested instrument, key, chords); `--abc` prints ABC notation.
+- `play <name> [--instrument X] [--tempo BPM] [--repeat N]`: audition on the sound card.
+- `save <project> --track I [--clip J] --name N [--style S] [--description D] [--step 0.25] [--global] [--overwrite]`:
+  save a clip from the project as a loop (drums: grid, with ordinary notes quantized to the grid; melody: notes), by default into the `loops/` next to the project.
+- `share <name> [--overwrite]`: copy a project loop to global so other projects can use it.
+- `hum <audio> [--name N] [--tempo 100] [--grid 1/16|1/8|1/8t|0.25|off] [--from-start] [--key Am] [--instrument X] [--global]`:
+  convert humming to a score (no AI). A single-melody recording (hummed, sung, whistled, single-note instrument) -> notes, saved as a melody loop, and the ABC is printed. Pitch is detected with the McLeod method (every 10 ms),
+  then median-filtered and corrected for overall tuning; notes are split by pauses / pitch jumps / loudness dips on the same pitch; after subtracting the overall early / late offset they are aligned to the grid, and the key is estimated.
+  `--from-start` keeps the blank from the start of the recording to the first note (use it when recording along to a metronome). The editor's "● Hum to record" is the same pipeline (the browser records the microphone, optionally with a one-bar count-in and a metronome).
+- Loop file format (`format: "muser.loop"`, `version: 2`): `name` `bars` `tempo` `style` `description` `tags` `kit` / `instrument`
+  `key` `chords` `grid` / `notes` `humanize`. The drummer's `loop` can also reference a drum loop in the project or global.
+For the clip shorthands (`abc` / `grid` / `drummer`) and `humanize`, see [skills/notation.md](skills/notation.md) and [skills/humanize.md](skills/humanize.md).
 
 ### `muser midi <project> [-o out.mid] [--seed N]`
 
-导出标准 MIDI 文件（format 1，480 tick/四分音符）：第一条轨放速度与拍号，之后每条乐器音轨一条 MIDI 轨。
-音符与渲染完全一致：humanize 后的时间与力度、连奏延长、clip 裁剪、abc / grid / drummer 展开；延音踏板写成 CC64，
-`gain_db` / `pan` 写成 CC7 / CC10。鼓组在通道 10，其它音轨按乐器名猜一个 GM 音色。静音音轨照常导出（轨名标 "(muted)"），
-audio 音轨不导出。缺省输出为工程同名的 `.mid`。`muser view` 页面的「导出」也能下载 MIDI 与整首混音 WAV。
+Export a standard MIDI file (format 1, 480 ticks per quarter note): the first track holds tempo and time signature, then one MIDI track per instrument track.
+Notes match the render exactly: humanized timing and velocity, legato extension, clip trimming, abc / grid / drummer expansion; the sustain pedal is written as CC64,
+and `gain_db` / `pan` as CC7 / CC10. Drum kits go on channel 10, and other tracks get a GM sound guessed from the instrument name. Muted tracks are exported as usual (track name marked "(muted)"),
+and audio tracks are not exported. The default output is a `.mid` with the project's name. The "Export" in the `muser view` page can also download the MIDI and the full-mix WAV.
 
 ### `muser analyze <project> [--audio] [--json]`
 
-听感报告，给听不到声音的 agent 自查编曲。按段落（有 `form` 时按曲式的每一遍，否则每 8 小节）列出：
-密度（每小节起音数）、各轨每小节起音数 / 发声占比 / 音区、和弦与和声节奏（写好的 `chords`，没写时估计、带 `~`）、
-重复度（与前面某小节完全相同的比例）、冲突（拍点长音是避免音；两轨同时长音成小二度 / 小九度）。
-`--audio` 渲染一遍，加每段的响度、频谱重心与低 / 中 / 高频能量占比。最后是建议：副歌没起来、重复太多、只有一个和弦、
-音区掩蔽、冲突、各段响度太平、偏暗 / 偏亮。最上面是能量曲线（每段 0–10）；还有一组"AI 味"检查（`tells`）：
-段落全是 8 小节的倍数、能量只升不降、编制不变、一个和声循环 / 不离调、过门每 4 小节一次、全部对齐网格、副歌每遍一样、
-（`--audio`）动态与明暗不变。见 [skills/arrange.md](skills/arrange.md)。
+A listening report, so an agent that cannot hear can self-check an arrangement. By section (each pass of the form when there is a `form`, otherwise every 8 bars) it lists:
+density (onsets per bar), each track's onsets per bar / sounding share / register, chords and harmonic rhythm (the written `chords`; when not written, estimated and marked with `~`),
+repetition (the share of bars identical to some earlier bar), and clashes (long notes on beats are avoid notes; two tracks sounding long notes together as a minor second / minor ninth).
+`--audio` renders once and adds each section's loudness, spectral centroid, and low / mid / high band energy shares. At the end come the suggestions: chorus didn't lift, too much repetition, only one chord,
+register masking, clashes, section loudness too flat, too dark / too bright. At the top is the energy curve (0-10 per section); there is also a set of "AI tells" checks (`tells`):
+sections all multiples of 8 bars, energy only rising and never falling, unchanged instrumentation, a single harmonic loop / never leaving the key, a fill every 4 bars, everything aligned to the grid, every chorus identical,
+and (`--audio`) unchanging dynamics and brightness. See [skills/arrange.md](skills/arrange.md).
 
 ### `muser abc <project> [-o out.abc] [--yue2] [options]`
 
-导出 ABC 记谱（缺省打印到 stdout），写谱面上的音（humanize 之前、clip 裁剪之后；abc / grid / drummer 展开的都算），
-鼓组与 audio 音轨不导出。起点与时值量化到 1/16（需要时 1/32、1/64）音符网格，三连音等就近取整（会提示）。
+Export ABC notation (printed to stdout by default), writing the notes on the score (before humanize, after clip trimming; abc / grid / drummer expansions all count);
+drum kits and audio tracks are not exported. Start times and durations are quantized to a 1/16 (1/32, 1/64 when needed) note grid, and triplets and the like are rounded to the nearest (with a notice).
 
-- 标准写法（缺省）：ABC 2.1 多声部，每条乐器音轨一个 `V:`（低音区用低音谱号），复音写成 `[CEG]`、跨小节用连音线。
-  `--track <名>`（可重复）只导出这几条；`--chords` 加和弦记号。
-- `--yue2`：[YuE2](https://github.com/multimodal-art-projection/YuE) 的原生谱面——`Vocal` / `Ins` 两个单音声部，
-  和弦记号写在 `Vocal`（只用它支持的 15 种和弦），时值只用 1 2 3 4 6 8 12 16 24 32 48 个单位、其它用连音线拼，
-  每组 1–4 小节一个 `V: Vocal` 块接一个 `V: Ins` 块。给 `--cot full` 用；加 `--no-chords` 给 `--cot melody`（翻唱/改编）。
-  - `--vocal a,b,c`：唱旋律的音轨，旋律在几件乐器间传递时写几条（合并后每个时刻取最高的音）；缺省按名字
-    （vocal / lead / melody…），否则取偏高音区里发声最久的。`--ins <名>`：器乐旋律声部（缺省全休止）。
-  - `--sections intro:4,verse:8,chorus:8`：段落写成 `% verse` 等注释，与歌词里的 `[Verse]` 标签对应。
-  - 网格至少用 `L:1/32`（YuE2 原生导出常用 1/32；第三方实测 `L:1/16` 的谱会生成到一半停）。
-  - `--vocal-octave 1`：Vocal 整体升八度，写到小写音名区（第三方实测这样咬字更清楚，官方没有说明）。
-  - 导出结果用 YuE2 的 `abc_tools.py inspect` 校验通过。
-- `--key G` / `--key F#m`：指定调号；缺省用 clip 里 ABC 写的 `K:`（都一样时），否则由整首的音高估计。
-- 和弦记号是按每小节（必要时半小节）的伴奏音估计的：伴奏清楚时可靠，只有一条低音线时只是猜测，交给模型前可以人工改。
+- Standard form (default): ABC 2.1 multi-voice, one `V:` per instrument track (low register uses the bass clef), polyphony written as `[CEG]`, ties across bars.
+  `--track <name>` (repeatable) exports only those tracks; `--chords` adds chord symbols.
+- `--yue2`: [YuE2](https://github.com/multimodal-art-projection/YuE)'s native score - two monophonic voices, `Vocal` / `Ins`,
+  with chord symbols written in `Vocal` (only the 15 chord types it supports), durations using only 1 2 3 4 6 8 12 16 24 32 48 units (others built with ties),
+  and every group of 1-4 bars as one `V: Vocal` block followed by one `V: Ins` block. For `--cot full`; add `--no-chords` for `--cot melody` (cover / adaptation).
+  - `--vocal a,b,c`: the tracks that sing the melody; list several when the melody passes between instruments (after merging, the highest note at each moment is taken); by default chosen by name
+    (vocal / lead / melody...), otherwise the track that sounds longest in the higher register. `--ins <name>`: the instrumental melody voice (default all rests).
+  - `--sections intro:4,verse:8,chorus:8`: sections are written as comments such as `% verse`, corresponding to the `[Verse]` tags in the lyrics.
+  - Use at least a `L:1/32` grid (YuE2's native exports commonly use 1/32; third-party testing shows scores with `L:1/16` stop generating halfway).
+  - `--vocal-octave 1`: raise Vocal by an octave overall, writing into the lowercase note-name range (third-party testing shows enunciation is clearer this way; the official docs do not say so).
+  - The export passes validation with YuE2's `abc_tools.py inspect`.
+- `--key G` / `--key F#m`: specify the key signature; by default the `K:` written in the clips' ABC is used (when they all agree), otherwise it is estimated from the pitches of the whole piece.
+- Chord symbols are estimated from the accompaniment notes of each bar (a half bar when necessary): reliable when the accompaniment is clear, only a guess when there is just a bass line; edit them by hand before handing to a model.
 
-`muser view` 页面的「导出」也能下载 ABC 与 ABC（YuE2）（选项都用缺省）。
+The "Export" in the `muser view` page can also download ABC and ABC (YuE2) (all with default options).
 
 ### `muser export-daw <project> -o <folder> [--sample-rate 48000] [--tail 2]`
-给 DAW 的文件夹：`<名字>.mid`（全部乐器轨，速度、拍号、段落标记）、`stems/NN-轨名.wav`（24 位，从第 1 小节对齐）、`mix.wav`、
-`IMPORT.md`（Live、Cubase、Logic、FL Studio、Studio One、Bitwig、REAPER、GarageBand、Pro Tools 的导入步骤）。
+A folder for a DAW: `<name>.mid` (all instrument tracks, tempo, time signature, section markers), `stems/NN-trackname.wav` (24-bit, aligned from bar 1), `mix.wav`,
+and `IMPORT.md` (import steps for Live, Cubase, Logic, FL Studio, Studio One, Bitwig, REAPER, GarageBand, Pro Tools).
 
 ### `muser export-data <project> [-o data.json] [--fps 30]`
-给可视化的 JSON：每轨音符 `[起点秒, 音高, 力度, 时长秒]`、段落（起止秒、拍号）、音轨与主输出的自动化曲线；`--fps` 再加每帧的整体 / 低频电平（dB）。
+JSON for visualization: each track's notes `[start seconds, pitch, velocity, duration seconds]`, sections (start and end seconds, time signature), tracks' and master's automation curves; `--fps` adds the per-frame overall / low-frequency level (dB).
 
 ### `muser takes <project> [--timing] [--clean]`
-录人声的每一遍：起点、长度、电平、实际唱的部分、工程用了没有。`--timing` 逐句量人声比引导旋律（带 `lyric` 的轨）早 / 晚多少毫秒；
-`--clean` 删掉工程没用到的录音（先问用户）。
+Each take of a vocal recording: start, length, level, the part actually sung, and whether the project uses it. `--timing` measures, phrase by phrase, how many milliseconds early / late the vocal is against the guide melody (the track with `lyric`);
+`--clean` deletes recordings the project does not use (ask the user first).
 
-### `muser clip split|move <project> --track <轨名> …`
-剪开 / 挪动音频轨上的片段：`split --at <拍>`；`move --clip <序号> --to <拍>` 或 `--by-ms <毫秒>`（负数往前）。只改那条轨的 clips。
+### `muser clip split|move <project> --track <track-name> …`
+Split / move clips on an audio track: `split --at <beat>`; `move --clip <index> --to <beat>` or `--by-ms <milliseconds>` (negative moves earlier). Only that track's clips are changed.
 
-### `muser migrate <project…> --from <版本> [--write]`
-把为旧版写的工程换算到当前版本（如 0.3.0 → 当前：内置乐器音量校准）。默认只列改动。
+### `muser migrate <project…> --from <version> [--write]`
+Convert projects written for an older version to the current one (e.g. 0.3.0 -> current: the built-in instrument volume calibration). By default it only lists the changes.
 
 ### `muser self-update [--check] [--version vX.Y.Z]`
-用官方安装脚本更新到 GitHub 上的最新版（需要 curl）。
+Update to the latest version on GitHub using the official install script (needs curl).
 
 ### `muser new [-o <path>]`
-生成一个示例工程 JSON（AI 可用来参考标准格式）。缺省打印到 stdout。
+Generate a sample project JSON (the AI can use it as a reference for the standard format). Prints to stdout by default.
 
 ---
 
-## 二、MCP Server（已实现：`muser-mcp`）
+## 2. MCP Server (implemented: `muser-mcp`)
 
-crate `muser-mcp` 以 **stdio** 运行一个 MCP server，让 Claude/Cursor 这类 agent
-**无需 shell**，直接以结构化 tool call 驱动引擎。它依赖 `muser-core` + `muser-engine`，
-与 CLI 同源。
+The crate `muser-mcp` runs an MCP server over **stdio**, so agents like Claude/Cursor
+can drive the engine with structured tool calls **without a shell**. It depends on `muser-core` + `muser-engine`
+and shares its source with the CLI.
 
-### 运行
+### Running
 
 ```bash
-muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser-mcp）
+muser-mcp          # start the MCP server over stdio (during development: cargo run -p muser-mcp)
 ```
 
-在 MCP 客户端（如 Claude Desktop）的配置里，把 `muser-mcp` 可执行文件作为一个
-stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
-如何用 beats 时间、GM 鼓键、乐器语义名等。
+In an MCP client's configuration (e.g. Claude Desktop), just register the `muser-mcp` executable as a
+stdio server. On initialization the server returns usage instructions telling the agent
+how to use beats as time, GM drum keys, semantic instrument names, and so on.
 
-### 已实现的 Tools（48 个）
+### Implemented tools (48)
 
-| tool | 作用 |
+| tool | purpose |
 |---|---|
-| `create_project` | 新建空工程，返回 `project_id` |
-| `get_project` | 取工程完整 JSON |
-| `set_project` | 用完整 JSON 整体替换工程 |
-| `validate_project` | 校验工程 |
-| `load_project` | 从磁盘读工程 JSON 到会话，返回新 `project_id` |
-| `save_project` | 把会话中的工程写到磁盘 JSON |
-| `set_tempo` | 设置速度 |
-| `add_track` | 新增音轨（可带 `instrument_params`、`output`、`sends`），返回 `track_index`；乐器名、参数与路由立即校验 |
-| `remove_track` | 删除音轨 |
-| `update_track` | 更新增益/声像/静音、更换乐器、`output`，合并式更新 `instrument_params` 与 `sends`（值为 null 删除该键）；立即校验 |
-| `set_bus` | 新增或替换（同名）一条总线：effects / gain_db / pan / muted / output / sends / automation；立即校验名称、引用与环路 |
-| `remove_bus` | 删除总线；仍被引用时报错并指出引用处 |
-| `get_routing` | 查看信号流：处理顺序、去向与发送量、侧链关系 |
-| `add_clip` | 新增片段（可带延音踏板 `pedal`），返回 `clip_index` |
-| `set_pedal` | 设置片段的延音踏板区间（CC64，踩下期间松键继续发声） |
-| `add_notes` | 向片段加入一批音符（支持 `velocity`、`accent`） |
-| `clear_clip` | 清空片段内所有音符 |
-| `set_automation` | 设置某音轨（`track_index`）、总线（`bus`）或主总线的自动化（替换或追加），立即校验 |
-| `set_seed` | 设置工程随机种子（决定 random 自动化） |
-| `render` | 离线渲染为 WAV，返回时长/峰值 |
-| `export_midi` | 导出标准 MIDI 文件（音符与渲染一致，audio 音轨不导出） |
-| `export_daw` | 导出给 DAW：MIDI + 每轨分轨 WAV（24 位）+ 混音 + 导入说明（Live / Cubase / Logic 的步骤） |
-| `export_data` | 给可视化导出 JSON：每轨音符（秒）、段落、自动化曲线，可选每帧音量包络 |
-| `export_stems` | 分轨导出：每条没静音的音轨一个 WAV（带效果器与发送，不带主总线效果器，各轨同长） |
-| `analyze` | 听感报告：按段落的密度、音区、和弦、重复度、冲突与建议（`audio` 加响度与频谱重心） |
-| `export_abc` | 导出 ABC 记谱：`standard`（ABC 2.1 多声部）或 `yue2`（YuE2 原生谱面） |
-| `mix_report` | 混音报告：各轨/总线/主总线的干声与推子后响度、相对差与提示（乐器输出按工程缓存） |
-| `scan_plugins` | 扫描本机外置插件 |
-| `plugin_info` | 外置插件信息与参数分组 |
-| `list_plugin_params` | 搜索外置插件参数（filter 关键词，可先应用基础参数） |
-| `plugin_param_values` | 外置插件某参数可写的文字值 |
-| `audition` | 试听：按参数取值逐个渲染测试音，返回响度/亮度/频段/起音/余音；`record` 记进画像 |
-| `list_profiles` | 列出插件画像 |
-| `get_profile` | 取某插件的画像（JSON 或 Markdown 使用说明） |
-| `draft_profile` | 由插件自动生成画像草稿 |
-| `save_profile` | 校验并保存画像到用户目录（可在插件上检查） |
-| `save_plugin_state` | 保存插件完整状态（音色）文件 |
-| `list_instruments` | 列出乐器（可按 `family` 过滤），返回名称/类别/音高约定/音域/复音数/说明 |
-| `describe_instrument` | 查看某个乐器的详情与可调参数（含该预设当前值） |
-| `list_effects` | 列出所有效果器及说明 |
-| `describe_effect` | 查看某个效果器的参数（范围/默认/单位/听感）、放置建议与 JSON 示例 |
-| `live_start` | 开始一场现场演奏（在后台启动 `muser live start`，单独的进程组，agent 会话结束音乐也不停） |
-| `live_send` | 提交一段（小节数、拍号、各轨片段 / 效果器 / 自动化，时间相对这一段开头），立即返回生效的小节与秒数 |
-| `live_status` | 现在第几小节、排好的还剩几秒、是否在循环、各轨、上一段的写法、自主演奏还剩多久 |
-| `live_wait` | 等到跑道短于 N 秒或自主演奏时间到（最多 30 秒），返回原因 |
-| `live_mix` | 演奏中调某条轨 / 总线 / 主输出的音量（0.3 秒渐变，不用写新的一段） |
-| `live_autoplay` | 重设自主演奏的时长 |
-| `live_stop` | 结束演奏，写好录音工程 |
+| `create_project` | Create an empty project, returns `project_id` |
+| `get_project` | Get the project's full JSON |
+| `set_project` | Replace the whole project with a full JSON |
+| `validate_project` | Validate the project |
+| `load_project` | Read a project JSON from disk into the session, returns a new `project_id` |
+| `save_project` | Write the session's project to a JSON on disk |
+| `set_tempo` | Set the tempo |
+| `add_track` | Add a track (can carry `instrument_params`, `output`, `sends`), returns `track_index`; instrument name, parameters, and routing are validated immediately |
+| `remove_track` | Delete a track |
+| `update_track` | Update gain / pan / mute, change the instrument, `output`, merge-update `instrument_params` and `sends` (a null value deletes that key); validated immediately |
+| `set_bus` | Add or replace (same name) a bus: effects / gain_db / pan / muted / output / sends / automation; name, references, and cycles are validated immediately |
+| `remove_bus` | Delete a bus; if it is still referenced, errors and points out where |
+| `get_routing` | View the signal flow: processing order, destinations and send amounts, sidechain relationships |
+| `add_clip` | Add a clip (can carry the sustain pedal `pedal`), returns `clip_index` |
+| `set_pedal` | Set a clip's sustain pedal ranges (CC64; keys released while the pedal is down keep sounding) |
+| `add_notes` | Add a batch of notes to a clip (supports `velocity`, `accent`) |
+| `clear_clip` | Clear all notes in a clip |
+| `set_automation` | Set the automation of a track (`track_index`), bus (`bus`), or master (replace or append), validated immediately |
+| `set_seed` | Set the project's random seed (determines random automation) |
+| `render` | Render offline to WAV, returns duration / peak |
+| `export_midi` | Export a standard MIDI file (notes match the render; audio tracks are not exported) |
+| `export_daw` | Export for a DAW: MIDI + per-track stem WAVs (24-bit) + mix + import notes (steps for Live / Cubase / Logic) |
+| `export_data` | Export JSON for visualization: each track's notes (seconds), sections, automation curves, optionally a per-frame volume envelope |
+| `export_stems` | Export stems: one WAV per unmuted track (with effects and sends, without master effects, all tracks the same length) |
+| `analyze` | Listening report: by section, density, register, chords, repetition, clashes, and suggestions (`audio` adds loudness and spectral centroid) |
+| `export_abc` | Export ABC notation: `standard` (ABC 2.1 multi-voice) or `yue2` (YuE2 native score) |
+| `mix_report` | Mix report: each track / bus / master's dry and post-fader loudness, relative differences, and warnings (instrument output is cached per project) |
+| `scan_plugins` | Scan the machine's external plugins |
+| `plugin_info` | External plugin info and parameter groups |
+| `list_plugin_params` | Search an external plugin's parameters (filter keyword; base parameters can be applied first) |
+| `plugin_param_values` | The text values an external plugin parameter accepts |
+| `audition` | Audition: render a test note for each parameter value and return loudness / brightness / bands / attack / decay; `record` writes into the profile |
+| `list_profiles` | List plugin profiles |
+| `get_profile` | Get a plugin's profile (JSON or Markdown usage notes) |
+| `draft_profile` | Auto-generate a profile draft from a plugin |
+| `save_profile` | Validate and save a profile to the user directory (can be checked against the plugin) |
+| `save_plugin_state` | Save a plugin's full state (sound) file |
+| `list_instruments` | List instruments (can filter by `family`), returns name / family / pitch convention / range / polyphony / description |
+| `describe_instrument` | View an instrument's details and tunable parameters (including the preset's current values) |
+| `list_effects` | List all effects with descriptions |
+| `describe_effect` | View an effect's parameters (range / default / unit / sonic description), placement advice, and JSON example |
+| `live_start` | Start a live session (starts `muser live start` in the background, in its own process group, so the music keeps playing after the agent session ends) |
+| `live_send` | Submit a section (bar count, time signature, each track's clips / effects / automation, with times relative to the start of this section); immediately returns the effective bars and seconds |
+| `live_status` | Which bar it is now, how many seconds are queued, whether it is looping, the tracks, how the last section was written, how long autoplay has left |
+| `live_wait` | Wait until the runway is shorter than N seconds or the autoplay time is up (at most 30 seconds); returns the reason |
+| `live_mix` | Adjust the volume of a track / bus / master during the session (0.3-second ramp, without writing a new section) |
+| `live_autoplay` | Reset the autoplay duration |
+| `live_stop` | End the session and write the recorded project |
 
-工程以**内存会话**（`project_id → Project`）管理。agent 的标准用法是**顺序**调用
-（等每个工具返回后再发下一个），这与真实 MCP 客户端行为一致。
+Projects are managed as an **in-memory session** (`project_id → Project`). An agent's standard usage is **sequential** calls
+(wait for each tool to return before sending the next), which matches real MCP client behavior.
 
-> 说明：服务器对每次工具调用持短时锁，正常的请求/响应式 agent 交互是安全的；
-> 若客户端异常地并发发起多个编辑，可能交错。未来可改为按 `project_id` 加会话级锁。
+> Note: the server holds a short lock for each tool call, so normal request/response agent interaction is safe;
+> if a client abnormally issues several edits concurrently, they may interleave. In the future this could become a session-level lock per `project_id`.
 
-### 设计原则（原始设计，供扩展参考）
+### Design principles (original design, for reference when extending)
 
-- **工程以句柄 + 内存状态管理**，避免每次都在磁盘读写大 JSON；同时支持 `load`/`save` 落盘。
-- 每个 tool 的输入/输出都是**结构化 JSON**，字段与 `muser-core` 模型一一对应。
-- **渲染返回元信息**（时长、峰值、文件路径），音频本身写文件，返回路径而非二进制。
-- 工具粒度兼顾"整体提交"与"增量编辑"两种 agent 工作风格。
+- **Projects are managed by handle + in-memory state**, avoiding reading and writing a large JSON on disk every time; `load`/`save` to disk are also supported.
+- Each tool's input / output is **structured JSON**, with fields mapping one-to-one to the `muser-core` model.
+- **Render returns metadata** (duration, peak, file path); the audio itself is written to a file, and the path is returned rather than binary.
+- The tool granularity serves both agent working styles: "submit it all at once" and "incremental editing".
 
-### 可扩展的 Tools（尚未实现）
+### Extensible tools (not yet implemented)
 
-#### 工程生命周期
+#### Project lifecycle
 
-| tool | 输入 | 输出 | 说明 |
+| tool | input | output | notes |
 |---|---|---|---|
-| `create_project` | `{ name?, tempo, time_signature? }` | `{ project_id }` | 新建空工程，返回句柄 |
-| `load_project` | `{ path }` | `{ project_id, project }` | 从磁盘 JSON 载入 |
-| `save_project` | `{ project_id, path }` | `{ path }` | 落盘为 JSON |
-| `get_project` | `{ project_id }` | `{ project }` | 取当前完整工程 JSON |
-| `set_project` | `{ project_id, project }` | `{ ok }` | 整体替换（适合"一次性提交完整构思"） |
-| `validate_project` | `{ project_id }` | `{ ok, errors? }` | 校验 |
+| `create_project` | `{ name?, tempo, time_signature? }` | `{ project_id }` | Create an empty project, returns a handle |
+| `load_project` | `{ path }` | `{ project_id, project }` | Load from a JSON on disk |
+| `save_project` | `{ project_id, path }` | `{ path }` | Save to disk as JSON |
+| `get_project` | `{ project_id }` | `{ project }` | Get the current full project JSON |
+| `set_project` | `{ project_id, project }` | `{ ok }` | Replace as a whole (good for "submit the full idea at once") |
+| `validate_project` | `{ project_id }` | `{ ok, errors? }` | Validate |
 
-#### 增量编辑（适合"对话式微调"）
+#### Incremental editing (good for "conversational fine-tuning")
 
-| tool | 输入 | 输出 |
+| tool | input | output |
 |---|---|---|
 | `add_track` | `{ project_id, name?, instrument, gain_db?, pan? }` | `{ track_index }` |
 | `remove_track` | `{ project_id, track_index }` | `{ ok }` |
@@ -326,30 +326,30 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `clear_clip` | `{ project_id, track_index, clip_index }` | `{ ok }` |
 | `set_tempo` | `{ project_id, tempo }` | `{ ok }` |
 
-#### 渲染与发现
+#### Rendering and discovery
 
-| tool | 输入 | 输出 |
+| tool | input | output |
 |---|---|---|
 | `render` | `{ project_id, output_path, sample_rate?, tail?}` | `{ path, seconds, peak_dbfs }` |
 | `list_instruments` | `{}` | `{ instruments: [...] }` |
 | `describe_instrument` | `{ name }` | `{ kind, note_convention, hint }` |
 
-### 实现路径（最小改动复用现有代码）
+### Implementation path (reuse existing code with minimal change)
 
 ```
-muser-mcp (新 crate)
-  ├─ 维护 HashMap<ProjectId, muser_core::Project>  // 内存会话状态
-  ├─ 每个 tool = 对 Project 的一次结构化变更 / muser_engine::render 调用
-  └─ 用任一 Rust MCP SDK 暴露为 stdio / SSE server
+muser-mcp (new crate)
+  ├─ maintains HashMap<ProjectId, muser_core::Project>  // in-memory session state
+  ├─ each tool = one structured mutation of a Project / one muser_engine::render call
+  └─ exposed as a stdio / SSE server with any Rust MCP SDK
 ```
 
-因为 `muser-core` 的模型已全 serde，几乎所有 tool 的 I/O 可直接用模型类型派生，
-`render` 直接转调 `muser_engine::render_to_wav`——与 CLI 完全同源，零行为分叉。
+Because the `muser-core` models are all serde, almost every tool's I/O can be derived directly from the model types,
+and `render` calls `muser_engine::render_to_wav` directly - fully the same source as the CLI, with zero behavior divergence.
 
-### 与 CLI 的关系
+### Relationship to the CLI
 
-CLI 和 MCP 是同一引擎的两张脸：
-- CLI 适合**脚本化/批处理**和"AI 通过 shell 工作"的场景。
-- MCP 适合**对话式 agent** 直接工具调用、维持多轮会话中的工程状态。
+The CLI and MCP are two faces of the same engine:
+- The CLI suits **scripting / batch processing** and the "AI works through the shell" scenario.
+- MCP suits **conversational agents** calling tools directly and keeping project state across a multi-turn session.
 
-两者都只是 `muser-core` + `muser-engine` 的薄封装。
+Both are only thin wrappers over `muser-core` + `muser-engine`.

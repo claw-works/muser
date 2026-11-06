@@ -1,30 +1,30 @@
-# 现场演奏（`muser live`）
+# Live session (`muser live`)
 
-用户说"现场演奏一段""即兴给我来点音乐""边听边改"时用。你一段一段往后写，muser 在本机声卡上演奏、维持音乐不停；
-人类在对话里随时改方向。这里是**方法**：具体写什么音乐、写多长，按用户要的风格和反馈来。
+Use when the user says "play something live", "improvise some music for me", "change it as I listen". You write one section after another, muser plays them on this machine's sound card and keeps the music going;
+the human can change direction in the conversation at any time. This is the **method**: what music to write and how long, follow the user's style and feedback.
 
-## 怎么运作
+## How it works
 
-- 整场是一个往后长的工程：模板（音轨、效果器、总线、速度）+ 你依次提交的**段**。每一段有自己的小节数和拍号，
-  片段、自动化的时间都**相对这一段的开头**。
-- **不冷场**：排好的音乐放完、还没有新的一段时，**最后提交的那一段整体循环**（混响、延迟的尾巴带进下一遍）。
-  所以你不需要一直在线：停下来以后音乐照样在放。
-- 新的一段默认排在已经提交的之后；正在循环时，这一遍放完再接上，乐句不会被拦腰截断。
-- 改动最早在约 1.5 秒之后生效（引擎提前准备）。回执：`bar`（第几小节）、`beat_in_bar`（小节里第几拍，段总从小节线开始，所以是 1）、
-  `starts_in_seconds`（还有几秒）、`absolute_beat`（从整场开头算的拍数，一般用不到）、`queued_until_bar`（排到第几小节）。
+- The whole session is one project that grows forward: a template (tracks, effects, buses, tempo) plus the **sections** you submit one after another. Each section has its own bar count and time signature;
+  clip and automation times are all **relative to the start of this section**.
+- **No dead air**: when the queued music has played out and there is no new section yet, **the last submitted section loops as a whole** (reverb and delay tails carry into the next pass).
+  So you do not need to stay online all the time: the music keeps playing after you stop.
+- A new section is queued after the ones already submitted by default; while looping, the current pass finishes and then the new section follows, so phrases are never cut in half.
+- Changes take effect in about 1.5 seconds at the earliest (the engine prepares ahead). Receipt: `bar` (which bar), `beat_in_bar` (which beat in the bar; a section always starts on a bar line, so this is 1),
+  `starts_in_seconds` (seconds until it starts), `absolute_beat` (beat count from the start of the session, rarely needed), `queued_until_bar` (bar up to which music is queued).
 
-## 开始
+## Starting
 
-1. 选模板：发行包的 `samples/live/` 里有 `electronic`（124 BPM，鼓 / 贝斯 / 和弦 / pad / lead，混响和回声总线）、
-   `ambient`（72 BPM，drone / pad / 钟声 / 低音 / 长笛 / lo-fi 鼓）、`band`（96 BPM，原声鼓 / 贝斯 / 电钢 / 吉他 / 风琴 / 萨克斯）。
-   也可以自己写一个：普通工程，**每条轨都要有名字**，总线要先建好（中途不能加总线），不要音频轨。模板里的片段是开场，会先循环着。
-2. 启动：`muser live start <模板> --detach --title "<按人要的写一个标题>" --record session.muser.json --autoplay 3m --open`（或 MCP 的 `live_start`）。
-   `--detach` 让它和你的 shell 完全脱离、开始演奏就返回——**一定要加**，不要用 `nohup … &`（有的 agent 环境跑完一条命令会把它带的进程一起结束）。
-   `--open` 打开现场页面（位置、排好的段、各轨电平、停止按钮），告诉用户可以看。
-   声卡和本机连接（127.0.0.1）在沙箱里可能用不了：报错就请用户允许这条命令在沙箱外运行。
-3. 用大白话告诉用户：音乐从这台电脑的扬声器出；想改就直接在对话里说；你会自己往下写多久。
+1. Pick a template: the release's `samples/live/` has `electronic` (124 BPM, drums / bass / chords / pad / lead, reverb and echo buses),
+   `ambient` (72 BPM, drone / pad / bells / bass / flute / lo-fi drums), `band` (96 BPM, acoustic drums / bass / electric piano / guitar / organ / saxophone).
+   You can also write your own: an ordinary project where **every track must have a name**, the buses must be created up front (buses cannot be added midway), and there are no audio tracks. The clips in the template are the opening, and loop at first.
+2. Start: `muser live start <template> --detach --title "<a title that fits what the person wants>" --record session.muser.json --autoplay 3m --open` (or MCP `live_start`).
+   `--detach` fully separates it from your shell and returns once playback starts -- **always add it**; do not use `nohup ... &` (some agent environments kill the processes a command left behind when it finishes).
+   `--open` opens the live page (position, queued sections, per-track levels, a stop button); tell the user they can watch it.
+   The sound card and local connections (127.0.0.1) may be unavailable in a sandbox: if you get an error, ask the user to allow this command to run outside the sandbox.
+3. Tell the user in plain words: the music comes out of this computer's speakers; to change something, just say so in the conversation; and how long you will keep writing on your own.
 
-## 一段怎么写
+## Writing a section
 
 ```json
 { "name": "groove A", "bars": 8,
@@ -39,104 +39,104 @@
   ] }
 ```
 
-- 提交：`muser live send seg.json`（`-` 读标准输入）或 MCP `live_send`。
-- `name`：给这一段起个名字（"intro"、"blues 2"），页面上显示，录下的工程里段落名也带上它。
-- `note`：一句话说这一段变了什么（"换成 6/8 校园民谣：木吉他分解和弦，长笛进来"）。换段时页面上会提示，听的人知道发生了什么——**每段都写**。
-- `title`：人换了方向（"来一段乡村"）时可以顺手改整场的标题。
-- **用一个音色之前先看说明**：`muser instruments <名字>`。有的音色一个键就是一个和弦（`poly.rave_chord_stab` 这类 chord stab），
-  给它写三和弦会叠成刺耳的音团——它只按单音；有的是单音（acid 贝斯、独奏人声），重叠的音会滑音。
-- 内置鼓组的 **ride（吊镲）现在不好听**（像破锣）：爵士、乡村的 swing 律动先用 `hat`（闭镲）或 `pedal_hat` 打，
-  要真的 ride 就用本机的 SFZ / 插件鼓组（`muser sounds list`）。
-- **鼓型写短**：`grid` 的每一行会在整个片段里自己循环，一小节的 16 步就够了，不用把 8 小节都写出来；
-  现成的律动在 `muser loop list` / `muser loop show <名字>`（disco、funk、house…），拿来改比从头写快。
-- **没写到的轨在这一段里休息**。想让一条轨继续，就在这一段里也给它片段（`live status` 的 `last_change` 是上一段的完整写法，
-  在它上面改最省事：留下想延续的，改想变化的）。
-- 片段写法和普通工程一样：`notes`、`abc`、`grid`、`drummer`、`humanize` 都能用（`chordal`、`parts` 是编曲层的，现场不用）；超出这一段的部分会截掉。
-- **新轨**：写 `instrument`（可加 `instrument_params`、`output`、`sends`、`gain_db`、`pan`）。
-- **已有的轨**不能中途换乐器、改参数 / 音量 / 声像：换乐器就**新开一条轨**；参数、音量、声像的变化写 `automation`。
-- **效果器**：`effects_add` 从这一段开头接入（追加在效果链末尾，序号接着已有的往后排），`effects_off: [序号]` 从这一段开头撤下。
-  效果器不能删、不能中间插入；带延迟的效果器（如限幅器）不能中途加，要放进模板。
-- **自动化**：从这一段开头起生效，一直到被后面写的同一参数覆盖；写了 `end`（相对这一段开头）就到那里为止。
-- **总线、主输出**：`"buses": [{ "name": "verb", "automation": [...], "effects_add": [...], "effects_off": [...] }]`（总线要是模板里有的），
-  `"master": { "automation": [{ "target": "master_gain_db", … }], "effects_add": [...] }`。整体渐弱、混响慢慢变湿就写在这里。
-  它们只在这一段第一次放时生效：这一段循环时停在变化后的样子（渐弱完就一直弱），不会每遍重来；轨上的自动化则每遍都重复。
-- **换音色（交叉淡化）**：已有的轨不能换乐器。新开一条轨写新音色，用 `gain_db` 自动化在一两小节里淡入，
-  同一段里给旧轨一条淡出到 -60 的自动化，下一段起不再给旧轨片段。轨多了会更耗资源，不用的轨尽早让它休息。
-- `"at": "now"`：下一条小节线就换（截断正在放的这段）。默认 `"after"`。人类说"马上停""立刻换"时用 `now`。
-- `"at": "patch"`：**改正在放的这一段**（加鼓、换伴奏型、给某条轨加点东西），曲式不乱——有人在跟着唱的时候一定用它，不要用 `now`。
-  写的是完整的一段（和原来一样从这一段的开头写起，`bars` 一样），muser 从下一小节起接着这一段的同一位置往下放；
-  回执的 `section_bar` 说从这一段的第几小节起换上。之后循环时从头完整地重复改过的版本。
-  只调音量不用 patch，用 `muser live mix`。
+- Submit: `muser live send seg.json` (`-` reads standard input) or MCP `live_send`.
+- `name`: give the section a name ("intro", "blues 2"); it is shown on the page, and the section name is also carried into the recorded project.
+- `note`: one sentence on what changed in this section ("switch to 6/8 campus folk: fingerpicked acoustic guitar, flute comes in"). It is shown on the page when the section changes, so the listener knows what happened -- **write it for every section**.
+- `title`: when the person changes direction ("give me some country"), you can also update the title of the whole session.
+- **Read the description before using a sound**: `muser instruments <name>`. Some sounds map one key to one whole chord (`poly.rave_chord_stab` and other chord stabs);
+  writing a triad for them stacks into a harsh clump -- they take single notes only; some are monophonic (acid bass, solo voice), and overlapping notes glide.
+- The built-in drum kit's **ride cymbal sounds bad right now** (like a cracked gong): for jazz and country swing grooves, play `hat` (closed hat) or `pedal_hat` first;
+  for a real ride, use a local SFZ / plugin drum kit (`muser sounds list`).
+- **Keep drum patterns short**: each row of a `grid` loops by itself across the whole clip, so 16 steps for one bar is enough; no need to write out all 8 bars.
+  Ready-made grooves are in `muser loop list` / `muser loop show <name>` (disco, funk, house...); adapting one is faster than writing from scratch.
+- **Tracks you do not write rest during this section.** To keep a track going, give it a clip in this section too (`last_change` in `live status` is the full text of the previous section;
+  editing on top of it is easiest: keep what should continue, change what should vary).
+- Clips are written as in an ordinary project: `notes`, `abc`, `grid`, `drummer`, `humanize` all work (`chordal` and `parts` belong to the arrangement layer and are not used live); anything beyond the end of the section is cut off.
+- **New track**: write `instrument` (optionally `instrument_params`, `output`, `sends`, `gain_db`, `pan`).
+- **Existing tracks** cannot change instrument, parameters, volume or pan midway: to change instrument, **open a new track**; changes to parameters, volume and pan go in `automation`.
+- **Effects**: `effects_add` connects from the start of this section (appended to the end of the effect chain, indexes continue after the existing ones), `effects_off: [index]` removes from the start of this section.
+  Effects cannot be deleted or inserted in the middle; effects with latency (such as a limiter) cannot be added midway and must be put in the template.
+- **Automation**: takes effect from the start of this section until overridden by a later write of the same parameter; if you write `end` (relative to the start of this section) it stops there.
+- **Buses and master**: `"buses": [{ "name": "verb", "automation": [...], "effects_add": [...], "effects_off": [...] }]` (the bus must exist in the template),
+  `"master": { "automation": [{ "target": "master_gain_db", … }], "effects_add": [...] }`. Put overall fade-outs and reverb slowly getting wetter here.
+  They take effect only the first time this section plays: when the section loops, it stays at the changed state (once faded, it stays faded) and does not restart each pass; automation on tracks repeats on every pass.
+- **Changing sounds (crossfade)**: an existing track cannot change instrument. Open a new track with the new sound and fade it in with `gain_db` automation over a bar or two;
+  in the same section give the old track an automation fading out to -60, and from the next section on give the old track no clips. More tracks cost more resources, so let unused tracks rest as early as possible.
+- `"at": "now"`: switch at the next bar line (cutting off the section that is playing). The default is `"after"`. Use `now` when the human says "stop right now" or "change immediately".
+- `"at": "patch"`: **modify the section that is playing** (add drums, change the accompaniment pattern, add something to a track) without disturbing the form -- when someone is singing along, always use it, not `now`.
+  Write a complete section (written from the start of the section as before, with the same `bars`); muser continues from the next bar at the same position in this section;
+  `section_bar` in the receipt says from which bar of the section the change takes over. Afterwards, when looping, the modified version repeats whole from the start.
+  To adjust only volume, do not use patch; use `muser live mix`.
 
-## 有人跟着唱：进入提示和卡拉 OK 字幕
+## Someone singing along: cues and karaoke lyrics
 
-- **进入提示**：唱的人进来之前放 1–2 小节前奏，用一件清楚的打击乐（响棒、牛铃）数"1、2、3、4"；前奏单独成一段，
-  `note` 写"听到 1、2、3、4 就开始唱"，开唱的那一段 `note` 写"唱！"——页面会在开唱的那一刻闪一下。
-- **字幕**：一段写 `"lyrics": "第一句\n第二句"`，再给一条轨写引导旋律、音符带音节（ABC 的 `w:` 行，拼音或英文一音一节）。
-  页面上用大字显示当前这一句（唱过的字变色、正在唱的字发亮）和下一句，开唱前提示"▶ 准备"。
-  引导旋律可以小声放着带唱（颤音琴、长笛），也可以单开一条 `gain_db` -80 的轨只用来给字幕定时间。
-  汉字一个字对一个音节；字数和音节对不上时页面显示音节本身。
-- 只用公有领域的歌词（童谣、民歌）或用户自己给的；有版权的歌只做伴奏，不写词和旋律。
+- **Cue**: before the singer comes in, play a 1-2 bar intro with a clear percussion sound (claves, cowbell) counting "1, 2, 3, 4"; make the intro its own section,
+  with `note` saying "start singing when you hear 1, 2, 3, 4", and the `note` of the section where singing starts saying "Sing!" -- the page flashes at the moment singing starts.
+- **Karaoke**: in a section write `"lyrics": "first line\nsecond line"`, then give one track a guide melody whose notes carry syllables (the `w:` line in ABC, pinyin or English, one syllable per note).
+  The page shows the current line in large type (sung words change color, the word being sung lights up) and the next line, and shows "▶ Get ready" before the singing starts.
+  The guide melody can play quietly to lead the singing (vibraphone, flute), or you can open a separate track at `gain_db` -80 used only to time the karaoke.
+  Each Chinese character maps to one syllable; when the number of characters and syllables do not match, the page shows the syllables themselves.
+- Use only public-domain lyrics (nursery rhymes, folk songs) or ones the user supplies; for copyrighted songs, make only the accompaniment and write no lyrics or melody.
 
-## 演奏中调音量
+## Adjusting volume while playing
 
-- 人说"萨克斯太小""鼓太吵"：`muser live mix <轨> <dB>`（MCP `live_mix`），约 0.4 秒后开始、0.3 秒内渐变到这个推子值，
-  **不用写新的一段，曲式不受影响**。总线写总线名，主输出写 `master`；负数写成 `muser live mix master -- -3`。
-- 自己先看：`status` 的 `mix` 列出每条轨 / 总线 / 主输出现在的推子值 `gain_db` 和响度 `rms_db`（推子后约 1.5 秒的 RMS，从响到轻排）。
-  主奏（萨克斯、长笛、人声的引导旋律）通常要比伴奏响几 dB；一个新声部进来以后看一眼，差太多就主动调，告诉人调了什么。
-- 之后某一段又写了这条轨的音量自动化，就从那一段起听那一段的。
+- When the person says "the saxophone is too quiet" or "the drums are too loud": `muser live mix <track> <dB>` (MCP `live_mix`); it starts after about 0.4 seconds and ramps to that fader value within 0.3 seconds,
+  **no new section needed, and the form is unaffected**. For a bus write the bus name, for the master write `master`; for negative values write `muser live mix master -- -3`.
+- Check first yourself: the `mix` in `status` lists the current fader value `gain_db` and loudness `rms_db` of every track / bus / master (RMS about 1.5 seconds after the fader, sorted loud to quiet).
+  The lead (saxophone, flute, the guide melody of a voice) usually needs to be a few dB louder than the accompaniment; after a new part comes in, take a look, and if the gap is too big, adjust proactively and tell the person what you adjusted.
+- If a later section writes volume automation for that track, from that section on that section's automation governs.
 
-## 自主演奏的循环
+## The autoplay loop
 
-自主演奏期间（`--autoplay` 的时长内）：
+During autoplay (within the duration of `--autoplay`):
 
-1. 写一段 → 提交 → `muser live wait --runway N`（MCP `live_wait`）。
-2. `wait` 返回 `reason`：
-   - `runway`：排好的音乐快放完了，写下一段。
-   - `idle`：还早，再调用一次 `wait`（单次最多 30 秒）。
-   - `autoplay_over`：时间到了。**交最后一段——一个适合反复听的乐句**（不要停在过门、渐弱或高潮上），然后结束这一轮，
-     告诉用户"我先停在这里，音乐会一直循环，想继续或改哪里就说"。不要再 `wait`。
-3. `N` 设得比你写一段用的时间长：`status` / `wait` 里的 `last_write_seconds` 是上次从 `wait` 返回到提交用了几秒，
-   N 至少是它的 1.5 倍。写得慢没关系——跑道用完了会循环最后一段，不会冷场，只是会多重复几遍。
-4. 每段 4–16 小节，整体要有发展：引入、加层、变化、留白、回来。**跑道比篇幅要紧**：写一段如果要花半分钟以上，
-   先交一段短的（在上一段上改几处）垫着，再写长的；不然上一段会重复很多遍。
-5. 用户点名一首大家熟悉的曲子（《小星星》《两只老虎》）：**旋律原样照写**（音程、节奏不改，调和音区可以换），
-   风格变化放在伴奏、鼓、音色上；用户要"变奏""改编"时才动旋律。
+1. Write a section -> submit -> `muser live wait --runway N` (MCP `live_wait`).
+2. `wait` returns a `reason`:
+   - `runway`: the queued music is about to run out; write the next section.
+   - `idle`: still early; call `wait` once more (at most 30 seconds per call).
+   - `autoplay_over`: time is up. **Submit a last section -- a phrase that is good to hear repeatedly** (do not end on a fill, a fade-out or a climax), then end this round,
+     and tell the user "I'll stop here for now; the music will keep looping. Say so if you want me to continue or change anything." Do not `wait` again.
+3. Set `N` longer than the time it takes you to write a section: `last_write_seconds` in `status` / `wait` is how many seconds it took from the last return of `wait` to the submission;
+   N should be at least 1.5 times that. Writing slowly is fine -- when the runway runs out the last section loops and there is no dead air, it just repeats a few more times.
+4. Each section is 4-16 bars, and the whole should develop: introduce, add layers, vary, leave space, return. **The runway matters more than length**: if writing a section will take more than half a minute,
+   first submit a short one (a few edits on the previous section) as a cushion, then write the long one; otherwise the previous section repeats many times.
+5. When the user names a well-known tune ("Twinkle Twinkle Little Star", "Two Tigers"): **write the melody exactly as it is** (intervals and rhythm unchanged; key and register may change),
+   and put the stylistic change in the accompaniment, drums and sounds; touch the melody only when the user asks for a "variation" or "arrangement".
 
-人类在对话里说了话（Claude Code 里你下一次调用工具时就能看到）：**先照人说的改**，下一段就体现出来，
-然后接着循环。不支持回合中插话的 agent，用户会按 Esc 打断；回答完、改完，回到自主演奏的循环（还在时长内的话）。
-用户说"再自己发展 5 分钟"：`muser live autoplay 5m`（MCP `live_autoplay`），回到循环。
+When the human says something in the conversation (in Claude Code you see it at your next tool call): **do what the person says first**, so the next section reflects it,
+then go on with the loop. For agents that cannot take interjections mid-turn, the user will press Esc to interrupt; after answering and making the change, return to the autoplay loop (if still within the duration).
+When the user says "develop on your own for another 5 minutes": `muser live autoplay 5m` (MCP `live_autoplay`), and return to the loop.
 
-## 改速度
+## Changing tempo
 
-- 一段写 `"tempo": 140`：从这一段开头起换成 140 BPM，之后的段落不写就保持。加 `"tempo_ramp_bars": 4`：
-  在这一段的前 4 小节里从当时的速度渐变过去（渐快、渐慢；不写或 0 就是在小节线上直接换）。
-  这一段循环时停在新速度上，不会每遍重来。`status` 的 `tempo` 是现在的速度（渐变中也是当时的值）。
-- 跳舞的场合一次别变太多（±10 BPM 以内，或者用 4–8 小节渐变）；风格大换（ballad → drum & bass）时直接换、配一个过门。
-- 有人跟着唱的时候不要改速度。
+- Write `"tempo": 140` in a section: from the start of this section it switches to 140 BPM, and later sections that do not write it stay there. Add `"tempo_ramp_bars": 4`:
+  over the first 4 bars of this section it ramps from the current tempo (accelerando, ritardando; omitted or 0 means switching directly on the bar line).
+  When this section loops it stays at the new tempo and does not restart each pass. `tempo` in `status` is the current tempo (during a ramp, the value at that moment).
+- For dancing, do not change too much at once (within +/-10 BPM, or use a 4-8 bar ramp); for a big style change (ballad -> drum & bass), switch directly with a fill.
+- Do not change tempo while someone is singing along.
 
-### 听感上的变速（BPM 不变）
+### Perceived tempo change (BPM unchanged)
 
-不改 BPM 也能听起来变快 / 变慢：改**律动的重音落在多长的音符上**：
+Without changing BPM it can still sound faster / slower: change **the note length the groove's accents fall on**:
 
-- 感觉到的拍子 = `BPM × 1/4 ÷ 重音间隔`（间隔用全音符的分数，四分音符 = 1/4）。
-  例：120 BPM，重音每附点四分（3/8）一下 → 120 × (1/4) ÷ (3/8) = 80；每八分（1/8）一下 → 240（双倍速感）。
-- 常用比例：2:1（半速 / 倍速：军鼓从 2、4 拍挪到第 3 拍，或者鼓点加密一倍）、3:2（三连音 / 附点律动）、4:3。
-- 拍号本身不改变快慢（7/8 只是一小节短半拍）；拍号 + 重音位置一起改，才是"换了一种速度感"。
+- Perceived beat = `BPM x 1/4 / accent interval` (the interval as a fraction of a whole note; a quarter note = 1/4).
+  Example: at 120 BPM, with an accent every dotted quarter (3/8) -> 120 x (1/4) / (3/8) = 80; an accent every eighth (1/8) -> 240 (double-time feel).
+- Common ratios: 2:1 (half / double speed: move the snare from beats 2 and 4 to beat 3, or make the drum hits twice as dense), 3:2 (triplet / dotted groove), 4:3.
+- The time signature itself does not change the speed (7/8 is just a bar half a beat shorter); changing the time signature and accent positions together is what gives "a different feel of tempo".
 
-## 收尾
+## Ending
 
-- 用户说"慢慢结束"：用两三段收——每段撤掉一些层、律动变稀、音符拉长（听感上的渐慢），最后一段主和弦的长音，
-  同时在 `master` 写 `master_gain_db` 从 0 降到 -40 左右的渐弱，混响可以在 `buses` 里慢慢加多。
-- 等最后一段放完（`status` 的 `segment.seconds_to_end`），再 `muser live stop`（MCP `live_stop`）：声音停下，录音工程写好，页面显示"演奏结束"。
-  用户说"马上停"就直接 `stop`。
-- 告诉用户录下的工程在哪：可以 `muser render session.muser.json -o live.mp3` 导出，或 `muser view` 接着编辑；
-  旁边的 `session.changes.jsonl` 是每次提交的原文和生效的小节，复盘用。
+- The user says "end gradually": close with two or three sections -- each removes some layers, thins the groove, lengthens the notes (a ritardando by ear), and the last section is a long tonic chord,
+  while on `master` you write a fade-out of `master_gain_db` from 0 down to about -40, and the reverb can gradually increase in `buses`.
+- Wait for the last section to finish playing (`segment.seconds_to_end` in `status`), then `muser live stop` (MCP `live_stop`): the sound stops, the recorded project is written, and the page shows "Performance ended".
+  If the user says "stop right now", just `stop`.
+- Tell the user where the recorded project is: it can be exported with `muser render session.muser.json -o live.mp3`, or edited further with `muser view`;
+  the `session.changes.jsonl` beside it holds the original text of every submission and the bar where it took effect, for review.
 
-## 出问题时
+## When something goes wrong
 
-- `send` 报错：照错误信息改（多半是改了已有轨的乐器 / 参数、删了效果器、引用了不存在的总线），改好再交；音乐不受影响。
-- `status` / `wait` 里有 `warning`（上次看过以后掉过帧）：看 `slow`（播放线程里慢在哪：渲染一块、换上新工程，还是被系统耽搁）
-  和 `load.heaviest`（最耗资源的轨，占几个核）。是轨太重就在下一段让它休息或换轻一点的乐器；是"被耽搁"多半是电脑别的程序在忙，告诉用户。
-  休息的轨（没有片段、尾音也没了）不占 CPU，不用为了省资源删轨。
-- 连不上：`muser live status` 报"没有正在进行的现场演奏"——进程停了，问用户要不要重新开始。
+- `send` errors: fix as the error message says (most often: changed the instrument / parameters of an existing track, deleted an effect, or referenced a bus that does not exist), then resubmit; the music is unaffected.
+- `warning` in `status` / `wait` (a dropout since you last looked): look at `slow` (where the playback thread is slow: rendering a block, swapping in the new project, or being delayed by the system)
+  and `load.heaviest` (the most resource-hungry tracks, in number of cores). If a track is too heavy, let it rest or swap in a lighter instrument in the next section; if "delayed by the system", it is mostly other programs busy on the computer; tell the user.
+  Resting tracks (no clips, and the tail is gone) use no CPU; do not delete tracks to save resources.
+- Cannot connect: `muser live status` reports "no live session in progress" -- the process has stopped; ask the user whether to start again.
