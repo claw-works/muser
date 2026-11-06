@@ -49,7 +49,7 @@ scripts/render_samples.sh effects    # 只渲染一个分组
   guitar.nylon → guitar.steel → bass.finger → bass.acid → organ.jazz → mallet.marimba →
   mallet.vibraphone → mallet.kalimba → strings.cello → strings.ensemble → strings.violin_pizz →
   wind.flute → wind.sax → wind.trumpet → choir.aah → poly.moog_bass → poly.trance_supersaw →
-  poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck。完整列表用 `muser instruments` 查看（115 个）。
+  poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck。完整列表用 `muser instruments` 查看。
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径相对音色库，
   需设 `MUSER_SFZ_PATH` 指向你的音色库目录（见 [README.zh-CN.md](../README.zh-CN.md)）。
 

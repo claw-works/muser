@@ -55,7 +55,7 @@ muser is open source and free. Every piece of the *Electric Sheep* suite was mad
 ## Features
 
 - Multi-track arrangement: drums + synths + bass, multiple clips and notes
-- 115 built-in instruments: 10 drum kits, 68 synth presets, plus guitars, basses, organs, mallets (marimba etc.), strings, winds and choirs — all synthesized by manguebyte in real time, no system MIDI synth needed; each one is tweakable via `instrument_params`
+- 100+ built-in instruments: about ten drum kits, dozens of synth presets, plus guitars, basses, organs, mallets (marimba etc.), strings, winds and choirs — all synthesized by manguebyte in real time, no system MIDI synth needed; each one is tweakable via `instrument_params`
 - **Audio tracks**: put recordings, samples, loops and sound effects straight on a track (`"instrument": "audio"`) — WAV, AIFF, FLAC, Ogg Vorbis, Opus, MP3 (plus AAC/ALAC on macOS and Windows); they go through effects, buses, sends and sidechains like any track
 - Built-in SFZ sampler: `sfz:/path/to.sfz` (or a path relative to a sound-library folder on `MUSER_SFZ_PATH`) loads SFZ libraries directly
 - Effect chains on tracks, buses or the master bus: reverb, delay, compressor, multiband compressor, chorus, eq, limiter, phaser, flanger, tremolo, auto-pan, stereo widener, transient shaper, tape saturation, bitcrusher, ring modulator, frequency shifter, formant filter, granular delay and a vocoder (modulated by another track)
@@ -71,7 +71,7 @@ muser is open source and free. Every piece of the *Electric Sheep* suite was mad
   Add `--device` to play through this machine's sound card, with volume/mute/solo taking effect instantly (when working remotely over an SSH port forward, use the default in-browser playback)
 - `muser loop edit` motif & loop editor: draw a motif in a piano roll (or hum it into the microphone — it is transcribed to notes without AI) or a beat in a step grid, preview it with muser's instruments, and save it to the project's `loops/` or share it to your global library — agents then continue, develop or reuse these snippets (`muser loop show <name> [--abc]`)
 - `muser poly edit` sound editor: design poly-synth sounds (oscillators, filters, envelopes, LFOs, modulation matrix) in a local web page with instant previews, and save them to your sound library; agents put them into projects with `muser poly show <name>`
-- Shorthand notes for agents: melodies in **ABC notation** (`"abc"`), step patterns (`"grid"`), a **loop library** of 17 common grooves (`muser loop`), and a **generative drummer** that varies each bar and plays fills — a few lines of JSON instead of long note lists
+- Shorthand notes for agents: melodies in **ABC notation** (`"abc"`), step patterns (`"grid"`), a **loop library** of common grooves (`muser loop`), and a **generative drummer** that varies each bar and plays fills — a few lines of JSON instead of long note lists
 - **Humanize**: timing drift, velocity and length variation, swing and push/lay-back per track or clip; a seed keeps a take you like, a new seed plays it again differently
 - **Arrangement layer for agents**: define `sections` once (bars + chord progression), order them in a `form` (with per-pass transpose / mute / seed), and give each track `parts` per section; `chordal` patterns (`"1 . 5 . 8 . 5 3"`, `"c - - -"`) follow the chords with automatic voice leading, `end` swaps in a fill, and `transform` adds transpose / reverse / invert / stretch / shift / every-N / seeded variation. A full song takes about 40 lines
 - **`muser analyze`**: a listening report for agents that cannot hear — per-section density, registers, harmonic rhythm, repetition, avoid notes and minor-second clashes, optional loudness and brightness, an energy curve, checks for "AI tells" (energy that never drops, instrumentation that never changes, one chord loop, fills every 4 bars, everything on the grid, identical choruses), and plain-language suggestions ("the chorus doesn't lift", "two tracks mask each other")
@@ -290,7 +290,7 @@ and the agent can arrange music with tools like `create_project / add_track / ad
 
 ## External sounds and plugins (optional)
 
-The 115 built-in instruments need no downloads (most samples, such as `samples/songs/dnb-liquid-skyline`, use only built-in sounds).
+The built-in instruments need no downloads (most samples, such as `samples/songs/dnb-liquid-skyline`, use only built-in sounds).
 The free / open-source sound libraries and plugins below are optional: `skills/` and some `samples/` use them; once installed they work by name, alias or preset.
 
 ### SFZ sample libraries

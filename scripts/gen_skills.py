@@ -407,7 +407,7 @@ FAMILY_PAGES = {
 }
 
 POLY_TIPS = [
-    "These are the 68 synth presets that ship with manguebyte, divided into 7 categories by purpose. Write it as `\"instrument\": \"poly.<name>\"`.",
+    "These are the synth presets that ship with manguebyte (the current list is below), divided by purpose. Write it as `\"instrument\": \"poly.<name>\"`.",
     "Choose by purpose: bass for bass, lead for the main melody, pad for backing layers, pluck for short arpeggios/plucks, keys for chord accompaniment, brass for brass in unison, fx for transition effects.",
     "The pad category has slow attack and release, so notes should be long (2 beats or more) and start a little early.",
     "The fx category (riser / downlifter, etc.) usually takes one long note (4-8 beats) before a section transition.",

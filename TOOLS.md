@@ -33,7 +33,7 @@ Error messages give the exact location, e.g. `tracks[0].effects[0]: reverb.mix =
 - **Output**: `OK: '<name>' is valid - tempo <t>, <n> tracks, duration <d> beats`, or a non-zero exit code + the errors.
 
 ### `muser instruments [name] [--family <F>] [--json]`
-- No argument: list all 115 built-in instruments with descriptions.
+- No argument: list all built-in instruments with descriptions.
 - `--family`: list only one family (drums / synth / poly / guitar / bass / organ / mallet / strings / wind / choir).
 - `<name>`: show the instrument's family, pitch convention (GM drum keys / pitched notes), recommended range, polyphony, description,
   and its tunable parameters (the keys of `instrument_params`, ranges, units, descriptions, the preset's current values, and whether each can be automated).
@@ -135,7 +135,7 @@ is long-running, holds the machine's sound card, and listens on 127.0.0.1 only (
 ### `muser loop edit|list|show|play|save|share`
 
 The loop library: drum rhythm patterns (`grid`) and melody / motif / harmony patterns (`notes`). Three locations; when names collide, the nearer wins:
-project (the `loops/` next to the project, or the current directory's `loops/` when there is no project) > global (`~/.config/muser/loops/`) > built-in (17 common drum patterns).
+project (the `loops/` next to the project, or the current directory's `loops/` when there is no project) > global (`~/.config/muser/loops/`) > built-in (common drum patterns).
 Each command's `--project <project-file>` specifies the project directory.
 - `edit [name] [--project P] [--port 8739] [--open]`: the loop / motif editor (local web page, listens on the local machine only). Melodies use a piano roll (click, drag, change length,
   velocity, transpose, undo, snap to the grid or free durations); drums use a step grid; it renders with muser's instruments and auditions in a loop; "● Hum to record" uses the microphone to hum a phrase and converts it directly to notes;

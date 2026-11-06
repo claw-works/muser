@@ -105,7 +105,7 @@ section content that fills only a short stretch with no `length` written (so it 
 - `accent` is true/false, default false. For drum kits and `bass.acid*` an accent is louder and brighter (acid's 303 character mostly comes from it); other instruments ignore it.
 - `bend` (pitch bend, guitar string bends, etc.) is `[[beat, semitones], ...]`; see "Pitch bend: bend" below.
 
-## Instrument index (115 built-in + SFZ sound libraries + external VSTi)
+## Instrument index (built-in + SFZ sound libraries + external VSTi)
 
 | Family | Sub-skill | Representatives |
 |---|---|---|
