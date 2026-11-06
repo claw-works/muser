@@ -31,6 +31,10 @@
     "outro": {
       "bars": 4,
       "chords": "C G Cm G"
+    },
+    "end": {
+      "bars": 1,
+      "chords": "G"
     }
   },
   "form": [
@@ -48,7 +52,8 @@
     "b",
     "b2",
     "a",
-    "outro"
+    "outro",
+    "end"
   ],
   "buses": [
     {
@@ -156,6 +161,46 @@
           "chordal": "1 5 8 5 3' 8 5 3",
           "octave": 3,
           "velocity": 0.7
+        },
+        "end": {
+          "notes": [
+            {
+              "pitch": 43,
+              "start": 0.0,
+              "length": 4.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 47,
+              "start": 0.03,
+              "length": 3.97,
+              "velocity": 0.81
+            },
+            {
+              "pitch": 50,
+              "start": 0.06,
+              "length": 3.94,
+              "velocity": 0.77
+            },
+            {
+              "pitch": 55,
+              "start": 0.09,
+              "length": 3.91,
+              "velocity": 0.73
+            },
+            {
+              "pitch": 59,
+              "start": 0.12,
+              "length": 3.88,
+              "velocity": 0.69
+            },
+            {
+              "pitch": 67,
+              "start": 0.15,
+              "length": 3.85,
+              "velocity": 0.65
+            }
+          ]
         }
       }
     },
@@ -187,6 +232,16 @@
         "outro": {
           "chordal": "1 - - - - - - -",
           "octave": 2
+        },
+        "end": {
+          "notes": [
+            {
+              "pitch": 31,
+              "start": 0,
+              "length": 4,
+              "velocity": 0.7
+            }
+          ]
         }
       }
     },
@@ -258,6 +313,12 @@
           "step": 1,
           "octave": 3,
           "velocity": 0.35
+        },
+        "end": {
+          "chordal": "c - - -",
+          "step": 1,
+          "octave": 3,
+          "velocity": 0.3
         }
       }
     },
