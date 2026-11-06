@@ -140,7 +140,7 @@ fn route(line: &[u8], out: &mut std::fs::File, log: &mut Option<std::fs::File>, 
         static NOTED: Once = Once::new();
         NOTED.call_once(|| {
             if let Ok(mut n) = note.lock() {
-                let _ = writeln!(n, "（插件自己打的日志已转到 {}；设 MUSER_PLUGIN_LOG=show 可直接显示）", path.display());
+                let _ = writeln!(n, "(the plugin's own log output was redirected to {}; set MUSER_PLUGIN_LOG=show to display it directly)", path.display());
             }
         });
     }

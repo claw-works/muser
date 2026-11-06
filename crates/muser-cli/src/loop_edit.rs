@@ -63,7 +63,7 @@ fn preview(b: &PreviewBody, sample_rate: u32) -> Result<Vec<u8>, String> {
 fn handle(mut req: tiny_http::Request, cx: &Ctx) {
     use tiny_http::Method;
     if !host_allowed(&req, cx.port) {
-        respond_json(req, 403, &json!({ "error": "只接受来自本机页面的请求" }));
+        respond_json(req, 403, &json!({ "error": "only requests from the local page are accepted" }));
         return;
     }
     let url = req.url().to_string();
@@ -131,7 +131,7 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
                 };
                 match r {
                     Ok(path) => respond_json(req, 200, &json!({ "ok": true, "path": path.display().to_string(), "mtime": mtime(&path) })),
-                    Err(e) if e.contains("已存在") => respond_json(req, 409, &json!({ "error": e })),
+                    Err(e) if (e.contains("already exists")) => respond_json(req, 409, &json!({ "error": e })),
                     Err(e) => err(req, e),
                 }
             }
@@ -144,7 +144,7 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
             let mut body = Vec::new();
             // 上限 64 MB（48 kHz 约 5 分钟）。
             if std::io::Read::read_to_end(&mut std::io::Read::take(req.as_reader(), 64 << 20), &mut body).is_err() || body.len() % 4 != 0 {
-                return err(req, "录音数据不完整".into());
+                return err(req, "incomplete recording data".into());
             }
             let samples: Vec<f32> = body.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
             let sr = num("sr", 48_000.0).clamp(8_000.0, 192_000.0) as u32;
@@ -159,7 +159,7 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
         (Method::Post, "/api/share") => match read_body::<Value>(&mut req) {
             Ok(b) => match loop_library::share(b["name"].as_str().unwrap_or(""), base, b["overwrite"].as_bool().unwrap_or(false)) {
                 Ok(path) => respond_json(req, 200, &json!({ "ok": true, "path": path.display().to_string() })),
-                Err(e) if e.contains("已存在") => respond_json(req, 409, &json!({ "error": e })),
+                Err(e) if (e.contains("already exists")) => respond_json(req, 409, &json!({ "error": e })),
                 Err(e) => err(req, e),
             },
             Err(e) => err(req, e),
@@ -172,8 +172,8 @@ pub fn serve(initial: Option<String>, base: Option<PathBuf>, port: u16, open: bo
     // 只绑定本机回环地址。
     let (server, port) = crate::web::bind(port)?;
     let url = format!("http://127.0.0.1:{port}/");
-    println!("muser loop 编辑器已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
-    println!("项目 loop：{}   全局 loop：{}", loop_library::project_dir(base.as_deref()).display(), loop_library::dir().display());
+    println!("muser loop editor started: {url}  (local only, no auth; Ctrl+C to quit)");
+    println!("project loops: {}   global loops: {}", loop_library::project_dir(base.as_deref()).display(), loop_library::dir().display());
     if open {
         crate::web::open_browser(&url);
     }

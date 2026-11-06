@@ -63,7 +63,7 @@ fn check_name(name: &str) -> Result<(), String> {
     if valid_name(name) {
         Ok(())
     } else {
-        Err(format!("音色名 '{name}' 不可用：只能用小写字母、数字、_、-（以字母或数字开头，最多 64 个字符）"))
+        Err(format!("sound name '{name}' is not allowed: use only lowercase letters, digits, _ and - (starting with a letter or digit, at most 64 characters)"))
     }
 }
 
@@ -94,10 +94,10 @@ fn file(dir: &Path, name: &str) -> PathBuf {
 }
 
 fn read(path: &Path) -> Result<Sound, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("读取音色 '{}' 失败: {e}", path.display()))?;
+    let text = std::fs::read_to_string(path).map_err(|e| format!("failed to read sound '{}': {e}", path.display()))?;
     let s: Sound = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if s.format != FORMAT {
-        return Err(format!("{}: 不是 poly 音色文件（format 应为 \"{FORMAT}\"）", path.display()));
+        return Err(format!("{}: not a poly sound file (format must be \"{FORMAT}\")", path.display()));
     }
     s.params().map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(s)
@@ -109,7 +109,7 @@ pub(crate) fn list_in(dir: &Path) -> Vec<Sound> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
-        .filter_map(|p| read(&p).map_err(|e| eprintln!("[muser] 跳过音色文件：{e}")).ok())
+        .filter_map(|p| read(&p).map_err(|e| eprintln!("[muser] skipping sound file: {e}")).ok())
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
@@ -119,7 +119,7 @@ pub(crate) fn load_in(dir: &Path, name: &str) -> Result<Sound, String> {
     check_name(name)?;
     let path = file(dir, name);
     if !path.is_file() {
-        return Err(format!("音色库里没有 '{name}'（{}）", dir.display()));
+        return Err(format!("no '{name}' in the sound library ({})", dir.display()));
     }
     read(&path)
 }
@@ -131,20 +131,20 @@ pub(crate) fn save_in(dir: &Path, mut sound: Sound, overwrite: bool) -> Result<P
     sound.version = VERSION;
     let path = file(dir, &sound.name);
     if path.exists() && !overwrite {
-        return Err(format!("音色 '{}' 已存在", sound.name));
+        return Err(format!("sound '{}' already exists", sound.name));
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("创建 {} 失败: {e}", dir.display()))?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
     let text = serde_json::to_string_pretty(&sound).map_err(|e| e.to_string())? + "\n";
     // 先写临时文件再改名：写到一半出错不会毁掉已有音色。
     let tmp = dir.join(format!(".{}.json.tmp", sound.name));
-    std::fs::write(&tmp, text).map_err(|e| format!("写入 {} 失败: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("写入 {} 失败: {e}", path.display()))?;
+    std::fs::write(&tmp, text).map_err(|e| format!("failed to write {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("failed to write {}: {e}", path.display()))?;
     Ok(path)
 }
 
 pub(crate) fn delete_in(dir: &Path, name: &str) -> Result<(), String> {
     check_name(name)?;
-    std::fs::remove_file(file(dir, name)).map_err(|e| format!("删除音色 '{name}' 失败: {e}"))
+    std::fs::remove_file(file(dir, name)).map_err(|e| format!("failed to delete sound '{name}': {e}"))
 }
 
 /// 按名字取音色：`poly.<预设>`、`synth.poly`（初始音色）或音色库里的名字。
@@ -165,7 +165,7 @@ pub fn resolve(name: &str) -> Result<Sound, String> {
             format: FORMAT.into(),
             version: VERSION,
             name: name.into(),
-            description: "初始音色".into(),
+            description: "initial sound".into(),
             tags: Vec::new(),
             author: String::new(),
             base: Some(name.into()),
@@ -176,7 +176,7 @@ pub fn resolve(name: &str) -> Result<Sound, String> {
         if let Some(p) = poly::PRESETS.iter().find(|p| crate::instrument::slug(p.name) == slug) {
             return Ok(preset(p, name.into()));
         }
-        return Err(format!("没有 poly 预设 '{name}'（muser instruments --family poly 查看全部）"));
+        return Err(format!("no poly preset '{name}' (see all with muser instruments --family poly)"));
     }
     load(name)
 }
@@ -195,7 +195,7 @@ mod tests {
         let got = load_in(&dir, "wide_reese").unwrap();
         assert_eq!(got.params().unwrap().oscillators[0].unison, 8);
         assert!(got.patch["filters"].is_array(), "保存时规范化成完整音色");
-        assert!(save_in(&dir, s.clone(), false).unwrap_err().contains("已存在"));
+        assert!(save_in(&dir, s.clone(), false).unwrap_err().contains("already exists"));
         assert!(save_in(&dir, s, true).is_ok());
         assert_eq!(list_in(&dir).iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["wide_reese"]);
         // 坏文件跳过，不影响列表。

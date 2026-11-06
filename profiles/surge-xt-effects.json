@@ -12,14 +12,15 @@
     "author": "muser",
     "tested_version": "1.3.4",
     "updated": "2026-10-25",
-    "notes": "Surge XT 的效果器单独打包：一个 FX Type 选择效果类型，12 个通用参数 FX Parameter 0–11 的含义随类型变化。LV2 版没有 FX Type 参数，请用 CLAP 或 VST3 版。"
+    "notes": "Surge XT's effects as a separate plugin: FX Type picks the effect, and the meaning of the 12 generic parameters FX Parameter 0-11 depends on the type. The LV2 build has no FX Type parameter; use the CLAP or VST3 build.",
+    "lang": "en"
   },
   "params": [
     {
       "name": "FX Type",
       "alias": "type",
       "role": "type",
-      "description": "效果类型。先选类型，再用 `muser plugin params <插件> --params '{\"FX Type\": \"...\"}'` 查看 FX Parameter 0–11 在该类型下的含义",
+      "description": "Effect type. Pick the type first, then run `muser plugin params <plugin> --params '{\"FX Type\": \"...\"}'` to see what FX Parameter 0-11 mean for that type",
       "values": [
         "Delay",
         "Reverb 1",
@@ -55,7 +56,7 @@
       "name": "FX Parameter 0",
       "alias": "p0",
       "role": "generic",
-      "description": "含义随 FX Type 变化（如 Reverb 2 下为预延迟，显示 \"62.5 ms\"）"
+      "description": "Meaning depends on FX Type (e.g. pre-delay under Reverb 2, shown as \"62.5 ms\")"
     },
     {
       "name": "FX Parameter 1",
@@ -66,7 +67,7 @@
       "name": "FX Parameter 2",
       "alias": "p2",
       "role": "generic",
-      "description": "Reverb 2 下为衰减时间（显示 \"1.68 s\"）"
+      "description": "Decay time under Reverb 2 (shown as \"1.68 s\")"
     },
     {
       "name": "FX Parameter 3",
@@ -117,14 +118,14 @@
   "presets": [
     {
       "name": "reverb",
-      "description": "Reverb 2，默认参数",
+      "description": "Reverb 2, default parameters",
       "params": {
         "type": "Reverb 2"
       }
     },
     {
       "name": "delay",
-      "description": "Delay，默认参数",
+      "description": "Delay, default parameters",
       "params": {
         "type": "Delay"
       }
@@ -149,8 +150,8 @@
     }
   ],
   "tips": [
-    "插件对 FX Type 的文字解析有缺陷（总返回 0）；muser 会改为查表，直接写类型名即可。",
-    "切换 FX Type 时插件会把 12 个通用参数重置为该类型的默认值：先设 type，再设 p0–p11。",
-    "插件在第一次处理音频时会重置 FX Type；muser 激活后预热重发，不需要额外处理。"
+    "The plugin's text parsing of FX Type is broken (always returns 0); muser looks the value up in a table instead, so just write the type name.",
+    "Changing FX Type makes the plugin reset the 12 generic parameters to that type's defaults: set type first, then p0-p11.",
+    "The plugin resets FX Type the first time it processes audio; muser re-sends it after a warm-up, nothing to do on your side."
   ]
 }

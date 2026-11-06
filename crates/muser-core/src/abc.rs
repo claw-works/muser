@@ -94,7 +94,7 @@ pub fn bar_problems(text: &str, meter: f64) -> Result<Vec<String>, String> {
         let bar = meters.iter().rev().find(|m| m.0 <= w[0] + 1e-9).map_or(p.bar, |m| m.1);
         let wrong = if k == 0 || k == last { len > bar + 1e-6 } else { (len - bar).abs() > 1e-6 };
         if wrong && len > 1e-9 {
-            out.push(format!("第 {} 小节 {} 拍（{} 个单位时值），一小节应为 {} 拍（{} 个）", k + 1, beats(len), units(len), beats(bar), units(bar)));
+            out.push(format!("bar {} is {} beats ({} units) long, but a bar should be {} beats ({} units)", k + 1, beats(len), units(len), beats(bar), units(bar)));
         }
     }
     Ok(out)
@@ -127,7 +127,7 @@ fn key_signature(spec: &str) -> Result<[i32; 7], String> {
         "phr" | "phrygian" => -4,
         "lyd" | "lydian" => 1,
         "loc" | "locrian" => -5,
-        _ => return Err(format!("K: 无法识别的调式 '{s}'")),
+        _ => return Err(format!("K: unrecognized mode '{s}'")),
     };
     // 主音在五度圈上的位置（C = 0，G = 1，F = -1 …）。
     let base = match tonic {
@@ -138,11 +138,11 @@ fn key_signature(spec: &str) -> Result<[i32; 7], String> {
         'E' => 4,
         'B' => 5,
         'F' => -1,
-        _ => return Err(format!("K: 无法识别的主音 '{s}'")),
+        _ => return Err(format!("K: unrecognized tonic '{s}'")),
     };
     let fifths = base + 7 * tonic_acc + mode_shift;
     if !(-7..=7).contains(&fifths) {
-        return Err(format!("K: 调号 '{s}' 超出范围（最多 7 个升降号）"));
+        return Err(format!("K: key signature '{s}' is out of range (at most 7 sharps or flats)"));
     }
     // 升号顺序 F C G D A E B，降号顺序 B E A D G C F；音名下标 C=0 … B=6。
     let mut sig = [0; 7];
@@ -204,16 +204,16 @@ impl<'a> Parser<'a> {
             if header {
                 let (field, value) = (line.as_bytes()[0] as char, line[2..].trim());
                 match field {
-                    'L' => unit = fraction(value).ok_or_else(|| format!("第 {} 行 L: 应为分数，如 1/8", ln + 1))? * 4.0,
+                    'L' => unit = fraction(value).ok_or_else(|| format!("line {} L: expected a fraction, e.g. 1/8", ln + 1))? * 4.0,
                     'M' => {
                         if let Some(f) = fraction(value) {
                             (bar, meter_given) = (f * 4.0, true);
                         }
                     }
                     'K' => {
-                        key = key_signature(value).map_err(|e| format!("第 {} 行 {e}", ln + 1))?;
+                        key = key_signature(value).map_err(|e| format!("line {} {e}", ln + 1))?;
                     }
-                    'V' => return Err(format!("第 {} 行：不支持多声部 V:，每个声部写进各自音轨的 clip", ln + 1)),
+                    'V' => return Err(format!("line {}: multi-voice V: is not supported; put each voice in its own track's clip", ln + 1)),
                     'w' => lyrics.push(value.to_string()),
                     _ => {}
                 }
@@ -248,7 +248,7 @@ impl<'a> Parser<'a> {
         let repeats = tokens.iter().any(|(_, t)| matches!(t, Tok::RepeatStart | Tok::RepeatEnd | Tok::Ending(_)));
         for &i in &order {
             let (line, tok) = &tokens[i];
-            let at = |m: &str| format!("第 {line} 行：{m}");
+            let at = |m: &str| format!("line {line}: {m}");
             match tok {
                 Tok::Bar => {
                     accidentals = [None; 128];
@@ -295,7 +295,7 @@ impl<'a> Parser<'a> {
                     let mut next_tied = Vec::new();
                     for (k, &spec) in p.pitches.iter().enumerate() {
                         let tie = p.tie || p.tied[k];
-                        let pitch = self.pitch(spec, &mut accidentals).ok_or_else(|| at("音高超出 MIDI 范围 0–127"))?;
+                        let pitch = self.pitch(spec, &mut accidentals).ok_or_else(|| at("pitch is outside the MIDI range 0-127"))?;
                         // 连音线：前面同音高的音延长，不新起一个。
                         if let Some(pos) = tied.iter().position(|&j| notes[j].pitch == pitch) {
                             let j = tied.remove(pos);
@@ -319,7 +319,7 @@ impl<'a> Parser<'a> {
             }
         }
         if notes.is_empty() && order.is_empty() {
-            return Err("ABC 里没有音符（K: 之后写旋律，如 \"L:1/8\\nK:Am\\nA2 cB e2 dc |\"）".into());
+            return Err("ABC has no notes (write the melody after K:, e.g. \"L:1/8\\nK:Am\\nA2 cB e2 dc |\")".into());
         }
         Ok((notes, marks, repeats, meters))
     }
@@ -358,22 +358,22 @@ impl<'a> Parser<'a> {
         for &(line, text) in &self.body {
             let b = text.as_bytes();
             let mut i = 0;
-            let at = |i: usize, m: &str| format!("第 {line} 行第 {} 列：{m}", i + 1);
+            let at = |i: usize, m: &str| format!("line {line} column {}: {m}", i + 1);
             while i < b.len() {
                 let c = b[i] as char;
                 match c {
                     ' ' | '\t' | '\\' | '`' => i += 1,
                     '"' => {
                         // 和弦标记 / 注释文字：跳过。
-                        let end = text[i + 1..].find('"').ok_or_else(|| at(i, "引号没有闭合"))?;
+                        let end = text[i + 1..].find('"').ok_or_else(|| at(i, "unclosed quote"))?;
                         i += end + 2;
                     }
                     '{' => {
-                        let end = text[i..].find('}').ok_or_else(|| at(i, "装饰音 { 没有闭合"))?;
+                        let end = text[i..].find('}').ok_or_else(|| at(i, "unclosed grace note {"))?;
                         i += end + 1;
                     }
                     '!' | '+' => {
-                        let end = text[i + 1..].find(c).ok_or_else(|| at(i, "装饰记号没有闭合"))?;
+                        let end = text[i + 1..].find(c).ok_or_else(|| at(i, "unclosed decoration"))?;
                         let name = &text[i + 1..i + 1 + end];
                         if let Some(v) = dynamic(name) {
                             out.push((line, Tok::Dynamic(v)));
@@ -413,7 +413,7 @@ impl<'a> Parser<'a> {
                         match out.iter_mut().rev().find(|(_, t)| matches!(t, Tok::Notes(_) | Tok::Rest(_))) {
                             Some((_, Tok::Notes(p))) => p.length *= prev,
                             Some((_, Tok::Rest(l))) => *l *= prev,
-                            _ => return Err(at(i, "附点节奏 > / < 前面要有音符")),
+                            _ => return Err(at(i, "a dotted rhythm > / < needs a note before it")),
                         }
                         out.push((line, Tok::Broken(next)));
                     }
@@ -424,16 +424,16 @@ impl<'a> Parser<'a> {
                     }
                     '[' if b.get(i + 2) == Some(&b':') && b.get(i + 1).is_some_and(u8::is_ascii_alphabetic) => {
                         // 内联字段 [M:7/8]：认拍号，其它的跳过。
-                        let end = text[i..].find(']').ok_or_else(|| at(i, "内联字段 [ 没有闭合"))?;
+                        let end = text[i..].find(']').ok_or_else(|| at(i, "unclosed inline field ["))?;
                         if b[i + 1] == b'M' {
-                            let f = fraction(text[i + 3..i + end].trim()).ok_or_else(|| at(i, "[M:] 应为分数，如 [M:7/8]"))?;
+                            let f = fraction(text[i + 3..i + end].trim()).ok_or_else(|| at(i, "[M:] expects a fraction, e.g. [M:7/8]"))?;
                             out.push((line, Tok::Meter(f * 4.0)));
                         }
                         i += end + 1;
                     }
                     '[' => {
                         // 和弦 [CEG]2
-                        let end = text[i..].find(']').ok_or_else(|| at(i, "和弦 [ 没有闭合"))?;
+                        let end = text[i..].find(']').ok_or_else(|| at(i, "unclosed chord ["))?;
                         let inner = &text[i + 1..i + end];
                         let mut pitches = Vec::new();
                         let mut tied = Vec::new();
@@ -445,7 +445,7 @@ impl<'a> Parser<'a> {
                                 j += 1;
                                 continue;
                             }
-                            let (spec, l, n) = note_spec(inner, j).ok_or_else(|| at(i + 1 + j, "和弦里应为音符"))?;
+                            let (spec, l, n) = note_spec(inner, j).ok_or_else(|| at(i + 1 + j, "expected a note inside the chord"))?;
                             pitches.push(spec);
                             inner_len.get_or_insert(l);
                             j += n;
@@ -455,7 +455,7 @@ impl<'a> Parser<'a> {
                             }
                         }
                         if pitches.is_empty() {
-                            return Err(at(i, "空和弦 []"));
+                            return Err(at(i, "empty chord []"));
                         }
                         i += end + 1;
                         let (mult, n) = length(text, i);
@@ -480,7 +480,7 @@ impl<'a> Parser<'a> {
                         i = j;
                     }
                     _ => {
-                        let (spec, l, n) = note_spec(text, i).ok_or_else(|| at(i, &format!("无法识别的 '{c}'")))?;
+                        let (spec, l, n) = note_spec(text, i).ok_or_else(|| at(i, &format!("unrecognized '{c}'")))?;
                         i += n;
                         let tie = b.get(i) == Some(&b'-');
                         if tie {
@@ -684,7 +684,7 @@ mod tests {
         // 9/8：第 1 小节 10 个八分、第 2 小节 8 个。
         let p = bar_problems("L:1/8\nK:Dm\nD2 E2 F2 G2 A2 | c2 z2 D2 E2 |", 4.5).unwrap();
         assert_eq!(p.len(), 2, "{p:?}");
-        assert!(p[0].starts_with("第 1 小节 5 拍（10 个单位时值），一小节应为 4.5 拍（9 个）"), "{p:?}");
+        assert!(p[0].starts_with("bar 1 is 5 beats (10 units) long, but a bar should be 4.5 beats (9 units)"), "{p:?}");
         // 对的：弱起、整小节休止、M: 优先于工程拍号、有反复不查。
         assert!(bar_problems("L:1/8\nK:C\nG | c4 e4 | Z2 | g8 |", 4.0).unwrap().is_empty());
         assert!(bar_problems("M:3/4\nL:1/4\nK:C\nC D E | F G A |", 4.0).unwrap().is_empty());
@@ -777,8 +777,8 @@ mod tests {
 
     #[test]
     fn errors_point_at_the_place() {
-        assert!(parse("K:C\nC [DE").unwrap_err().contains("第 2 行"));
-        assert!(parse("K:C\nC Q").unwrap_err().contains("无法识别"));
-        assert!(parse("X:1\nV:1\nK:C\nC").unwrap_err().contains("多声部"));
+        assert!(parse("K:C\nC [DE").unwrap_err().contains("line 2"));
+        assert!(parse("K:C\nC Q").unwrap_err().contains("unrecognized"));
+        assert!(parse("X:1\nV:1\nK:C\nC").unwrap_err().contains("multi-voice"));
     }
 }

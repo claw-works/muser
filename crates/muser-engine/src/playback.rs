@@ -293,7 +293,7 @@ impl Player {
     }
 
     fn open(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, live: bool) -> Result<Player, String> {
-        let device = OutputDevice::open_default().map_err(|e| format!("打开声卡失败: {e}"))?;
+        let device = OutputDevice::open_default().map_err(|e| format!("failed to open the audio device: {e}"))?;
         let sample_rate = device.sample_rate().round() as u32;
         let name = device.name().to_string();
         let shared = Arc::new(Shared { monitor: AtomicU32::new(1f32.to_bits()), first_frame: AtomicI64::new(i64::MIN), ..Default::default() });
@@ -305,7 +305,7 @@ impl Player {
         std::thread::Builder::new()
             .name("muser-playback".into())
             .spawn(move || run(settings, cache, sh, cmd_rx, &mut tx, live))
-            .map_err(|e| format!("启动播放线程失败: {e}"))?;
+            .map_err(|e| format!("failed to start the playback thread: {e}"))?;
         let player = Player { cmd: cmd_tx, shared, sample_rate, device: name, rx, stream: Mutex::new(None), rec: Mutex::new(None) };
         player.output_only(&device)?;
         Ok(player)
@@ -324,7 +324,7 @@ impl Player {
             .start(MAX_BLOCK, move |buf: &mut AudioBuffer<f32>| {
                 out.fill(buf);
             })
-            .map_err(|e| format!("启动声卡输出失败: {e}"))?;
+            .map_err(|e| format!("failed to start audio output: {e}"))?;
         *slot = Some(Stream::Out(stream));
         Ok(())
     }
@@ -332,7 +332,7 @@ impl Player {
     fn restore_output(&self) {
         let r = OutputDevice::open_default().map_err(|e| e.to_string()).and_then(|d| self.output_only(&d));
         if let Err(e) = r {
-            *self.shared.error.lock().unwrap() = Some(format!("换回声卡输出失败: {e}"));
+            *self.shared.error.lock().unwrap() = Some(format!("failed to switch back to audio output: {e}"));
         }
     }
 
@@ -343,9 +343,9 @@ impl Player {
         F: FnMut(&AudioBuffer<f32>, &mut AudioBuffer<f32>, &CallbackInfo, Option<usize>) + Send + 'static,
     {
         let rate = StreamSettings::default().with_sample_rate(self.sample_rate);
-        let input = InputDevice::open_default().map_err(|e| format!("打开麦克风失败: {e}"))?;
-        let input = if input.sample_rate().round() as u32 == self.sample_rate { input } else { input.with_settings(rate).map_err(|e| format!("麦克风不支持 {} Hz: {e}", self.sample_rate))? };
-        let output = OutputDevice::open_default().map_err(|e| format!("打开声卡失败: {e}"))?;
+        let input = InputDevice::open_default().map_err(|e| format!("failed to open the microphone: {e}"))?;
+        let input = if input.sample_rate().round() as u32 == self.sample_rate { input } else { input.with_settings(rate).map_err(|e| format!("the microphone does not support {} Hz: {e}", self.sample_rate))? };
+        let output = OutputDevice::open_default().map_err(|e| format!("failed to open the audio device: {e}"))?;
         let output = if output.sample_rate().round() as u32 == self.sample_rate { output } else { output.with_settings(rate).map_err(|e| format!("{e}"))? };
         let mut slot = self.stream.lock().unwrap();
         *slot = None;
@@ -358,7 +358,7 @@ impl Player {
                 let pos = out.fill(o);
                 f(i, o, info, pos);
             },
-            |e| eprintln!("[play] 声卡: {e}"),
+            |e| eprintln!("[play] audio device: {e}"),
         );
         match started {
             Ok(s) => {
@@ -368,7 +368,7 @@ impl Player {
             Err(e) => {
                 drop(slot);
                 self.restore_output();
-                Err(format!("启动录音（麦克风 + 声卡）失败: {e}"))
+                Err(format!("failed to start recording (microphone + audio device): {e}"))
             }
         }
     }
@@ -378,7 +378,7 @@ impl Player {
         let (tx, rx) = mpsc::channel();
         let _ = self.cmd.send(Cmd::Seek(frame));
         let _ = self.cmd.send(Cmd::Ack(tx));
-        rx.recv_timeout(Duration::from_secs(30)).map_err(|_| "跳转太久没有完成".to_string())?;
+        rx.recv_timeout(Duration::from_secs(30)).map_err(|_| "the seek took too long to finish".to_string())?;
         for _ in 0..500 {
             if !self.shared.seeking.load(Ordering::Acquire) {
                 return Ok(());
@@ -393,7 +393,7 @@ impl Player {
     pub fn record_start(&self, from: f64, count_beats: usize, beat_seconds: f64, bar_beats: usize, nudge_ms: f64) -> Result<(), String> {
         let mut rec = self.rec.lock().unwrap();
         if rec.is_some() {
-            return Err("已经在录了".into());
+            return Err("already recording".into());
         }
         let sr = f64::from(self.sample_rate);
         let from = (from.max(0.0) * sr) as usize;
@@ -402,7 +402,7 @@ impl Player {
         let sh = &self.shared;
         let (mut cap_tx, cap_rx) = spsc::channel::<f32>(CAPTURE_QUEUE);
         let stop = Arc::new(AtomicBool::new(false));
-        let collector = collect(cap_rx, Arc::clone(&stop)).map_err(|e| format!("启动录音线程失败: {e}"))?;
+        let collector = collect(cap_rx, Arc::clone(&stop)).map_err(|e| format!("failed to start the recording thread: {e}"))?;
         sh.first_frame.store(i64::MIN, Ordering::Release);
         sh.nudge.store((nudge_ms / 1000.0 * sr).round() as i64, Ordering::Release);
         sh.dropped.store(0, Ordering::Release);
@@ -438,17 +438,17 @@ impl Player {
 
     /// 停止录音：停下播放、换回只输出的流（麦克风释放），返回从开始的位置起对齐好的这一遍。
     pub fn record_stop(&self) -> Result<Recording, String> {
-        let r = self.rec.lock().unwrap().take().ok_or("没有在录")?;
+        let r = self.rec.lock().unwrap().take().ok_or("not recording")?;
         let sh = &self.shared;
         sh.capturing.store(false, Ordering::Release);
         sh.count_left.store(0, Ordering::Release);
         self.pause();
         self.restore_output();
         r.stop.store(true, Ordering::Release);
-        let mut samples = r.collector.join().map_err(|_| "录音线程出错".to_string())?;
+        let mut samples = r.collector.join().map_err(|_| "recording thread error".to_string())?;
         let first = sh.first_frame.load(Ordering::Acquire);
         if first == i64::MIN {
-            return Err("什么也没录到（伴奏开始前就停了）".into());
+            return Err("nothing was recorded (stopped before the backing started)".into());
         }
         // 从开始录的位置起：之前的样本（往返延迟那一小段）去掉；第一个样本已经晚于开始位置时就从它起。
         let skip = (r.from as i64 - first).max(0) as usize;
@@ -460,7 +460,7 @@ impl Player {
     /// 就是录音时该填的延迟微调。听不清时报错（音量开大、摘下耳机再试）。
     pub fn measure_latency(&self) -> Result<f64, String> {
         if self.rec.lock().unwrap().is_some() {
-            return Err("正在录音".into());
+            return Err("recording in progress".into());
         }
         self.pause();
         let sr = self.sample_rate as usize;
@@ -469,7 +469,7 @@ impl Player {
         let total = t0 + 8 * gap + sr * 4 / 10;
         let (mut cap_tx, cap_rx) = spsc::channel::<f32>(CAPTURE_QUEUE);
         let stop = Arc::new(AtomicBool::new(false));
-        let collector = collect(cap_rx, Arc::clone(&stop)).map_err(|e| format!("启动录音线程失败: {e}"))?;
+        let collector = collect(cap_rx, Arc::clone(&stop)).map_err(|e| format!("failed to start the recording thread: {e}"))?;
         let sh = Arc::clone(&self.shared);
         sh.round_trip.store(i64::MIN, Ordering::Release);
         let marks = clicks.clone();
@@ -492,8 +492,8 @@ impl Player {
         std::thread::sleep(Duration::from_secs_f64(total as f64 / sr as f64));
         self.restore_output();
         stop.store(true, Ordering::Release);
-        let input = collector.join().map_err(|_| "录音线程出错".to_string())?;
-        let delay = click_delay(&input, &clicks, gap * 8 / 10).ok_or("没听清咔嗒声：摘下耳机、把音量开大，离麦克风近一点再测")?;
+        let input = collector.join().map_err(|_| "recording thread error".to_string())?;
+        let delay = click_delay(&input, &clicks, gap * 8 / 10).ok_or("could not hear the clicks: take off the headphones, turn the volume up, move closer to the microphone and measure again")?;
         let rt = self.shared.round_trip.load(Ordering::Acquire).max(0) as f64;
         Ok(((delay - rt) / sr as f64 * 1000.0).round())
     }
@@ -633,7 +633,7 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
                     Some(r) => r.reconcile(&p).map_err(|e| format!("{e:#}")),
                     None => Renderer::live(&p, settings).map(|r| renderer = Some(r.with_meters())).map_err(|e| format!("{e:#}")),
                 };
-                sh.slow("换上新工程", t0.elapsed().as_secs_f64() * 1000.0, sr);
+                sh.slow("swapping in the new project", t0.elapsed().as_secs_f64() * 1000.0, sr);
                 match r {
                     Ok(()) => {
                         if let Some(r) = &renderer {
@@ -697,14 +697,14 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
         let mut wrote = false;
         if live && busy {
             if let Some(t) = last_fill {
-                sh.slow("播放线程被耽搁", t.elapsed().as_secs_f64() * 1000.0, sr);
+                sh.slow("playback thread delayed", t.elapsed().as_secs_f64() * 1000.0, sr);
             }
         }
         while tx.free_len() >= CHUNK && r.position() < r.total_frames() {
             let t0 = std::time::Instant::now();
             let step = r.process(&mut block);
             if live {
-                sh.slow("渲染一块", t0.elapsed().as_secs_f64() * 1000.0, sr);
+                sh.slow("rendering a block", t0.elapsed().as_secs_f64() * 1000.0, sr);
             }
             match step {
                 Ok(0) => break,

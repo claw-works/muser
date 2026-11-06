@@ -17,7 +17,7 @@ use crate::audition::{analyze, Analysis};
 use crate::{render, RenderSettings};
 
 /// 探测方法有变化时加一，旧缓存作废。
-const PROBE_VERSION: u32 = 7;
+const PROBE_VERSION: u32 = 8;
 
 /// 目录里的一个音色。
 #[derive(Debug, Clone, Serialize)]
@@ -55,7 +55,7 @@ pub fn list() -> Vec<Sound> {
             name: p.name,
             kind: "plugin".into(),
             group: p.vendor,
-            description: format!("{} 乐器插件（音色由插件自己的状态决定：用 @state，或请人在 muser view 的 🎛 里选）", p.format.to_uppercase()),
+            description: format!("{} instrument plugin (the sound is set by the plugin's own state: use @state, or have a person choose it under 🎛 in muser view)", p.format.to_uppercase()),
             card: None,
         }));
     }
@@ -74,7 +74,7 @@ pub struct Probe {
     pub audible: bool,
     #[serde(flatten)]
     pub analysis: Option<AnalysisJson>,
-    /// 按住到松开前一刻的电平（相对峰值，dB）：接近 0 是持续发声（风琴、弦乐、铺底），很低是会自己衰减（钢琴、拨弦、打击）。
+    /// 按住到松开前一刻的电平（相对峰值，dB）：接近 0 是sustained（风琴、弦乐、铺底），很低是会自己衰减（钢琴、拨弦、打击）。
     pub hold_db: Option<f64>,
     /// 立体声宽度：侧信号相对中间信号的能量（%）。
     pub width_pct: Option<f64>,
@@ -230,9 +230,9 @@ pub fn describe(spec: &str, params: &serde_json::Map<String, Value>, drums: Opti
         .and_then(|l| l.first().and_then(|n| n.output.lufs));
     if let Some(l) = level {
         let d = l - crate::levels::TARGET_LUFS;
-        let how = if d.abs() < 2.0 { "和内置乐器差不多响".to_string() } else if d > 0.0 { format!("比内置乐器响 {d:.0} dB") } else { format!("比内置乐器轻 {:.0} dB", -d) };
-        traits.push(format!("音量：参考乐句 {l:.1} LUFS（内置乐器 gain_db 为 0 时约 {:.0}）→ {how}{}", crate::levels::TARGET_LUFS,
-            if d.abs() < 2.0 { String::new() } else { format!("，和内置乐器放一起时 gain_db 从 {:+.0} 起调", -d) }));
+        let how = if d.abs() < 2.0 { "about as loud as the built-in instruments".to_string() } else if d > 0.0 { format!("{d:.0} dB louder than the built-in instruments") } else { format!("{:.0} dB quieter than the built-in instruments", -d) };
+        traits.push(format!("Volume: reference phrase {l:.1} LUFS (built-in instruments are about {:.0} at gain_db 0) -> {how}{}", crate::levels::TARGET_LUFS,
+            if d.abs() < 2.0 { String::new() } else { format!("; when mixing with built-in instruments, start gain_db at {:+.0}", -d) }));
     }
     let card = Card { spec: spec.to_string(), params: params.clone(), drums, probes: measured, summary, traits, level_lufs: level, probe_version: PROBE_VERSION };
     let path = cache_file(spec, params);
@@ -268,13 +268,13 @@ fn detect_pitch(seg: &AudioBuffer<f32>, sr: f64, hold: usize) -> Option<f64> {
 
 fn drum_name(k: u8) -> &'static str {
     match k {
-        36 => "底鼓 36",
-        38 => "军鼓 38",
-        42 => "闭镲 42",
-        46 => "开镲 46",
-        49 => "强音镲 49",
-        51 => "叮叮镲 51",
-        _ => "鼓键",
+        36 => "kick 36",
+        38 => "snare 38",
+        42 => "closed hat 42",
+        46 => "open hat 46",
+        49 => "crash 49",
+        51 => "ride 51",
+        _ => "drum key",
     }
 }
 
@@ -283,103 +283,103 @@ fn words(probes: &[Probe], drums: bool) -> (String, Vec<String>) {
     let mut traits = Vec::new();
     let loud: Vec<&Probe> = probes.iter().filter(|p| p.audible && p.velocity > 0.5).collect();
     if loud.is_empty() {
-        return ("没有声音：探测音都没有发声（音色没载入，或音域 / 鼓键不对）".into(), vec!["所有探测音峰值都低于 -60 dBFS".into()]);
+        return ("Silent: none of the probe notes sounded (the sound did not load, or the range / drum keys are wrong)".into(), vec!["every probe note peaks below -60 dBFS".into()]);
     }
     if drums {
         for p in probes.iter().filter(|p| p.velocity > 0.5) {
             match &p.analysis {
-                Some(a) => traits.push(format!("{}：衰减 40 dB 用 {:.2} s，重心 {:.0} Hz，响度 {:.1} LUFS", drum_name(p.pitch), a.release_s, a.centroid_hz, a.lufs)),
-                None => traits.push(format!("{}：不发声", drum_name(p.pitch))),
+                Some(a) => traits.push(format!("{}: decays 40 dB in {:.2} s, centroid {:.0} Hz, loudness {:.1} LUFS", drum_name(p.pitch), a.release_s, a.centroid_hz, a.lufs)),
+                None => traits.push(format!("{}: silent", drum_name(p.pitch))),
             }
         }
         let silent = probes.iter().filter(|p| p.velocity > 0.5 && !p.audible).count();
         let soft = probes.iter().find(|p| p.velocity < 0.5);
         let snare = probes.iter().find(|p| p.pitch == 38 && p.velocity > 0.5);
         if let (Some(s), Some(n)) = (soft.and_then(|p| p.analysis.as_ref()), snare.and_then(|p| p.analysis.as_ref())) {
-            traits.push(format!("力度：轻敲比重敲低 {:.1} dB", n.lufs - s.lufs));
+            traits.push(format!("Velocity: soft hits are {:.1} dB below hard hits", n.lufs - s.lufs));
         }
         let kick = probes.iter().find(|p| p.pitch == 36).and_then(|p| p.analysis.as_ref());
-        let mut summary = String::from("鼓组");
+        let mut summary = String::from("Drum kit");
         if let Some(k) = kick {
-            summary += &format!("，底鼓{}", if k.release_s > 0.6 { "长、带低频尾巴（808 类）" } else if k.centroid_hz < 150.0 { "沉、短" } else { "紧、短" });
+            summary += &format!("; kick is {}", if k.release_s > 0.6 { "long with a low tail (808-like)" } else if k.centroid_hz < 150.0 { "deep and short" } else { "tight and short" });
         }
         if silent > 0 {
-            summary += &format!("，{silent} 个常用鼓键不发声");
+            summary += &format!("; {silent} common drum keys are silent");
         }
         return (summary, traits);
     }
     // 音阶乐器。
     let range: Vec<u8> = probes.iter().filter(|p| p.audible && p.velocity > 0.5).map(|p| p.pitch).collect();
     let name = |p: u8| ["C1", "C2", "C3", "C4", "C5", "C6", "C7"].get(usize::from(p / 12).saturating_sub(2)).copied().unwrap_or("?");
-    traits.push(format!("可用音域：探测的 C2–C6 里 {} 发声", range.iter().map(|&p| name(p)).collect::<Vec<_>>().join(" ")));
+    traits.push(format!("Playable range: of the probed C2-C6, these sound: {}", range.iter().map(|&p| name(p)).collect::<Vec<_>>().join(" ")));
     let mid = probes.iter().find(|p| p.pitch == 60 && p.velocity > 0.5 && p.audible).or(loud.get(loud.len() / 2).copied());
     let mut summary = Vec::new();
     if let Some(m) = mid {
-        let a = m.analysis.as_ref().expect("有声的探测音都有分析");
+        let a = m.analysis.as_ref().expect("every audible probe has an analysis");
         // 亮度看重心相对基音（C4 ≈ 262 Hz）的倍数，不同音区可比。
         let ratio = a.centroid_hz / 261.6;
         let bright = match ratio {
-            r if r < 2.5 => "很暗、很圆",
-            r if r < 5.0 => "偏暗、温暖",
-            r if r < 10.0 => "明暗适中",
-            r if r < 18.0 => "明亮",
-            _ => "很亮、偏尖",
+            r if r < 2.5 => "very dark and round",
+            r if r < 5.0 => "darkish, warm",
+            r if r < 10.0 => "moderate brightness",
+            r if r < 18.0 => "bright",
+            _ => "very bright, a little sharp",
         };
-        traits.push(format!("亮度：C4 的频谱重心 {:.0} Hz（基音的 {:.1} 倍）→ {bright}", a.centroid_hz, ratio));
+        traits.push(format!("Brightness: C4 spectral centroid {:.0} Hz ({:.1}x the fundamental) -> {bright}", a.centroid_hz, ratio));
         let attack = match a.attack_ms {
-            t if t < 15.0 => "起音瞬间（打击、拨奏感）",
-            t if t < 60.0 => "起音快",
-            t if t < 250.0 => "起音柔和",
-            _ => "起音慢（渐入、铺底型）",
+            t if t < 15.0 => "instant attack (percussive, plucked)",
+            t if t < 60.0 => "fast attack",
+            t if t < 250.0 => "soft attack",
+            _ => "slow attack (fades in, pad-like)",
         };
-        traits.push(format!("起音：{:.0} ms → {attack}", a.attack_ms));
+        traits.push(format!("Attack: {:.0} ms -> {attack}", a.attack_ms));
         let hold = m.hold_db.unwrap_or(-99.0);
         let body = if hold > -6.0 {
-            "按住就一直响（持续型：风琴、弦乐、管乐、铺底）".to_string()
+            "keeps sounding while held (sustained type: organ, strings, winds, pads)".to_string()
         } else if hold > -20.0 {
-            format!("按住时慢慢变弱（按住 1 秒后低 {:.0} dB）", -hold)
+            format!("fades slowly while held ({:.0} dB lower after 1 s held)", -hold)
         } else {
-            format!("按下后很快衰减（按住 1 秒后已低 {:.0} dB：拨奏、打击、钢琴类）", -hold)
+            format!("decays quickly after the key goes down ({:.0} dB lower after 1 s held: plucked, percussive, piano-like)", -hold)
         };
-        traits.push(format!("延音：{body}"));
-        let release = if a.release_s < 0.15 { "松开即停" } else if a.release_s < 1.0 { "松开后短余音" } else { "松开后长余音" };
-        traits.push(format!("余音：松开后 {:.2} s 衰减 40 dB → {release}", a.release_s));
+        traits.push(format!("Sustain: {body}"));
+        let release = if a.release_s < 0.15 { "stops on release" } else if a.release_s < 1.0 { "short tail after release" } else { "long tail after release" };
+        traits.push(format!("Tail: decays 40 dB in {:.2} s after release -> {release}", a.release_s));
         let width = m.width_pct.unwrap_or(0.0);
         let stereo = if width < 3.0 {
-            "单声道 / 居中"
+            "mono / centered"
         } else if width < 25.0 {
-            "略有立体声"
+            "slightly stereo"
         } else if width <= 100.0 {
-            "很宽的立体声"
+            "very wide stereo"
         } else {
-            "侧信号比中间还强：非常宽，合成单声道时会明显变薄"
+            "side signal stronger than mid: very wide, will thin out noticeably when summed to mono"
         };
-        traits.push(format!("立体声：侧 / 中能量 {width:.0}% → {stereo}"));
+        traits.push(format!("Stereo: side / mid energy {width:.0}% -> {stereo}"));
         match m.detected_pitch {
-            Some(d) if (d - 60.0).abs() > 6.0 => traits.push(format!("音高：弹 C4 测到 {d:.1}（差 {:+.0} 个半音：音色的音高映射和标注不一致）", d - 60.0)),
-            Some(d) => traits.push(format!("音高：弹 C4 测到 {d:.1}，音准正常")),
-            None => traits.push("音高：测不到明确音高（噪声、打击类，或泛音很杂）".into()),
+            Some(d) if (d - 60.0).abs() > 6.0 => traits.push(format!("Pitch: playing C4 measured {d:.1} ({:+.0} semitones off: the sound's pitch mapping disagrees with its labeling)", d - 60.0)),
+            Some(d) => traits.push(format!("Pitch: playing C4 measured {d:.1}, in tune")),
+            None => traits.push("Pitch: no clear pitch detected (noise, percussive, or very inharmonic)".into()),
         }
         summary.push(bright.split('、').next().unwrap_or(bright).to_string());
         summary.push(attack.split('（').next().unwrap_or(attack).to_string());
-        summary.push(if hold > -6.0 { "持续发声".into() } else if hold > -20.0 { "慢衰减".to_string() } else { "快衰减".to_string() });
+        summary.push(if hold > -6.0 { "sustained".into() } else if hold > -20.0 { "slow decay".to_string() } else { "fast decay".to_string() });
         summary.push(release.to_string());
         if width >= 25.0 {
-            summary.push("宽立体声".into());
+            summary.push("wide stereo".into());
         }
     }
     if let (Some(soft), Some(m)) = (probes.iter().find(|p| p.velocity < 0.5).and_then(|p| p.analysis.as_ref()), mid.and_then(|p| p.analysis.as_ref())) {
         let db = m.lufs - soft.lufs;
         let tone = m.centroid_hz / soft.centroid_hz.max(1.0);
-        let resp = if db < 2.0 { "力度几乎不影响音量" } else if db < 10.0 { "力度影响适中" } else { "力度表现大" };
+        let resp = if db < 2.0 { "velocity barely affects volume" } else if db < 10.0 { "velocity has a moderate effect" } else { "velocity has a large effect" };
         traits.push(format!(
-            "力度：轻弹（0.3）比重弹（0.8）低 {db:.1} dB，重弹的重心是轻弹的 {tone:.2} 倍 → {resp}{}",
-            if tone > 1.25 { "，重弹明显更亮" } else { "" }
+            "Velocity: soft (0.3) is {db:.1} dB below hard (0.8), and the hard centroid is {tone:.2}x the soft one -> {resp}{}",
+            if tone > 1.25 { "; hard playing is clearly brighter" } else { "" }
         ));
     }
     let lo = range.first().map(|&p| name(p)).unwrap_or("?");
     let hi = range.last().map(|&p| name(p)).unwrap_or("?");
-    (format!("{}；音域约 {lo}–{hi}", summary.join("、")), traits)
+    (format!("{}; range about {lo}-{hi}", summary.join(", ")), traits)
 }
 
 /// 键位卡里的一个键。
@@ -483,7 +483,7 @@ pub fn note_name(p: u8) -> String {
 /// 做键位卡：`from..=to` 的每个键按住 `hold_bars` 小节（4/4，`tempo`），一次渲染里依次排开。结果缓存在本机。
 pub fn describe_keys(spec: &str, params: &serde_json::Map<String, Value>, from: u8, to: u8, tempo: f64, hold_bars: f64, refresh: bool) -> Result<KeyMap, String> {
     if from > to || to > 127 {
-        return Err("键的范围应为 from ≤ to ≤ 127".into());
+        return Err("key range must satisfy from <= to <= 127".into());
     }
     let mut key_params = params.clone();
     key_params.insert("@keys".into(), serde_json::json!([from, to, tempo, hold_bars]));
@@ -595,14 +595,14 @@ pub fn describe_keys(spec: &str, params: &serde_json::Map<String, Value>, from: 
         (Some(a), Some(b)) => {
             let white_only = audible.iter().all(|k| matches!(k.pitch % 12, 0 | 2 | 4 | 5 | 7 | 9 | 11));
             format!(
-                "{} 个键有声（{}–{}{}），其中 {loops} 个是跟着速度循环的 loop",
+                "{} keys sound ({}-{}{}), of which {loops} are loops that follow the tempo",
                 audible.len(),
                 a.name,
                 b.name,
-                if white_only && audible.len() > 1 { "，只有白键" } else { "" }
+                if white_only && audible.len() > 1 { "; white keys only" } else { "" }
             )
         }
-        _ => "这个范围里没有键发声".into(),
+        _ => "no key in this range sounds".into(),
     };
     let map = KeyMap { spec: spec.to_string(), params: params.clone(), tempo, hold_bars, keys, summary, probe_version: PROBE_VERSION };
     if let Some(d) = cache.parent() {
@@ -620,18 +620,18 @@ mod tests {
     fn describes_a_pad_a_pluck_and_a_kit() {
         let none = serde_json::Map::new();
         let organ = describe("organ.jazz", &none, None, true).unwrap();
-        assert!(organ.summary.contains("持续发声"), "{}", organ.summary);
+        assert!(organ.summary.contains("sustained"), "{}", organ.summary);
         assert!(!organ.drums);
         let pluck = describe("guitar.nylon", &none, None, true).unwrap();
-        assert!(pluck.summary.contains("衰减"), "{}", pluck.summary);
+        assert!(pluck.summary.contains("decay"), "{}", pluck.summary);
         let c4 = pluck.probes.iter().find(|p| p.pitch == 60).unwrap();
         assert!((c4.detected_pitch.unwrap() - 60.0).abs() < 0.5, "{:?}", c4.detected_pitch);
         let kit = describe("drums.808", &none, None, true).unwrap();
-        assert!(kit.drums && kit.summary.starts_with("鼓组"), "{}", kit.summary);
+        assert!(kit.drums && kit.summary.starts_with("Drum kit"), "{}", kit.summary);
         let keys = describe_keys("drums.808", &none, 35, 38, 120.0, 2.0, true).unwrap();
         let audible: Vec<u8> = keys.keys.iter().filter(|k| k.audible).map(|k| k.pitch).collect();
         assert!(audible.contains(&36) && audible.contains(&38), "{audible:?}");
-        assert!(keys.keys.iter().all(|k| k.loop_bars.is_none()), "一击的鼓不是 loop");
+        assert!(keys.keys.iter().all(|k| k.loop_bars.is_none()), "one-shot drums are not loops");
         assert_eq!(note_name(60), "C4");
         // 第二次从缓存读。
         assert_eq!(cached("drums.808", &none).unwrap().summary, kit.summary);

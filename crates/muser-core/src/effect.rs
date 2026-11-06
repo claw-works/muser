@@ -30,11 +30,11 @@ impl EffectSlot {
     pub fn validate(&self) -> Result<(), String> {
         let ok = |b: Option<crate::Beats>| b.is_none_or(|b| b.0.is_finite() && b.0 >= 0.0);
         if !ok(self.from) || !ok(self.until) {
-            return Err("from / until 应为不小于 0 的拍数".into());
+            return Err("from / until must be beat positions >= 0".into());
         }
         if let (Some(a), Some(z)) = (self.from, self.until) {
             if z.0 <= a.0 {
-                return Err(format!("until（{}）要晚于 from（{}）", z.0, a.0));
+                return Err(format!("until ({}) must be later than from ({})", z.0, a.0));
             }
         }
         self.effect.validate()
@@ -713,273 +713,273 @@ const fn p(
 pub static EFFECT_SPECS: &[EffectSpec] = &[
     EffectSpec {
         name: "reverb",
-        summary: "混响：模拟房间/大厅的空间感与尾音。",
-        placement: "放在旋律、pad、人声类轨的链尾；贝斯、底鼓少用或不用，否则低频发浑。",
+        summary: "Reverb: simulates the space and tail of a room or hall.",
+        placement: "Put it at the end of the chain on melody, pad and vocal tracks; use little or none on bass and kick, or the low end gets muddy.",
         params: &[
-            p("mix", 0.0, 1.0, 0.25, "", "干湿比。0.1-0.2 轻微空间；0.25-0.35 常规；>0.5 很湿、声音变远"),
-            p("decay_seconds", 0.05, 120.0, 1.6, "s", "尾音衰减时间。0.3-0.8 小房间；1.2-2.5 大厅；>4 氛围/环境"),
-            p("damping", 0.0, 1.0, 0.5, "", "高频阻尼。越大尾音越暗越温暖；越小越亮越金属"),
-            p("size", 0.0, 1.0, 0.5, "", "空间大小。0.2 小房间；0.5 中等；0.8+ 大厅/教堂"),
+            p("mix", 0.0, 1.0, 0.25, "", "Dry/wet mix. 0.1-0.2 slight space; 0.25-0.35 normal; >0.5 very wet, sound moves far away"),
+            p("decay_seconds", 0.05, 120.0, 1.6, "s", "Tail decay time. 0.3-0.8 small room; 1.2-2.5 hall; >4 ambient"),
+            p("damping", 0.0, 1.0, 0.5, "", "High-frequency damping. Higher = darker, warmer tail; lower = brighter, more metallic"),
+            p("size", 0.0, 1.0, 0.5, "", "Space size. 0.2 small room; 0.5 medium; 0.8+ hall/cathedral"),
         ],
         choices: &[],
         example: r#"{ "type": "reverb", "mix": 0.3, "decay_seconds": 2.2, "size": 0.7 }"#,
     },
     EffectSpec {
         name: "delay",
-        summary: "延迟/回声：把信号延后若干时间重复播放。",
-        placement: "适合 lead、和弦、人声；放在混响之前。time 按节拍算更合拍：60/tempo 秒 = 一拍。",
+        summary: "Delay/echo: repeats the signal after a set time.",
+        placement: "Good for lead, chords and vocals; put it before the reverb. Setting time from the tempo keeps it in sync: 60/tempo seconds = one beat.",
         params: &[
-            p("time_seconds", 0.0, 10.0, 0.3, "s", "回声间隔。按节拍取值：四分音符=60/tempo，八分=30/tempo，附点八分=45/tempo"),
-            p("feedback", 0.0, 0.99, 0.35, "", "回声重复次数。0.2 一两次；0.4-0.5 多次；>0.7 会长时间堆积"),
-            p("mix", 0.0, 1.0, 0.3, "", "干湿比。0.2-0.35 常规；>0.5 回声比原声还响"),
+            p("time_seconds", 0.0, 10.0, 0.3, "s", "Echo interval. Set it from the tempo: quarter note = 60/tempo, eighth = 30/tempo, dotted eighth = 45/tempo"),
+            p("feedback", 0.0, 0.99, 0.35, "", "Echo repeats. 0.2 one or two; 0.4-0.5 many; >0.7 builds up for a long time"),
+            p("mix", 0.0, 1.0, 0.3, "", "Dry/wet mix. 0.2-0.35 normal; >0.5 echoes louder than the original"),
         ],
         choices: &[],
         example: r#"{ "type": "delay", "time_seconds": 0.35, "feedback": 0.4, "mix": 0.3 }"#,
     },
     EffectSpec {
         name: "compressor",
-        summary: "压缩器：压低超过阈值的峰值，让动态更平稳、更紧实。",
-        placement: "单轨上放在链首（EQ 之后）控制动态；主总线上做\"胶水\"，在 limiter 之前。写 \"sidechain\": \"<音轨或总线名>\" 时改由那条信号触发：底鼓压贝斯/pad 的泵感（常用 threshold -30、ratio 6-10、attack 1-5、release 100-200）。",
+        summary: "Compressor: turns down peaks above the threshold for steadier, tighter dynamics.",
+        placement: "On a single track, put it early in the chain (after EQ) to control dynamics; on the master bus use it as \"glue\", before the limiter. With \"sidechain\": \"<track or bus name>\" it is triggered by that signal instead: kick ducking bass/pad for a pumping feel (typical threshold -30, ratio 6-10, attack 1-5, release 100-200).",
         params: &[
-            p("threshold_db", -60.0, 0.0, -18.0, "dB", "阈值。越低压得越多。轻压 -12；常规 -18；重压 -30"),
-            p("ratio", 1.0, 100.0, 4.0, ":1", "压缩比。2 温和；4 常规；8+ 接近限幅"),
-            p("attack_ms", 0.01, 1000.0, 10.0, "ms", "启动时间。短(1-5)压住瞬态；长(20-50)保留鼓的冲击"),
-            p("release_ms", 1.0, 5000.0, 120.0, "ms", "释放时间。短(50)跟得紧有泵感；长(200-500)更自然"),
-            p("makeup_db", -24.0, 36.0, 0.0, "dB", "补偿增益，弥补压缩损失的音量。一般 0-6"),
+            p("threshold_db", -60.0, 0.0, -18.0, "dB", "Threshold. Lower = more compression. Light -12; normal -18; heavy -30"),
+            p("ratio", 1.0, 100.0, 4.0, ":1", "Ratio. 2 gentle; 4 normal; 8+ close to limiting"),
+            p("attack_ms", 0.01, 1000.0, 10.0, "ms", "Attack time. Short (1-5) clamps transients; long (20-50) keeps the punch of drums"),
+            p("release_ms", 1.0, 5000.0, 120.0, "ms", "Release time. Short (50) follows tightly and pumps; long (200-500) sounds more natural"),
+            p("makeup_db", -24.0, 36.0, 0.0, "dB", "Makeup gain, to recover the level lost to compression. Usually 0-6"),
         ],
         choices: &[],
         example: r#"{ "type": "compressor", "threshold_db": -16, "ratio": 3, "makeup_db": 2 }"#,
     },
     EffectSpec {
         name: "chorus",
-        summary: "合唱：叠加轻微失谐的副本，让音色变厚变宽。",
-        placement: "适合 pad、电钢、吉他、和弦；放在混响之前。贝斯慎用（低频相位抵消）。",
+        summary: "Chorus: layers slightly detuned copies to thicken and widen the sound.",
+        placement: "Good for pad, electric piano, guitar and chords; put it before the reverb. Use with care on bass (low-frequency phase cancellation).",
         params: &[
-            p("rate_hz", 0.0, 100.0, 0.8, "Hz", "调制速度。0.2-1 缓慢自然；2-5 明显颤动"),
-            p("depth_ms", 0.0, 50.0, 3.0, "ms", "调制深度。1-3 细腻；5-10 明显失谐"),
-            p("mix", 0.0, 1.0, 0.4, "", "干湿比。0.3-0.5 常规"),
+            p("rate_hz", 0.0, 100.0, 0.8, "Hz", "Modulation rate. 0.2-1 slow and natural; 2-5 obvious wobble"),
+            p("depth_ms", 0.0, 50.0, 3.0, "ms", "Modulation depth. 1-3 subtle; 5-10 obviously detuned"),
+            p("mix", 0.0, 1.0, 0.4, "", "Dry/wet mix. 0.3-0.5 normal"),
         ],
         choices: &[],
         example: r#"{ "type": "chorus", "rate_hz": 0.6, "depth_ms": 4, "mix": 0.5 }"#,
     },
     EffectSpec {
         name: "eq",
-        summary: "均衡/滤波：提升、衰减或切除某个频段。一个 eq 只处理一个频段，多段请串多个。",
-        placement: "通常放在链首。常用：highpass 切掉非贝斯轨的低频浑浊；high_shelf 提亮；peak 修某个频点。",
+        summary: "EQ/filter: boosts, cuts or removes one frequency band. One eq handles one band; chain several for more.",
+        placement: "Usually first in the chain. Common uses: highpass to cut low-end mud on non-bass tracks; high_shelf to brighten; peak to fix a single frequency.",
         params: &[
-            p("frequency", 10.0, 24000.0, 1000.0, "Hz", "作用频率。低频 60-250；中频 250-4000；高频 4000-16000"),
-            p("q", 0.05, 40.0, 0.707, "", "带宽/谐振。0.707 平缓；1-2 中等；>5 很窄（修尖峰用）"),
-            p("gain_db", -36.0, 36.0, 0.0, "dB", "增益，只对 peak / low_shelf / high_shelf 有效。常用 ±2 到 ±6"),
+            p("frequency", 10.0, 24000.0, 1000.0, "Hz", "Target frequency. Low 60-250; mid 250-4000; high 4000-16000"),
+            p("q", 0.05, 40.0, 0.707, "", "Bandwidth/resonance. 0.707 gentle; 1-2 medium; >5 very narrow (for fixing spikes)"),
+            p("gain_db", -36.0, 36.0, 0.0, "dB", "Gain, only used by peak / low_shelf / high_shelf. Typically +/-2 to +/-6"),
         ],
         choices: &[ChoiceSpec {
             name: "shape",
             choices: &["lowpass", "highpass", "bandpass", "notch", "allpass", "peak", "low_shelf", "high_shelf"],
             default: "peak",
-            description: "滤波形状。lowpass 保留低于 frequency 的部分（变闷）；highpass 保留高于的部分（去低频）；peak 在 frequency 处增减；low_shelf/high_shelf 整体增减低/高频",
+            description: "Filter shape. lowpass keeps what is below frequency (muffled); highpass keeps what is above (removes lows); peak boosts or cuts at frequency; low_shelf/high_shelf boost or cut all lows/highs",
         }],
         example: r#"{ "type": "eq", "shape": "high_shelf", "frequency": 8000, "gain_db": 3 }"#,
     },
     EffectSpec {
         name: "limiter",
-        summary: "限幅器：保证输出峰值不超过上限，防止削顶爆音。",
-        placement: "只放在主总线（master_effects）的最后一个。",
+        summary: "Limiter: keeps output peaks below the ceiling to prevent clipping.",
+        placement: "Only as the last effect on the master bus (master_effects).",
         params: &[
-            p("ceiling_db", -24.0, 0.0, -0.3, "dB", "输出上限。-0.3 到 -1 常用"),
-            p("release_ms", 1.0, 2000.0, 50.0, "ms", "释放时间。短更响但可能失真；长更平滑"),
+            p("ceiling_db", -24.0, 0.0, -0.3, "dB", "Output ceiling. -0.3 to -1 is typical"),
+            p("release_ms", 1.0, 2000.0, 50.0, "ms", "Release time. Short is louder but may distort; long is smoother"),
         ],
         choices: &[],
         example: r#"{ "type": "limiter", "ceiling_db": -0.5 }"#,
     },
     EffectSpec {
         name: "phaser",
-        summary: "相位器：扫动的陷波，产生流动的\"喷气式\"质感。",
-        placement: "适合 pad、电钢、吉他、合成器 lead；放在混响之前。",
+        summary: "Phaser: sweeping notches that give a flowing, \"jet\" texture.",
+        placement: "Good for pad, electric piano, guitar and synth lead; put it before the reverb.",
         params: &[
-            p("rate_hz", 0.0, 100.0, 0.5, "Hz", "扫动速度。0.1-0.5 缓慢；1-3 明显"),
-            p("feedback", -0.95, 0.95, 0.3, "", "谐振强度。绝对值越大越尖锐；负值音色不同"),
-            p("mix", 0.0, 1.0, 0.5, "", "干湿比。0.5 效果最明显"),
+            p("rate_hz", 0.0, 100.0, 0.5, "Hz", "Sweep rate. 0.1-0.5 slow; 1-3 obvious"),
+            p("feedback", -0.95, 0.95, 0.3, "", "Resonance. A larger absolute value is sharper; negative values sound different"),
+            p("mix", 0.0, 1.0, 0.5, "", "Dry/wet mix. 0.5 gives the strongest effect"),
         ],
         choices: &[],
         example: r#"{ "type": "phaser", "rate_hz": 0.3, "feedback": 0.5, "mix": 0.5 }"#,
     },
     EffectSpec {
         name: "flanger",
-        summary: "镶边：极短延迟的调制，产生金属感的扫动（喷气机声）。",
-        placement: "适合合成器、吉他、鼓的点缀段落；放在混响之前，通常不长时间整首使用。",
+        summary: "Flanger: modulates a very short delay for a metallic sweep (jet sound).",
+        placement: "Good as an accent on synths, guitar and drums; put it before the reverb, and usually not for a whole piece.",
         params: &[
-            p("rate_hz", 0.0, 100.0, 0.2, "Hz", "扫动速度。0.1-0.3 慢扫；>1 快速颤动"),
-            p("feedback", -0.95, 0.95, 0.7, "", "谐振强度。越大金属感越强"),
-            p("mix", 0.0, 1.0, 0.5, "", "干湿比。0.5 效果最明显"),
+            p("rate_hz", 0.0, 100.0, 0.2, "Hz", "Sweep rate. 0.1-0.3 slow sweep; >1 fast wobble"),
+            p("feedback", -0.95, 0.95, 0.7, "", "Resonance. Higher = more metallic"),
+            p("mix", 0.0, 1.0, 0.5, "", "Dry/wet mix. 0.5 gives the strongest effect"),
         ],
         choices: &[],
         example: r#"{ "type": "flanger", "rate_hz": 0.2, "feedback": 0.7, "mix": 0.5 }"#,
     },
     EffectSpec {
         name: "bitcrusher",
-        summary: "降位降采样：变粗、变脏的数码失真（8-bit、老采样器、lo-fi 质感）。",
-        placement: "适合鼓、lead、整条 lo-fi 总线；bits 8-12 是老采样器，4-6 很脏。放在混响之前。",
+        summary: "Bitcrusher: coarse, dirty digital distortion (8-bit, old samplers, lo-fi texture).",
+        placement: "Good for drums, lead and a whole lo-fi bus; bits 8-12 is an old sampler, 4-6 is very dirty. Put it before the reverb.",
         params: &[
-            p("bits", 1.0, 24.0, 8.0, "bit", "位深。12 轻微颗粒；8 老游戏机；4 以下非常脏"),
-            p("downsample", 1.0, 64.0, 1.0, "×", "降采样倍数（保持每 N 个样本）。1 不降；4-8 明显的金属锯齿感"),
-            p("mix", 0.0, 1.0, 1.0, "", "干湿比。0.3-0.5 只加一点颗粒"),
+            p("bits", 1.0, 24.0, 8.0, "bit", "Bit depth. 12 slightly grainy; 8 old game console; below 4 very dirty"),
+            p("downsample", 1.0, 64.0, 1.0, "×", "Downsample factor (hold every Nth sample). 1 = none; 4-8 gives an obvious metallic, jagged sound"),
+            p("mix", 0.0, 1.0, 1.0, "", "Dry/wet mix. 0.3-0.5 adds just a little grain"),
         ],
         choices: &[],
         example: r#"{ "type": "bitcrusher", "bits": 10, "downsample": 2, "mix": 0.6 }"#,
     },
     EffectSpec {
         name: "tremolo",
-        summary: "颤音（音量）：按 LFO 周期性地起伏音量。",
-        placement: "适合电钢、吉他、pad。按节拍：rate_hz = tempo / 60 / 拍数（每拍一次 = tempo/60）。",
+        summary: "Tremolo (volume): periodically raises and lowers the volume with an LFO.",
+        placement: "Good for electric piano, guitar and pad. To sync to the beat: rate_hz = tempo / 60 / beats (once per beat = tempo/60).",
         params: &[
-            p("rate_hz", 0.0, 40.0, 5.0, "Hz", "起伏速度。3-6 经典电钢颤音；按节拍取值更合拍"),
-            p("depth", 0.0, 1.0, 0.5, "", "深度。0.3 轻微；1 起伏到无声"),
-            p("stereo_phase", 0.0, 1.0, 0.0, "", "左右声道的相位差（周）。0.5 左右交替，带一点自动声像感"),
+            p("rate_hz", 0.0, 40.0, 5.0, "Hz", "Modulation rate. 3-6 is classic electric-piano tremolo; setting it from the tempo keeps it in sync"),
+            p("depth", 0.0, 1.0, 0.5, "", "Depth. 0.3 slight; 1 swells down to silence"),
+            p("stereo_phase", 0.0, 1.0, 0.0, "", "Phase offset between left and right channels (cycles). 0.5 alternates left and right, like a little auto-pan"),
         ],
-        choices: &[ChoiceSpec { name: "shape", choices: &["sine", "triangle", "square", "saw_up", "saw_down"], default: "sine", description: "LFO 波形：sine 柔和；triangle；square 斩波（chopper）效果；saw_up / saw_down 锯齿" }],
+        choices: &[ChoiceSpec { name: "shape", choices: &["sine", "triangle", "square", "saw_up", "saw_down"], default: "sine", description: "LFO waveform: sine is soft; triangle; square gives a chopper effect; saw_up / saw_down are sawtooth" }],
         example: r#"{ "type": "tremolo", "rate_hz": 4, "depth": 0.6 }"#,
     },
     EffectSpec {
         name: "auto_pan",
-        summary: "自动声像：按 LFO 让声音在左右之间来回移动。",
-        placement: "适合 pad、琶音、打击乐点缀；不要用在贝斯和底鼓上。按节拍：rate_hz = tempo / 60 / 拍数。",
+        summary: "Auto-pan: moves the sound back and forth between left and right with an LFO.",
+        placement: "Good for pad, arpeggios and percussion accents; do not use on bass or kick. To sync to the beat: rate_hz = tempo / 60 / beats.",
         params: &[
-            p("rate_hz", 0.0, 40.0, 0.5, "Hz", "移动速度。0.1-0.5 缓慢漂移；2 以上快速晃动"),
-            p("width", 0.0, 1.0, 1.0, "", "摆动幅度。1 从最左到最右；0.3 只在中间附近晃"),
+            p("rate_hz", 0.0, 40.0, 0.5, "Hz", "Movement rate. 0.1-0.5 slow drift; above 2 fast swaying"),
+            p("width", 0.0, 1.0, 1.0, "", "Swing width. 1 goes from full left to full right; 0.3 stays near the center"),
         ],
-        choices: &[ChoiceSpec { name: "shape", choices: &["sine", "triangle", "square", "saw_up", "saw_down"], default: "sine", description: "LFO 波形：sine 平滑；square 左右跳" }],
+        choices: &[ChoiceSpec { name: "shape", choices: &["sine", "triangle", "square", "saw_up", "saw_down"], default: "sine", description: "LFO waveform: sine is smooth; square jumps between left and right" }],
         example: r#"{ "type": "auto_pan", "rate_hz": 0.25, "width": 0.8 }"#,
     },
     EffectSpec {
         name: "ring_mod",
-        summary: "环形调制：和一个正弦相乘，产生不和谐的金属、钟、机器人音色。",
-        placement: "适合合成器、鼓的特效段落、科幻音效。频率低（<30 Hz）时是颤动，高时是金属感。",
+        summary: "Ring modulator: multiplies with a sine wave for inharmonic metallic, bell and robot sounds.",
+        placement: "Good for synths, drum effect sections and sci-fi sounds. At low frequencies (<30 Hz) it wobbles; at high ones it sounds metallic.",
         params: &[
-            p("frequency_hz", 0.0, 5000.0, 440.0, "Hz", "载波频率。20-30 颤动；100-1000 金属/钟声"),
-            p("mix", 0.0, 1.0, 0.5, "", "干湿比。1 只剩调制后的声音"),
+            p("frequency_hz", 0.0, 5000.0, 440.0, "Hz", "Carrier frequency. 20-30 wobble; 100-1000 metallic/bell"),
+            p("mix", 0.0, 1.0, 0.5, "", "Dry/wet mix. 1 leaves only the modulated sound"),
         ],
         choices: &[],
         example: r#"{ "type": "ring_mod", "frequency_hz": 300, "mix": 0.4 }"#,
     },
     EffectSpec {
         name: "frequency_shifter",
-        summary: "移频：把所有频率平移固定的赫兹数（不同于变调，泛音关系被打破）。",
-        placement: "小移频（1-10 Hz）做缓慢的相位旋转、加宽；大移频做不和谐的特效；加反馈做螺旋上升/下降的音。",
+        summary: "Frequency shifter: shifts every frequency by a fixed number of Hz (unlike pitch shifting, the harmonic relationships are broken).",
+        placement: "Small shifts (1-10 Hz) give slow phase rotation and widening; large shifts give inharmonic effects; add feedback for rising/falling spiral tones.",
         params: &[
-            p("shift_hz", -2000.0, 2000.0, 10.0, "Hz", "平移量。±1-10 细微旋转；±50 以上明显失谐"),
-            p("feedback", 0.0, 0.95, 0.0, "", "反馈。越大越像无尽的上升/下降螺旋（巴伯音）"),
-            p("mix", 0.0, 1.0, 1.0, "", "干湿比。0.5 时小移频有相位器般的效果"),
+            p("shift_hz", -2000.0, 2000.0, 10.0, "Hz", "Shift amount. +/-1-10 subtle rotation; above +/-50 obviously detuned"),
+            p("feedback", 0.0, 0.95, 0.0, "", "Feedback. Higher sounds more like an endless rising/falling spiral (Shepard tone)"),
+            p("mix", 0.0, 1.0, 1.0, "", "Dry/wet mix. At 0.5 a small shift sounds like a phaser"),
         ],
         choices: &[],
         example: r#"{ "type": "frequency_shifter", "shift_hz": 4, "mix": 0.5 }"#,
     },
     EffectSpec {
         name: "widener",
-        summary: "立体声扩展：加大左右差异，让声音更宽；低频可保持单声道。",
-        placement: "适合 pad、和弦、混响总线、主总线（轻用）。贝斯、底鼓、主唱保持居中。",
+        summary: "Stereo widener: increases the left/right difference for a wider sound; lows can stay mono.",
+        placement: "Good for pad, chords, reverb bus and master bus (lightly). Keep bass, kick and lead vocal centered.",
         params: &[
-            p("width", 0.0, 2.0, 1.5, "", "宽度。1 不变；1.2-1.6 常用；0 变单声道"),
-            p("bass_mono_hz", 0.0, 1000.0, 120.0, "Hz", "低于这个频率保持单声道（低频不散）。0 关闭"),
+            p("width", 0.0, 2.0, 1.5, "", "Width. 1 unchanged; 1.2-1.6 typical; 0 becomes mono"),
+            p("bass_mono_hz", 0.0, 1000.0, 120.0, "Hz", "Frequencies below this stay mono (lows don't spread). 0 = off"),
         ],
         choices: &[],
         example: r#"{ "type": "widener", "width": 1.4, "bass_mono_hz": 150 }"#,
     },
     EffectSpec {
         name: "transient_shaper",
-        summary: "瞬态塑形：单独增强/减弱起音和延音，不管音量多大。",
-        placement: "鼓最常用：attack_db +4 到 +8 让鼓更脆更冲；sustain_db -6 收紧余音（去房间声）。放在压缩器之前。",
+        summary: "Transient shaper: boosts or reduces the attack and sustain separately, regardless of level.",
+        placement: "Most used on drums: attack_db +4 to +8 makes drums snappier and punchier; sustain_db -6 tightens the tail (removes room sound). Put it before the compressor.",
         params: &[
-            p("attack_db", -24.0, 24.0, 0.0, "dB", "起音增益。+ 更冲、更脆；- 更软、更远"),
-            p("sustain_db", -24.0, 24.0, 0.0, "dB", "延音增益。+ 更多尾音和房间感；- 更干更紧"),
-            p("attack_ms", 2.0, 200.0, 20.0, "ms", "起音段的长度。鼓 5-20"),
-            p("sustain_ms", 60.0, 3000.0, 400.0, "ms", "延音段的反应时间"),
+            p("attack_db", -24.0, 24.0, 0.0, "dB", "Attack gain. + punchier, snappier; - softer, more distant"),
+            p("sustain_db", -24.0, 24.0, 0.0, "dB", "Sustain gain. + more tail and room; - drier and tighter"),
+            p("attack_ms", 2.0, 200.0, 20.0, "ms", "Length of the attack stage. Drums 5-20"),
+            p("sustain_ms", 60.0, 3000.0, 400.0, "ms", "Reaction time of the sustain stage"),
         ],
         choices: &[],
         example: r#"{ "type": "transient_shaper", "attack_db": 6, "sustain_db": -4 }"#,
     },
     EffectSpec {
         name: "multiband_compressor",
-        summary: "三段压缩：分成低、中、高三段各自压缩，低频的重音不会压到高频。",
-        placement: "主总线做母带、鼓总线、贝斯；low_hz / high_hz 是分频点。low_db / mid_db / high_db 是每段的补偿增益，也能当粗调 EQ。放在 limiter 之前。",
+        summary: "Multiband compressor: splits into low, mid and high bands compressed separately, so heavy lows don't pull down the highs.",
+        placement: "For mastering on the master bus, drum bus and bass; low_hz / high_hz are the crossover points. low_db / mid_db / high_db are the per-band makeup gains and can also work as a coarse EQ. Put it before the limiter.",
         params: &[
-            p("low_hz", 20.0, 2000.0, 200.0, "Hz", "低频段与中频段的分频点"),
-            p("high_hz", 200.0, 16000.0, 2000.0, "Hz", "中频段与高频段的分频点（要高于 low_hz）"),
-            p("threshold_db", -60.0, 0.0, -20.0, "dB", "三段共用的阈值"),
-            p("ratio", 1.0, 100.0, 3.0, ":1", "三段共用的压缩比。2-3 母带；4+ 更紧"),
-            p("attack_ms", 0.01, 1000.0, 10.0, "ms", "启动时间"),
-            p("release_ms", 1.0, 5000.0, 150.0, "ms", "释放时间"),
-            p("low_db", -24.0, 24.0, 0.0, "dB", "低频段补偿增益"),
-            p("mid_db", -24.0, 24.0, 0.0, "dB", "中频段补偿增益"),
-            p("high_db", -24.0, 24.0, 0.0, "dB", "高频段补偿增益"),
+            p("low_hz", 20.0, 2000.0, 200.0, "Hz", "Crossover point between the low and mid bands"),
+            p("high_hz", 200.0, 16000.0, 2000.0, "Hz", "Crossover point between the mid and high bands (must be above low_hz)"),
+            p("threshold_db", -60.0, 0.0, -20.0, "dB", "Threshold shared by all three bands"),
+            p("ratio", 1.0, 100.0, 3.0, ":1", "Ratio shared by all three bands. 2-3 mastering; 4+ tighter"),
+            p("attack_ms", 0.01, 1000.0, 10.0, "ms", "Attack time"),
+            p("release_ms", 1.0, 5000.0, 150.0, "ms", "Release time"),
+            p("low_db", -24.0, 24.0, 0.0, "dB", "Makeup gain for the low band"),
+            p("mid_db", -24.0, 24.0, 0.0, "dB", "Makeup gain for the mid band"),
+            p("high_db", -24.0, 24.0, 0.0, "dB", "Makeup gain for the high band"),
         ],
         choices: &[],
         example: r#"{ "type": "multiband_compressor", "threshold_db": -18, "ratio": 2.5, "high_db": 1 }"#,
     },
     EffectSpec {
         name: "tape",
-        summary: "磁带：磁带饱和的温暖失真，加上走带不稳的音高晃动（wow / flutter）。",
-        placement: "lo-fi、复古、温暖：整条总线或主总线轻用（drive 3-6），单轨可以更重。wow_cents 5-15 是老卡带的跑调感。",
+        summary: "Tape: warm tape-saturation distortion plus unsteady transport pitch wobble (wow / flutter).",
+        placement: "For lo-fi, vintage and warmth: use lightly on a whole bus or the master bus (drive 3-6), heavier on a single track. wow_cents 5-15 gives the off-pitch feel of an old cassette.",
         params: &[
-            p("drive_db", 0.0, 30.0, 6.0, "dB", "驱动。3-6 温暖；12 以上明显失真"),
-            p("asymmetry", 0.0, 0.5, 0.15, "", "不对称，加偶次谐波（更暖）"),
-            p("wow_cents", 0.0, 30.0, 3.0, "cent", "慢速音高晃动的深度。0 关；5-15 老卡带"),
-            p("flutter_cents", 0.0, 10.0, 1.0, "cent", "快速音高抖动的深度"),
-            p("mix", 0.0, 1.0, 1.0, "", "干湿比"),
+            p("drive_db", 0.0, 30.0, 6.0, "dB", "Drive. 3-6 warm; above 12 obviously distorted"),
+            p("asymmetry", 0.0, 0.5, 0.15, "", "Asymmetry, adds even harmonics (warmer)"),
+            p("wow_cents", 0.0, 30.0, 3.0, "cent", "Depth of the slow pitch wobble. 0 = off; 5-15 old cassette"),
+            p("flutter_cents", 0.0, 10.0, 1.0, "cent", "Depth of the fast pitch flutter"),
+            p("mix", 0.0, 1.0, 1.0, "", "Dry/wet mix"),
         ],
         choices: &[],
         example: r#"{ "type": "tape", "drive_db": 5, "wow_cents": 8 }"#,
     },
     EffectSpec {
         name: "vocoder",
-        summary: "声码器：用另一条轨（多是人声）的频谱去塑造这条轨（多是合成器和弦）——机器人唱歌。",
-        placement: "挂在合成器/和弦轨（载波）上，\"sidechain\" 写人声那条轨或总线的名字（调制信号）。载波要持续、泛音丰富（锯齿 pad、string machine）。",
+        summary: "Vocoder: shapes this track (usually synth chords) with the spectrum of another track (usually a vocal) - a singing robot.",
+        placement: "Put it on the synth/chord track (the carrier) and set \"sidechain\" to the name of the vocal track or bus (the modulator). The carrier should be sustained and harmonically rich (saw pad, string machine).",
         params: &[
-            p("bands", 8.0, 32.0, 16.0, "", "频带数。8 粗糙复古；16 常规；32 更清楚"),
-            p("low_hz", 40.0, 16000.0, 100.0, "Hz", "最低频带"),
-            p("high_hz", 40.0, 16000.0, 8000.0, "Hz", "最高频带"),
-            p("formant_shift", -12.0, 12.0, 0.0, "半音", "共振峰平移。+ 更尖（小孩、卡通）；- 更粗"),
-            p("attack_ms", 0.1, 500.0, 10.0, "ms", "包络跟随的启动时间"),
-            p("release_ms", 0.1, 2000.0, 10.0, "ms", "包络跟随的释放时间。长一点更连贯"),
-            p("gain_db", -24.0, 24.0, 0.0, "dB", "输出增益"),
-            p("mix", 0.0, 1.0, 1.0, "", "干湿比"),
+            p("bands", 8.0, 32.0, 16.0, "", "Number of bands. 8 rough and retro; 16 normal; 32 clearer"),
+            p("low_hz", 40.0, 16000.0, 100.0, "Hz", "Lowest band"),
+            p("high_hz", 40.0, 16000.0, 8000.0, "Hz", "Highest band"),
+            p("formant_shift", -12.0, 12.0, 0.0, "semitones", "Formant shift. + higher (child, cartoon); - deeper"),
+            p("attack_ms", 0.1, 500.0, 10.0, "ms", "Attack time of the envelope follower"),
+            p("release_ms", 0.1, 2000.0, 10.0, "ms", "Release time of the envelope follower. Longer is smoother"),
+            p("gain_db", -24.0, 24.0, 0.0, "dB", "Output gain"),
+            p("mix", 0.0, 1.0, 1.0, "", "Dry/wet mix"),
         ],
         choices: &[],
         example: r#"{ "type": "vocoder", "sidechain": "voice", "bands": 16 }"#,
     },
     EffectSpec {
         name: "granular_delay",
-        summary: "颗粒延迟：把延迟线切成小颗粒随机重放，能变调、散开，做出云雾、闪烁的氛围。",
-        placement: "适合 pad、钢琴、人声的氛围段，常放在发送总线上。pitch_semitones 12 做\"闪光\"（shimmer）。",
+        summary: "Granular delay: chops the delay line into small grains replayed randomly, which can shift pitch and scatter them for cloudy, shimmering ambience.",
+        placement: "Good for ambient sections of pad, piano and vocals, often on a send bus. pitch_semitones 12 gives a \"shimmer\".",
         params: &[
-            p("position_ms", 0.0, 1000.0, 250.0, "ms", "颗粒从多久之前取"),
-            p("spray_ms", 0.0, 500.0, 50.0, "ms", "取样位置的随机范围"),
-            p("grain_ms", 5.0, 500.0, 60.0, "ms", "颗粒长度。短（10-30）颗粒感强；长（100+）更平滑"),
-            p("density_hz", 0.5, 200.0, 30.0, "Hz", "每秒多少颗粒"),
-            p("pitch_semitones", -24.0, 24.0, 0.0, "半音", "颗粒变调。12 高八度闪光；-12 低沉"),
-            p("pitch_spray", 0.0, 24.0, 0.0, "半音", "变调的随机范围"),
-            p("stereo_spread", 0.0, 1.0, 0.5, "", "颗粒在左右的散开程度"),
-            p("feedback", 0.0, 0.95, 0.0, "", "反馈。越大云雾越厚越长"),
-            p("mix", 0.0, 1.0, 0.5, "", "干湿比。在发送总线上用 1"),
+            p("position_ms", 0.0, 1000.0, 250.0, "ms", "How far back the grains are taken from"),
+            p("spray_ms", 0.0, 500.0, 50.0, "ms", "Random range of the grain position"),
+            p("grain_ms", 5.0, 500.0, 60.0, "ms", "Grain length. Short (10-30) sounds grainy; long (100+) is smoother"),
+            p("density_hz", 0.5, 200.0, 30.0, "Hz", "Grains per second"),
+            p("pitch_semitones", -24.0, 24.0, 0.0, "semitones", "Grain pitch shift. 12 = octave-up shimmer; -12 = deep"),
+            p("pitch_spray", 0.0, 24.0, 0.0, "semitones", "Random range of the pitch shift"),
+            p("stereo_spread", 0.0, 1.0, 0.5, "", "How far the grains spread left and right"),
+            p("feedback", 0.0, 0.95, 0.0, "", "Feedback. Higher = thicker, longer cloud"),
+            p("mix", 0.0, 1.0, 0.5, "", "Dry/wet mix. Use 1 on a send bus"),
         ],
         choices: &[],
         example: r#"{ "type": "granular_delay", "pitch_semitones": 12, "feedback": 0.4, "mix": 0.4 }"#,
     },
     EffectSpec {
         name: "formant_filter",
-        summary: "元音滤波：按人声元音的共振峰滤波，让合成器\"说话\"（a-e-i-o-u）。",
-        placement: "适合合成器 lead、贝斯、pad。vowel 用自动化来回移动就是\"哇哇\"的说话感。",
+        summary: "Vowel filter: filters by the formants of vocal vowels so a synth \"talks\" (a-e-i-o-u).",
+        placement: "Good for synth lead, bass and pad. Moving vowel back and forth with automation gives a \"wah-wah\" talking feel.",
         params: &[
-            p("vowel", 0.0, 4.0, 0.0, "", "元音位置：0 a、1 e、2 i、3 o、4 u，中间平滑过渡"),
-            p("shift", -12.0, 12.0, 0.0, "半音", "共振峰平移。+ 更小的嗓子；- 更大的嗓子"),
-            p("gain_db", -24.0, 24.0, 0.0, "dB", "输出增益"),
-            p("mix", 0.0, 1.0, 1.0, "", "干湿比"),
+            p("vowel", 0.0, 4.0, 0.0, "", "Vowel position: 0 a, 1 e, 2 i, 3 o, 4 u, with smooth transitions in between"),
+            p("shift", -12.0, 12.0, 0.0, "semitones", "Formant shift. + a smaller voice; - a bigger voice"),
+            p("gain_db", -24.0, 24.0, 0.0, "dB", "Output gain"),
+            p("mix", 0.0, 1.0, 1.0, "", "Dry/wet mix"),
         ],
         choices: &[],
         example: r#"{ "type": "formant_filter", "vowel": 1.5, "mix": 0.8 }"#,
     },
     EffectSpec {
         name: "plugin",
-        summary: "第三方插件效果器（VST3/CLAP/LV2）。",
-        placement: "与内置效果器一样串在链上。path 是本机插件的绝对路径；params 按插件参数名设置，值可写插件界面上的文字（如 \"2000 Hz\"）。用 `muser plugin params <path>` 查看参数。",
+        summary: "Third-party plugin effect (VST3/CLAP/LV2).",
+        placement: "Sits in the chain like a built-in effect. path is the absolute path of the plugin on this machine; params are set by plugin parameter name, and a value may be the text shown in the plugin UI (e.g. \"2000 Hz\"). Use `muser plugin params <path>` to list the parameters.",
         params: &[],
         choices: &[],
         example: r#"{ "type": "plugin", "path": "/usr/lib/clap/Surge XT Effects.clap", "params": { "FX Type": "Reverb 2" } }"#,
@@ -1086,7 +1086,7 @@ impl Effect {
                 .expect("numeric_params 字段应在描述表中");
             if !value.is_finite() || value < ps.min || value > ps.max {
                 return Err(format!(
-                    "{name}.{field} = {value} 超出范围 [{}, {}]{}",
+                    "{name}.{field} = {value} is out of range [{}, {}]{}",
                     ps.min,
                     ps.max,
                     if ps.unit.is_empty() { String::new() } else { format!(" {}", ps.unit) }
@@ -1099,7 +1099,7 @@ impl Effect {
                 let s = shape.trim().to_ascii_lowercase();
                 if !cs.choices.contains(&s.as_str()) {
                     return Err(format!(
-                        "eq.shape = '{shape}' 无效，可选: {}",
+                        "eq.shape = '{shape}' is invalid; choose one of: {}",
                         cs.choices.join(" / ")
                     ));
                 }
@@ -1107,17 +1107,17 @@ impl Effect {
             Effect::Tremolo { shape, .. } | Effect::AutoPan { shape, .. } => {
                 let cs = &spec.choices[0];
                 if !cs.choices.contains(&shape.trim().to_ascii_lowercase().as_str()) {
-                    return Err(format!("{name}.shape = '{shape}' 无效，可选: {}", cs.choices.join(" / ")));
+                    return Err(format!("{name}.shape = '{shape}' is invalid; choose one of: {}", cs.choices.join(" / ")));
                 }
             }
             Effect::Vocoder { sidechain: None, .. } => {
-                return Err("vocoder 需要 \"sidechain\"：写调制信号（多是人声）那条音轨或总线的名字".to_string());
+                return Err("vocoder needs \"sidechain\": the name of the track or bus carrying the modulator signal (usually a vocal)".to_string());
             }
             Effect::Compressor { .. } | Effect::Vocoder { .. } if self.sidechain().is_some_and(|s| s.trim().is_empty()) => {
-                return Err(format!("{name}.sidechain 不能为空字符串"));
+                return Err(format!("{name}.sidechain must not be an empty string"));
             }
             Effect::Plugin { path, .. } if path.trim().is_empty() => {
-                return Err("plugin.path 不能为空".to_string());
+                return Err("plugin.path must not be empty".to_string());
             }
             _ => {}
         }

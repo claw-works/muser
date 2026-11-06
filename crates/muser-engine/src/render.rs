@@ -58,9 +58,9 @@ pub enum EngineError {
     Instrument(#[from] instrument::UnknownInstrument),
     #[error(transparent)]
     Effect(#[from] crate::effects::EffectError),
-    #[error("渲染失败: {0}")]
+    #[error("render failed: {0}")]
     Unstable(String),
-    #[error("写出 WAV 失败: {0}")]
+    #[error("failed to write WAV: {0}")]
     Wav(String),
 }
 
@@ -482,7 +482,7 @@ impl LiveInstrument {
             // 上游模型在极端参数下可能数值发散；宁可报错也不放出爆音。
             if (0..2).any(|ch| self.block.channel(ch).iter().any(|s| !s.is_finite() || s.abs() > 64.0)) {
                 return Err(EngineError::Unstable(format!(
-                    "音轨 '{}'（{}）输出数值发散，请调整 instrument_params（如增大 release / attack）",
+                    "track '{}' ({}) output diverged: adjust instrument_params (e.g. increase release / attack)",
                     self.name, self.instrument
                 )));
             }
@@ -600,7 +600,7 @@ impl Source {
                     match w.rx.recv() {
                         Ok(Ok(b)) => w.tape.push(&b, 0..b.num_frames()),
                         Ok(Err(e)) => return Err(e),
-                        Err(_) => return Err(EngineError::Unstable("音轨的演奏线程已退出".into())),
+                        Err(_) => return Err(EngineError::Unstable("the track's playing thread has exited".into())),
                     }
                 }
                 w.tape.read(at, dst);
@@ -1019,7 +1019,7 @@ impl Renderer {
     pub fn live(project: &Project, settings: RenderSettings) -> Result<Self, EngineError> {
         crate::validate(project)?;
         if project.tracks.iter().any(|t| t.instrument.trim() == muser_core::audio::INSTRUMENT) {
-            return Err(invalid("现场模式不支持音频轨".into()));
+            return Err(invalid("live mode does not support audio tracks".into()));
         }
         let plan = routing::plan(project).map_err(invalid)?;
         Self::build(project, settings, plan, None, true, false, 0, true, None)
@@ -1033,11 +1033,11 @@ impl Renderer {
     pub fn reconcile(&mut self, project: &Project) -> Result<(), EngineError> {
 
         if !self.live {
-            return Err(invalid("只有现场模式的渲染器能换工程".into()));
+            return Err(invalid("only a live-mode renderer can swap projects".into()));
         }
         crate::validate(project)?;
         if project.tracks.iter().any(|t| t.instrument.trim() == muser_core::audio::INSTRUMENT) {
-            return Err(invalid("现场模式不支持音频轨".into()));
+            return Err(invalid("live mode does not support audio tracks".into()));
         }
         let plan = routing::plan(project).map_err(invalid)?;
         // 先查，查过了才动现有的节点（出错时渲染器保持原样）。
@@ -1047,14 +1047,14 @@ impl Renderer {
         let buses: Vec<String> = (0..p.buses.len()).map(|i| ident(p, Some(Node::Bus(i)))).collect();
         let old_buses = self.strips.iter().filter(|s| matches!(s.node, Some(Node::Bus(_)))).count();
         if buses.len() != old_buses || buses.iter().any(|b| !old.contains_key(b.as_str())) {
-            return Err(invalid("现场演奏中不能加、删、改名总线（模板里先建好）".into()));
+            return Err(invalid("buses cannot be added, removed or renamed during a live session (create them in the template first)".into()));
         }
         for (i, t) in p.tracks.iter().enumerate() {
             let id = ident(p, Some(Node::Track(i)));
             let Some(o) = old.get(id.as_str()) else { continue };
             if let Some(Source::Live(l)) = &o.source {
                 if l.instrument != t.instrument || l.params != serde_json::to_string(&t.instrument_params).unwrap_or_default() {
-                    return Err(invalid(format!("音轨 '{}' 中途不能换乐器或乐器参数（参数用自动化；换乐器就新开一条轨）", t.name)));
+                    return Err(invalid(format!("track '{}' cannot change instrument or instrument parameters mid-session (use automation for parameters; for a different instrument, start a new track)", t.name)));
                 }
             }
         }
@@ -1065,13 +1065,13 @@ impl Renderer {
         for (id, list) in &lists {
             let Some(o) = old.get(id.as_str()) else { continue };
             if list.len() < o.slots.len() || !o.slots.iter().zip(list.iter()).all(|(a, b)| same_slot(a, b)) {
-                return Err(invalid(format!("{} 的效果链只能在后面追加（撤下用 until，改参数用自动化）", if id.is_empty() { "主总线" } else { &id[2..] })));
+                return Err(invalid(format!("the effect chain of {} can only be appended to (remove an effect with until, change parameters with automation)", if id.is_empty() { "the master" } else { &id[2..] })));
             }
             // shortcut: 插件效果器的延迟要打开才知道，这里不查（带延迟的插件中途加进来，那一轨会错开几毫秒）；要查时把这里建好的链传给 build 复用。
             let builtin: Vec<muser_core::EffectSlot> = list[o.slots.len()..].iter().filter(|e| !matches!(e.effect, muser_core::Effect::Plugin { .. })).cloned().collect();
             let tail = effects::build_chain(&builtin, &self.cx.spec)?;
             if effects::chain_latency(&tail) > 0 {
-                return Err(invalid("中途加的效果器不能带延迟（如限幅器）：放进模板里".into()));
+                return Err(invalid("an effect added mid-session cannot have latency (e.g. a limiter): put it in the template".into()));
             }
         }
         // 已有节点之间新加的连线：读的一方还没读到的部分要还在。
@@ -1080,7 +1080,7 @@ impl Renderer {
             let to = old.get(ident(p, e.to.map(Node::Bus)).as_str());
             if let (Some(f), Some(t)) = (from, to) {
                 if f.out.start > t.pos {
-                    return Err(invalid("这条新连线来不及接上：过一会儿再试".into()));
+                    return Err(invalid("this new connection could not be wired in time: try again in a moment".into()));
                 }
             }
         }
@@ -1497,12 +1497,12 @@ impl Renderer {
         for s in &mut self.strips {
             match s.node {
                 Some(Node::Track(i)) => {
-                    let t = project.tracks.get(i).ok_or_else(|| invalid("工程结构变了".into()))?;
+                    let t = project.tracks.get(i).ok_or_else(|| invalid("the project structure changed".into()))?;
                     (s.gain_db, s.muted) = (t.gain_db, t.muted);
                     s.lanes.gain = automate::compile_track(project, i, self.beats).map_err(invalid)?.gain;
                 }
                 Some(Node::Bus(i)) => {
-                    let b = project.buses.get(i).ok_or_else(|| invalid("工程结构变了".into()))?;
+                    let b = project.buses.get(i).ok_or_else(|| invalid("the project structure changed".into()))?;
                     (s.gain_db, s.muted) = (b.gain_db, b.muted);
                     s.lanes.gain = automate::compile_bus(project, i, self.beats).map_err(invalid)?.gain;
                 }
@@ -1635,9 +1635,9 @@ pub fn render_to_wav_with_progress(
     if path.to_lowercase().ends_with(".mp3") {
         // 输出文件名是 .mp3 时直接编码 MP3（320 kbit/s 恒定码率，带标题、速度标签）。
         let opts = manguebyte::formats::mp3::Mp3Options::constant(320).with_metadata(&meta);
-        manguebyte::formats::mp3::write_file(path, &audio, settings.sample_rate, &opts).map_err(|e| EngineError::Wav(format!("写 MP3 失败: {e:?}")))?;
+        manguebyte::formats::mp3::write_file(path, &audio, settings.sample_rate, &opts).map_err(|e| EngineError::Wav(format!("failed to write MP3: {e:?}")))?;
     } else {
-        let file = std::fs::File::create(path).map_err(|e| EngineError::Wav(format!("写不了 {path}: {e}")))?;
+        let file = std::fs::File::create(path).map_err(|e| EngineError::Wav(format!("cannot write {path}: {e}")))?;
         wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int16, &meta)
             .map_err(|e| EngineError::Wav(format!("{e:?}")))?;
     }
@@ -1683,7 +1683,7 @@ pub fn render_stems(
     settings: RenderSettings,
     progress: &mut dyn FnMut(&str, usize, usize),
 ) -> Result<Vec<Stem>, EngineError> {
-    std::fs::create_dir_all(dir).map_err(|e| EngineError::Wav(format!("建不了目录 {}: {e}", dir.display())))?;
+    std::fs::create_dir_all(dir).map_err(|e| EngineError::Wav(format!("cannot create directory {}: {e}", dir.display())))?;
     let mut base = project.clone();
     base.master_effects.clear();
     let mut cache = RenderCache::new();
@@ -1700,7 +1700,7 @@ pub fn render_stems(
         let path = dir.join(format!("{:02}-{safe}.wav", n + 1));
         let mut meta = wav_metadata(project, settings.sample_rate);
         meta.title = Some(name.clone());
-        let file = std::fs::File::create(&path).map_err(|e| EngineError::Wav(format!("写不了 {}: {e}", path.display())))?;
+        let file = std::fs::File::create(&path).map_err(|e| EngineError::Wav(format!("cannot write {}: {e}", path.display())))?;
         wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int24, &meta).map_err(|e| EngineError::Wav(format!("{e:?}")))?;
         out.push(Stem { track: name, path, peak_db: decibels::gain_to_db(f64::from(audio.peak())) });
     }

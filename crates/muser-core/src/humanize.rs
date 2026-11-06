@@ -64,7 +64,7 @@ impl Humanize {
         for ((name, min, max), v) in RANGES.iter().zip(self.values()) {
             if let Some(v) = v {
                 if !(*min..=*max).contains(&v) {
-                    return Err(format!("{at}.{name} = {v} 超出范围 [{min}, {max}]"));
+                    return Err(format!("{at}.{name} = {v} is out of range [{min}, {max}]"));
                 }
             }
         }

@@ -17,31 +17,31 @@ const PAGE: &str = include_str!("poly.html");
 
 #[derive(Subcommand)]
 pub enum PolyCommand {
-    /// 打开音色编辑器（浏览器页面，只监听 127.0.0.1）。
+    /// Open the sound editor (a browser page, listening on 127.0.0.1 only).
     Edit {
-        /// 端口。
+        /// Port.
         #[arg(long, default_value_t = 8739)]
         port: u16,
-        /// 启动后用系统浏览器打开页面。
+        /// Open the page in the system browser after starting.
         #[arg(long)]
         open: bool,
-        /// 试听的采样率。
+        /// Sample rate of the preview.
         #[arg(long, default_value_t = 48_000)]
         sample_rate: u32,
     },
-    /// 列出本机音色库里的音色（内置预设见 `muser instruments --family poly`）。
+    /// List the sounds in the local sound library (built-in presets: `muser instruments --family poly`).
     List {
         #[arg(long)]
         json: bool,
     },
-    /// 取出一个音色（音色库里的名字、poly.<预设> 或 synth.poly），输出写进工程音轨的 JSON（完整音色内嵌）。
+    /// Print one sound (a sound library name, poly.<preset> or synth.poly) as the JSON to put in a project track (full sound embedded).
     Show {
         name: String,
-        /// 改为输出音色文件本身（含名字、说明、标签）。
+        /// Print the sound file itself instead (with name, description, tags).
         #[arg(long)]
         sound: bool,
     },
-    /// 完整音色的结构：每个分区的字段、类型、范围、选项与说明。
+    /// The full sound structure: each section's fields, types, ranges, options and notes.
     Schema,
 }
 
@@ -57,14 +57,14 @@ pub fn run(command: PolyCommand) -> Result<()> {
                 return Ok(());
             }
             if sounds.is_empty() {
-                println!("音色库是空的（{}）。用 `muser poly edit --open` 做一个。", poly_library::dir().display());
+                println!("The sound library is empty ({}). Make one with `muser poly edit --open`.", poly_library::dir().display());
             }
             for s in &sounds {
                 let tags = if s.tags.is_empty() { String::new() } else { format!("  [{}]", s.tags.join(", ")) };
                 println!("{:<24} {}{tags}", s.name, s.description);
             }
             if !sounds.is_empty() {
-                println!("\n共 {} 个（{}）。`muser poly show <名字>` 取出写进工程的 JSON。", sounds.len(), poly_library::dir().display());
+                println!("\n{} sound(s) in {}. `muser poly show <name>` prints the JSON to put in a project.", sounds.len(), poly_library::dir().display());
             }
             Ok(())
         }
@@ -90,7 +90,7 @@ fn phrase(name: &str) -> Result<(Vec<(f64, f64, i32)>, bool), String> {
         "bass" => (seq(&[-12, -12, 0, -12, -5, -12, -2, 0], 0.5, 0.45), false),
         "arp" => (seq(&[0, 4, 7, 12, 16, 12, 7, 4, 0, 4, 7, 12, 16, 12, 7, 4], 0.25, 0.22), false),
         "lead" => (seq(&[0, 2, 4, 7, 9, 7, 4, 2], 0.5, 0.5), true),
-        _ => return Err(format!("未知试听乐句 '{name}'，可选: note, chord, bass, arp, lead")),
+        _ => return Err(format!("unknown preview phrase '{name}'; one of: note, chord, bass, arp, lead")),
     })
 }
 
@@ -155,7 +155,7 @@ struct SaveBody {
 fn handle(mut req: tiny_http::Request, port: u16, sample_rate: u32) {
     use tiny_http::Method;
     if !host_allowed(&req, port) {
-        respond_json(req, 403, &json!({ "error": "只接受来自本机页面的请求" }));
+        respond_json(req, 403, &json!({ "error": "only requests from the local page are accepted" }));
         return;
     }
     let url = req.url().to_string();
@@ -189,7 +189,7 @@ fn handle(mut req: tiny_http::Request, port: u16, sample_rate: u32) {
                 Ok(s) => respond_json(req, 200, &json!(s)),
                 Err(e) => respond_json(req, 404, &json!({ "error": e })),
             },
-            None => err(req, "需要 name".into()),
+            None => err(req, "name is required".into()),
         },
         (Method::Post, "/api/preview") => match read_body::<PreviewBody>(&mut req) {
             Ok(b) => {
@@ -223,7 +223,7 @@ fn handle(mut req: tiny_http::Request, port: u16, sample_rate: u32) {
                 };
                 match poly_library::save(sound, b.overwrite) {
                     Ok(path) => respond_json(req, 200, &json!({ "ok": true, "path": path.display().to_string() })),
-                    Err(e) if e.contains("已存在") => respond_json(req, 409, &json!({ "error": e })),
+                    Err(e) if (e.contains("already exists")) => respond_json(req, 409, &json!({ "error": e })),
                     Err(e) => err(req, e),
                 }
             }
@@ -279,8 +279,8 @@ fn serve(port: u16, open: bool, sample_rate: u32) -> Result<()> {
     // 只绑定本机回环地址。
     let (server, port) = crate::web::bind(port)?;
     let url = format!("http://127.0.0.1:{port}/");
-    println!("muser poly 音色编辑器已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
-    println!("音色库：{}", poly_library::dir().display());
+    println!("muser poly sound editor started: {url}  (local only, no auth; Ctrl+C to quit)");
+    println!("sound library: {}", poly_library::dir().display());
     if open {
         crate::web::open_browser(&url);
     }
@@ -303,7 +303,7 @@ mod tests {
             assert!(pcm.len() > 48_000 * 4, "{p}");
             assert!(peak > -60.0, "{p}: {peak}");
         }
-        assert!(preview(&patch, "nope", 60, 48_000).unwrap_err().contains("可选"));
+        assert!(preview(&patch, "nope", 60, 48_000).unwrap_err().contains("one of"));
         assert!(preview(&json!({ "glide": 99 }), "note", 60, 48_000).unwrap_err().contains("patch.glide"));
     }
 

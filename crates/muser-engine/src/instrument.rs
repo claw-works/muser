@@ -279,16 +279,16 @@ impl Patch {
                 for (piece, value) in params {
                     let key = params::piece_key(piece).ok_or_else(|| {
                         format!(
-                            "未知鼓件 '{piece}'：用 GM 鼓键数字或别名（{}）",
+                            "unknown drum piece '{piece}': use a GM drum key number or an alias ({})",
                             params::PIECE_ALIASES.iter().map(|(a, _)| *a).collect::<Vec<_>>().join(" ")
                         )
                     })?;
                     let mut p = *kit.piece(key).ok_or_else(|| {
-                        format!("这套鼓没有鼓键 {key}（{piece}），支持: {}", kit_keys(kit))
+                        format!("this kit has no drum key {key} ({piece}), supported: {}", kit_keys(kit))
                     })?;
                     let obj = value
                         .as_object()
-                        .ok_or_else(|| format!("{piece}: 应为对象，如 {{ \"tune\": -2 }}"))?;
+                        .ok_or_else(|| format!("{piece}: expected an object, e.g. {{ \"tune\": -2 }}"))?;
                     params::apply(params::PIECE, &mut p, obj).map_err(|e| format!("{piece}.{e}"))?;
                     kit.set(key, Some(p));
                 }
@@ -306,14 +306,14 @@ impl Patch {
         match self {
             Patch::Poly(p) => (
                 params::describe(params::POLY, p, &[]),
-                "完整音色（振荡器、滤波器、包络、LFO、调制矩阵）用 instrument_params 的 \"patch\" 写，结构见 `muser poly schema`；\
-                 本机音色库的音色用 `muser poly show <名字>` 取出完整 JSON。".into(),
+                "A full sound (oscillators, filters, envelopes, LFOs, modulation matrix) is written with instrument_params \"patch\"; see `muser poly schema` for the structure; \
+                 get the full JSON of a sound in the local sound library with `muser poly show <name>`.".into(),
             ),
             Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
             Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
             Patch::Acid(p) => (
                 params::describe(params::ACID, p, &[]),
-                "单音乐器：前一个音还没结束就开始下一个音，会按 slide 时间滑过去".into(),
+                "Monophonic instrument: when the next note starts before the previous one ends, it glides over in the slide time".into(),
             ),
             Patch::Organ(p) => (params::describe(params::ORGAN, p, &[]), String::new()),
             Patch::Mallet(p, _) => (params::describe(params::MALLET, p, params::NEXT_MALLET), String::new()),
@@ -323,9 +323,9 @@ impl Patch {
             Patch::Drums(kit) => (
                 params::specs(params::PIECE, params::NEXT_PIECE),
                 format!(
-                    "按鼓件设置：{{ \"kick\": {{ \"tune\": -2, \"decay\": 1.5 }}, \"38\": {{ \"snap\": 0.8 }} }}。\
-                     键可用 GM 鼓键数字或别名（kick snare clap closed_hat open_hat crash ride tom_low tom_mid tom_high …）。\
-                     这套鼓支持的鼓键: {}",
+                    "Set per drum piece: {{ \"kick\": {{ \"tune\": -2, \"decay\": 1.5 }}, \"38\": {{ \"snap\": 0.8 }} }}. \
+                     Keys can be a GM drum key number or an alias (kick snare clap closed_hat open_hat crash ride tom_low tom_mid tom_high ...). \
+                     Drum keys supported by this kit: {}",
                     kit_keys(kit)
                 ),
             ),
@@ -373,21 +373,21 @@ fn kit_keys(kit: &DrumKit) -> String {
 /// SFZ 采样器乐器（内置，manguebyte-sampler）。
 /// `muser instruments sfz:…` 的说明：列出 .sfz 声明的控制器。
 fn sfz_controls_note(path: &std::path::Path) -> String {
-    let base = "音色由 .sfz 文件定义。可用 instrument_params 的 \"cc\" 设控制器值（加载时生效），如 { \"cc\": { \"105\": 127 } }。";
+    let base = "The sound is defined by the .sfz file. Set controller values with instrument_params \"cc\" (applied at load), e.g. { \"cc\": { \"105\": 127 } }.";
     let mut out = base.to_string();
     if let Ok(c) = crate::sfz::read_controls(path) {
         if !c.is_empty() {
-            let list: Vec<String> = c.iter().map(|(n, (label, v))| format!("cc{n}{} = {v}", if label.is_empty() { String::new() } else { format!("（{label}）") })).collect();
-            out.push_str(&format!("这个音色声明的控制器（默认值）：{}。", list.join("，")));
+            let list: Vec<String> = c.iter().map(|(n, (label, v))| format!("cc{n}{} = {v}", if label.is_empty() { String::new() } else { format!(" ({label})") })).collect();
+            out.push_str(&format!("This sound declares these controllers (default values): {}.", list.join(", ")));
         }
     }
     if let Ok((sw, def)) = crate::sfz::read_keyswitches(path) {
         if !sw.is_empty() {
-            let list: Vec<String> = sw.iter().map(|(n, l)| if l.is_empty() { n.to_string() } else { format!("{n}（{l}）") }).collect();
+            let list: Vec<String> = sw.iter().map(|(n, l)| if l.is_empty() { n.to_string() } else { format!("{n} ({l})") }).collect();
             out.push_str(&format!(
-                "键位切换奏法（instrument_params 的 \"keyswitch\" 选择，默认 {}）：{}。",
-                def.map_or("第一个".to_string(), |d| d.to_string()),
-                list.join("，")
+                "Keyswitch articulations (choose with instrument_params \"keyswitch\", default {}): {}.",
+                def.map_or("the first".to_string(), |d| d.to_string()),
+                list.join(", ")
             ));
         }
     }
@@ -400,7 +400,7 @@ fn sfz_instrument(path: &std::path::Path, cc: &crate::sfz::Options) -> Result<Tr
     // 刚加载（不是共用已有的）时提示一次。
     if !loaded.warnings.is_empty() && std::sync::Arc::strong_count(&loaded) == 1 {
         eprintln!(
-            "[muser] sfz '{}': 采样器不支持（被忽略）的 opcode：{}。音色可能与原设计略有差异",
+            "[muser] sfz '{}': opcodes not supported by the sampler (ignored): {}. The sound may differ slightly from the original design",
             path.display(),
             crate::sfz::summary(&loaded.warnings)
         );
@@ -481,60 +481,60 @@ macro_rules! b {
 
 static BUILTINS: &[Builtin] = &[
     // —— 鼓组 ——
-    b!("drums.808", ["808"], "drums", true, DRUM_RANGE, 24, "TR-808 风格：长尾音的低频底鼓、清脆拍手，hip-hop / trap / 电子", || Patch::Drums(DrumKit::style_808())),
-    b!("drums.909", ["909"], "drums", true, DRUM_RANGE, 24, "TR-909 风格：有冲击力的底鼓与镲片，house / techno", || Patch::Drums(DrumKit::style_909())),
-    b!("drums.606", ["606"], "drums", true, DRUM_RANGE, 24, "TR-606 风格：轻薄干脆，acid / electro", || Patch::Drums(DrumKit::style_606())),
-    b!("drums.cr78", ["cr78"], "drums", true, DRUM_RANGE, 24, "CR-78 风格：柔和复古，含沙锤、牛铃、邦戈", || Patch::Drums(DrumKit::style_cr78())),
-    b!("drums.acoustic", ["acoustic"], "drums", true, DRUM_RANGE, 24, "原声架子鼓（物理建模），pop / rock / jazz", || Patch::Drums(DrumKit::acoustic())),
-    b!("drums.trap", ["trap"], "drums", true, DRUM_RANGE, 24, "trap 套鼓：重底鼓、清脆军鼓与拍手，适合高速闭镲连打", || Patch::Drums(DrumKit::trap())),
-    b!("drums.techno", ["techno"], "drums", true, DRUM_RANGE, 24, "techno 套鼓：带隆隆尾音的底鼓、硬拍手", || Patch::Drums(DrumKit::techno())),
-    b!("drums.house", ["house"], "drums", true, DRUM_RANGE, 24, "house 套鼓：四踩底鼓、拍手、沙锤、康加", || Patch::Drums(DrumKit::house())),
-    b!("drums.dnb", ["dnb", "drums.drum_and_bass"], "drums", true, DRUM_RANGE, 24, "drum & bass 套鼓：紧实的军鼓与深底鼓", || Patch::Drums(DrumKit::drum_and_bass())),
-    b!("drums.lofi", ["lofi", "drums.lo_fi"], "drums", true, DRUM_RANGE, 24, "lo-fi 套鼓：柔软、暗、带 12-bit 采样质感", || Patch::Drums(DrumKit::lo_fi())),
+    b!("drums.808", ["808"], "drums", true, DRUM_RANGE, 24, "TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic", || Patch::Drums(DrumKit::style_808())),
+    b!("drums.909", ["909"], "drums", true, DRUM_RANGE, 24, "TR-909 style: punchy kick and cymbals; house / techno", || Patch::Drums(DrumKit::style_909())),
+    b!("drums.606", ["606"], "drums", true, DRUM_RANGE, 24, "TR-606 style: light and crisp; acid / electro", || Patch::Drums(DrumKit::style_606())),
+    b!("drums.cr78", ["cr78"], "drums", true, DRUM_RANGE, 24, "CR-78 style: soft and vintage, with shaker, cowbell and bongos", || Patch::Drums(DrumKit::style_cr78())),
+    b!("drums.acoustic", ["acoustic"], "drums", true, DRUM_RANGE, 24, "Acoustic drum kit (physical modeling); pop / rock / jazz", || Patch::Drums(DrumKit::acoustic())),
+    b!("drums.trap", ["trap"], "drums", true, DRUM_RANGE, 24, "trap kit: heavy kick, crisp snare and clap; suited to rapid closed-hat rolls", || Patch::Drums(DrumKit::trap())),
+    b!("drums.techno", ["techno"], "drums", true, DRUM_RANGE, 24, "techno kit: kick with a rumbling tail, hard clap", || Patch::Drums(DrumKit::techno())),
+    b!("drums.house", ["house"], "drums", true, DRUM_RANGE, 24, "house kit: four-on-the-floor kick, clap, shaker, congas", || Patch::Drums(DrumKit::house())),
+    b!("drums.dnb", ["dnb", "drums.drum_and_bass"], "drums", true, DRUM_RANGE, 24, "drum & bass kit: tight snare and deep kick", || Patch::Drums(DrumKit::drum_and_bass())),
+    b!("drums.lofi", ["lofi", "drums.lo_fi"], "drums", true, DRUM_RANGE, 24, "lo-fi kit: soft, dark, with a 12-bit sampled texture", || Patch::Drums(DrumKit::lo_fi())),
     // —— 通用合成器 ——
-    b!("synth.poly", ["poly", "synth"], "synth", false, (36, 96), 16, "复音合成器的初始音色（较朴素）。想要具体音色请用 poly.* 预设", || Patch::Poly(PolySynthParams::default())),
-    b!("synth.fm", ["fm"], "synth", false, (24, 96), 16, "四算子 FM 合成器默认音色，偏电子、带金属感，可做贝斯", || Patch::Fm(FmParams::default())),
+    b!("synth.poly", ["poly", "synth"], "synth", false, (36, 96), 16, "Initial sound of the polyphonic synth (fairly plain). For a specific sound use the poly.* presets", || Patch::Poly(PolySynthParams::default())),
+    b!("synth.fm", ["fm"], "synth", false, (24, 96), 16, "Default sound of the four-operator FM synth; electronic and metallic, can be used for bass", || Patch::Fm(FmParams::default())),
     // —— 吉他 / 贝斯（物理建模拨弦）——
-    b!("guitar.nylon", [], "guitar", false, (40, 84), 8, "尼龙弦古典吉他：温暖柔和，适合分解和弦、拉丁、民谣", || Patch::String(StringParams::nylon_guitar(), 8)),
-    b!("guitar.steel", [], "guitar", false, (40, 84), 8, "钢弦民谣吉他：明亮清脆，适合扫弦与分解和弦", || Patch::String(StringParams::steel_guitar(), 8)),
-    b!("bass.finger", [], "bass", false, (28, 60), 4, "指弹电贝斯：圆润饱满，pop / funk / R&B 的标准贝斯", || Patch::String(StringParams::finger_bass(), 4)),
-    b!("bass.slap", [], "bass", false, (28, 60), 4, "击勾弦贝斯：有冲击力的打击感，funk / disco", || Patch::String(StringParams::slap_bass(), 4)),
-    b!("bass.acid", ["acid"], "bass", false, (24, 60), 1, "TB-303 风格 acid 贝斯（单音，重叠音符会滑音），acid house / techno", || Patch::Acid(AcidParams::classic())),
-    b!("bass.acid_squelch", [], "bass", false, (24, 60), 1, "acid 贝斯，更高谐振与包络，'吱吱'声更强烈", || Patch::Acid(AcidParams::squelch())),
-    b!("bass.acid_square", [], "bass", false, (24, 60), 1, "acid 贝斯，方波版本，更空心", || Patch::Acid(AcidParams::square())),
+    b!("guitar.nylon", [], "guitar", false, (40, 84), 8, "Nylon-string classical guitar: warm and soft; suited to arpeggios, Latin, folk", || Patch::String(StringParams::nylon_guitar(), 8)),
+    b!("guitar.steel", [], "guitar", false, (40, 84), 8, "Steel-string folk guitar: bright and crisp; suited to strumming and arpeggios", || Patch::String(StringParams::steel_guitar(), 8)),
+    b!("bass.finger", [], "bass", false, (28, 60), 4, "Fingerstyle electric bass: round and full; the standard bass for pop / funk / R&B", || Patch::String(StringParams::finger_bass(), 4)),
+    b!("bass.slap", [], "bass", false, (28, 60), 4, "Slap bass: percussive and punchy; funk / disco", || Patch::String(StringParams::slap_bass(), 4)),
+    b!("bass.acid", ["acid"], "bass", false, (24, 60), 1, "TB-303 style acid bass (monophonic, overlapping notes glide); acid house / techno", || Patch::Acid(AcidParams::classic())),
+    b!("bass.acid_squelch", [], "bass", false, (24, 60), 1, "acid bass with higher resonance and envelope, a stronger squelch", || Patch::Acid(AcidParams::squelch())),
+    b!("bass.acid_square", [], "bass", false, (24, 60), 1, "acid bass, square-wave version, more hollow", || Patch::Acid(AcidParams::square())),
     // —— 风琴 ——
-    b!("organ.jazz", [], "organ", false, (36, 96), 16, "拉杆风琴（Hammond 风格）爵士音色：柔和带打击泛音", || Patch::Organ(OrganParams::jazz())),
-    b!("organ.gospel", [], "organ", false, (36, 96), 16, "福音风琴：饱满明亮，适合和弦铺底", || Patch::Organ(OrganParams::gospel())),
-    b!("organ.full", [], "organ", false, (36, 96), 16, "全拉杆风琴：最饱满响亮，摇滚风琴", || Patch::Organ(OrganParams::full())),
-    b!("organ.ballad", [], "organ", false, (36, 96), 16, "抒情风琴：柔和圆润，适合慢歌铺底", || Patch::Organ(OrganParams::ballad())),
+    b!("organ.jazz", [], "organ", false, (36, 96), 16, "Drawbar organ (Hammond style) jazz sound: soft, with percussion overtones", || Patch::Organ(OrganParams::jazz())),
+    b!("organ.gospel", [], "organ", false, (36, 96), 16, "Gospel organ: full and bright; suited to chord beds", || Patch::Organ(OrganParams::gospel())),
+    b!("organ.full", [], "organ", false, (36, 96), 16, "Full-drawbar organ: the fullest and loudest, rock organ", || Patch::Organ(OrganParams::full())),
+    b!("organ.ballad", [], "organ", false, (36, 96), 16, "Ballad organ: soft and round; suited to slow-song beds", || Patch::Organ(OrganParams::ballad())),
     // —— 打击旋律乐器（模态合成）——
-    b!("mallet.marimba", ["marimba"], "mallet", false, (45, 96), 12, "马林巴：温暖木质，适合旋律与琶音", || Patch::Mallet(MalletParams::marimba(), 12)),
-    b!("mallet.xylophone", ["xylophone"], "mallet", false, (65, 108), 12, "木琴：明亮短促", || Patch::Mallet(MalletParams::xylophone(), 12)),
-    b!("mallet.vibraphone", ["vibraphone"], "mallet", false, (53, 89), 12, "颤音琴：金属、长余音，爵士与 lo-fi 常用", || Patch::Mallet(MalletParams::vibraphone(), 12)),
-    b!("mallet.glockenspiel", ["glockenspiel"], "mallet", false, (79, 108), 12, "钟琴：高而清亮的铃声", || Patch::Mallet(MalletParams::glockenspiel(), 12)),
-    b!("mallet.celesta", ["celesta"], "mallet", false, (60, 108), 12, "钢片琴：柔和的铃音，梦幻感", || Patch::Mallet(MalletParams::celesta(), 12)),
-    b!("mallet.kalimba", ["kalimba"], "mallet", false, (60, 88), 12, "卡林巴（拇指琴）：清脆温柔", || Patch::Mallet(MalletParams::kalimba(), 12)),
-    b!("mallet.steel_pan", ["steel_pan"], "mallet", false, (60, 84), 12, "钢鼓：加勒比风情的金属音色", || Patch::Mallet(MalletParams::steel_pan(), 12)),
-    b!("mallet.tubular_bells", ["tubular_bells"], "mallet", false, (60, 77), 8, "管钟：庄严的长余音钟声", || Patch::Mallet(MalletParams::tubular_bells(), 8)),
+    b!("mallet.marimba", ["marimba"], "mallet", false, (45, 96), 12, "Marimba: warm and woody; suited to melodies and arpeggios", || Patch::Mallet(MalletParams::marimba(), 12)),
+    b!("mallet.xylophone", ["xylophone"], "mallet", false, (65, 108), 12, "Xylophone: bright and short", || Patch::Mallet(MalletParams::xylophone(), 12)),
+    b!("mallet.vibraphone", ["vibraphone"], "mallet", false, (53, 89), 12, "Vibraphone: metallic with a long tail; common in jazz and lo-fi", || Patch::Mallet(MalletParams::vibraphone(), 12)),
+    b!("mallet.glockenspiel", ["glockenspiel"], "mallet", false, (79, 108), 12, "Glockenspiel: high, clear bell tones", || Patch::Mallet(MalletParams::glockenspiel(), 12)),
+    b!("mallet.celesta", ["celesta"], "mallet", false, (60, 108), 12, "Celesta: soft bell tones, dreamy", || Patch::Mallet(MalletParams::celesta(), 12)),
+    b!("mallet.kalimba", ["kalimba"], "mallet", false, (60, 88), 12, "Kalimba (thumb piano): crisp and gentle", || Patch::Mallet(MalletParams::kalimba(), 12)),
+    b!("mallet.steel_pan", ["steel_pan"], "mallet", false, (60, 84), 12, "Steel pan: metallic Caribbean sound", || Patch::Mallet(MalletParams::steel_pan(), 12)),
+    b!("mallet.tubular_bells", ["tubular_bells"], "mallet", false, (60, 77), 8, "Tubular bells: solemn bell tones with a long tail", || Patch::Mallet(MalletParams::tubular_bells(), 8)),
     // —— 弦乐（弓弦波导模型）——
-    b!("strings.violin", ["violin"], "strings", false, (55, 100), 8, "小提琴（拉奏）：旋律主奏", || Patch::Bowed(BowedParams::violin(), 8)),
-    b!("strings.viola", ["viola"], "strings", false, (48, 88), 8, "中提琴（拉奏）：比小提琴更暗更厚", || Patch::Bowed(BowedParams::viola(), 8)),
-    b!("strings.cello", ["cello"], "strings", false, (36, 76), 8, "大提琴（拉奏）：温暖深沉", || Patch::Bowed(BowedParams::cello(), 8)),
-    b!("strings.contrabass", ["contrabass"], "strings", false, (28, 60), 8, "低音提琴（拉奏）：弦乐低音声部", || Patch::Bowed(BowedParams::contrabass(), 8)),
-    b!("strings.ensemble", ["strings"], "strings", false, (36, 96), 8, "弦乐组：多把琴的合奏，适合和弦铺底与抒情段落", || Patch::Bowed(BowedParams::string_ensemble(), 8)),
-    b!("strings.violin_pizz", [], "strings", false, (55, 100), 8, "小提琴拨奏：短促跳跃", || Patch::Bowed(BowedParams::violin_pizzicato(), 8)),
-    b!("strings.cello_pizz", [], "strings", false, (36, 76), 8, "大提琴拨奏", || Patch::Bowed(BowedParams::cello_pizzicato(), 8)),
-    b!("strings.contrabass_pizz", [], "strings", false, (28, 60), 8, "低音提琴拨奏：爵士 walking bass", || Patch::Bowed(BowedParams::contrabass_pizzicato(), 8)),
+    b!("strings.violin", ["violin"], "strings", false, (55, 100), 8, "Violin (bowed): melody lead", || Patch::Bowed(BowedParams::violin(), 8)),
+    b!("strings.viola", ["viola"], "strings", false, (48, 88), 8, "Viola (bowed): darker and thicker than the violin", || Patch::Bowed(BowedParams::viola(), 8)),
+    b!("strings.cello", ["cello"], "strings", false, (36, 76), 8, "Cello (bowed): warm and deep", || Patch::Bowed(BowedParams::cello(), 8)),
+    b!("strings.contrabass", ["contrabass"], "strings", false, (28, 60), 8, "Double bass (bowed): the string bass voice", || Patch::Bowed(BowedParams::contrabass(), 8)),
+    b!("strings.ensemble", ["strings"], "strings", false, (36, 96), 8, "String ensemble: many players together; suited to chord beds and lyrical passages", || Patch::Bowed(BowedParams::string_ensemble(), 8)),
+    b!("strings.violin_pizz", [], "strings", false, (55, 100), 8, "Violin pizzicato: short and bouncy", || Patch::Bowed(BowedParams::violin_pizzicato(), 8)),
+    b!("strings.cello_pizz", [], "strings", false, (36, 76), 8, "Cello pizzicato", || Patch::Bowed(BowedParams::cello_pizzicato(), 8)),
+    b!("strings.contrabass_pizz", [], "strings", false, (28, 60), 8, "Double bass pizzicato: jazz walking bass", || Patch::Bowed(BowedParams::contrabass_pizzicato(), 8)),
     // —— 管乐（波导模型）——
-    b!("wind.flute", ["flute"], "wind", false, (60, 96), 4, "长笛：轻盈透亮", || Patch::Wind(WindParams::flute(), 4)),
-    b!("wind.clarinet", ["clarinet"], "wind", false, (50, 91), 4, "单簧管：圆润木质", || Patch::Wind(WindParams::clarinet(), 4)),
-    b!("wind.sax", ["sax", "wind.saxophone"], "wind", false, (49, 81), 4, "萨克斯：爵士/流行的主奏", || Patch::Wind(WindParams::saxophone(), 4)),
-    b!("wind.trumpet", ["trumpet"], "wind", false, (54, 82), 4, "小号：明亮有穿透力", || Patch::Wind(WindParams::trumpet(), 4)),
-    b!("wind.trombone", ["trombone"], "wind", false, (40, 72), 4, "长号：浑厚的铜管中低音", || Patch::Wind(WindParams::trombone(), 4)),
+    b!("wind.flute", ["flute"], "wind", false, (60, 96), 4, "Flute: light and clear", || Patch::Wind(WindParams::flute(), 4)),
+    b!("wind.clarinet", ["clarinet"], "wind", false, (50, 91), 4, "Clarinet: round and woody", || Patch::Wind(WindParams::clarinet(), 4)),
+    b!("wind.sax", ["sax", "wind.saxophone"], "wind", false, (49, 81), 4, "Saxophone: lead for jazz / pop", || Patch::Wind(WindParams::saxophone(), 4)),
+    b!("wind.trumpet", ["trumpet"], "wind", false, (54, 82), 4, "Trumpet: bright and piercing", || Patch::Wind(WindParams::trumpet(), 4)),
+    b!("wind.trombone", ["trombone"], "wind", false, (40, 72), 4, "Trombone: rich low-mid brass", || Patch::Wind(WindParams::trombone(), 4)),
     // —— 人声（共振峰合成）——
-    b!("choir.aah", ["choir"], "choir", false, (48, 79), 8, "合唱 'aah'：开阔明亮，适合和弦铺底", || Patch::Choir(ChoirParams::aah_choir(), 8)),
-    b!("choir.ooh", [], "choir", false, (48, 79), 8, "合唱 'ooh'：柔和暗淡", || Patch::Choir(ChoirParams::ooh_choir(), 8)),
-    b!("choir.solo", ["voice"], "choir", false, (48, 79), 2, "独唱人声（元音）", || Patch::Choir(ChoirParams::solo_voice(), 2)),
+    b!("choir.aah", ["choir"], "choir", false, (48, 79), 8, "Choir 'aah': open and bright; suited to chord beds", || Patch::Choir(ChoirParams::aah_choir(), 8)),
+    b!("choir.ooh", [], "choir", false, (48, 79), 8, "Choir 'ooh': soft and dark", || Patch::Choir(ChoirParams::ooh_choir(), 8)),
+    b!("choir.solo", ["voice"], "choir", false, (48, 79), 2, "Solo voice (vowel)", || Patch::Choir(ChoirParams::solo_voice(), 2)),
 ];
 
 /// 把 poly 预设名转成 `poly.` 后缀：小写，非字母数字变 `_`。
@@ -576,7 +576,7 @@ fn lookup(name: &str) -> Option<(InstrumentInfo, Patch)> {
                 notes: NoteConvention::Pitched,
                 range: (0, 127),
                 polyphony: SFZ_VOICES,
-                description: format!("SFZ 采样器：{}", path.display()),
+                description: format!("SFZ sampler: {}", path.display()),
                 params: Vec::new(),
                 // 说明要解析整个 SFZ 文件（大音色库要几百毫秒）：只在 describe 里生成（param_info），校验、建乐器时不要。
                 params_note: Default::default(),
@@ -666,12 +666,12 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
     if trimmed == muser_core::audio::INSTRUMENT {
         return match params.is_empty() {
             true => Ok(()),
-            false => Err(InstrumentError::Param { detail: "audio 音轨没有乐器参数（音量用 gain_db 或 clip 的 audio.gain_db）".into() }),
+            false => Err(InstrumentError::Param { detail: "an audio track has no instrument parameters (set volume with gain_db or the clip's audio.gain_db)".into() }),
         };
     }
     if let Some(rest) = trimmed.strip_prefix("plugin:") {
         if rest.trim().is_empty() {
-            return Err(InstrumentError::PluginLoad { path: String::new(), detail: "plugin: 后缺少插件路径".into() });
+            return Err(InstrumentError::PluginLoad { path: String::new(), detail: "missing plugin path after plugin:".into() });
         }
         let (path, id) = crate::plugin::split_spec(rest);
         return crate::plugin::check_params(path, id, params).map_err(|detail| InstrumentError::Param { detail });
@@ -679,8 +679,8 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     if let Patch::Sfz(path, _) = &patch {
         if !path.is_file() {
-            let hint = if path.is_relative() { "（相对路径会在 MUSER_SFZ_PATH 的音色库目录及其两层子目录里查找）" } else { "" };
-            return Err(InstrumentError::Load { detail: format!("找不到 SFZ 文件 '{}'{hint}", path.display()) });
+            let hint = if path.is_relative() { "(relative paths are searched in the sound library directories of MUSER_SFZ_PATH and two levels of subdirectories)" } else { "" };
+            return Err(InstrumentError::Load { detail: format!("cannot find SFZ file '{}'{hint}", path.display()) });
         }
     }
     patch.apply(params).map_err(|detail| InstrumentError::Param { detail })
@@ -694,15 +694,15 @@ pub(crate) fn automation_param(
 ) -> Result<(params::InstParamSpec, params::Automatable, f64), String> {
     let trimmed = name.trim();
     if trimmed == muser_core::audio::INSTRUMENT {
-        return Err("audio 音轨没有乐器参数可自动化（音量用 target gain_db）".into());
+        return Err("an audio track has no instrument parameters to automate (use target gain_db for volume)".into());
     }
     if trimmed.starts_with("sfz:") {
-        return Err("sfz 乐器的参数自动化尚未支持".into());
+        return Err("parameter automation for sfz instruments is not supported yet".into());
     }
     if trimmed.starts_with("plugin:") {
-        return Err("内部错误：插件参数自动化应走 automate::plugin_rule".into());
+        return Err("internal error: plugin parameter automation must go through automate::plugin_rule".into());
     }
-    let (_, mut patch) = lookup(trimmed).ok_or_else(|| format!("未知乐器 '{name}'"))?;
+    let (_, mut patch) = lookup(trimmed).ok_or_else(|| format!("unknown instrument '{name}'"))?;
     patch.apply(instrument_params)?;
 
     fn find<P>(
@@ -721,14 +721,14 @@ pub(crate) fn automation_param(
         let d = defs
             .iter()
             .find(|d| d.spec.name == param)
-            .ok_or_else(|| format!("未知参数 '{param}'，可自动化: {}", list()))?;
+            .ok_or_else(|| format!("unknown parameter '{param}', automatable: {}", list()))?;
         let a = params::automatable(&d.spec, next);
         if a == params::Automatable::No {
-            return Err(format!("参数 '{param}' 不能自动化（开关、选项、整数类），可自动化: {}", list()));
+            return Err(format!("parameter '{param}' cannot be automated (switches, choices, integers); automatable: {}", list()));
         }
         let base = (d.get)(p)
             .as_f64()
-            .ok_or_else(|| format!("参数 '{param}' 对该音色无效（没有启用滤波器）"))?;
+            .ok_or_else(|| format!("parameter '{param}' has no effect on this sound (no filter enabled)"))?;
         Ok((d.spec, a, base))
     }
 
@@ -745,12 +745,12 @@ pub(crate) fn automation_param(
         Patch::Drums(kit) => {
             let (piece, field) = param
                 .split_once('.')
-                .ok_or_else(|| format!("鼓组参数写成 `鼓件.参数`，如 \"kick.tune\"，实际 '{param}'"))?;
-            let key = params::piece_key(piece).ok_or_else(|| format!("未知鼓件 '{piece}'"))?;
-            let p = kit.piece(key).ok_or_else(|| format!("这套鼓没有鼓键 {key}（{piece}）"))?;
+                .ok_or_else(|| format!("drum kit parameters are written as `piece.param`, e.g. \"kick.tune\", got '{param}'"))?;
+            let key = params::piece_key(piece).ok_or_else(|| format!("unknown drum piece '{piece}'"))?;
+            let p = kit.piece(key).ok_or_else(|| format!("this kit has no drum key {key} ({piece})"))?;
             find(params::PIECE, p, field, params::NEXT_PIECE)
         }
-        Patch::Sfz(..) => Err("sfz 乐器的参数自动化尚未支持".into()),
+        Patch::Sfz(..) => Err("parameter automation for sfz instruments is not supported yet".into()),
     }
 }
 
@@ -767,15 +767,15 @@ pub fn check_name(name: &str) -> Result<(), InstrumentError> {
 /// 解析失败。
 #[derive(Debug, thiserror::Error)]
 pub enum InstrumentError {
-    #[error("未知乐器 '{name}'。用 `muser instruments` 查看全部；常用：drums.808 / drums.acoustic / synth.poly / poly.moog_bass / guitar.nylon / strings.ensemble / mallet.marimba；另可用 sfz:/path/to.sfz")]
+    #[error("unknown instrument '{name}'. See all with `muser instruments`; common: drums.808 / drums.acoustic / synth.poly / poly.moog_bass / guitar.nylon / strings.ensemble / mallet.marimba; also sfz:/path/to.sfz")]
     Unknown { name: String },
-    #[error("instrument_params 无效: {detail}（内置乐器用 `muser instruments <名称>`，插件用 `muser plugin params <插件>` 查看可调参数）")]
+    #[error("invalid instrument_params: {detail} (for built-in instruments see `muser instruments <name>`, for plugins `muser plugin params <plugin>` to list tunable parameters)")]
     Param { detail: String },
     #[error("{detail}")]
     Load { detail: String },
-    #[error("插件乐器不可用：这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它")]
+    #[error("plugin instrument unavailable: this muser build has no plugin host enabled (the `host` feature); release and default builds include it, so do not remove it with --no-default-features")]
     HostDisabled,
-    #[error("加载插件乐器 '{path}' 失败: {detail}")]
+    #[error("failed to load plugin instrument '{path}': {detail}")]
     PluginLoad { path: String, detail: String },
 }
 
@@ -943,7 +943,7 @@ impl Playable for PluginInstrument {
         let spec = wide_spec.as_ref().unwrap_or(spec);
         self.processor.prepare(spec);
         if let Err(w) = self.opened.settle(&mut self.processor, spec) {
-            eprintln!("[muser] 警告: {w}");
+            eprintln!("[muser] warning: {w}");
         }
         if self.opened.warmup > 0.0 {
             self.warm_up(self.opened.warmup, spec);
@@ -1040,13 +1040,13 @@ mod tests {
         names.sort();
         let before = names.len();
         names.dedup();
-        assert_eq!(before, names.len(), "乐器名必须唯一");
+        assert_eq!(before, names.len(), "instrument names must be unique");
     }
 
     #[test]
     fn every_catalog_entry_resolves() {
         for info in catalog() {
-            assert!(resolve(&info.name).is_ok(), "{} 应能解析", info.name);
+            assert!(resolve(&info.name).is_ok(), "{} should resolve", info.name);
         }
     }
 
@@ -1060,7 +1060,7 @@ mod tests {
         #[cfg(not(feature = "host"))]
         assert!(check_name("plugin:/x.vst3").is_ok());
         #[cfg(feature = "host")]
-        assert!(check_name("plugin:/x.vst3").unwrap_err().to_string().contains("找不到插件"));
+        assert!(check_name("plugin:/x.vst3").unwrap_err().to_string().contains("cannot find plugin"));
         assert!(check_name("plugin:").is_err());
     }
 

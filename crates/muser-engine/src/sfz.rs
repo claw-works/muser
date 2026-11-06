@@ -89,10 +89,10 @@ pub fn resolve(raw: &str) -> std::path::PathBuf {
 }
 
 fn parse(path: &Path) -> Result<(Sfz, MuserSource), String> {
-    let text = std::fs::read(path).map_err(|e| format!("读取 SFZ '{}' 失败: {e}", path.display()))?;
+    let text = std::fs::read(path).map_err(|e| format!("failed to read SFZ '{}': {e}", path.display()))?;
     let mut source = MuserSource(FileSource::new(path.parent().unwrap_or(Path::new(""))));
     let text = normalize(&String::from_utf8_lossy(&text));
-    let sfz = Sfz::parse_with(&text, &mut source).map_err(|e| format!("解析 SFZ '{}' 失败: {e}", path.display()))?;
+    let sfz = Sfz::parse_with(&text, &mut source).map_err(|e| format!("failed to parse SFZ '{}': {e}", path.display()))?;
     Ok((sfz, source))
 }
 
@@ -158,7 +158,7 @@ fn normalize(text: &str) -> String {
         out.push('\n');
     }
     if skipped > 0 {
-        eprintln!("[sfz] 跳过 {skipped} 行认不出的内容（不是 <header>、opcode=value 或 #指令）");
+        eprintln!("[sfz] skipped {skipped} unrecognized lines (not a <header>, opcode=value or #directive)");
     }
     out
 }
@@ -262,17 +262,17 @@ pub fn parse_params(params: &serde_json::Map<String, serde_json::Value>) -> Resu
             opts.keyswitch = Some(match v {
                 serde_json::Value::String(s) => s.clone(),
                 serde_json::Value::Number(n) => n.to_string(),
-                _ => return Err("keyswitch 应为音高（数字或音名，如 \"c1\"）或奏法名称".into()),
+                _ => return Err("keyswitch must be a pitch (number or note name, e.g. \"c1\") or an articulation name".into()),
             });
             continue;
         }
         if k != "cc" {
-            return Err(format!("sfz 乐器的 instrument_params 只支持 \"cc\"（控制器值，如 {{ \"cc\": {{ \"105\": 127 }} }}）与 \"keyswitch\"，不认识 '{k}'"));
+            return Err(format!("instrument_params of an sfz instrument only supports \"cc\" (controller values, e.g. {{ \"cc\": {{ \"105\": 127 }} }}) and \"keyswitch\"; unknown '{k}'"));
         }
-        let obj = v.as_object().ok_or("cc 应为对象：{ \"控制器编号\": 0–127 }")?;
+        let obj = v.as_object().ok_or("cc must be an object: { \"controller number\": 0–127 }")?;
         for (n, val) in obj {
-            let cc: u8 = n.trim().parse().ok().filter(|c| *c < 128).ok_or_else(|| format!("cc.{n}: 控制器编号应为 0–127"))?;
-            let x = val.as_f64().filter(|x| (0.0..=127.0).contains(x)).ok_or_else(|| format!("cc.{n} 应为 0–127 的数字"))?;
+            let cc: u8 = n.trim().parse().ok().filter(|c| *c < 128).ok_or_else(|| format!("cc.{n}: the controller number must be 0–127"))?;
+            let x = val.as_f64().filter(|x| (0.0..=127.0).contains(x)).ok_or_else(|| format!("cc.{n} must be a number in 0–127"))?;
             opts.cc.insert(cc, x.round() as u8);
         }
     }
@@ -326,7 +326,7 @@ pub fn summary(w: &BTreeMap<String, usize>) -> String {
     v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
     let mut s: Vec<String> = v.iter().take(12).map(|(k, n)| format!("{k} ×{n}")).collect();
     if v.len() > 12 {
-        s.push(format!("…另 {} 项", v.len() - 12));
+        s.push(format!("...and {} more", v.len() - 12));
     }
     s.join("、")
 }
@@ -453,7 +453,7 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
                 .filter(|n| switches.contains_key(n))
                 .ok_or_else(|| {
                     format!(
-                        "keyswitch '{k}' 不是这个音色的奏法，可用: {}",
+                        "keyswitch '{k}' is not an articulation of this sound; available: {}",
                         switches.iter().map(|(n, l)| if l.is_empty() { n.to_string() } else { format!("{n}（{l}）") }).collect::<Vec<_>>().join("，")
                     )
                 })?,
@@ -617,10 +617,10 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
         let k = match &w.kind {
             WarningKind::UnknownOpcode { name, .. } => name.to_string(),
             WarningKind::UnsupportedHeader(h) => format!("<{h}>"),
-            WarningKind::OutOfRange { opcode, .. } => format!("取值越界: {opcode}"),
-            WarningKind::OpcodeOutsideHeader(o) => format!("header 之外: {o}"),
-            WarningKind::RegionWithoutSample => "没有 sample 的 region".into(),
-            _ => "其它".into(),
+            WarningKind::OutOfRange { opcode, .. } => format!("value out of range: {opcode}"),
+            WarningKind::OpcodeOutsideHeader(o) => format!("outside a header: {o}"),
+            WarningKind::RegionWithoutSample => "region without a sample".into(),
+            _ => "other".into(),
         };
         *warnings.entry(k).or_default() += 1;
     }
@@ -633,7 +633,7 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
     } else {
         Instrument::load(&sfz, &mut source)
     }
-    .map_err(|e| format!("加载 SFZ '{}' 失败: {e}", path.display()))?;
+    .map_err(|e| format!("failed to load SFZ '{}': {e}", path.display()))?;
     Ok((inst, dropped, warnings))
 }
 

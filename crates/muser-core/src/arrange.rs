@@ -201,38 +201,38 @@ impl Transform {
             !self.sequence.is_empty(), self.fragment.is_some(),
         ];
         if ops.iter().filter(|&&o| o).count() != 1 {
-            return Err(format!("{at}: 每个变换对象只写一种：transpose / octave / reverse / invert / stretch / shift / sequence / fragment / every+then / vary"));
+            return Err(format!("{at}: give each transform object only one kind: transpose / octave / reverse / invert / stretch / shift / sequence / fragment / every+then / vary"));
         }
         if self.every.is_some() == self.then.is_empty() {
-            return Err(format!("{at}: every 与 then 要一起写，如 {{\"every\": 4, \"then\": [{{\"reverse\": true}}]}}"));
+            return Err(format!("{at}: every and then must be given together, e.g. {{\"every\": 4, \"then\": [{{\"reverse\": true}}]}}"));
         }
         if self.every == Some(0) {
-            return Err(format!("{at}.every 应 ≥ 1"));
+            return Err(format!("{at}.every must be >= 1"));
         }
         if self.seed.is_some() && self.vary.is_none() {
-            return Err(format!("{at}.seed 只用于 vary"));
+            return Err(format!("{at}.seed is only used with vary"));
         }
         if let Some(s) = self.stretch {
             if !(s > 0.0 && s <= 8.0) {
-                return Err(format!("{at}.stretch = {s} 应在 (0, 8]"));
+                return Err(format!("{at}.stretch = {s} must be in (0, 8]"));
             }
         }
         if let Some(v) = self.vary {
             if !(0.0..=1.0).contains(&v) {
-                return Err(format!("{at}.vary = {v} 超出范围 [0, 1]"));
+                return Err(format!("{at}.vary = {v} is out of range [0, 1]"));
             }
         }
         if let Some(f) = self.fragment {
             if !(f > 0.0) {
-                return Err(format!("{at}.fragment 应 > 0 拍"));
+                return Err(format!("{at}.fragment must be > 0 beats"));
             }
         }
         if self.sequence.iter().any(|s| s.abs() > 14) {
-            return Err(format!("{at}.sequence: 每一步在 ±14 个音阶级以内"));
+            return Err(format!("{at}.sequence: each step must be within +/-14 scale degrees"));
         }
         if let Some(s) = self.shift {
             if !s.is_finite() {
-                return Err(format!("{at}.shift 应为有限数"));
+                return Err(format!("{at}.shift must be a finite number"));
             }
         }
         for (i, t) in self.then.iter().enumerate() {
@@ -263,7 +263,7 @@ impl Chordal {
     pub fn parse(text: &str) -> Result<Vec<Step>, String> {
         let mut out = Vec::new();
         for tok in text.split_whitespace().filter(|t| *t != "|") {
-            let err = || format!("chordal 的 '{tok}' 看不懂：1 3 5 7 8 9（和弦的第几个音，可加 b/# 与 ' ,）、c（整个和弦）、B（低音）、.（休止）、-（延长），末尾 ! 为重音");
+            let err = || format!("chordal token '{tok}' not understood: use 1 3 5 7 8 9 (which chord tone; may add b/# and ' ,), c (whole chord), B (bass), . (rest), - (hold); a trailing ! is an accent");
             let (body, accent) = match tok.strip_suffix('!') {
                 Some(b) => (b, true),
                 None => (tok, false),
@@ -294,7 +294,7 @@ impl Chordal {
             out.push(step);
         }
         if out.is_empty() {
-            return Err("chordal 为空".into());
+            return Err("chordal is empty".into());
         }
         Ok(out)
     }
@@ -305,24 +305,24 @@ impl Part {
     pub fn validate(&self, at: &str, in_end: bool) -> Result<(), String> {
         if let Some(l) = self.length {
             if !(l > 0.0) {
-                return Err(format!("{at}.length 应 > 0"));
+                return Err(format!("{at}.length must be > 0"));
             }
         }
         if let Some(s) = self.step {
             if !(s > 0.0 && s <= 16.0) {
-                return Err(format!("{at}.step 应在 (0, 16] 拍"));
+                return Err(format!("{at}.step must be in (0, 16] beats"));
             }
         }
         if let Some(c) = &self.chordal {
             Chordal::parse(c).map_err(|e| format!("{at}.{e}"))?;
         } else if self.grid.is_some() && self.step.is_some() {
-            return Err(format!("{at}: grid 的步长写在 grid 里面：\"grid\": {{ \"step\": {}, … }}（part 上的 step / octave 只用于 chordal）", self.step.unwrap_or(0.25)));
+            return Err(format!("{at}: put the grid step inside grid: \"grid\": {{ \"step\": {}, ... }} (step / octave on a part are only for chordal)", self.step.unwrap_or(0.25)));
         } else if self.step.is_some() || self.octave.is_some() {
-            return Err(format!("{at}: step / octave 只用于 chordal"));
+            return Err(format!("{at}: step / octave are only for chordal"));
         }
         if let Some(v) = self.velocity {
             if !(0.0..=1.0).contains(&v) {
-                return Err(format!("{at}.velocity 超出范围 [0, 1]"));
+                return Err(format!("{at}.velocity is out of range [0, 1]"));
             }
         }
         if let Some(a) = &self.abc {
@@ -338,19 +338,19 @@ impl Part {
             t.validate(&format!("{at}.transform[{i}]"))?;
         }
         match (in_end, self.beats) {
-            (true, None) => return Err(format!("{at}: end 要写 beats（替换最后几拍）")),
-            (true, Some(b)) if !(b > 0.0) => return Err(format!("{at}.beats 应 > 0")),
-            (false, Some(_)) => return Err(format!("{at}.beats 只用在 end 里")),
+            (true, None) => return Err(format!("{at}: end needs beats (how many final beats to replace)")),
+            (true, Some(b)) if !(b > 0.0) => return Err(format!("{at}.beats must be > 0")),
+            (false, Some(_)) => return Err(format!("{at}.beats is only used inside end")),
             _ => {}
         }
         if let Some(e) = &self.end {
             if in_end {
-                return Err(format!("{at}: end 里不能再写 end"));
+                return Err(format!("{at}: end cannot contain another end"));
             }
             e.validate(&format!("{at}.end"), true)?;
         }
         if self.notes.is_empty() && self.abc.is_none() && self.grid.is_none() && self.drummer.is_none() && self.chordal.is_none() {
-            return Err(format!("{at}: 没有内容（notes / abc / grid / drummer / chordal 至少写一种）"));
+            return Err(format!("{at}: no content (give at least one of notes / abc / grid / drummer / chordal)"));
         }
         Ok(())
     }
@@ -393,7 +393,7 @@ mod tests {
         let t: Transform = serde_json::from_str(r#"{ "every": 4, "then": [{ "reverse": true }] }"#).unwrap();
         assert!(t.validate("t").is_ok());
         let bad: Transform = serde_json::from_str(r#"{ "transpose": 2, "reverse": true }"#).unwrap();
-        assert!(bad.validate("t").unwrap_err().contains("只写一种"));
+        assert!(bad.validate("t").unwrap_err().contains("only one kind"));
         assert!(serde_json::from_str::<Transform>(r#"{ "speed": 2 }"#).is_err());
     }
 }

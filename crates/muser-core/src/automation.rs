@@ -166,44 +166,44 @@ impl Automation {
         match &self.shape {
             Shape::Points { points, curve } => {
                 if points.is_empty() {
-                    return Err("points 至少需要一个点".into());
+                    return Err("points needs at least one point".into());
                 }
                 for w in points.windows(2) {
                     if !(w[1].0 > w[0].0) {
-                        return Err(format!("points 的时间必须严格递增：{} 之后是 {}", w[0].0, w[1].0));
+                        return Err(format!("points times must be strictly increasing: {} is followed by {}", w[0].0, w[1].0));
                     }
                 }
                 if points.iter().any(|(t, _)| !t.is_finite() || *t < 0.0) {
-                    return Err("points 的时间必须 ≥ 0".into());
+                    return Err("points times must be >= 0".into());
                 }
                 let _ = curve;
             }
             Shape::Lfo { period_beats, min, max, phase, .. } => {
                 if !(*period_beats > 0.0) {
-                    return Err("lfo.period_beats 必须 > 0".into());
+                    return Err("lfo.period_beats must be > 0".into());
                 }
                 if !(min.is_finite() && max.is_finite()) {
-                    return Err("lfo.min / max 必须是有限数".into());
+                    return Err("lfo.min / max must be finite numbers".into());
                 }
                 if !(0.0..=1.0).contains(phase) {
-                    return Err("lfo.phase 应在 0-1".into());
+                    return Err("lfo.phase must be in 0-1".into());
                 }
             }
             Shape::Random { step_beats, min, max, max_step, .. } => {
                 if !(*step_beats > 0.0) {
-                    return Err("random.step_beats 必须 > 0".into());
+                    return Err("random.step_beats must be > 0".into());
                 }
                 if !(min.is_finite() && max.is_finite()) {
-                    return Err("random.min / max 必须是有限数".into());
+                    return Err("random.min / max must be finite numbers".into());
                 }
                 if !(*max_step > 0.0 && *max_step <= 1.0) {
-                    return Err("random.max_step 应在 (0, 1]".into());
+                    return Err("random.max_step must be in (0, 1]".into());
                 }
             }
         }
         if let (Some(s), Some(e)) = (self.start, self.end) {
             if !(e.0 > s.0) {
-                return Err("end 必须大于 start".into());
+                return Err("end must be greater than start".into());
             }
         }
         Ok(())
@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn shape_errors() {
         let bad = parse(json!({ "target": "pan", "shape": "points", "points": [[2, 0], [1, 1]] }));
-        assert!(bad.check_shape().unwrap_err().contains("递增"));
+        assert!(bad.check_shape().unwrap_err().contains("increasing"));
         let bad = parse(json!({ "target": "pan", "shape": "lfo", "period_beats": 0, "min": 0, "max": 1 }));
         assert!(bad.check_shape().is_err());
     }

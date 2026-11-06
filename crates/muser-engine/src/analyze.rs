@@ -253,7 +253,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
                 if !pcs.contains(&pc) && pcs.contains(&((pc + 11) % 12)) {
                     let (bar, beat) = at(n.start);
                     let below = name((n.pitch + 11) % 12 + 60).trim_end_matches('4').to_string();
-                    clashes.push(Clash { bar, beat, what: format!("{tn} 的 {} 在 {} 上是避免音（比和弦音 {below} 高半音）", name(n.pitch), c.text) });
+                    clashes.push(Clash { bar, beat, what: format!("{tn}: {} is an avoid note over {} (a semitone above the chord tone {below})", name(n.pitch), c.text) });
                 }
             }
         }
@@ -265,8 +265,8 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
                 let (lo, hi) = if x.pitch < y.pitch { (x.pitch, y.pitch) } else { (y.pitch, x.pitch) };
                 if hi - lo == 1 || hi - lo == 13 {
                     let (bar, beat) = at(x.start);
-                    let kind = if hi - lo == 1 { "小二度" } else { "小九度" };
-                    clashes.push(Clash { bar, beat, what: format!("{ta} 的 {} 与 {tb} 的 {} 成{kind}", name(x.pitch), name(y.pitch)) });
+                    let kind = if hi - lo == 1 { "minor 2nd" } else { "minor 9th" };
+                    clashes.push(Clash { bar, beat, what: format!("{ta} {} and {tb} {} form a {kind}", name(x.pitch), name(y.pitch)) });
                 }
             }
         }
@@ -321,10 +321,10 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
     let tells = tells(project, &sections, &tracks, &prints, &unhumanized, key, &map);
     let mut findings = findings(&sections, &repeated_bar, &prints);
     findings.splice(0..0, silent_sections(project, &sections, &map));
-    findings.retain(|f| !f.starts_with("各段响度只相差") && f != "没有发现明显的问题");
-    findings.extend(tells.iter().filter(|t| t.hit).map(|t| format!("AI 味 #{} {}：{}", t.id, t.name, t.detail)));
+    findings.retain(|f| !f.starts_with("Section loudness differs by only") && f != "No obvious problems found");
+    findings.extend(tells.iter().filter(|t| t.hit).map(|t| format!("AI tell #{} {}: {}", t.id, t.name, t.detail)));
     if findings.is_empty() {
-        findings.push("没有发现明显的问题".into());
+        findings.push("No obvious problems found".into());
     }
     Ok(Report { tempo: p.tempo, bars, key: key.name().to_string(), sections, tells, findings })
 }
@@ -332,12 +332,12 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
 /// "第 i 段撤掉这几条轨"的具体写法：有 form 时给出改 form[i] 的 JSON，没有 form 时说去掉哪几小节的音符。
 fn mute_hint(project: &Project, sections: &[SectionReport], i: usize, mute: &[&str]) -> String {
     let s = &sections[i];
-    let span = format!("第 {}–{} 小节", s.bar, s.bar + s.bars - 1);
+    let span = format!("bars {}–{}", s.bar, s.bar + s.bars - 1);
     if project.form.is_empty() {
-        return format!("{}（{span}）去掉 {} 的音符", s.name, mute.join("、"));
+        return format!("{} ({span}): drop the notes of {}", s.name, mute.join(", "));
     }
     let list = mute.iter().map(|m| format!("\"{m}\"")).collect::<Vec<_>>().join(", ");
-    format!("{}（{span}）撤掉 {}：form[{i}] 写成 {{\"section\": \"{}\", \"mute\": [{list}]}}（原有的 transpose / seed 照留）", s.name, mute.join("、"), s.name)
+    format!("{} ({span}): mute {}: write form[{i}] as {{\"section\": \"{}\", \"mute\": [{list}]}} (keep any existing transpose / seed)", s.name, mute.join(", "), s.name)
 }
 
 /// 编制不变时：开头一段只留最稀的一件（铺底 / 和弦），其余先不进。
@@ -349,7 +349,7 @@ fn sparse_hint(project: &Project, sections: &[SectionReport]) -> String {
     if mute.is_empty() {
         return String::new();
     }
-    let mut out = format!("例如 {}，只留 {}", mute_hint(project, sections, 0, &mute), keep.name);
+    let mut out = format!("e.g. {}, keeping only {}", mute_hint(project, sections, 0, &mute), keep.name);
     if sections.len() >= 3 {
         out.push('；');
         out.push_str(&drop_hint(project, sections));
@@ -371,7 +371,7 @@ fn drop_hint(project: &Project, sections: &[SectionReport]) -> String {
     if mute.is_empty() || mute.len() == s.tracks.len() {
         return String::new();
     }
-    format!("比如 {}，下一段再全部进来", mute_hint(project, sections, i, &mute))
+    format!("e.g. {}, then bring everything back in the next section", mute_hint(project, sections, i, &mute))
 }
 
 /// AI 味检查：真实编曲里几乎总有、机器默认写法常缺的特征。只给适用的（段落太少、没有鼓等时不查）。
@@ -391,22 +391,22 @@ fn tells(
     let has_form = !project.form.is_empty();
     if has_form && n >= 3 {
         let all8 = sections.iter().all(|s| s.bars % 8 == 0);
-        tell(1, "段落都是 8 小节的倍数", all8, if all8 {
-            "真实的歌常有 2 / 4 / 6 / 10 / 12 小节的段落：把前奏、预副歌或尾声改短 / 加长，或加一段 2 小节的过渡".into()
-        } else { "有不是 8 小节倍数的段落".into() });
+        tell(1, "Every section is a multiple of 8 bars", all8, if all8 {
+            "Real songs often have sections of 2 / 4 / 6 / 10 / 12 bars: shorten or lengthen the intro, pre-chorus or outro, or add a 2-bar transition".into()
+        } else { "Some sections are not a multiple of 8 bars".into() });
     }
     if n >= 3 {
         let e: Vec<u8> = sections.iter().map(|s| s.energy).collect();
         let rising = e.windows(2).all(|w| w[1] >= w[0]);
-        tell(2, "能量只升不降", rising, if rising {
-            format!("能量 {:?} 从不下降（实测的真实编曲 62/62 都有下降）：让间奏、bridge 或最后一遍副歌前撤掉几件乐器。{}", e, drop_hint(project, sections))
-        } else { format!("能量 {:?} 有起有落", e) });
+        tell(2, "Energy only rises, never drops", rising, if rising {
+            format!("Energy {:?} never drops (all 62 of 62 real arrangements measured have drops): pull a few instruments out of the interlude, bridge or before the last chorus. {}", e, drop_hint(project, sections))
+        } else { format!("Energy {:?} rises and falls", e) });
         let present: Vec<Vec<&str>> = sections.iter().map(|s| s.tracks.iter().map(|t| t.name.as_str()).collect()).collect();
         let used: std::collections::BTreeSet<&str> = present.iter().flatten().copied().collect();
         let constant = used.len() >= 2 && present.iter().all(|p| p.len() == used.len());
-        tell(3, "编制从头到尾不变", constant, if constant {
-            format!("每条轨每段都在：让乐器有进有出——前奏少几件、副歌再进来、某段撤掉鼓或贝斯。{}", sparse_hint(project, sections))
-        } else { "乐器有进有出".into() });
+        tell(3, "Instrumentation never changes", constant, if constant {
+            format!("Every track plays in every section: let instruments come and go - fewer in the intro, enter at the chorus, drop the drums or bass in some section. {}", sparse_hint(project, sections))
+        } else { "Instruments come and go".into() });
         let progs: Vec<String> = sections.iter().filter(|s| !s.chords.is_empty()).map(|s| {
             let mut c: Vec<&str> = s.chords.iter().map(|x| x.trim_start_matches('~')).collect();
             c.dedup();
@@ -419,11 +419,11 @@ fn tells(
         let modulates = project.form.iter().any(|e| e.transpose() != 0);
         if !progs.is_empty() {
             let hit = one_loop || (!outside && !modulates && n >= 4);
-            tell(4, "全曲一个和声循环 / 不离调", hit, if one_loop {
-                format!("每段都是同一个进行（{}）：给 pre / bridge / 副歌写不同的 chords", progs[0])
+            tell(4, "One harmonic loop for the whole song / never leaves the key", hit, if one_loop {
+                format!("Every section uses the same progression ({}): give the pre / bridge / chorus different chords", progs[0])
             } else if hit {
-                "全曲只用调内和弦、也没有转调：在 bridge 或 pre 里用一个离调和弦（借用和弦如 iv、bVII，副属和弦如 V/vi），或最后一遍副歌 transpose 转调".into()
-            } else { "和声有变化".into() });
+                "Only diatonic chords and no key change: use a non-diatonic chord in the bridge or pre (borrowed chords such as iv, bVII, or secondary dominants such as V/vi), or transpose the last chorus".into()
+            } else { "The harmony varies".into() });
         }
     }
     // 过门：鼓轨里通鼓 ≥ 3 下、或最后两拍军鼓 ≥ 4 下的小节。
@@ -440,17 +440,17 @@ fn tells(
         if fill_bars.len() >= 3 {
             let rigid = fill_bars.iter().all(|b| (b + 1) % 4 == 0) && fill_bars.len() * 4 >= prints.len() * 3 / 4;
             let shown: Vec<String> = fill_bars.iter().take(12).map(|b| (b + 1).to_string()).collect();
-            tell(5, "过门刻板地落在 4 的倍数小节", rigid, if rigid {
-                format!("过门在第 {} 小节，每 4 小节一次：drummer 不写 fill_every（自动在段尾与随机的乐句末尾打），或用 end 在段落结尾写过门", shown.join("、"))
-            } else { format!("过门在第 {} 小节", shown.join("、")) });
+            tell(5, "Fills fall rigidly on multiples of 4 bars", rigid, if rigid {
+                format!("Fills at bar {}, every 4 bars: leave fill_every out of the drummer (it then fills automatically at section ends and at random phrase ends), or write fills at section ends with end", shown.join(", "))
+            } else { format!("Fills at bar {}", shown.join(", ")) });
         }
     }
     let pitched = tracks.iter().filter(|t| !t.1 && !t.2.is_empty()).count();
     if pitched > 0 {
         let hit = unhumanized.len() == pitched;
-        tell(8, "旋律 / 和声全部对齐网格", hit, if hit {
-            format!("{} 都没有 humanize：给旋律、贝斯、和声加 humanize（timing_ms、drift，或 push / lay-back），鼓组可以保持对齐", unhumanized.join("、"))
-        } else if unhumanized.is_empty() { "旋律 / 和声轨都有 humanize".into() } else { format!("没有 humanize 的轨：{}", unhumanized.join("、")) });
+        tell(8, "Melody / harmony all on the grid", hit, if hit {
+            format!("{} have no humanize: add humanize to the melody, bass and harmony (timing_ms, drift, or push / lay-back); the drum kit can stay on the grid", unhumanized.join(", "))
+        } else if unhumanized.is_empty() { "Melody / harmony tracks all have humanize".into() } else { format!("Tracks without humanize: {}", unhumanized.join(", ")) });
     }
     // 副歌每遍一模一样：各遍的小节指纹完全相同。
     let is_chorus = |n: &str| { let n = n.to_lowercase(); ["chorus", "drop", "hook", "副歌"].iter().any(|k| n.contains(k)) };
@@ -458,9 +458,9 @@ fn tells(
     if choruses.len() >= 2 {
         let body = |s: &SectionReport| -> Vec<Vec<(usize, i64, u8)>> { (s.bar - 1..s.bar - 1 + s.bars).filter_map(|b| prints.get(b).cloned()).collect() };
         let same = choruses.windows(2).all(|w| body(w[0]) == body(w[1]));
-        tell(11, "副歌每遍一模一样", same, if same {
-            "副歌各遍的音一模一样：后几遍用 chorus#2 换写法、加声部、vary，或最后一遍 transpose".into()
-        } else { "副歌各遍有变化".into() });
+        tell(11, "Every chorus is identical", same, if same {
+            "The notes of every chorus are identical: for later choruses use chorus#2 to write it differently, add parts, vary, or transpose the last one".into()
+        } else { "The choruses vary".into() });
     }
     let audio: Vec<&AudioStat> = sections.iter().filter_map(|s| s.audio.as_ref()).filter(|a| a.lufs.is_finite()).collect();
     if audio.len() >= 3 {
@@ -468,9 +468,9 @@ fn tells(
         let mean = audio.iter().map(|a| a.centroid_hz).sum::<f64>() / audio.len() as f64;
         let sd = (audio.iter().map(|a| (a.centroid_hz - mean).powi(2)).sum::<f64>() / audio.len() as f64).sqrt();
         let flat = hi - lo < 1.5 || sd < 0.04 * mean;
-        tell(7, "动态压死、明暗不变", flat, if flat {
-            format!("各段响度只差 {:.1} LU、频谱重心变化 {:.0}%：让前奏 / 间奏更空更暗，副歌更满更亮（撤乐器、换音区、eq / 滤波自动化）", hi - lo, 100.0 * sd / mean.max(1.0))
-        } else { format!("各段响度相差 {:.1} LU", hi - lo) });
+        tell(7, "Dynamics flattened, brightness never changes", flat, if flat {
+            format!("Section loudness differs by only {:.1} LU and spectral centroid varies by {:.0}%: make the intro / interlude sparser and darker and the chorus fuller and brighter (drop instruments, change register, eq / filter automation)", hi - lo, 100.0 * sd / mean.max(1.0))
+        } else { format!("Section loudness differs by {:.1} LU", hi - lo) });
     }
     out
 }
@@ -501,11 +501,11 @@ fn silent_sections(p: &Project, sections: &[SectionReport], map: &muser_core::Ba
         let playing: Vec<&TrackStat> = s.tracks.iter().filter(|t| t.onsets_per_bar > 0.0 || t.sounding > 0.0).collect();
         let mut why = Vec::new();
         if playing.is_empty() {
-            why.push("这一段没有音符（form 里静音了，或 parts 没写到这一段）".to_string());
+            why.push("this section has no notes (muted in form, or parts do not cover it)".to_string());
         }
         let master = level(&p.automation, "master_gain_db", p.master_gain_db);
         if master < -24.0 {
-            why.push(format!("主输出音量在这里平均 {master:.0} dB"));
+            why.push(format!("master level averages {master:.0} dB here"));
         }
         let low: Vec<String> = p
             .tracks
@@ -517,16 +517,16 @@ fn silent_sections(p: &Project, sections: &[SectionReport], map: &muser_core::Ba
             })
             .collect();
         if !low.is_empty() {
-            let more = if low.len() > 5 { format!(" 等 {} 条", low.len()) } else { String::new() };
-            why.push(format!("在响的轨音量很低（{}{more}）", low[..low.len().min(5)].join("、")));
+            let more = if low.len() > 5 { format!(" and {} in all", low.len()) } else { String::new() };
+            why.push(format!("the tracks that are playing are very quiet ({}{more})", low[..low.len().min(5)].join(", ")));
         }
         if master < -24.0 && !low.is_empty() {
-            why.push("主输出曲线与轨的淡入淡出叠在一起".into());
+            why.push("the master curve and the track fades overlap".into());
         }
-        let why = if why.is_empty() { "看不出原因：检查主输出与各轨的音量自动化、淡入淡出、效果器（门限、滤波）".to_string() } else { why.join("；") };
-        let level = if a.rms_db.is_finite() { format!("平均 {:.0} dB", a.rms_db) } else { "完全静音".into() };
+        let why = if why.is_empty() { "cause unclear: check the level automation, fades and effects (gate, filter) on the master and the tracks".to_string() } else { why.join("; ") };
+        let level = if a.rms_db.is_finite() { format!("averages {:.0} dB", a.rms_db) } else { "completely silent".into() };
         out.push(format!(
-            "{}（第 {}–{} 小节）几乎没有声音（{level}）：{why}。如果是有意的留白，忽略这条",
+            "{} (bars {}–{}) is almost silent ({level}): {why}. Ignore this if the gap is intentional",
             s.name,
             s.bar,
             s.bar + s.bars - 1
@@ -551,8 +551,8 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
         };
         if c <= v * 1.05 && louder.is_none_or(|d| d < 1.0) {
             out.push(format!(
-                "副歌的密度（{c:.1} 音/小节）不高于主歌（{v:.1}）{}：副歌没有起来，可以加声部、提高音区、加满鼓或换更密的音型",
-                louder.map_or(String::new(), |d| format!("、响度只差 {d:+.1} LU"))
+                "The chorus density ({c:.1} notes/bar) is not higher than the verse ({v:.1}){}: the chorus does not lift; add parts, raise the register, fill out the drums or use a denser pattern",
+                louder.map_or(String::new(), |d| format!(", loudness differs by only {d:+.1} LU"))
             ));
         }
     }
@@ -560,13 +560,13 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
     let rep = repeated_bar.iter().filter(|&&r| r).count();
     if nonempty >= 8 && rep as f64 > 0.75 * nonempty as f64 {
         out.push(format!(
-            "{}% 的小节和前面某小节完全一样：用 transform（vary、every）、end 过门或换一种 part 加变化",
+            "{}% of bars are exactly the same as an earlier bar: add variation with transform (vary, every), end fills or a different part",
             (100.0 * rep as f64 / nonempty as f64).round()
         ));
     }
     let distinct: std::collections::BTreeSet<&str> = sections.iter().flat_map(|s| s.chords.iter().map(|c| c.trim_start_matches('~'))).collect();
     if distinct.len() == 1 && nonempty >= 8 {
-        out.push(format!("全曲只有一个和弦（{}）：如果不是刻意的 drone / 单和弦律动，可以在 sections 里写和弦进行", distinct.iter().next().unwrap()));
+        out.push(format!("The whole song has only one chord ({}): unless this is a deliberate drone / one-chord groove, write a chord progression in sections", distinct.iter().next().unwrap()));
     }
     // 音区重叠：同一段里两条旋律 / 和声音轨长时间发声、中位音高相差不到 5 个半音。同一条轨和几条轨都重叠时合成一句。
     let mut masked: BTreeMap<String, BTreeMap<String, (u8, u8, Vec<String>)>> = BTreeMap::new();
@@ -587,37 +587,37 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
     }
     for (a, with) in masked {
         let ma = with.values().next().map_or(0, |w| w.0);
-        let others: Vec<String> = with.iter().map(|(b, (_, mb, _))| format!("{b}（中位 {}）", name(*mb))).collect();
+        let others: Vec<String> = with.iter().map(|(b, (_, mb, _))| format!("{b} (median {})", name(*mb))).collect();
         let mut secs: Vec<String> = with.values().flat_map(|w| w.2.clone()).collect();
         secs.dedup();
         let mut seen = std::collections::HashSet::new();
         secs.retain(|x| seen.insert(x.clone()));
         out.push(format!(
-            "{a}（中位 {}）与 {} 在 {} 里同一音区（中位音高相差不到 5 个半音）长时间同时发声，可能互相掩蔽：拉开八度、换转位，或让一个休息",
+            "{a} (median {}) and {} sound together for long stretches in {} in the same register (median pitches less than 5 semitones apart) and may mask each other: separate them by an octave, change the inversion, or rest one",
             name(ma), others.join("、"), secs.join("、")
         ));
     }
     let clashes: usize = sections.iter().map(|s| s.clashes.len()).sum();
     if clashes > 0 {
-        out.push(format!("有 {clashes} 处强拍长音冲突（见各段 clashes）：确认是不是想要的张力，否则换成和弦音或改和弦"));
+        out.push(format!("{clashes} long-note clashes on strong beats (see clashes in each section): check whether this is the tension you want; otherwise use chord tones or change the chord"));
     }
     let lufs: Vec<f64> = sections.iter().filter_map(|s| s.audio.as_ref().map(|a| a.lufs)).filter(|l| l.is_finite()).collect();
     if lufs.len() >= 3 {
         let (lo, hi) = lufs.iter().fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
         if hi - lo < 1.5 {
-            out.push(format!("各段响度只相差 {:.1} LU：缺少动态起伏，可以让前奏 / 间奏更空，副歌更满", hi - lo));
+            out.push(format!("Section loudness differs by only {:.1} LU: no dynamic contrast; make the intro / interlude sparser and the chorus fuller", hi - lo));
         }
     }
     // 明暗看频谱重心：完整的混音一般在 1500–3000 Hz（低频的能量占比在混音里总是很高，不作判断）。
     for (sec, a) in sections.iter().filter_map(|s| s.audio.as_ref().map(|a| (s, a))).filter(|(_, a)| a.lufs.is_finite()) {
         if a.centroid_hz < 1000.0 {
-            out.push(format!("{} 的频谱重心只有 {} Hz：偏暗、偏闷，可以加踩镲 / shaker、给和声轨 high_shelf 提亮，或给非贝斯轨加 highpass", sec.name, a.centroid_hz));
+            out.push(format!("{} has a spectral centroid of only {} Hz: dark and muffled; add hi-hat / shaker, brighten the harmony track with high_shelf, or add highpass to non-bass tracks", sec.name, a.centroid_hz));
         } else if a.centroid_hz > 4500.0 {
-            out.push(format!("{} 的频谱重心到了 {} Hz：偏亮，可能刺耳，可以降低镲片 / 高音轨，或 lowpass", sec.name, a.centroid_hz));
+            out.push(format!("{} has a spectral centroid of {} Hz: bright and possibly harsh; lower the cymbals / high tracks, or use lowpass", sec.name, a.centroid_hz));
         }
     }
     if out.is_empty() {
-        out.push("没有发现明显的问题".into());
+        out.push("No obvious problems found".into());
     }
     out
 }
@@ -654,9 +654,9 @@ mod tests {
             "tracks": [{ "name": "pad", "instrument": "poly.juno_keys", "parts": { "*": { "chordal": "c - - -", "step": 1, "octave": 4 } } }] }))
         .unwrap();
         let r = analyze(&p, true, RenderSettings::default()).unwrap();
-        let hit: Vec<&String> = r.findings.iter().filter(|f| f.contains("几乎没有声音")).collect();
+        let hit: Vec<&String> = r.findings.iter().filter(|f| f.contains("almost silent")).collect();
         assert_eq!(hit.len(), 1, "{:?}", r.findings);
-        assert!(hit[0].starts_with("gap（第 3–4 小节）") && hit[0].contains("主输出音量"), "{hit:?}");
+        assert!(hit[0].starts_with("gap (bars 3–4)") && hit[0].contains("master level"), "{hit:?}");
     }
 
     #[test]
@@ -677,10 +677,10 @@ mod tests {
         // 每小节：lead 1 + pad 3（三和弦）+ 鼓 4（x...x... 是 2 拍，一小节循环两次）= 8。
         assert_eq!(v.density, 8.0);
         // F 在 C 和弦上：与 E 差半音。
-        assert!(v.clashes.iter().any(|c| c.what.contains("F4") && c.what.contains("避免音")), "{:?}", v.clashes);
-        assert!(r.findings.iter().any(|f| f.contains("副歌没有起来")), "{:?}", r.findings);
-        assert!(r.findings.iter().any(|f| f.contains("完全一样")), "{:?}", r.findings);
-        assert!(r.findings.iter().any(|f| f.contains("只有一个和弦")), "{:?}", r.findings);
+        assert!(v.clashes.iter().any(|c| c.what.contains("F4") && c.what.contains("avoid note")), "{:?}", v.clashes);
+        assert!(r.findings.iter().any(|f| f.contains("does not lift")), "{:?}", r.findings);
+        assert!(r.findings.iter().any(|f| f.contains("exactly the same")), "{:?}", r.findings);
+        assert!(r.findings.iter().any(|f| f.contains("only one chord")), "{:?}", r.findings);
     }
 
     /// 三段、8 小节、能量只升、编制不变、一个进行、没有 humanize：这些 AI 味都命中；改掉之后不再命中。
@@ -709,7 +709,7 @@ mod tests {
         assert_eq!(hits(&mk("", false)), [1, 2, 3, 4, 8]);
         let r = analyze(&mk("", false), false, RenderSettings::default()).unwrap();
         let t3 = &r.tells.iter().find(|t| t.id == 3).unwrap().detail;
-        assert!(t3.contains("a（第 1–8 小节）撤掉 bass") && t3.contains(r#"form[0] 写成 {"section": "a", "mute": ["bass"]}"#), "{t3}");
+        assert!(t3.contains("a (bars 1–8): mute bass") && t3.contains(r#"form[0] as {"section": "a", "mute": ["bass"]}"#), "{t3}");
         // 一段 6 小节、能量回落、贝斯退出、借用和弦 Fm、keys 有 humanize。
         assert_eq!(hits(&mk("drop", true)), Vec::<u8>::new());
     }

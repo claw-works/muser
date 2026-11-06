@@ -13,7 +13,8 @@
     "author": "muser",
     "tested_version": "1.3.4",
     "updated": "2026-10-25",
-    "notes": "Surge XT 是双场景（A/B）的混合合成器，775 个参数。下面只列 A 场景最常用的参数；B 场景同名（把开头的 A 换成 B）。初始音色是一个未经滤波的锯齿波（Osc 1），Osc 2/3 静音、Filter 1 关闭。"
+    "notes": "Surge XT is a hybrid synth with two scenes (A/B) and 775 parameters. Only the most common scene A parameters are listed; scene B has the same names (replace the leading A with B). The initial sound is an unfiltered saw (Osc 1); Osc 2/3 are muted and Filter 1 is off.",
+    "lang": "en"
   },
   "setup": {
     "A Osc 1 Retrigger": "On",
@@ -25,7 +26,7 @@
       "name": "A Filter 1 Type",
       "alias": "filter_type",
       "role": "type",
-      "description": "滤波器类型。初始为 Off，此时 cutoff/resonance 不起作用，要先选一种类型",
+      "description": "Filter type. It starts Off, where cutoff/resonance do nothing: pick a type first",
       "values": [
         "Off",
         "LP 12 dB",
@@ -47,7 +48,7 @@
       "name": "A Filter 1 Cutoff",
       "alias": "cutoff",
       "role": "cutoff",
-      "description": "截止频率：越低越闷越暗。适合自动化扫频",
+      "description": "Cutoff: lower is duller and darker. Good for automated sweeps",
       "values": [
         "200 Hz",
         "500 Hz",
@@ -60,7 +61,7 @@
       "name": "A Filter 1 Resonance",
       "alias": "resonance",
       "role": "resonance",
-      "description": "谐振：截止频率处的突起，越大越尖锐",
+      "description": "Resonance: the peak at the cutoff; higher is sharper",
       "values": [
         "0.00 %",
         "30 %",
@@ -72,7 +73,7 @@
       "name": "A Filter 1 FEG Mod Amount",
       "alias": "filter_env",
       "role": "filter_env",
-      "description": "滤波包络把截止频率推开多少半音。正值 = 起音时变亮再回落",
+      "description": "How many semitones the filter envelope pushes the cutoff. Positive = brighter at the attack, then falls back",
       "values": [
         "0.00 semitones",
         "24.00 semitones",
@@ -93,7 +94,7 @@
       "name": "A Filter EG Decay",
       "alias": "filter_decay",
       "role": "decay",
-      "description": "滤波包络衰减：短 = 短促的'啵'，长 = 拖长的'哇'",
+      "description": "Filter envelope decay: short = a quick 'pop', long = a drawn-out 'wah'",
       "values": [
         "50 ms",
         "200 ms",
@@ -114,7 +115,7 @@
       "name": "A Amp EG Attack",
       "alias": "attack",
       "role": "attack",
-      "description": "音量起音时间",
+      "description": "Amp attack time",
       "values": [
         "0.0 ms",
         "10 ms",
@@ -136,7 +137,7 @@
       "name": "A Amp EG Sustain",
       "alias": "sustain",
       "role": "sustain",
-      "description": "按住时保持的音量。0 % = 只有起音和衰减（pluck）",
+      "description": "Level held while the key is down. 0 % = attack and decay only (pluck)",
       "values": [
         "0.00 %",
         "50.00 %",
@@ -147,7 +148,7 @@
       "name": "A Amp EG Release",
       "alias": "release",
       "role": "release",
-      "description": "松开后的余音长度。初始只有 31 ms，几乎没有尾巴",
+      "description": "How long the sound rings after release. Only 31 ms initially, almost no tail",
       "values": [
         "31.2 ms",
         "300 ms",
@@ -159,7 +160,7 @@
       "name": "A Osc 1 Type",
       "alias": "osc_type",
       "role": "type",
-      "description": "振荡器算法",
+      "description": "Oscillator algorithm",
       "values": [
         "Classic",
         "Sine",
@@ -190,7 +191,7 @@
       "name": "A Osc 1 Unison Voices",
       "alias": "unison",
       "role": "unison",
-      "description": "齐奏声部数，配合 detune 让声音变厚",
+      "description": "Number of unison voices; with detune makes the sound thicker",
       "values": [
         "1 voice",
         "3 voices",
@@ -211,7 +212,7 @@
       "name": "A Osc 2 Mute",
       "alias": "osc2_mute",
       "role": "switch",
-      "description": "Osc 2 初始静音，改为 Off 才会发声",
+      "description": "Osc 2 starts muted; set Off to hear it",
       "values": [
         "On",
         "Off"
@@ -230,7 +231,7 @@
       "name": "A Play Mode",
       "alias": "play_mode",
       "role": "type",
-      "description": "Poly 复音；Mono 系列为单音，配合 portamento 做滑音",
+      "description": "Poly is polyphonic; the Mono modes are monophonic, use with portamento for glides",
       "values": [
         "Poly",
         "Mono",
@@ -242,7 +243,7 @@
       "name": "A Portamento",
       "alias": "glide",
       "role": "glide",
-      "description": "滑音时间（单音模式下明显）",
+      "description": "Glide time (noticeable in mono modes)",
       "values": [
         "0.0 ms",
         "50 ms",
@@ -253,7 +254,7 @@
       "name": "A Waveshaper Type",
       "alias": "drive_type",
       "role": "type",
-      "description": "波形整形（失真）类型，初始 Off",
+      "description": "Waveshaper (distortion) type, Off initially",
       "values": [
         "Off",
         "Soft",
@@ -287,7 +288,7 @@
       "name": "Scene Mode",
       "alias": "scene_mode",
       "role": "type",
-      "description": "Single 只用 A 场景；Dual 同时发声 A+B；Key Split / Channel Split 按音高 / MIDI 通道分配",
+      "description": "Single uses scene A only; Dual plays A+B together; Key Split / Channel Split assign by pitch / MIDI channel",
       "values": [
         "Single",
         "Key Split",
@@ -299,7 +300,7 @@
   "presets": [
     {
       "name": "bass",
-      "description": "单振荡器低八度 + 梯形低通，短促的滤波包络",
+      "description": "One oscillator an octave down + ladder low-pass, short filter envelope",
       "params": {
         "filter_type": "LP Vintage Ladder",
         "cutoff": "300 Hz",
@@ -313,7 +314,7 @@
     },
     {
       "name": "pad",
-      "description": "5 声部齐奏、慢起音、长尾音",
+      "description": "5-voice unison, slow attack, long tail",
       "params": {
         "filter_type": "LP 12 dB",
         "cutoff": "1500 Hz",
@@ -325,7 +326,7 @@
     },
     {
       "name": "pluck",
-      "description": "无延音，靠滤波包络打出'叮'",
+      "description": "No sustain; the filter envelope makes the 'ding'",
       "params": {
         "filter_type": "LP 24 dB",
         "cutoff": "400 Hz",
@@ -339,7 +340,7 @@
     },
     {
       "name": "lead",
-      "description": "单音滑奏 + 轻微失真",
+      "description": "Mono glide + light distortion",
       "params": {
         "filter_type": "LP 24 dB",
         "cutoff": "3000 Hz",
@@ -352,11 +353,11 @@
     }
   ],
   "tips": [
-    "初始音色 Filter 1 是 Off：先设 filter_type，cutoff / resonance / filter_env 才会起作用。",
-    "初始只有 Osc 1 发声（Osc 2/3 的 Mute 为 On），要叠振荡器把 osc2_mute / osc3_mute 设为 Off。",
-    "振荡器默认自由相位，每次渲染略有不同；setup 里打开了三个振荡器的 Retrigger，使结果可复现。",
-    "初始 release 只有 31 ms，长音松开就断；做 pad / 铺底要加大 release。",
-    "B 场景参数与 A 同名（开头换成 B），默认不发声（Scene Mode 为 Single，只用 A）。",
-    "FX A1–A4、FX B1–B4、Send FX 是 Surge 内置效果器槽，同样能用参数设置；也可以在轨上挂 Surge XT Effects。"
+    "In the initial sound Filter 1 is Off: set filter_type first, then cutoff / resonance / filter_env take effect.",
+    "Initially only Osc 1 sounds (Osc 2/3 Mute is On); to stack oscillators set osc2_mute / osc3_mute to Off.",
+    "Oscillators default to free-running phase, so each render differs slightly; the setup turns on Retrigger for all three oscillators so results are reproducible.",
+    "The initial release is only 31 ms, so long notes cut off on release; raise release for pads.",
+    "Scene B parameters have the same names as A (with a leading B) and are silent by default (Scene Mode is Single, A only).",
+    "FX A1-A4, FX B1-B4 and Send FX are Surge's built-in effect slots and can be set through parameters too; you can also put Surge XT Effects on a track."
   ]
 }

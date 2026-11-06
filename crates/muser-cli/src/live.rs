@@ -166,7 +166,7 @@ struct Mix {
 impl Mix {
     fn automation(&self, master: bool) -> Automation {
         serde_json::from_value(json!({ "target": if master { "master_gain_db" } else { "gain_db" }, "shape": "points",
-            "points": [[self.beat, self.from], [self.beat + self.ramp, self.to]], "start": self.beat })).expect("合法的自动化")
+            "points": [[self.beat, self.from], [self.beat + self.ramp, self.to]], "start": self.beat })).expect("valid automation")
     }
 }
 
@@ -203,10 +203,10 @@ impl Session {
         let mut names = std::collections::HashSet::new();
         for t in &template.tracks {
             if t.name.trim().is_empty() || !names.insert(t.name.as_str()) {
-                bail!("模板里每条音轨都要有名字，且不重名（现场改动按名字找轨）");
+                bail!("every track in the template needs a unique name (live changes find tracks by name)");
             }
             if t.instrument.trim() == muser_core::audio::INSTRUMENT {
-                bail!("现场演奏不支持音频轨（'{}'）", t.name);
+                bail!("audio tracks are not supported in a live session ('{}')", t.name);
             }
         }
         let arranged = muser_engine::arrange::arranged(template).map_err(|e| anyhow!(e))?.into_owned();
@@ -269,7 +269,7 @@ impl Session {
     }
 
     fn last_real(&self) -> &Seg {
-        self.segs.iter().rev().find(|s| !s.rep).expect("至少有模板那一段")
+        self.segs.iter().rev().find(|s| !s.rep).expect("at least the template section")
     }
 
     /// 已经提交的音乐排到第几拍（之后是循环）。
@@ -293,7 +293,7 @@ impl Session {
     /// 提交一段。`now` 是现在演奏到的拍。出错时什么也不改。
     pub fn submit(&mut self, change: Change, now: f64) -> Result<Receipt> {
         if change.bars == 0 || change.bars > 256 {
-            bail!("bars 应在 1 到 256 之间");
+            bail!("bars must be between 1 and 256");
         }
         let earliest = self.beat_after(now, MARGIN_SECONDS);
         let before = self.segs.clone();
@@ -310,7 +310,7 @@ impl Session {
             }
             At::Now | At::Patch => {
                 self.extend(earliest + 1.0);
-                let s = self.segs.iter().find(|s| s.end() > earliest).expect("刚排过").clone();
+                let s = self.segs.iter().find(|s| s.end() > earliest).expect("just scheduled").clone();
                 let bpb = s.ts.beats_per_bar();
                 let k = ((earliest - s.start) / bpb - 1e-9).ceil().max(0.0) as u32;
                 if change.at == At::Patch {
@@ -318,7 +318,7 @@ impl Session {
                     let into = (s.offset / bpb).round() as u32 + k;
                     if into >= change.bars {
                         self.segs = before;
-                        bail!("这一段已经放到第 {} 小节，改写的只有 {} 小节：用 \"after\" 排在后面", into + 1, change.bars);
+                        bail!("this section is already at bar {}, and the replacement is only {} bar(s): use \"after\" to queue it behind", into + 1, change.bars);
                     }
                     patch_from = Some(into);
                 }
@@ -330,7 +330,7 @@ impl Session {
         let adds = |c: &Change| c.tracks.iter().any(|t| !t.effects_add.is_empty()) || c.buses.iter().any(|b| !b.effects_add.is_empty()) || c.master.as_ref().is_some_and(|m| !m.effects_add.is_empty());
         if self.segs.iter().any(|s| s.start >= at - 1e-9 && !s.rep && adds(&s.change)) {
             self.segs = before;
-            bail!("后面排着的段接入了效果器，现在截不掉：等它开始放以后再用 \"now\"，或者用 \"after\"");
+            bail!("a queued section later brings in an effect, so it cannot be cut off now: use \"now\" after it has started playing, or use \"after\"");
         }
         // 截在 `at`：之后的（还没演奏的循环）去掉，跨过 `at` 的那段只留前面整小节。
         self.segs.retain(|s| s.start < at - 1e-9);
@@ -395,7 +395,7 @@ impl Session {
             }
             sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None, tempo: seg.change.tempo, tempo_ramp_bars: seg.change.tempo_ramp_bars });
             p.form.push(muser_core::arrange::FormEntry::Name(name));
-            apply(&mut p, seg).with_context(|| format!("第 {} 段", k + 1))?;
+            apply(&mut p, seg).with_context(|| format!("section {}", k + 1))?;
             // 这一段里调过的音量：写在这一段之后（比它晚的段写的自动化会覆盖它）。
             let end = self.segs.get(k + 1).map_or(f64::INFINITY, |n| n.start);
             for m in self.mixes.iter().filter(|m| m.beat >= seg.start - 1e-9 && m.beat < end && (m.beat < until || seg.start == 0.0)) {
@@ -432,11 +432,11 @@ impl Session {
     /// 调音量：从第 `at` 拍起 `ramp` 拍内渐变到 `db`。返回原来的值。
     pub fn mix(&mut self, target: &str, db: f64, at: f64, ramp: f64) -> Result<f64> {
         if !(-60.0..=12.0).contains(&db) {
-            bail!("音量在 -60 到 +12 dB 之间");
+            bail!("volume must be between -60 and +12 dB");
         }
         let p = self.project()?;
         let from = Self::fader_at(&p, target, at).ok_or_else(|| {
-            anyhow!("没有叫 '{target}' 的轨或总线（主输出写 master）；有：{}", p.tracks.iter().map(|t| t.name.as_str()).chain(p.buses.iter().map(|b| b.name.as_str())).collect::<Vec<_>>().join("、"))
+            anyhow!("no track or bus named '{target}' (write master for the master output); available: {}", p.tracks.iter().map(|t| t.name.as_str()).chain(p.buses.iter().map(|b| b.name.as_str())).collect::<Vec<_>>().join(", "))
         })?;
         self.mixes.push(Mix { target: target.to_string(), beat: at, ramp, from, to: db });
         if let Err(e) = self.project() {
@@ -593,15 +593,15 @@ fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
             Some(i) if seg.rep || seg.patch => i,
             Some(i) => {
                 if tc.instrument.is_some() && tc.instrument.as_deref() != Some(p.tracks[i].instrument.as_str()) {
-                    bail!("音轨 '{}' 已经有乐器（{}）：中途不能换，换乐器就新开一条轨", tc.name, p.tracks[i].instrument);
+                    bail!("track '{}' already has an instrument ({}): it cannot be changed midway; to change instrument, open a new track", tc.name, p.tracks[i].instrument);
                 }
                 if tc.instrument_params.is_some() || tc.output.is_some() || tc.sends.is_some() || tc.gain_db.is_some() || tc.pan.is_some() {
-                    bail!("音轨 '{}' 已经有了：instrument_params / output / sends / gain_db / pan 只在新轨上写，中途改用 automation", tc.name);
+                    bail!("track '{}' already exists: instrument_params / output / sends / gain_db / pan can only be set on a new track; change them midway with automation", tc.name);
                 }
                 i
             }
             None => {
-                let instrument = tc.instrument.clone().ok_or_else(|| anyhow!("没有叫 '{}' 的轨：新轨要写 instrument", tc.name))?;
+                let instrument = tc.instrument.clone().ok_or_else(|| anyhow!("no track named '{}': a new track needs an instrument", tc.name))?;
                 let mut t: Track = serde_json::from_value(json!({ "name": tc.name, "instrument": instrument, "clips": [] }))?;
                 if let Some(x) = &tc.instrument_params {
                     t.instrument_params = serde_json::from_value(Value::Object(x.clone()))?;
@@ -632,7 +632,7 @@ fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
         if !seg.rep {
             let begin = seg.start;
             for &k in &tc.effects_off {
-                let e = t.effects.get_mut(k).ok_or_else(|| anyhow!("音轨 '{}' 没有 effects[{k}]", tc.name))?;
+                let e = t.effects.get_mut(k).ok_or_else(|| anyhow!("track '{}' has no effects[{k}]", tc.name))?;
                 e.until = Some(Beats(e.until.map_or(begin, |u| u.0.min(begin))));
             }
             for e in &tc.effects_add {
@@ -647,16 +647,16 @@ fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
         }
     }
     for bc in &seg.change.buses {
-        let b = p.buses.iter_mut().find(|b| b.name == bc.name).ok_or_else(|| anyhow!("没有叫 '{}' 的总线（总线要先在模板里建好）", bc.name))?;
+        let b = p.buses.iter_mut().find(|b| b.name == bc.name).ok_or_else(|| anyhow!("no bus named '{}' (buses must be created in the template first)", bc.name))?;
         // 总线、主输出的变化只在这一段第一次出现时：渐弱以后循环停在弱的那里，不会每遍重来。
         if !seg.rep {
-            effects_change(&mut b.effects, bc, seg.start, &format!("总线 '{}'", bc.name))?;
+            effects_change(&mut b.effects, bc, seg.start, &format!("bus '{}'", bc.name))?;
             b.automation.extend(bc.automation.iter().map(|a| shift_from(a, off, seg.start)));
         }
     }
     if let Some(m) = &seg.change.master {
         if !seg.rep {
-            effects_change(&mut p.master_effects, m, seg.start, "主输出")?;
+            effects_change(&mut p.master_effects, m, seg.start, "master")?;
             p.automation.extend(m.automation.iter().map(|a| shift_from(a, off, seg.start)));
         }
     }
@@ -708,7 +708,7 @@ fn shift(a: &Automation, off: f64) -> Automation {
 /// 总线 / 主输出的效果链：从 `off` 拍起撤下、接入。
 fn effects_change(effects: &mut Vec<EffectSlot>, bc: &BusChange, off: f64, what: &str) -> Result<()> {
     for &k in &bc.effects_off {
-        let e = effects.get_mut(k).ok_or_else(|| anyhow!("{what} 没有 effects[{k}]"))?;
+        let e = effects.get_mut(k).ok_or_else(|| anyhow!("{what} has no effects[{k}]"))?;
         e.until = Some(Beats(e.until.map_or(off, |u| u.0.min(off))));
     }
     for e in &bc.effects_add {
@@ -756,7 +756,7 @@ impl Live {
             std::fs::write(path, text + "\n").map_err(|e| e.to_string())
         });
         if let Err(e) = r {
-            eprintln!("[live] 写录音工程失败: {e}");
+            eprintln!("[live] failed to write the recorded project: {e}");
         }
     }
 
@@ -794,17 +794,17 @@ impl Live {
         let line = json!({ "elapsed_seconds": self.started.elapsed().as_secs_f64(), "receipt": receipt, "change": body }).to_string();
         let r = std::fs::OpenOptions::new().create(true).append(true).open(&log).and_then(|mut f| std::io::Write::write_all(&mut f, (line + "\n").as_bytes()));
         if let Err(e) = r {
-            eprintln!("[live] 写 {} 失败: {e}", log.display());
+            eprintln!("[live] failed to write {}: {e}", log.display());
         }
     }
 
     /// 调音量：约 0.4 秒后开始（渲染领先播放的那一段已经算好了），0.3 秒内渐变到 `db`。
     fn mix(&self, body: &Value) -> Result<Value> {
         if self.is_stopped() {
-            bail!("演奏已经结束了");
+            bail!("the session has ended");
         }
-        let target = body["track"].as_str().ok_or_else(|| anyhow!("要 track（轨名、总线名，或 master）"))?;
-        let db = body["gain_db"].as_f64().ok_or_else(|| anyhow!("要 gain_db（推子的目标值，dB）"))?;
+        let target = body["track"].as_str().ok_or_else(|| anyhow!("track is required (a track name, bus name, or master)"))?;
+        let db = body["gain_db"].as_f64().ok_or_else(|| anyhow!("gain_db is required (the fader target, in dB)"))?;
         let now = self.now_beat();
         let (at, ramp) = {
             let s = self.session.lock().unwrap();
@@ -834,7 +834,7 @@ impl Live {
         let n = v["underruns"].as_u64().unwrap_or(0) as usize;
         let mut seen = self.underruns_seen.lock().unwrap();
         if n > *seen && v["warning"].is_null() {
-            v["warning"] = json!(format!("上次看过以后掉了 {} 次帧：看 slow（慢在哪）和 load.heaviest（最耗资源的轨）", n - *seen));
+            v["warning"] = json!(format!("{} dropout(s) since the last look: see slow (where it is slow) and load.heaviest (the heaviest tracks)", n - *seen));
         }
         *seen = n;
         v
@@ -856,8 +856,8 @@ impl Live {
         if recent {
             let names: Vec<&str> = loads.iter().filter(|l| !l.0.is_empty()).take(3).map(|l| l.0.as_str()).collect();
             v["warning"] = json!(format!(
-                "最近 {} 秒内掉过帧（电脑跟不上）：最耗资源的是 {}。让不用的轨休息（下一段不给它片段）、换轻一点的乐器，或少开几条轨",
-                UNDERRUN_WARN.as_secs(), names.join("、")
+                "dropouts in the last {} s (the computer cannot keep up): the heaviest are {}. Rest unused tracks (give them no clips in the next section), use lighter instruments, or run fewer tracks",
+                UNDERRUN_WARN.as_secs(), names.join(", ")
             ));
         }
         v["error"] = json!(st.error);
@@ -869,9 +869,9 @@ impl Live {
 
     fn change(&self, body: Value) -> Result<Value> {
         if self.is_stopped() {
-            bail!("演奏已经结束了");
+            bail!("the session has ended");
         }
-        let change: Change = serde_json::from_value(body.clone()).context("改动的写法不对")?;
+        let change: Change = serde_json::from_value(body.clone()).context("malformed change")?;
         let now = self.now_beat();
         let receipt = self.session.lock().unwrap().submit(change, now)?;
         self.log_change(&body, &receipt);
@@ -906,10 +906,10 @@ impl Live {
         let mut s = self.agent_status();
         s["reason"] = json!(reason);
         s["hint"] = json!(match reason {
-            "stopped" => "演奏已经结束",
-            "autoplay_over" => "自主演奏的时间到了：交最后一段（适合循环的乐句）就停下，等人类说话；音乐会一直循环",
-            "runway" => "排好的音乐快放完了：写下一段并提交（没写也不会冷场，会循环最后一段）",
-            _ => "还早：再调用一次 wait",
+            "stopped" => "the session has ended",
+            "autoplay_over" => "autoplay time is up: submit one last section (a phrase that loops well) and stop, then wait for the human; the music keeps looping",
+            "runway" => "the queued music is about to run out: write and submit the next section (if you do not, the last section just loops)",
+            _ => "too early: call wait again",
         });
         s
     }
@@ -927,15 +927,15 @@ pub fn parse_duration(s: &str) -> Result<Option<Duration>> {
         match c {
             '0'..='9' | '.' => num.push(c),
             'm' | 's' | 'h' => {
-                let n: f64 = num.parse().map_err(|_| anyhow!("时长写法不对：{s}（如 90s、3m、1m30s）"))?;
+                let n: f64 = num.parse().map_err(|_| anyhow!("invalid duration: {s} (e.g. 90s, 3m, 1m30s)"))?;
                 total += n * match c { 'h' => 3600.0, 'm' => 60.0, _ => 1.0 };
                 num.clear();
             }
-            _ => bail!("时长写法不对：{s}（如 90s、3m、1m30s）"),
+            _ => bail!("invalid duration: {s} (e.g. 90s, 3m, 1m30s)"),
         }
     }
     if !num.is_empty() {
-        total += num.parse::<f64>().map_err(|_| anyhow!("时长写法不对：{s}"))?;
+        total += num.parse::<f64>().map_err(|_| anyhow!("invalid duration: {s}"))?;
     }
     Ok((total > 0.0).then(|| Duration::from_secs_f64(total)))
 }
@@ -943,7 +943,7 @@ pub fn parse_duration(s: &str) -> Result<Option<Duration>> {
 /// 启动一场现场演奏（前台常驻，直到 `muser live stop`）。
 #[allow(clippy::too_many_arguments)]
 pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>, open: bool, title: Option<String>) -> Result<()> {
-    let text = std::fs::read_to_string(template).with_context(|| format!("读不了模板 {template}"))?;
+    let text = std::fs::read_to_string(template).with_context(|| format!("cannot read template {template}"))?;
     let tpl = Project::from_json(&text).map_err(|e| anyhow!("{e}"))?.at_file(std::path::Path::new(template));
     let mut session = Session::new(&tpl)?;
     if let Some(t) = &title {
@@ -971,11 +971,11 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
     live.push()?;
     std::fs::write(muser_engine::live_client::port_file(), json!({ "port": port, "pid": std::process::id(), "template": template }).to_string())?;
     let st = live.player.status();
-    println!("muser live 已开始：http://127.0.0.1:{port}/  （只监听本机）  声卡：{}（{} Hz）", st.device, st.sample_rate);
+    println!("muser live started: http://127.0.0.1:{port}/  (local only)  sound card: {} ({} Hz)", st.device, st.sample_rate);
     if open {
         crate::web::open_browser(&format!("http://127.0.0.1:{port}/"));
     }
-    println!("用 muser live send / status / wait / autoplay / stop 控制；整场写进 {}", live.record.as_ref().map_or("（没有 --record，不保存）".into(), |p| p.display().to_string()));
+    println!("Control it with muser live send / status / wait / autoplay / stop; the session is recorded to {}", live.record.as_ref().map_or("(no --record, not saved)".into(), |p| p.display().to_string()));
     // 循环往后排：保持至少 KEEP_SECONDS 秒。
     {
         let l = Arc::clone(&live);
@@ -1066,7 +1066,7 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
                     let _ = req.respond(tiny_http::Response::empty(204));
                     return;
                 }
-                _ => (404, json!({ "error": "没有这个接口" })),
+                _ => (404, json!({ "error": "no such endpoint" })),
             };
             crate::web::respond_json(req, code, &v);
         });

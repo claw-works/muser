@@ -216,11 +216,11 @@ fn set_effect_param(effect: &Effect, key: &str, v: &Value) -> Result<Effect, Str
         return Ok(Effect::Plugin { path: path.clone(), id: id.clone(), params });
     }
     let mut obj = serde_json::to_value(effect).map_err(|e| e.to_string())?;
-    let map = obj.as_object_mut().expect("效果器序列化为对象");
+    let map = obj.as_object_mut().expect("effect serializes to an object");
     if key == "type" || !map.contains_key(key) {
         let spec = muser_core::effect_spec(effect.type_name()).expect("描述");
         return Err(format!(
-            "{} 没有参数 '{key}'，可用: {}",
+            "{} has no parameter '{key}'; available: {}",
             spec.name,
             spec.params.iter().map(|p| p.name).chain(spec.choices.iter().map(|c| c.name)).collect::<Vec<_>>().join(", ")
         ));
@@ -241,7 +241,7 @@ pub fn audition(
     let sr = f64::from(rs.sample_rate);
     let note = (0usize, (settings.hold_seconds * sr) as usize);
     let runs: Vec<Option<&Value>> = match param {
-        Some(_) if values.is_empty() => return Err(invalid("给出了参数但没有取值".into())),
+        Some(_) if values.is_empty() => return Err(invalid("parameters given but no values".into())),
         Some(_) => values.iter().map(Some).collect(),
         None => vec![None],
     };

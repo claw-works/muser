@@ -22,11 +22,11 @@ use manguebyte::prelude::{
 /// 效果链构建错误。
 #[derive(Debug, thiserror::Error)]
 pub enum EffectError {
-    #[error("plugin 效果器不可用：这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它")]
+    #[error("plugin effect unavailable: this muser build does not have the plugin host enabled (the `host` feature); release and default builds include it, so do not remove it with --no-default-features")]
     HostDisabled,
-    #[error("加载插件 '{path}' 失败: {detail}")]
+    #[error("failed to load plugin '{path}': {detail}")]
     PluginLoad { path: String, detail: String },
-    #[error("未知的 EQ 滤波形状 '{0}'（可用: lowpass/highpass/bandpass/notch/allpass/peak/low_shelf/high_shelf）")]
+    #[error("unknown EQ filter shape '{0}' (available: lowpass/highpass/bandpass/notch/allpass/peak/low_shelf/high_shelf）")]
     UnknownEqShape(String),
 }
 
@@ -552,7 +552,7 @@ impl Processor<f32> for HostedPlugin {
     fn prepare(&mut self, spec: &ProcessSpec) {
         self.processor.prepare(spec);
         if let Err(w) = self.opened.settle(self.processor.as_mut(), spec) {
-            eprintln!("[muser] 警告: {w}");
+            eprintln!("[muser] warning: {w}");
         }
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {

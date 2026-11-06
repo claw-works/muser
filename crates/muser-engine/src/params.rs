@@ -140,19 +140,19 @@ fn active_filter(p: &mut PolySynthParams) -> Result<&mut FilterParams, String> {
     p.filters
         .iter_mut()
         .find(|f| !matches!(f.model, FilterModel::Off))
-        .ok_or_else(|| "该音色没有启用滤波器，此参数无效；换一个带滤波的预设".to_string())
+        .ok_or_else(|| "This sound has no filter enabled, so this parameter has no effect; pick a preset with a filter".to_string())
 }
 fn active_filter_ref(p: &PolySynthParams) -> Option<&FilterParams> {
     p.filters.iter().find(|f| !matches!(f.model, FilterModel::Off))
 }
 
 pub(crate) static POLY: &[ParamDef<PolySynthParams>] = &[
-    num!("attack", 0.0, 20.0, "s", "音量起音时间。0.001-0.01 干脆；0.1-0.5 柔和；>1 慢慢浮现（pad）", |p| p.envelopes[0].attack),
-    num!("decay", 0.0, 20.0, "s", "音量从峰值落到 sustain 的时间", |p| p.envelopes[0].decay),
-    num!("sustain", 0.0, 1.0, "", "按住时保持的音量比例。0 = 只有起音（pluck）；1 = 一直满音量（pad/风琴）", |p| p.envelopes[0].sustain),
-    num!("release", 0.0, 20.0, "s", "松开后余音长度。0.05-0.2 利落；0.5-2 有尾巴；>3 很长的铺底", |p| p.envelopes[0].release),
+    num!("attack", 0.0, 20.0, "s", "Volume attack time. 0.001-0.01 crisp; 0.1-0.5 soft; >1 slowly fades in (pad)", |p| p.envelopes[0].attack),
+    num!("decay", 0.0, 20.0, "s", "Time for the volume to fall from the peak to sustain", |p| p.envelopes[0].decay),
+    num!("sustain", 0.0, 1.0, "", "Volume level held while the key is down. 0 = attack only (pluck); 1 = full volume throughout (pad/organ)", |p| p.envelopes[0].sustain),
+    num!("release", 0.0, 20.0, "s", "Tail length after release. 0.05-0.2 tight; 0.5-2 with a tail; >3 a very long bed", |p| p.envelopes[0].release),
     ParamDef {
-        spec: InstParamSpec { name: "cutoff", kind: number(20.0, 20000.0, "Hz"), description: "滤波截止频率：越低越闷越暗，越高越亮。贝斯 200-1500；lead 1500-6000" },
+        spec: InstParamSpec { name: "cutoff", kind: number(20.0, 20000.0, "Hz"), description: "Filter cutoff: lower is duller and darker, higher is brighter. Bass 200-1500; lead 1500-6000" },
         get: |p| active_filter_ref(p).map_or(Value::Null, |f| json!(f.cutoff)),
         set: Setter::Num(|p, v| {
             active_filter(p)?.cutoff = v;
@@ -160,7 +160,7 @@ pub(crate) static POLY: &[ParamDef<PolySynthParams>] = &[
         }),
     },
     ParamDef {
-        spec: InstParamSpec { name: "resonance", kind: number(0.0, 1.0, ""), description: "滤波谐振：截止频率处的突起。0.2-0.4 有个性；0.7+ 啸叫感（acid）" },
+        spec: InstParamSpec { name: "resonance", kind: number(0.0, 1.0, ""), description: "Filter resonance: the peak at the cutoff. 0.2-0.4 adds character; 0.7+ screaming (acid)" },
         get: |p| active_filter_ref(p).map_or(Value::Null, |f| json!(f.resonance)),
         set: Setter::Num(|p, v| {
             active_filter(p)?.resonance = v;
@@ -168,18 +168,18 @@ pub(crate) static POLY: &[ParamDef<PolySynthParams>] = &[
         }),
     },
     ParamDef {
-        spec: InstParamSpec { name: "filter_env", kind: number(-8.0, 8.0, "oct"), description: "滤波包络把截止频率推开多少个八度。正值 = 起音时变亮再回落（'哇'声）；0 = 不动" },
+        spec: InstParamSpec { name: "filter_env", kind: number(-8.0, 8.0, "oct"), description: "How many octaves the filter envelope pushes the cutoff. Positive = brightens on attack then falls back (a 'wah'); 0 = no movement" },
         get: |p| active_filter_ref(p).map_or(Value::Null, |f| json!(f.env_amount)),
         set: Setter::Num(|p, v| {
             active_filter(p)?.env_amount = v;
             Ok(())
         }),
     },
-    num!("filter_attack", 0.0, 20.0, "s", "滤波包络起音时间", |p| p.envelopes[1].attack),
-    num!("filter_decay", 0.0, 20.0, "s", "滤波包络衰减时间：越短'哇'声越短促", |p| p.envelopes[1].decay),
-    num!("filter_sustain", 0.0, 1.0, "", "滤波包络保持比例", |p| p.envelopes[1].sustain),
-    num!("filter_release", 0.0, 20.0, "s", "滤波包络释放时间", |p| p.envelopes[1].release),
-    num!("glide", 0.0, 5.0, "s", "滑音时间；只在单音/连奏型预设上起作用（重叠的音符之间滑过去）", |p| p.glide),
+    num!("filter_attack", 0.0, 20.0, "s", "Filter envelope attack time", |p| p.envelopes[1].attack),
+    num!("filter_decay", 0.0, 20.0, "s", "Filter envelope decay time: shorter makes a snappier \"wah\"", |p| p.envelopes[1].decay),
+    num!("filter_sustain", 0.0, 1.0, "", "Filter envelope sustain level", |p| p.envelopes[1].sustain),
+    num!("filter_release", 0.0, 20.0, "s", "Filter envelope release time", |p| p.envelopes[1].release),
+    num!("glide", 0.0, 5.0, "s", "Glide time; only works on mono/legato presets (slides between overlapping notes)", |p| p.glide),
 ];
 
 fn fm_max(p: &FmParams, f: fn(&manguebyte::dsp::instruments::FmOperator) -> f64) -> Value {
@@ -188,7 +188,7 @@ fn fm_max(p: &FmParams, f: fn(&manguebyte::dsp::instruments::FmOperator) -> f64)
 
 pub(crate) static FM: &[ParamDef<FmParams>] = &[
     ParamDef {
-        spec: InstParamSpec { name: "attack", kind: number(0.0, 10.0, "s"), description: "所有算子的起音时间（同时会改变音色的演变）" },
+        spec: InstParamSpec { name: "attack", kind: number(0.0, 10.0, "s"), description: "Attack time of all operators (also changes how the sound evolves)" },
         get: |p| fm_max(p, |o| o.attack),
         set: Setter::Num(|p, v| {
             p.operators.iter_mut().for_each(|o| o.attack = v);
@@ -196,7 +196,7 @@ pub(crate) static FM: &[ParamDef<FmParams>] = &[
         }),
     },
     ParamDef {
-        spec: InstParamSpec { name: "release", kind: number(0.001, 100.0, "s"), description: "所有算子的释放时间" },
+        spec: InstParamSpec { name: "release", kind: number(0.001, 100.0, "s"), description: "Release time of all operators" },
         get: |p| fm_max(p, |o| o.release),
         set: Setter::Num(|p, v| {
             p.operators.iter_mut().for_each(|o| o.release = v);
@@ -206,23 +206,23 @@ pub(crate) static FM: &[ParamDef<FmParams>] = &[
 ];
 
 pub(crate) static STRING: &[ParamDef<StringParams>] = &[
-    num!("decay", 0.05, 60.0, "s", "按住时弦振动持续多久（中央 C 衰减 60dB 的时间）。短 = 闷音；长 = 余音绵长", |p| p.decay),
-    num!("release", 0.01, 10.0, "s", "松开（止音）后的衰减时间", |p| p.release),
-    num!("tone", 200.0, 20000.0, "Hz", "最终低通：琴体/拾音的明暗。2000 暗；5000 常规；10000+ 很亮", |p| p.tone),
-    num!("pluck_brightness", 100.0, 20000.0, "Hz", "拨弦的亮度：指甲/拨片亮（5000+），指腹暗（1000-2000）", |p| p.pluck_brightness),
-    num!("pluck_position", 0.02, 0.5, "", "拨弦位置（离琴桥的比例）。0.05 靠近琴桥，薄而亮；0.5 在弦中间，圆而空", |p| p.pluck_position),
-    num!("buzz", 0.0, 1.0, "", "弦打品丝的嗡声。0 干净；0.3+ 有击弦感（slap）", |p| p.buzz),
+    num!("decay", 0.05, 60.0, "s", "How long the string rings while held (time for middle C to decay 60 dB). Short = muted; long = long ringing tail", |p| p.decay),
+    num!("release", 0.01, 10.0, "s", "Decay time after release (damping)", |p| p.release),
+    num!("tone", 200.0, 20000.0, "Hz", "Final low-pass: brightness of the body/pickup. 2000 dark; 5000 normal; 10000+ very bright", |p| p.tone),
+    num!("pluck_brightness", 100.0, 20000.0, "Hz", "Pluck brightness: fingernail/pick is bright (5000+), fingertip is dark (1000-2000)", |p| p.pluck_brightness),
+    num!("pluck_position", 0.02, 0.5, "", "Pluck position (fraction of the way from the bridge). 0.05 near the bridge, thin and bright; 0.5 mid-string, round and hollow", |p| p.pluck_position),
+    num!("buzz", 0.0, 1.0, "", "Fret buzz. 0 clean; 0.3+ percussive (slap)", |p| p.buzz),
 ];
 
 pub(crate) static ACID: &[ParamDef<AcidParams>] = &[
-    num!("cutoff", 30.0, 8000.0, "Hz", "滤波截止频率（包络关闭时）。200-400 闷；800+ 亮。最适合做自动化扫频", |p| p.cutoff),
-    num!("resonance", 0.0, 1.0, "", "谐振。0.5 常规；0.8+ 典型的 303 '吱吱'声", |p| p.resonance),
-    num!("env_mod", 0.0, 1.0, "", "滤波包络深度：每个音起音时滤波打开多少", |p| p.env_mod),
-    num!("decay", 0.05, 4.0, "s", "滤波包络衰减：短 = 短促的'啵'；长 = 拖长的'哇'", |p| p.decay),
-    num!("accent", 0.0, 1.0, "", "重音强度：标了 `\"accent\": true` 的音符更响、滤波开得更大、更\"吱\"", |p| p.accent),
-    num!("slide", 0.005, 1.0, "s", "滑音时间：前后两个音重叠时从前一个音滑到后一个音", |p| p.slide),
-    num!("drive_db", -12.0, 24.0, "dB", "过载：滤波前的增益。6-12 更肥更脏", |p| p.drive_db),
-    num!("tune", -24.0, 24.0, "st", "整体移调（半音）", |p| p.tune),
+    num!("cutoff", 30.0, 8000.0, "Hz", "Filter cutoff (with the envelope off). 200-400 dull; 800+ bright. Ideal for automated sweeps", |p| p.cutoff),
+    num!("resonance", 0.0, 1.0, "", "Resonance. 0.5 normal; 0.8+ the classic 303 squelch", |p| p.resonance),
+    num!("env_mod", 0.0, 1.0, "", "Filter envelope depth: how far the filter opens at each note's attack", |p| p.env_mod),
+    num!("decay", 0.05, 4.0, "s", "Filter envelope decay: short = a short \"blip\"; long = a drawn-out \"wah\"", |p| p.decay),
+    num!("accent", 0.0, 1.0, "", "Accent strength: notes marked `\"accent\": true` are louder, open the filter further and squelch more", |p| p.accent),
+    num!("slide", 0.005, 1.0, "s", "Slide time: glide from one note to the next when they overlap", |p| p.slide),
+    num!("drive_db", -12.0, 24.0, "dB", "Overdrive: gain before the filter. 6-12 is fatter and dirtier", |p| p.drive_db),
+    num!("tune", -24.0, 24.0, "st", "Overall transpose (semitones)", |p| p.tune),
 ];
 
 fn drawbars_text(p: &OrganParams) -> Value {
@@ -231,12 +231,12 @@ fn drawbars_text(p: &OrganParams) -> Value {
 
 pub(crate) static ORGAN: &[ParamDef<OrganParams>] = &[
     ParamDef {
-        spec: InstParamSpec { name: "drawbars", kind: ParamKind::Drawbars, description: "九根拉杆（16' 5⅓' 8' 4' 2⅔' 2' 1⅗' 1⅓' 1'），每位 0-8。\"888000000\" 经典爵士；\"838000000\" 柔和；\"888888888\" 全开" },
+        spec: InstParamSpec { name: "drawbars", kind: ParamKind::Drawbars, description: "Nine drawbars (16' 5⅓' 8' 4' 2⅔' 2' 1⅗' 1⅓' 1'), each 0-8. \"888000000\" classic jazz; \"838000000\" soft; \"888888888\" all out" },
         get: drawbars_text,
         set: Setter::Text(|p, s| {
             let digits: Vec<u32> = s.chars().filter(|c| !c.is_whitespace()).map(|c| c.to_digit(10).unwrap_or(99)).collect();
             if digits.len() != 9 || digits.iter().any(|d| *d > 8) {
-                return Err(format!("应为 9 位、每位 0-8 的数字串，如 \"888000000\"，实际 \"{s}\""));
+                return Err(format!("expected a 9-digit string with each digit 0-8, e.g. \"888000000\", got \"{s}\""));
             }
             for (bar, d) in p.drawbars.iter_mut().zip(digits) {
                 *bar = f64::from(d);
@@ -245,7 +245,7 @@ pub(crate) static ORGAN: &[ParamDef<OrganParams>] = &[
         }),
     },
     ParamDef {
-        spec: InstParamSpec { name: "percussion", kind: ParamKind::Choice { choices: &["off", "second", "third"] }, description: "打击泛音：按键瞬间加一声短促的二次/三次谐波，爵士风琴的'叮'" },
+        spec: InstParamSpec { name: "percussion", kind: ParamKind::Choice { choices: &["off", "second", "third"] }, description: "Percussion: adds a short 2nd/3rd harmonic at key-down, the jazz organ \"ping\"" },
         get: |p| match p.percussion {
             None => json!("off"),
             Some(x) if x.harmonic == PercussionHarmonic::Second => json!("second"),
@@ -263,40 +263,40 @@ pub(crate) static ORGAN: &[ParamDef<OrganParams>] = &[
             Ok(())
         }),
     },
-    num!("click", 0.0, 1.0, "", "按键咔哒声。0 干净；0.5 复古", |p| p.click),
+    num!("click", 0.0, 1.0, "", "Key click. 0 clean; 0.5 vintage", |p| p.click),
 ];
 
 pub(crate) static MALLET: &[ParamDef<MalletParams>] = &[
-    num!("decay", 0.05, 60.0, "s", "敲击后自然衰减的时间（中央 C）", |p| p.decay),
-    num!("release", 0.01, 60.0, "s", "松开后的止音时间（颤音琴/钢片琴/管钟有制音器）", |p| p.release),
-    num!("softness", 1.0, 8.0, "", "槌头软硬：1 硬而亮；4-8 软而圆", |p| p.softness),
-    num!("strike_position", 0.0, 1.0, "", "敲击位置。0.5 在中心（最饱满）；靠边泛音更多", |p| p.strike_position),
-    num!("motor_rate", 0.0, 16.0, "Hz", "颤音琴电机转速（颤音速度），0 = 关闭", |p| p.motor_rate),
-    num!("motor_depth", 0.0, 1.0, "", "颤音琴电机颤音深度", |p| p.motor_depth),
+    num!("decay", 0.05, 60.0, "s", "Natural decay time after the strike (middle C)", |p| p.decay),
+    num!("release", 0.01, 60.0, "s", "Damping time after release (vibraphone/celesta/tubular bells have dampers)", |p| p.release),
+    num!("softness", 1.0, 8.0, "", "Mallet hardness: 1 hard and bright; 4-8 soft and round", |p| p.softness),
+    num!("strike_position", 0.0, 1.0, "", "Strike position. 0.5 is the center (fullest); toward the edge has more overtones", |p| p.strike_position),
+    num!("motor_rate", 0.0, 16.0, "Hz", "Vibraphone motor speed (tremolo rate), 0 = off", |p| p.motor_rate),
+    num!("motor_depth", 0.0, 1.0, "", "Vibraphone motor tremolo depth", |p| p.motor_depth),
 ];
 
 pub(crate) static BOWED: &[ParamDef<BowedParams>] = &[
-    num!("attack", 0.005, 2.0, "s", "运弓起音时间。0.02 有力；0.3+ 柔和渐入", |p| p.attack),
-    num!("release", 0.15, 10.0, "s", "松开后的衰减时间。下限 0.15：更短时上游弓弦模型会数值发散", |p| p.release),
-    num!("vibrato_rate", 0.0, 12.0, "Hz", "揉弦速度。5-6 常规", |p| p.vibrato_rate),
-    num!("vibrato_depth", 0.0, 100.0, "cent", "揉弦深度（上下各多少音分）。0 不揉；10-20 常规；40+ 夸张", |p| p.vibrato_depth),
-    num!("vibrato_delay", 0.0, 4.0, "s", "音开始后多久才开始揉弦", |p| p.vibrato_delay),
-    num!("tone", 500.0, 20000.0, "Hz", "最终低通：明暗", |p| p.tone),
-    num!("pressure", 0.0, 1.0, "", "弓压：小 = 轻柔带气声；大 = 浓密带颗粒感", |p| p.pressure),
-    int!("players", 1.0, 4.0, "每个音由几把琴演奏：1 独奏；3-4 组合", |p| p.players),
+    num!("attack", 0.005, 2.0, "s", "Bow attack time. 0.02 forceful; 0.3+ soft fade-in", |p| p.attack),
+    num!("release", 0.15, 10.0, "s", "Decay time after release. Minimum 0.15: below that the upstream bowed-string model diverges numerically", |p| p.release),
+    num!("vibrato_rate", 0.0, 12.0, "Hz", "Vibrato rate. 5-6 normal", |p| p.vibrato_rate),
+    num!("vibrato_depth", 0.0, 100.0, "cent", "Vibrato depth (cents up and down). 0 none; 10-20 normal; 40+ exaggerated", |p| p.vibrato_depth),
+    num!("vibrato_delay", 0.0, 4.0, "s", "Delay after note start before vibrato begins", |p| p.vibrato_delay),
+    num!("tone", 500.0, 20000.0, "Hz", "Final low-pass: brightness", |p| p.tone),
+    num!("pressure", 0.0, 1.0, "", "Bow pressure: low = gentle and breathy; high = dense and grainy", |p| p.pressure),
+    int!("players", 1.0, 4.0, "Number of players per note: 1 solo; 3-4 ensemble", |p| p.players),
 ];
 
 pub(crate) static WIND: &[ParamDef<WindParams>] = &[
-    num!("attack", 0.002, 1.0, "s", "气息建立的时间：短 = 吐音清楚；长 = 柔和进入", |p| p.attack),
-    num!("release", 0.005, 2.0, "s", "松开后的收尾时间", |p| p.release),
-    num!("vibrato_rate", 0.0, 12.0, "Hz", "颤音速度。4-6 常规", |p| p.vibrato_rate),
-    num!("vibrato_depth", 0.0, 100.0, "cent", "颤音深度（音分）。0 直音；10-25 常规", |p| p.vibrato_depth),
-    num!("vibrato_delay", 0.0, 4.0, "s", "音开始后多久才开始颤音", |p| p.vibrato_delay),
-    num!("tone", 500.0, 20000.0, "Hz", "最终低通：明暗", |p| p.tone),
-    num!("breath_noise", 0.0, 1.0, "", "气声：越大越多气流噪声", |p| p.noise),
-    num!("brassiness", 0.0, 1.0, "", "铜管的'炸'（小号/长号在大声时变亮）", |p| p.brassiness),
+    num!("attack", 0.002, 1.0, "s", "Breath build-up time: short = clear tonguing; long = soft entry", |p| p.attack),
+    num!("release", 0.005, 2.0, "s", "Wind-down time after release", |p| p.release),
+    num!("vibrato_rate", 0.0, 12.0, "Hz", "Vibrato rate. 4-6 normal", |p| p.vibrato_rate),
+    num!("vibrato_depth", 0.0, 100.0, "cent", "Vibrato depth (cents). 0 straight tone; 10-25 normal", |p| p.vibrato_depth),
+    num!("vibrato_delay", 0.0, 4.0, "s", "Delay after note start before vibrato begins", |p| p.vibrato_delay),
+    num!("tone", 500.0, 20000.0, "Hz", "Final low-pass: brightness", |p| p.tone),
+    num!("breath_noise", 0.0, 1.0, "", "Breath noise: higher means more airflow noise", |p| p.noise),
+    num!("brassiness", 0.0, 1.0, "", "Brass blare (trumpet/trombone brighten when loud)", |p| p.brassiness),
     ParamDef {
-        spec: InstParamSpec { name: "portamento", kind: ParamKind::Bool, description: "连音（重叠的音符）之间滑音，像长号的滑管" },
+        spec: InstParamSpec { name: "portamento", kind: ParamKind::Bool, description: "Glide between legato (overlapping) notes, like a trombone slide" },
         get: |p| json!(p.portamento),
         set: Setter::Num(|p, v| {
             p.portamento = v != 0.0;
@@ -310,7 +310,7 @@ pub(crate) static CHOIR: &[ParamDef<ChoirParams>] = &[
         spec: InstParamSpec {
             name: "vowel",
             kind: ParamKind::Number { min: 0.0, max: 4.0, unit: "", integer: false, names: &["a", "e", "i", "o", "u"] },
-            description: "元音：\"a\" \"e\" \"i\" \"o\" \"u\"，或 0-4 之间的数（如 1.5 = e 与 i 之间）。适合做自动化",
+            description: "Vowel: \"a\" \"e\" \"i\" \"o\" \"u\", or a number 0-4 (e.g. 1.5 = between e and i). Good for automation",
         },
         get: |p| json!(p.vowel),
         set: Setter::Num(|p, v| {
@@ -318,24 +318,24 @@ pub(crate) static CHOIR: &[ParamDef<ChoirParams>] = &[
             Ok(())
         }),
     },
-    num!("attack", 0.005, 2.0, "s", "起音时间", |p| p.attack),
-    num!("release", 0.01, 4.0, "s", "松开后淡出时间", |p| p.release),
-    num!("vibrato_rate", 0.0, 12.0, "Hz", "颤音速度", |p| p.vibrato_rate),
-    num!("vibrato_depth", 0.0, 200.0, "cent", "颤音深度（音分）", |p| p.vibrato_depth),
-    num!("brightness", 500.0, 12000.0, "Hz", "音色亮度", |p| p.brightness),
-    num!("breathiness", 0.0, 1.0, "", "气声", |p| p.breathiness),
-    int!("singers", 1.0, 6.0, "每个音由几个人唱：1 独唱；4-6 合唱", |p| p.singers),
-    num!("formant_shift", 0.7, 1.4, "", "共振峰缩放：<1 更深更大的声音；>1 更细更小", |p| p.formant_shift),
+    num!("attack", 0.005, 2.0, "s", "Attack time", |p| p.attack),
+    num!("release", 0.01, 4.0, "s", "Fade-out time after release", |p| p.release),
+    num!("vibrato_rate", 0.0, 12.0, "Hz", "Vibrato rate", |p| p.vibrato_rate),
+    num!("vibrato_depth", 0.0, 200.0, "cent", "Vibrato depth (cents)", |p| p.vibrato_depth),
+    num!("brightness", 500.0, 12000.0, "Hz", "Tone brightness", |p| p.brightness),
+    num!("breathiness", 0.0, 1.0, "", "Breathiness", |p| p.breathiness),
+    int!("singers", 1.0, 6.0, "Number of singers per note: 1 solo; 4-6 choir", |p| p.singers),
+    num!("formant_shift", 0.7, 1.4, "", "Formant scaling: <1 deeper, bigger voice; >1 thinner, smaller", |p| p.formant_shift),
 ];
 
 pub(crate) static PIECE: &[ParamDef<Piece>] = &[
-    num!("tune", -24.0, 24.0, "st", "鼓件调音（半音）。底鼓 -3 更沉；军鼓 +2 更紧", |p| p.tune),
-    num!("decay", 0.1, 10.0, "x", "余音长度（原长的倍数）。0.5 短促；2 更长（808 长尾底鼓）", |p| p.decay),
-    num!("level", 0.0, 4.0, "x", "音量（倍数），1 = 原样", |p| p.level),
-    num!("tone", 0.0, 1.0, "", "音色（随鼓件而异，一般是明暗）", |p| p.tone),
-    num!("snap", 0.0, 1.0, "", "起音的'脆'（随鼓件而异，军鼓为响弦）", |p| p.snap),
-    num!("texture", 0.0, 1.0, "", "质感（随鼓件而异）", |p| p.texture),
-    num!("pan", -1.0, 1.0, "", "声像：-1 左 ~ 1 右", |p| p.pan),
+    num!("tune", -24.0, 24.0, "st", "Drum piece tuning (semitones). Kick -3 is deeper; snare +2 is tighter", |p| p.tune),
+    num!("decay", 0.1, 10.0, "x", "Tail length (multiple of the original). 0.5 short; 2 longer (808 long-tail kick)", |p| p.decay),
+    num!("level", 0.0, 4.0, "x", "Volume (multiplier), 1 = unchanged", |p| p.level),
+    num!("tone", 0.0, 1.0, "", "Tone (varies by drum piece, usually brightness)", |p| p.tone),
+    num!("snap", 0.0, 1.0, "", "Attack snap (varies by drum piece; snare wires for a snare)", |p| p.snap),
+    num!("texture", 0.0, 1.0, "", "Texture (varies by drum piece)", |p| p.texture),
+    num!("pan", -1.0, 1.0, "", "Pan: -1 left to 1 right", |p| p.pan),
 ];
 
 /// 鼓件别名 → GM 鼓键。
@@ -355,43 +355,43 @@ pub(crate) fn to_number(spec: &InstParamSpec, v: &Value) -> Result<f64, String> 
                     .map(|i| i as f64)
                     .ok_or_else(|| {
                         if names.is_empty() {
-                            format!("应为数字，实际 \"{s}\"")
+                            format!("expected a number, got \"{s}\"")
                         } else {
-                            format!("应为数字或 {}，实际 \"{s}\"", names.join("/"))
+                            format!("expected a number or {}, got \"{s}\"", names.join("/"))
                         }
                     })?
             } else {
-                v.as_f64().ok_or_else(|| format!("应为数字，实际 {v}"))?
+                v.as_f64().ok_or_else(|| format!("expected a number, got {v}"))?
             };
             if !x.is_finite() || x < min || x > max {
                 let unit = if unit.is_empty() { String::new() } else { format!(" {unit}") };
-                return Err(format!("{x} 超出范围 [{min}, {max}]{unit}"));
+                return Err(format!("{x} out of range [{min}, {max}]{unit}"));
             }
             if integer && x.fract() != 0.0 {
-                return Err(format!("应为整数，实际 {x}"));
+                return Err(format!("expected an integer, got {x}"));
             }
             Ok(x)
         }
         ParamKind::Choice { choices } => {
-            let s = v.as_str().ok_or_else(|| format!("应为字符串 {}，实际 {v}", choices.join("/")))?;
+            let s = v.as_str().ok_or_else(|| format!("expected a string {}, got {v}", choices.join("/")))?;
             choices
                 .iter()
                 .position(|c| c.eq_ignore_ascii_case(s.trim()))
                 .map(|i| i as f64)
-                .ok_or_else(|| format!("\"{s}\" 无效，可选 {}", choices.join(" / ")))
+                .ok_or_else(|| format!("\"{s}\" is invalid, choose from {}", choices.join(" / ")))
         }
         ParamKind::Bool => v
             .as_bool()
             .map(|b| if b { 1.0 } else { 0.0 })
-            .ok_or_else(|| format!("应为 true/false，实际 {v}")),
-        ParamKind::Drawbars => Err("内部错误：拉杆参数应走文本写入".into()),
+            .ok_or_else(|| format!("expected true/false, got {v}")),
+        ParamKind::Drawbars => Err("internal error: drawbar parameters must be written as text".into()),
     }
 }
 
 fn apply_one<P>(def: &ParamDef<P>, p: &mut P, v: &Value) -> Result<(), String> {
     match def.set {
         Setter::Num(f) => f(p, to_number(&def.spec, v)?),
-        Setter::Text(f) => f(p, v.as_str().ok_or_else(|| format!("应为字符串，实际 {v}"))?),
+        Setter::Text(f) => f(p, v.as_str().ok_or_else(|| format!("expected a string, got {v}"))?),
     }
 }
 
@@ -404,7 +404,7 @@ pub(crate) fn apply<P>(
     for (key, value) in params {
         let def = defs.iter().find(|d| d.spec.name == key).ok_or_else(|| {
             format!(
-                "未知参数 '{key}'，可用: {}",
+                "unknown parameter '{key}', available: {}",
                 defs.iter().map(|d| d.spec.name).collect::<Vec<_>>().join(", ")
             )
         })?;

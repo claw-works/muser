@@ -153,11 +153,11 @@ fn effects_mut<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Vec<muser_cor
     if id == "master" {
         return Ok(&mut p.master_effects);
     }
-    match parse_node(id).ok_or_else(|| format!("无效的 node '{id}'"))? {
+    match parse_node(id).ok_or_else(|| format!("invalid node '{id}'"))? {
         ("tracks", i) => p.tracks.get_mut(i).map(|t| &mut t.effects),
         (_, i) => p.buses.get_mut(i).map(|b| &mut b.effects),
     }
-    .ok_or_else(|| format!("没有 {id}"))
+    .ok_or_else(|| format!("no {id}"))
 }
 
 #[derive(serde::Deserialize)]
@@ -186,12 +186,12 @@ fn node_id(n: Node) -> String {
 type Fields<'a> = (&'a mut f64, &'a mut bool, &'a mut Vec<muser_core::Automation>);
 
 fn fields<'a>(p: &'a mut Project, id: &str) -> Result<Fields<'a>, String> {
-    let (kind, i) = parse_node(id).ok_or_else(|| format!("无效的 node '{id}'"))?;
+    let (kind, i) = parse_node(id).ok_or_else(|| format!("invalid node '{id}'"))?;
     match kind {
         "tracks" => p.tracks.get_mut(i).map(|t| (&mut t.gain_db, &mut t.muted, &mut t.automation)),
         _ => p.buses.get_mut(i).map(|b| (&mut b.gain_db, &mut b.muted, &mut b.automation)),
     }
-    .ok_or_else(|| format!("{id} 不存在"))
+    .ok_or_else(|| format!("{id} does not exist"))
 }
 
 /// 音量自动化的取值是绝对 dB，会盖过推子。推子改了 `delta` dB 时，把 `gain_db` 自动化整体平移同样的量
@@ -225,7 +225,7 @@ fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
         if let Some(b) = &c.bypass {
             let fx = effects_mut(p, &c.node)?;
             if b.len() != fx.len() {
-                return Err(format!("{}.bypass 应有 {} 项（效果链长度）", c.node, fx.len()));
+                return Err(format!("{}.bypass must have {} entries (the effect chain length)", c.node, fx.len()));
             }
             for (slot, on) in fx.iter_mut().zip(b) {
                 slot.bypass = *on;
@@ -237,7 +237,7 @@ fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
         let (gain, muted, autos) = fields(p, &c.node)?;
         if let Some(g) = c.gain_db {
             if !(-80.0..=24.0).contains(&g) {
-                return Err(format!("{}.gain_db = {g} 超出范围 [-80, 24]", c.node));
+                return Err(format!("{}.gain_db = {g} is out of range [-80, 24]", c.node));
             }
             shift_gain_automation(autos, g - *gain);
             *gain = g;
@@ -257,12 +257,12 @@ fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result
             let list = match c.node.as_str() {
                 "master" => v.get_mut("master_effects"),
                 id => {
-                    let (kind, i) = parse_node(id).ok_or_else(|| anyhow!("无效的 node '{id}'"))?;
+                    let (kind, i) = parse_node(id).ok_or_else(|| anyhow!("invalid node '{id}'"))?;
                     v.get_mut(kind).and_then(|a| a.get_mut(i)).and_then(|o| o.get_mut("effects"))
                 }
             }
             .and_then(Value::as_array_mut)
-            .ok_or_else(|| anyhow!("工程文件里没有 {} 的效果链", c.node))?;
+            .ok_or_else(|| anyhow!("the project file has no effect chain for {}", c.node))?;
             for (fx, on) in list.iter_mut().zip(b) {
                 if let Some(o) = fx.as_object_mut() {
                     if *on {
@@ -277,12 +277,12 @@ fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result
             continue;
         }
         let autos = fields(&mut working, &c.node).map_err(|e| anyhow!(e))?.2.clone();
-        let (kind, i) = parse_node(&c.node).ok_or_else(|| anyhow!("无效的 node '{}'", c.node))?;
+        let (kind, i) = parse_node(&c.node).ok_or_else(|| anyhow!("invalid node '{}'", c.node))?;
         let obj = v
             .get_mut(kind)
             .and_then(|a| a.get_mut(i))
             .and_then(Value::as_object_mut)
-            .ok_or_else(|| anyhow!("工程文件里没有 {}", c.node))?;
+            .ok_or_else(|| anyhow!("the project file has no {}", c.node))?;
         if let Some(g) = c.gain_db {
             obj.insert("gain_db".into(), json!(g));
             if has_gain_automation(&autos) {
@@ -579,8 +579,8 @@ impl Shared {
     fn reload(&self) {
         let m = mtime(&self.path);
         let loaded = std::fs::read_to_string(&self.path)
-            .map_err(|e| format!("读取失败: {e}"))
-            .and_then(|t| Project::from_json(&t).map(|p| p.at_file(&self.path)).map_err(|e| format!("解析失败: {e}")));
+            .map_err(|e| format!("read failed: {e}"))
+            .and_then(|t| Project::from_json(&t).map(|p| p.at_file(&self.path)).map_err(|e| format!("parse failed: {e}")));
         let mut st = self.state.lock().unwrap();
         st.file_mtime = m;
         match loaded {
@@ -590,7 +590,7 @@ impl Shared {
                     _ => false,
                 };
                 if had_changes || !st.takes.is_empty() || !st.clip_edits.is_empty() {
-                    eprintln!("[view] 工程文件已变化，丢弃页面上未保存的改动（录音文件还在 recordings/ 里，可以再贴上）");
+                    eprintln!("[view] the project file changed; discarding the page's unsaved edits (the recording files are still in recordings/ and can be placed again)");
                 }
                 st.takes.clear();
                 st.clip_dirty.clear();
@@ -707,7 +707,7 @@ impl Shared {
                     st.rendering = st.requested;
                     st.error = None;
                     eprintln!(
-                        "[view] 版本 {}：渲染 {:.1}s（乐器缓存 {} 条，{:.0} MB）",
+                        "[view] version {}: rendered {:.1}s (instrument cache {} entries, {:.0} MB)",
                         st.version,
                         t0.elapsed().as_secs_f64(),
                         cache.len(),
@@ -740,7 +740,7 @@ impl Shared {
     }
 
     fn fail(&self, msg: String) {
-        eprintln!("[view] 渲染失败：{msg}");
+        eprintln!("[view] render failed: {msg}");
         let mut st = self.state.lock().unwrap();
         // 渲染失败也交过去：声卡那边报出同样的错误，或用能渲染的部分。
         self.hand_to_player(&mut st);
@@ -750,13 +750,13 @@ impl Shared {
 
     fn mix(&self, body: MixBody) -> Result<(), String> {
         let mut st = self.state.lock().unwrap();
-        let working = st.working.as_mut().ok_or("工程尚未成功加载")?;
+        let working = st.working.as_mut().ok_or("the project has not loaded successfully")?;
         let mut next = working.clone();
         apply_to_project(&mut next, &body.changes)?;
         *working = next;
         if let Some(solo) = body.solo {
             for id in &solo {
-                parse_node(id).ok_or_else(|| format!("无效的 node '{id}'"))?;
+                parse_node(id).ok_or_else(|| format!("invalid node '{id}'"))?;
             }
             st.solo = solo.into_iter().collect();
         }
@@ -766,7 +766,7 @@ impl Shared {
 
     fn save(&self) -> Result<usize, String> {
         let mut st = self.state.lock().unwrap();
-        let (Some(file), Some(working)) = (&st.file, &st.working) else { return Err("工程尚未成功加载".into()) };
+        let (Some(file), Some(working)) = (&st.file, &st.working) else { return Err("the project has not loaded successfully".into()) };
         let changes = diff(file, working);
         let transpose = (file.transpose != working.transpose).then_some(working.transpose);
         if changes.is_empty() && st.takes.is_empty() && st.clip_dirty.is_empty() && transpose.is_none() {
@@ -799,13 +799,13 @@ impl Shared {
                     .get_mut("tracks")
                     .and_then(Value::as_array_mut)
                     .and_then(|a| a.iter_mut().find(|t| t.get("name").and_then(Value::as_str) == Some(name.as_str())))
-                    .ok_or_else(|| anyhow!("工程文件里没有音轨 '{name}'"))?;
+                    .ok_or_else(|| anyhow!("the project file has no track '{name}'"))?;
                 t["clips"] = clips.clone();
             }
             std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
             Ok(())
         };
-        write().map_err(|e| format!("保存失败: {e:#}"))?;
+        write().map_err(|e| format!("save failed: {e:#}"))?;
         st.file = st.working.clone();
         st.takes.clear();
         st.clip_dirty.clear();
@@ -813,7 +813,7 @@ impl Shared {
         // 自己写的文件不触发重新加载。
         st.file_mtime = mtime(&self.path);
         let n = changes.len() + takes.len() + n_edits + usize::from(transpose.is_some());
-        eprintln!("[view] 已保存 {n} 项改动到 {}", self.path.display());
+        eprintln!("[view] saved {n} change(s) to {}", self.path.display());
         Ok(n)
     }
 
@@ -845,12 +845,12 @@ impl Shared {
     /// 直接换成一个不需要插件窗口的音色（内置乐器名或 `sfz:…`）：写进工程文件（文件监视会重新渲染）。
     fn sound_use(&self, ti: usize, instrument: &str, label: &str) -> Result<(), String> {
         if self.edit.lock().unwrap().as_ref().is_some_and(|e| e.open && e.track == ti) {
-            return Err("这条轨的插件窗口还开着，先完成或放弃它".into());
+            return Err("this track's plugin window is still open: finish or discard it first".into());
         }
         let write = || -> Result<()> {
             let text = std::fs::read_to_string(&self.path)?;
             let mut v: Value = serde_json::from_str(&text)?;
-            let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {ti} 条音轨"))?;
+            let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no track #{ti}"))?;
             if t.get("instrument").and_then(Value::as_str) != Some(instrument) {
                 switch_instrument(t, instrument);
             }
@@ -864,7 +864,7 @@ impl Shared {
             std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
             Ok(())
         };
-        write().map_err(|e| format!("写回工程失败: {e:#}"))
+        write().map_err(|e| format!("failed to write back to the project: {e:#}"))
     }
 
     /// 打开第 `ti` 条音轨的音色编辑：`spec` 是要用的乐器插件（和现在的不同就换乐器，从插件的初始音色开始）。
@@ -884,7 +884,7 @@ impl Shared {
             let write = || -> Result<()> {
                 let text = std::fs::read_to_string(&self.path)?;
                 let mut v: Value = serde_json::from_str(&text)?;
-                let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {ti} 条音轨"))?;
+                let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no track #{ti}"))?;
                 let same = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &p.spec()[7..]));
                 if !same {
                     switch_instrument(t, &p.spec());
@@ -893,7 +893,7 @@ impl Shared {
                 std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
                 Ok(())
             };
-            write().map_err(|e| format!("写回工程失败: {e:#}"))?;
+            write().map_err(|e| format!("failed to write back to the project: {e:#}"))?;
             return Ok("used");
         }
         // 这条轨的采集窗口已经开着：换成载入这个音色，窗口不用关。
@@ -901,11 +901,11 @@ impl Shared {
             use std::io::Write;
             let mut edit = self.edit.lock().unwrap();
             if let Some(e) = edit.as_mut().filter(|e| e.open && e.track == ti && e.capture.is_some() && same_plugin(&e.spec, &p.spec()[7..])) {
-                let title = format!("{} — 载入「{}」后点 muser 的完成", p.name, x.name);
+                let title = format!("{} - load '{}', then click Done in muser", p.name, x.name);
                 e.label = x.name.clone();
                 e.capture = Some((p, x.file));
                 let line = json!({ "cmd": "title", "title": title });
-                writeln!(e.stdin, "{line}").and_then(|_| e.stdin.flush()).map_err(|err| format!("插件窗口已退出: {err}"))?;
+                writeln!(e.stdin, "{line}").and_then(|_| e.stdin.flush()).map_err(|err| format!("plugin window has exited: {err}"))?;
                 return Ok("retarget");
             }
         }
@@ -917,18 +917,18 @@ impl Shared {
     fn edit_open_with(self: &Arc<Self>, ti: usize, spec: &str, label: &str, capture: Option<(muser_engine::presets::PluginRef, String)>, fresh: bool) -> Result<(), String> {
         let spec = spec.strip_prefix("plugin:").unwrap_or(spec);
         if !cfg!(target_os = "macos") {
-            return Err("插件界面目前只支持 macOS".into());
+            return Err("the plugin UI is currently supported on macOS only".into());
         }
         let mut edit = self.edit.lock().unwrap();
         if edit.as_ref().is_some_and(|e| e.open) {
-            return Err("已经有一个插件窗口开着，先完成或放弃它".into());
+            return Err("a plugin window is already open: finish or discard it first".into());
         }
         let (name, current, mut params) = {
             let st = self.state.lock().unwrap();
-            let file = st.file.as_ref().ok_or("工程尚未成功加载")?;
-            let t = file.tracks.get(ti).ok_or_else(|| format!("没有第 {ti} 条音轨"))?;
+            let file = st.file.as_ref().ok_or("the project has not loaded successfully")?;
+            let t = file.tracks.get(ti).ok_or_else(|| format!("no track #{ti}"))?;
             if t.instrument == "audio" {
-                return Err("音频音轨没有乐器".into());
+                return Err("an audio track has no instrument".into());
             }
             (if t.name.is_empty() { format!("track{ti}") } else { t.name.clone() }, t.instrument.clone(), t.instrument_params.clone())
         };
@@ -949,8 +949,8 @@ impl Shared {
         if let Some(d) = out.parent() {
             let _ = std::fs::create_dir_all(d);
         }
-        let text = std::fs::read_to_string(&self.path).map_err(|e| format!("读取工程失败: {e}"))?;
-        let v: Value = serde_json::from_str(&text).map_err(|e| format!("解析工程失败: {e}"))?;
+        let text = std::fs::read_to_string(&self.path).map_err(|e| format!("failed to read the project: {e}"))?;
+        let v: Value = serde_json::from_str(&text).map_err(|e| format!("failed to parse the project: {e}"))?;
         let backup = (v["tracks"][ti].clone(), std::fs::read(&out).ok());
         if !keep || capture.is_some() || fresh {
             // 换插件 / 重新采集 / 新音色：旧的状态文件不能沿用（放弃时从 backup 恢复）。
@@ -959,7 +959,7 @@ impl Shared {
         let plugin_name = muser_engine::plugin::split_spec(spec).0.rsplit('/').next().unwrap_or(spec).trim_end_matches(".vst3").trim_end_matches(".clap").to_string();
         let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
             .args(["plugin", "edit", spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &match &capture {
-                Some(_) => format!("{plugin_name} — 载入「{label}」后点 muser 的完成 · {name}"),
+                Some(_) => format!("{plugin_name} - load '{label}', then click Done in muser · {name}"),
                 None => format!("{plugin_name} — {name} · muser"),
             }, "-o"])
             .arg(&out)
@@ -967,11 +967,11 @@ impl Shared {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .map_err(|e| format!("启动插件界面失败: {e}"))?;
-        let stdin = child.stdin.take().ok_or("子进程没有 stdin")?;
-        let stdout = child.stdout.take().ok_or("子进程没有 stdout")?;
+            .map_err(|e| format!("failed to start the plugin UI: {e}"))?;
+        let stdin = child.stdin.take().ok_or("the child process has no stdin")?;
+        let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
-        eprintln!("[view] 打开 {spec} 的界面（音轨 {ti}），状态同步到 {}", out.display());
+        eprintln!("[view] opened the UI of {spec} (track {ti}); state syncs to {}", out.display());
         *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None, notice: None });
         drop(edit);
         let me = Arc::clone(self);
@@ -984,7 +984,7 @@ impl Shared {
             }
             let _ = child.wait();
             me.edit_finish();
-            eprintln!("[view] 插件窗口已关闭");
+            eprintln!("[view] plugin window closed");
         });
         Ok(())
     }
@@ -996,7 +996,7 @@ impl Shared {
         e.synced = Some(SystemTime::now());
         if !e.wrote {
             if let Err(err) = self.edit_write(e) {
-                eprintln!("[view] 写回工程失败: {err}");
+                eprintln!("[view] failed to write back to the project: {err}");
                 return;
             }
             e.wrote = true;
@@ -1010,13 +1010,13 @@ impl Shared {
     fn edit_write(&self, e: &EditSession) -> Result<()> {
         let text = std::fs::read_to_string(&self.path)?;
         let mut v: Value = serde_json::from_str(&text)?;
-        let t = v.get_mut("tracks").and_then(|t| t.get_mut(e.track)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("工程文件里没有第 {} 条音轨", e.track))?;
+        let t = v.get_mut("tracks").and_then(|t| t.get_mut(e.track)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no track #{}", e.track))?;
         let keep = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &e.spec));
         if !keep {
             switch_instrument(t, &format!("plugin:{}", e.spec));
         }
         let p = t.entry("instrument_params").or_insert_with(|| json!({}));
-        let p = p.as_object_mut().ok_or_else(|| anyhow!("instrument_params 不是对象"))?;
+        let p = p.as_object_mut().ok_or_else(|| anyhow!("instrument_params is not an object"))?;
         p.insert("@state".into(), json!(e.out.display().to_string()));
         p.insert("@label".into(), json!(e.label));
         std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
@@ -1027,11 +1027,11 @@ impl Shared {
     fn edit_cmd(&self, cmd: &str, label: Option<&str>) -> Result<(), String> {
         use std::io::Write;
         let mut edit = self.edit.lock().unwrap();
-        let e = edit.as_mut().filter(|e| e.open).ok_or("没有开着的插件窗口")?;
+        let e = edit.as_mut().filter(|e| e.open).ok_or("no plugin window is open")?;
         let line = match cmd {
             "play" => {
                 let st = self.state.lock().unwrap();
-                let p = st.working.as_ref().ok_or("工程尚未成功加载")?;
+                let p = st.working.as_ref().ok_or("the project has not loaded successfully")?;
                 let p = muser_engine::arrange::arranged(p).map_err(|e| e.to_string())?;
                 let mut notes = Vec::new();
                 for (ci, c) in p.tracks.get(e.track).map(|t| t.clips.as_slice()).unwrap_or_default().iter().enumerate() {
@@ -1040,7 +1040,7 @@ impl Shared {
                     }
                 }
                 if notes.is_empty() {
-                    return Err("这条音轨没有音符可试听".into());
+                    return Err("this track has no notes to audition".into());
                 }
                 // 从第一个音所在的小节起，最多 8 小节一圈。
                 let bar = f64::from(p.time_signature.numerator) * 4.0 / f64::from(p.time_signature.denominator);
@@ -1051,13 +1051,13 @@ impl Shared {
                 json!({ "cmd": "play", "notes": notes, "beats": beats, "tempo": p.tempo })
             }
             "stop" | "done" | "cancel" => json!({ "cmd": cmd }),
-            _ => return Err(format!("未知命令 '{cmd}'")),
+            _ => return Err(format!("unknown command '{cmd}'")),
         };
         if let Some(l) = label.map(str::trim).filter(|l| !l.is_empty()) {
             if l != e.label {
                 e.label = l.to_string();
                 if e.wrote {
-                    self.edit_write(e).map_err(|err| format!("写回工程失败: {err:#}"))?;
+                    self.edit_write(e).map_err(|err| format!("failed to write back to the project: {err:#}"))?;
                 }
             }
         }
@@ -1065,7 +1065,7 @@ impl Shared {
             self.edit_restore(e)?;
             e.wrote = false;
         }
-        writeln!(e.stdin, "{line}").and_then(|_| e.stdin.flush()).map_err(|err| format!("插件窗口已退出: {err}"))
+        writeln!(e.stdin, "{line}").and_then(|_| e.stdin.flush()).map_err(|err| format!("plugin window has exited: {err}"))
     }
 
     /// 编辑窗口关了之后：采集的先听一遍（没声音就恢复原样）、认出实际载入的是哪个音色、记进音色库；
@@ -1078,14 +1078,14 @@ impl Shared {
             let Some((_, target)) = capture else {
                 // 自己调的音色：存进"我的音色"，工程里仍用自己的那份。
                 presets::save_mine(&p, &label, &out)?;
-                eprintln!("[view] 已存进我的音色：{label}");
+                eprintln!("[view] saved to my sounds: {label}");
                 return Ok((label, out, None));
             };
             let mut params = serde_json::Map::new();
             params.insert("@state".into(), json!(out.display().to_string()));
-            let silent = muser_engine::sounds::describe(&p.spec(), &params, None, true).map_or(true, |c| c.summary.starts_with("没有声音"));
+            let silent = muser_engine::sounds::describe(&p.spec(), &params, None, true).map_or(true, |c| c.summary.starts_with("Silent:"));
             if silent {
-                return Err(format!("「{label}」没有载入成功（存下的状态没有声音），已恢复成打开前的样子：再试一次，等它在插件窗口里载入完再点完成"));
+                return Err(format!("'{label}' did not load (the saved state is silent); restored to how it was before opening: try again and wait for it to finish loading in the plugin window before clicking Done"));
             }
             // 实际载入的是哪个：吻合度最高的那个（目标本身吻合就用目标）。
             let all: Vec<presets::Preset> = presets::presets(&p).into_iter().filter(|x| !x.file.ends_with(".muserstate")).collect();
@@ -1093,16 +1093,16 @@ impl Shared {
             let target_score = ranked.iter().find(|(_, x)| x.file == target).map_or(0.0, |r| r.0);
             let (file, name, notice) = match ranked.first() {
                 Some((score, best)) if *score >= 0.3 && target_score < 0.3 => {
-                    (best.file.clone(), best.name.clone(), Some(format!("窗口里载入的是「{}」，不是「{label}」：已按「{}」存进音色库", best.name, best.name)))
+                    (best.file.clone(), best.name.clone(), Some(format!("the window loaded '{}', not '{label}': saved to the sound library as '{}'", best.name, best.name)))
                 }
                 _ => (target.clone(), label.clone(), None),
             };
             let fin = presets::library_state_path(&p, &file);
             if fin != out {
-                std::fs::rename(&out, &fin).or_else(|_| std::fs::copy(&out, &fin).map(|_| ())).map_err(|e| format!("存进音色库失败: {e}"))?;
+                std::fs::rename(&out, &fin).or_else(|_| std::fs::copy(&out, &fin).map(|_| ())).map_err(|e| format!("failed to save to the sound library: {e}"))?;
             }
             presets::record_capture(&p, &file, &fin)?;
-            eprintln!("[view] 已采集 {name} → {}", fin.display());
+            eprintln!("[view] captured {name} -> {}", fin.display());
             Ok((name, fin, notice))
         });
         let mut edit = self.edit.lock().unwrap();
@@ -1113,14 +1113,14 @@ impl Shared {
                 if fin != e.out || name != e.label {
                     (e.out, e.label) = (fin, name);
                     if let Err(err) = self.edit_write(e) {
-                        eprintln!("[view] 写回工程失败: {err}");
+                        eprintln!("[view] failed to write back to the project: {err}");
                     }
                 }
                 e.notice = notice;
             }
             Some(Err(msg)) => {
                 if let Err(r) = self.edit_restore(e) {
-                    eprintln!("[view] 恢复失败: {r}");
+                    eprintln!("[view] restore failed: {r}");
                 }
                 e.wrote = false;
                 eprintln!("[view] {msg}");
@@ -1140,10 +1140,10 @@ impl Shared {
                 std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
                 Ok(())
             };
-            restore().map_err(|err| format!("恢复工程失败: {err:#}"))?;
+            restore().map_err(|err| format!("failed to restore the project: {err:#}"))?;
         }
         match &e.backup.1 {
-            Some(b) => std::fs::write(&e.out, b).map_err(|err| format!("恢复状态文件失败: {err}"))?,
+            Some(b) => std::fs::write(&e.out, b).map_err(|err| format!("failed to restore the state file: {err}"))?,
             None if e.wrote => {
                 let _ = std::fs::remove_file(&e.out);
             }
@@ -1170,9 +1170,9 @@ impl Shared {
 
     /// 把清单里的某一遍贴到工作副本（换掉重叠的片段），待保存。
     fn use_take(&self, file: &str) -> Result<(), String> {
-        let take = crate::takes::list(&self.path).into_iter().find(|t| t.file == file).ok_or_else(|| format!("没有这一遍：{file}"))?;
+        let take = crate::takes::list(&self.path).into_iter().find(|t| t.file == file).ok_or_else(|| format!("no such take: {file}"))?;
         let mut st = self.state.lock().unwrap();
-        let working = st.working.as_mut().ok_or("工程尚未成功加载")?;
+        let working = st.working.as_mut().ok_or("the project has not loaded successfully")?;
         let mut next = working.clone();
         crate::takes::place(&mut next, &take).map_err(|e| format!("{e:#}"))?;
         *working = next;
@@ -1185,10 +1185,10 @@ impl Shared {
     /// 整首变调（待保存）。
     fn set_transpose(&self, semitones: i64) -> Result<(), String> {
         if !(-24..=24).contains(&semitones) {
-            return Err("变调在 −24 到 24 个半音之间".into());
+            return Err("transpose must be between -24 and 24 semitones".into());
         }
         let mut st = self.state.lock().unwrap();
-        st.working.as_mut().ok_or("工程尚未成功加载")?.transpose = semitones as i32;
+        st.working.as_mut().ok_or("the project has not loaded successfully")?.transpose = semitones as i32;
         self.request_render(&mut st);
         Ok(())
     }
@@ -1196,14 +1196,14 @@ impl Shared {
     /// 剪开或挪动音频轨上的一个片段（待保存）：`split` 在第几拍剪成两段，`start` 把片段挪到第几拍。
     fn edit_clip(&self, body: &Value) -> Result<(), String> {
         let num = |k: &str| body.get(k).and_then(Value::as_f64);
-        let ti = num("track").ok_or("缺 track")? as usize;
-        let ci = num("clip").ok_or("缺 clip")? as usize;
+        let ti = num("track").ok_or("track is missing")? as usize;
+        let ci = num("clip").ok_or("clip is missing")? as usize;
         let mut st = self.state.lock().unwrap();
-        let working = st.working.as_mut().ok_or("工程尚未成功加载")?;
+        let working = st.working.as_mut().ok_or("the project has not loaded successfully")?;
         let what = match (num("split"), num("start")) {
             (Some(at), _) => crate::clipedit::split(working, ti, ci, at),
             (None, Some(to)) => crate::clipedit::move_to(working, ti, ci, to),
-            _ => return Err("要 split 或 start".into()),
+            _ => return Err("split or start is required".into()),
         }
         .map_err(|e| format!("{e:#}"))?;
         let name = working.tracks[ti].name.clone();
@@ -1217,7 +1217,7 @@ impl Shared {
     fn delete_take(&self, file: &str) -> Result<(), String> {
         let mut st = self.state.lock().unwrap();
         if st.file.as_ref().is_some_and(|f| crate::takes::referenced(f, file)) {
-            return Err(format!("{file} 已经保存在工程里：先在工程里换成别的一遍或删掉那个片段"));
+            return Err(format!("{file} is already saved in the project: first switch to another take in the project or delete that clip"));
         }
         crate::takes::delete(&self.path, file, false).map_err(|e| format!("{e:#}"))?;
         st.takes.retain(|t| t.file != file);
@@ -1321,18 +1321,18 @@ impl Shared {
     fn transport(&self, body: &Value) -> Result<(), String> {
         #[cfg(feature = "device")]
         if let Some(p) = &self.player {
-            let num = |k: &str| body.get(k).and_then(Value::as_f64).ok_or_else(|| format!("需要 {k}"));
+            let num = |k: &str| body.get(k).and_then(Value::as_f64).ok_or_else(|| format!("{k} is required"));
             match body.get("action").and_then(Value::as_str) {
                 Some("play") => p.play(),
                 Some("pause") => p.pause(),
                 Some("seek") => p.seek(num("seconds")?),
                 Some("monitor") => p.set_monitor_db(num("db")?),
-                _ => return Err("action 应为 play / pause / seek / monitor".into()),
+                _ => return Err("action must be play / pause / seek / monitor".into()),
             }
             return Ok(());
         }
         let _ = body;
-        Err("没有用 --device 启动，声音在浏览器里播放".into())
+        Err("not started with --device; sound plays in the browser".into())
     }
 
     /// 声卡模式录音：`start`（`seconds` 从哪里录、`count_beats` 预备拍、`beat_seconds`、`bar_beats`、`nudge_ms`）、
@@ -1340,7 +1340,7 @@ impl Shared {
     fn device_record(&self, body: &Value) -> Result<Value, String> {
         #[cfg(feature = "device")]
         if let Some(p) = &self.player {
-            let num = |k: &str| body.get(k).and_then(Value::as_f64).ok_or_else(|| format!("需要 {k}"));
+            let num = |k: &str| body.get(k).and_then(Value::as_f64).ok_or_else(|| format!("{k} is required"));
             return match body.get("action").and_then(Value::as_str) {
                 Some("start") => {
                     let count = num("count_beats").unwrap_or(0.0).clamp(0.0, 64.0) as usize;
@@ -1351,24 +1351,24 @@ impl Shared {
                 Some("stop") => {
                     let r = p.record_stop()?;
                     if r.samples.len() < r.sample_rate as usize / 10 {
-                        return Err("录音太短".into());
+                        return Err("recording too short".into());
                     }
                     let mut buf = muser_engine::AudioBuffer::<f32>::new(1, r.samples.len());
                     buf.channel_mut(0).copy_from_slice(&r.samples);
                     let mut wav = Vec::new();
                     muser_engine::wav::write(&mut wav, &buf, r.sample_rate, muser_engine::WavFormat::Int24).map_err(|e| format!("{e:?}"))?;
-                    let tm = self.state.lock().unwrap().working.as_ref().ok_or("工程尚未成功加载")?.tempo_map();
+                    let tm = self.state.lock().unwrap().working.as_ref().ok_or("the project has not loaded successfully")?.tempo_map();
                     let beat = tm.beat_at(r.start as f64 / f64::from(r.sample_rate));
                     let track = body.get("track").and_then(Value::as_str).filter(|t| !t.trim().is_empty()).unwrap_or("vocal");
                     let take = self.record(track, beat, &wav)?;
                     Ok(json!({ "ok": true, "take": take, "dropped": r.dropped }))
                 }
                 Some("measure") => Ok(json!({ "ok": true, "ms": p.measure_latency()? })),
-                _ => Err("action 应为 start / stop / measure".into()),
+                _ => Err("action must be start / stop / measure".into()),
             };
         }
         let _ = body;
-        Err("没有用 --device 启动：录音在浏览器里做".into())
+        Err("not started with --device: recording is done in the browser".into())
     }
 
     /// 导出文件名的主干：工程文件名去掉 `.muser.json` / `.json`。
@@ -1380,24 +1380,24 @@ impl Shared {
 
     /// 当前混音（含页面上的推子、静音、独奏）导出成 MIDI。
     fn export_midi(&self) -> Result<Vec<u8>, String> {
-        let working = self.state.lock().unwrap().working.clone().ok_or("工程还没有读入")?;
+        let working = self.state.lock().unwrap().working.clone().ok_or("the project has not been loaded yet")?;
         muser_engine::midi::export(&working).map(|m| m.bytes).map_err(|e| e.to_string())
     }
 
     /// 当前工程导出成 ABC（标准写法或 YuE2 写法，选项都用缺省）。
     fn export_abc(&self, yue2: bool) -> Result<Vec<u8>, String> {
         use muser_engine::abc_export::{AbcOptions, Dialect};
-        let working = self.state.lock().unwrap().working.clone().ok_or("工程还没有读入")?;
+        let working = self.state.lock().unwrap().working.clone().ok_or("the project has not been loaded yet")?;
         let opts = AbcOptions::new(if yue2 { Dialect::Yue2 } else { Dialect::Standard });
         muser_engine::abc_export::export(&working, &opts).map(|o| o.text.into_bytes()).map_err(|e| e.to_string())
     }
 
     /// 当前版本（正在听的混音）整首的 16-bit WAV。还在渲染时等它渲染完。
     fn export_wav(&self) -> Result<Vec<u8>, String> {
-        let v = self.state.lock().unwrap().current.clone().ok_or("还没有渲染好的版本")?;
+        let v = self.state.lock().unwrap().current.clone().ok_or("no rendered version yet")?;
         let (pr, _) = v.grown.wait_timeout_while(v.progress.lock().unwrap(), Duration::from_secs(600), |pr| !pr.done).unwrap();
         if pr.rendered < v.frames {
-            return Err("这一版没有渲染完（失败了，或被新的改动取代），稍后再导出".into());
+            return Err("this version has not finished rendering (it failed or was superseded by a newer change); export later".into());
         }
         Ok(wav16(&pr.pcm[..v.frames * 4], self.settings.sample_rate))
     }
@@ -1426,7 +1426,7 @@ impl Shared {
 fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
     use tiny_http::Method;
     if !host_allowed(&req, port) {
-        respond_json(req, 403, &json!({ "error": "只接受来自本机页面的请求" }));
+        respond_json(req, 403, &json!({ "error": "only requests from the local page are accepted" }));
         return;
     }
     let url = req.url().to_string();
@@ -1447,7 +1447,7 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             let q = query(&url);
             let num = |k: &str| q.get(k).and_then(|v| v.parse::<u64>().ok());
             let (Some(v), Some(from), Some(frames)) = (num("v"), num("from"), num("frames")) else {
-                return respond_json(req, 400, &json!({ "error": "需要 v / from / frames" }));
+                return respond_json(req, 400, &json!({ "error": "v / from / frames are required" }));
             };
             match shared.pcm(v, from as usize, frames as usize) {
                 Some((bytes, total)) => {
@@ -1457,7 +1457,7 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
                         .with_header(header("Cache-Control", "no-store"));
                     let _ = req.respond(r);
                 }
-                None => respond_json(req, 410, &json!({ "error": "版本已过期" })),
+                None => respond_json(req, 410, &json!({ "error": "version expired" })),
             }
         }
         (Method::Get, "/api/export.mid" | "/api/export.wav" | "/api/export.abc" | "/api/export.yue2.abc") => {
@@ -1499,8 +1499,8 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
         (Method::Get, "/api/sound/status") => respond_json(req, 200, &shared.edit_status()),
         (Method::Post, "/api/sound/open") => {
             let r = read_body::<Value>(&mut req).and_then(|b| {
-                let ti = b["track"].as_u64().ok_or("需要 track")? as usize;
-                let (spec, label) = (b["spec"].as_str().ok_or("需要 spec")?, b["label"].as_str().unwrap_or(""));
+                let ti = b["track"].as_u64().ok_or("track is required")? as usize;
+                let (spec, label) = (b["spec"].as_str().ok_or("spec is required")?, b["label"].as_str().unwrap_or(""));
                 if spec.starts_with("plugin:") {
                     shared.edit_open(ti, spec, label, b["fresh"].as_bool().unwrap_or(false))
                 } else {
@@ -1522,8 +1522,8 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
         }
         (Method::Post, "/api/sound/preset") => {
             let r = read_body::<Value>(&mut req).and_then(|b| {
-                let ti = b["track"].as_u64().ok_or("需要 track")? as usize;
-                shared.preset_use(ti, b["spec"].as_str().ok_or("需要 spec")?, b["file"].as_str().ok_or("需要 file")?)
+                let ti = b["track"].as_u64().ok_or("track is required")? as usize;
+                shared.preset_use(ti, b["spec"].as_str().ok_or("spec is required")?, b["file"].as_str().ok_or("file is required")?)
             });
             match r {
                 Ok(how) => respond_json(req, 200, &json!({ "ok": true, "how": how })),
@@ -1544,7 +1544,7 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             let mut body = Vec::new();
             let limit = 256u64 << 20;
             if std::io::Read::read_to_end(&mut std::io::Read::take(req.as_reader(), limit + 1), &mut body).is_err() || body.len() as u64 > limit {
-                return respond_json(req, 413, &json!({ "error": "录音太大或读取失败" }));
+                return respond_json(req, 413, &json!({ "error": "recording too large or failed to read" }));
             }
             match shared.record(&track, start, &body) {
                 Ok(t) => respond_json(req, 200, &json!({ "ok": true, "take": t })),
@@ -1552,7 +1552,7 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             }
         }
         (Method::Post, "/api/transpose") => {
-            let r = read_body::<Value>(&mut req).and_then(|b| b.get("semitones").and_then(Value::as_i64).ok_or_else(|| "要 semitones".to_string())).and_then(|n| shared.set_transpose(n));
+            let r = read_body::<Value>(&mut req).and_then(|b| b.get("semitones").and_then(Value::as_i64).ok_or_else(|| "semitones is required".to_string())).and_then(|n| shared.set_transpose(n));
             match r {
                 Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
@@ -1608,7 +1608,7 @@ fn percent_decode(s: &str) -> String {
 pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device: bool) -> Result<()> {
     let path = PathBuf::from(path);
     if !path.is_file() {
-        bail!("找不到工程文件: {}", path.display());
+        bail!("project file not found: {}", path.display());
     }
     let cache = Arc::new(Mutex::new(RenderCache::new()));
     #[cfg(feature = "device")]
@@ -1618,7 +1618,7 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
     };
     #[cfg(not(feature = "device"))]
     if device {
-        bail!("这个 muser 构建时没有启用 device 特性，不能用声卡播放");
+        bail!("this muser was built without the device feature, so sound card playback is unavailable");
     }
     let shared = Arc::new(Shared {
         edit: Mutex::new(None),
@@ -1656,13 +1656,13 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
         std::thread::spawn(move || s.render_loop());
     }
     shared.reload();
-    println!("muser view 已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
+    println!("muser view started: {url}  (local only, no auth; Ctrl+C to quit)");
     #[cfg(feature = "device")]
     if let Some(p) = &shared.player {
         let s = p.status();
-        println!("声卡播放：{}（{} Hz）。页面上的播放、推子都作用于本机声卡。", s.device, s.sample_rate);
+        println!("sound card playback: {} ({} Hz). Play and the faders on the page act on the local sound card.", s.device, s.sample_rate);
     }
-    println!("工程文件变化会自动重新渲染；页面上的改动点「保存」写回工程文件。");
+    println!("Changes to the project file re-render automatically; click Save on the page to write its edits back to the project file.");
     if open {
         crate::web::open_browser(&url);
     }
@@ -1674,7 +1674,7 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
                 let now = mtime(&watcher.path);
                 let changed = now.is_some() && now != watcher.state.lock().unwrap().file_mtime;
                 if changed {
-                    eprintln!("[view] 工程文件已变化，重新渲染");
+                    eprintln!("[view] the project file changed; re-rendering");
                     watcher.reload();
                 }
             }
@@ -1718,7 +1718,7 @@ mod tests {
         let bad = vec![Change { node: "tracks[9]".into(), gain_db: Some(0.0), muted: None, bypass: None }];
         assert!(apply_to_project(&mut p, &bad).is_err());
         let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None, bypass: None }];
-        assert!(apply_to_project(&mut p, &bad).unwrap_err().contains("超出范围"));
+        assert!(apply_to_project(&mut p, &bad).unwrap_err().contains("out of range"));
     }
 
     #[test]
@@ -1754,7 +1754,7 @@ mod tests {
         assert!(v["tracks"][0]["effects"][1].get("bypass").is_none(), "关掉旁通时删掉字段");
         assert_eq!(v["master_effects"][0]["bypass"], json!(true));
         let wrong = vec![Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: Some(vec![true]) }];
-        assert!(apply_to_project(&mut p, &wrong).unwrap_err().contains("2 项"));
+        assert!(apply_to_project(&mut p, &wrong).unwrap_err().contains("2 entries"));
     }
 
     #[test]

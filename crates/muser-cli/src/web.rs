@@ -13,14 +13,14 @@ pub(crate) fn bind(port: u16) -> anyhow::Result<(tiny_http::Server, u16)> {
         match tiny_http::Server::http(("127.0.0.1", p)) {
             Ok(s) => {
                 if p != port {
-                    println!("端口 {port} 被占用，改用 {p}");
+                    println!("port {port} is in use, using {p}");
                 }
                 return Ok((s, p));
             }
             Err(e) => last = Some(e),
         }
     }
-    Err(anyhow::anyhow!("无法监听 127.0.0.1:{port}（以及后面 20 个端口）: {}", last.map(|e| e.to_string()).unwrap_or_default()))
+    Err(anyhow::anyhow!("cannot listen on 127.0.0.1:{port} (or the next 20 ports): {}", last.map(|e| e.to_string()).unwrap_or_default()))
 }
 
 pub(crate) fn header(name: &str, value: &str) -> tiny_http::Header {
@@ -52,11 +52,11 @@ pub(crate) fn query(url: &str) -> BTreeMap<String, String> {
 
 pub(crate) fn read_body<T: serde::de::DeserializeOwned>(req: &mut tiny_http::Request) -> Result<T, String> {
     let mut body = String::new();
-    std::io::Read::read_to_string(&mut req.as_reader(), &mut body).map_err(|_| "读取请求失败".to_string())?;
+    std::io::Read::read_to_string(&mut req.as_reader(), &mut body).map_err(|_| "failed to read the request".to_string())?;
     if body.trim().is_empty() {
         body = "{}".into();
     }
-    serde_json::from_str(&body).map_err(|e| format!("请求格式错误: {e}"))
+    serde_json::from_str(&body).map_err(|e| format!("malformed request: {e}"))
 }
 
 /// 用系统浏览器打开 `url`；打不开时提示手动打开。
@@ -71,6 +71,6 @@ pub(crate) fn open_browser(url: &str) {
         ("xdg-open", std::process::Command::new("xdg-open"))
     };
     if let Err(e) = cmd.arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
-        eprintln!("[muser] 无法打开浏览器（{opener}: {e}），请手动打开 {url}");
+        eprintln!("[muser] cannot open a browser ({opener}: {e}); open {url} manually");
     }
 }

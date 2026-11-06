@@ -118,35 +118,35 @@ impl Tuning {
     pub fn validate(&self) -> Result<(), String> {
         let scale = self.scale.trim().to_ascii_lowercase();
         if !SCALES.contains(&scale.as_str()) {
-            return Err(format!("tuning.scale = '{}' 无效，可选: {}", self.scale, SCALES.join(" / ")));
+            return Err(format!("tuning.scale = '{}' is invalid; choose one of: {}", self.scale, SCALES.join(" / ")));
         }
         if pitch_class(&self.key).is_none() {
-            return Err(format!("tuning.key = '{}' 不是音名（如 C、D、Bb、F#）", self.key));
+            return Err(format!("tuning.key = '{}' is not a note name (e.g. C, D, Bb, F#)", self.key));
         }
         if !(1..=144).contains(&self.divisions) {
-            return Err(format!("tuning.divisions = {} 超出范围 [1, 144]", self.divisions));
+            return Err(format!("tuning.divisions = {} is out of range [1, 144]", self.divisions));
         }
         if !(self.period_cents.is_finite() && self.period_cents > 0.0 && self.period_cents <= 4800.0) {
-            return Err(format!("tuning.period_cents = {} 超出范围 (0, 4800]", self.period_cents));
+            return Err(format!("tuning.period_cents = {} is out of range (0, 4800]", self.period_cents));
         }
         if !(self.reference_hz.is_finite() && (20.0..=2000.0).contains(&self.reference_hz)) {
-            return Err(format!("tuning.reference_hz = {} 超出范围 [20, 2000]", self.reference_hz));
+            return Err(format!("tuning.reference_hz = {} is out of range [20, 2000]", self.reference_hz));
         }
         if self.reference_key > 127 {
-            return Err(format!("tuning.reference_key = {} 超出范围 [0, 127]", self.reference_key));
+            return Err(format!("tuning.reference_key = {} is out of range [0, 127]", self.reference_key));
         }
         if !(self.detune_cents.is_finite() && self.detune_cents.abs() <= 1200.0) {
-            return Err(format!("tuning.detune_cents = {} 超出范围 [-1200, 1200]", self.detune_cents));
+            return Err(format!("tuning.detune_cents = {} is out of range [-1200, 1200]", self.detune_cents));
         }
         match scale.as_str() {
             "custom" => match &self.deviations {
                 Some(d) if d.len() == 12 && d.iter().all(|x| x.is_finite() && x.abs() <= 1200.0) => {}
-                Some(d) if d.len() != 12 => return Err(format!("tuning.deviations 要 12 个数（从主音起每个半音一个），现在 {} 个", d.len())),
-                Some(_) => return Err("tuning.deviations 的每个数都要在 -1200 到 1200 音分之间".into()),
-                None => return Err("tuning.scale = 'custom' 要写 deviations：12 个音各偏多少音分".into()),
+                Some(d) if d.len() != 12 => return Err(format!("tuning.deviations needs 12 numbers (one per semitone from the tonic), got {}", d.len())),
+                Some(_) => return Err("every tuning.deviations value must be between -1200 and 1200 cents".into()),
+                None => return Err("tuning.scale = 'custom' needs deviations: how many cents each of the 12 notes is offset".into()),
             },
             "scala" if self.scala.as_deref().is_none_or(|s| s.trim().is_empty()) => {
-                return Err("tuning.scale = 'scala' 要写 scala：.scl 文件路径".into());
+                return Err("tuning.scale = 'scala' needs scala: the path to a .scl file".into());
             }
             _ => {}
         }
@@ -181,9 +181,9 @@ mod tests {
         let bad = |j: &str| serde_json::from_str::<Tuning>(j).unwrap().validate().unwrap_err();
         assert!(bad(r#"{ "scale": "nope" }"#).contains("tuning.scale"));
         assert!(bad(r#"{ "scale": "custom" }"#).contains("deviations"));
-        assert!(bad(r#"{ "scale": "custom", "deviations": [0, 1] }"#).contains("12 个数"));
+        assert!(bad(r#"{ "scale": "custom", "deviations": [0, 1] }"#).contains("12 numbers"));
         assert!(bad(r#"{ "scale": "scala" }"#).contains(".scl"));
-        assert!(bad(r#"{ "key": "H" }"#).contains("音名"));
+        assert!(bad(r#"{ "key": "H" }"#).contains("note name"));
         assert!(bad(r#"{ "divisions": 0 }"#).contains("divisions"));
     }
 }

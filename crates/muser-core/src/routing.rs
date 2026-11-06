@@ -110,11 +110,11 @@ pub fn find_node(p: &Project, name: &str) -> Result<Node, String> {
     let bus = p.buses.iter().position(|b| b.name == name);
     let tracks: Vec<usize> = p.tracks.iter().enumerate().filter(|(_, t)| t.name == name).map(|(i, _)| i).collect();
     match (bus, tracks.len()) {
-        (Some(_), n) if n > 0 => Err(format!("名称 '{name}' 同时是总线和音轨名，请改名以免混淆")),
+        (Some(_), n) if n > 0 => Err(format!("the name '{name}' is both a bus and a track; rename one to avoid confusion")),
         (Some(b), _) => Ok(Node::Bus(b)),
         (None, 1) => Ok(Node::Track(tracks[0])),
-        (None, 0) => Err(format!("找不到名为 '{name}' 的音轨或总线")),
-        (None, _) => Err(format!("有 {} 条音轨都叫 '{name}'，被引用的音轨名必须唯一", tracks.len())),
+        (None, 0) => Err(format!("no track or bus named '{name}'")),
+        (None, _) => Err(format!("{} tracks are named '{name}'; a referenced track name must be unique", tracks.len())),
     }
 }
 
@@ -129,7 +129,7 @@ fn bus_index(p: &Project, name: &str, at: &str) -> Result<Option<usize>, String>
         .map(Some)
         .ok_or_else(|| {
             format!(
-                "{at}: 没有名为 '{name}' 的总线（可用: master{}）",
+                "{at}: no bus named '{name}' (available: master{})",
                 p.buses.iter().map(|b| format!(", {}", b.name)).collect::<String>()
             )
         })
@@ -141,16 +141,16 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
     for (i, b) in p.buses.iter().enumerate() {
         let n = b.name.trim();
         if n.is_empty() || n == MASTER || n.contains('.') {
-            return Err(format!("buses[{i}].name '{}' 无效：不能为空、不能叫 master、不能含 '.'", b.name));
+            return Err(format!("buses[{i}].name '{}' is invalid: it cannot be empty, be named master, or contain '.'", b.name));
         }
         if !seen.insert(n) {
-            return Err(format!("总线名 '{n}' 重复"));
+            return Err(format!("duplicate bus name '{n}'"));
         }
         if !(-1.0..=1.0).contains(&b.pan) {
-            return Err(format!("buses[{i}].pan = {} 超出范围 [-1, 1]", b.pan));
+            return Err(format!("buses[{i}].pan = {} is out of range [-1, 1]", b.pan));
         }
         if !(LEVEL_RANGE.0..=LEVEL_RANGE.1).contains(&b.gain_db) {
-            return Err(format!("buses[{i}].gain_db = {} 超出范围 [{}, {}]", b.gain_db, LEVEL_RANGE.0, LEVEL_RANGE.1));
+            return Err(format!("buses[{i}].gain_db = {} is out of range [{}, {}]", b.gain_db, LEVEL_RANGE.0, LEVEL_RANGE.1));
         }
     }
 
@@ -163,9 +163,9 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
         edges.push(Edge { from, to, send: None, level_db: 0.0 });
         for (name, db) in sends {
             let to = bus_index(p, name, &format!("{at}.sends"))?
-                .ok_or_else(|| format!("{at}.sends: 不能发送到 master（用 output）"))?;
+                .ok_or_else(|| format!("{at}.sends: cannot send to master (use output)"))?;
             if !(LEVEL_RANGE.0..=LEVEL_RANGE.1).contains(db) || !db.is_finite() {
-                return Err(format!("{at}.sends.{name} = {db} 超出范围 [{}, {}] dB", LEVEL_RANGE.0, LEVEL_RANGE.1));
+                return Err(format!("{at}.sends.{name} = {db} is out of range [{}, {}] dB", LEVEL_RANGE.0, LEVEL_RANGE.1));
             }
             edges.push(Edge { from, to: Some(to), send: Some(name.clone()), level_db: *db });
         }
@@ -179,7 +179,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
     }
     for (i, b) in p.buses.iter().enumerate() {
         if edges.iter().any(|e| e.from == Node::Bus(i) && e.to == Some(i)) {
-            return Err(format!("buses[{i}] '{}' 不能输出或发送到自己", b.name));
+            return Err(format!("buses[{i}] '{}' cannot output or send to itself", b.name));
         }
     }
 
@@ -189,7 +189,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
             if let Some(name) = e.effect.sidechain() {
                 let key = find_node(p, name).map_err(|m| format!("{at}.effects[{ei}].sidechain: {m}"))?;
                 if key == node {
-                    return Err(format!("{at}.effects[{ei}].sidechain: 不能用自己触发自己"));
+                    return Err(format!("{at}.effects[{ei}].sidechain: cannot sidechain from itself"));
                 }
                 sidechains.push(Sidechain { node, effect: ei, key });
             }
@@ -215,7 +215,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
         for (k, o) in list.iter().enumerate() {
             if let Some(bus) = o.get("bus").and_then(|b| b.as_str()) {
                 if !t.instrument.trim().starts_with("plugin:") {
-                    return Err(format!("tracks[{i}].instrument_params.@outputs 只用于插件乐器（plugin:）"));
+                    return Err(format!("tracks[{i}].instrument_params.@outputs is only for plugin instruments (plugin:)"));
                 }
                 let to = bus_index(p, bus, &format!("tracks[{i}].instrument_params.@outputs[{k}].bus"))?;
                 taps.push(Tap { track: i, index, to });
@@ -244,11 +244,11 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
             .collect();
         if ready.is_empty() {
             let name = |n: &Node| match n {
-                Node::Track(i) => format!("音轨 '{}'", p.tracks[*i].name),
-                Node::Bus(i) => format!("总线 '{}'", p.buses[*i].name),
+                Node::Track(i) => format!("track '{}'", p.tracks[*i].name),
+                Node::Bus(i) => format!("bus '{}'", p.buses[*i].name),
             };
             let stuck: Vec<String> = nodes.iter().filter(|n| !done.contains(*n)).map(name).collect();
-            return Err(format!("路由有环（输出/发送/侧链互相依赖）：{}", stuck.join("、")));
+            return Err(format!("routing has a cycle (output/send/sidechain dependencies): {}", stuck.join(", ")));
         }
         for n in ready {
             done.insert(n);
@@ -271,8 +271,8 @@ mod tests {
         assert_eq!(p.taps, vec![Tap { track: 0, index: 0, to: Some(0) }]);
         let at = |n: Node| p.order.iter().position(|x| *x == n).unwrap();
         assert!(at(Node::Track(0)) < at(Node::Bus(0)));
-        assert!(plan(&pr("nope", "plugin:/x.clap")).unwrap_err().contains("没有名为 'nope' 的总线"));
-        assert!(plan(&pr("kick", "drums.808")).unwrap_err().contains("只用于插件乐器"));
+        assert!(plan(&pr("nope", "plugin:/x.clap")).unwrap_err().contains("no bus named 'nope'"));
+        assert!(plan(&pr("kick", "drums.808")).unwrap_err().contains("only for plugin instruments"));
     }
 
     fn project(json: &str) -> Project {
@@ -300,18 +300,18 @@ mod tests {
     #[test]
     fn plan_errors() {
         let err = |j: &str| plan(&project(j)).unwrap_err();
-        assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "a", "output": "b" }, { "name": "b", "output": "a" } ] }"#).contains("环"));
+        assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "a", "output": "b" }, { "name": "b", "output": "a" } ] }"#).contains("cycle"));
         assert!(err(r#"{ "tempo": 120, "tracks": [ { "instrument": "x", "output": "nope" } ] }"#).contains("nope"));
         assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "master" } ] }"#).contains("master"));
-        assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "a" }, { "name": "a" } ] }"#).contains("重复"));
+        assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "a" }, { "name": "a" } ] }"#).contains("duplicate"));
         assert!(err(r#"{ "tempo": 120, "tracks": [ { "instrument": "x", "sends": { "master": -6 } } ] }"#).contains("master"));
         assert!(err(r#"{ "tempo": 120, "tracks": [ { "name": "k", "instrument": "x" }, { "name": "k", "instrument": "x" },
-            { "instrument": "x", "effects": [ { "type": "compressor", "sidechain": "k" } ] } ] }"#).contains("唯一"));
+            { "instrument": "x", "effects": [ { "type": "compressor", "sidechain": "k" } ] } ] }"#).contains("unique"));
         // 侧链与输出形成环：t 输出到 a，a 的压缩器由 t 触发——合法（t 先于 a）。
         plan(&project(r#"{ "tempo": 120, "buses": [ { "name": "a", "effects": [ { "type": "compressor", "sidechain": "t" } ] } ],
             "tracks": [ { "name": "t", "instrument": "x", "output": "a" } ] }"#)).unwrap();
         // 真正的环：t 的压缩器由总线 a 触发，而 t 输出到 a。
         assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "a" } ],
-            "tracks": [ { "name": "t", "instrument": "x", "output": "a", "effects": [ { "type": "compressor", "sidechain": "a" } ] } ] }"#).contains("环"));
+            "tracks": [ { "name": "t", "instrument": "x", "output": "a", "effects": [ { "type": "compressor", "sidechain": "a" } ] } ] }"#).contains("cycle"));
     }
 }

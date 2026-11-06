@@ -16,30 +16,30 @@ pub fn find_port(port: Option<u16>) -> Result<u16, String> {
     if let Some(p) = port {
         return Ok(p);
     }
-    let text = std::fs::read_to_string(port_file()).map_err(|_| "没有正在进行的现场演奏：先 muser live start <模板>".to_string())?;
+    let text = std::fs::read_to_string(port_file()).map_err(|_| "no live session in progress: run muser live start <template> first".to_string())?;
     let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    v["port"].as_u64().map(|p| p as u16).ok_or_else(|| format!("{} 写坏了", port_file().display()))
+    v["port"].as_u64().map(|p| p as u16).ok_or_else(|| format!("{} is corrupted", port_file().display()))
 }
 
 /// 发一个请求，返回 JSON；服务报错时返回它的错误信息。`wait` 最多 30 秒，读超时留足余量。
 pub fn request(port: Option<u16>, method: &str, path: &str, body: Option<&str>) -> Result<Value, String> {
     use std::io::{Read, Write};
     let port = find_port(port)?;
-    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|_| format!("连不上 muser live（127.0.0.1:{port}）：它还在跑吗？"))?;
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|_| format!("cannot connect to muser live (127.0.0.1:{port}): is it still running?"))?;
     s.set_read_timeout(Some(Duration::from_secs(45))).map_err(|e| e.to_string())?;
     let body = body.unwrap_or("");
     write!(s, "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
         .map_err(|e| e.to_string())?;
     let mut out = String::new();
     s.read_to_string(&mut out).map_err(|e| e.to_string())?;
-    let (head, rest) = out.split_once("\r\n\r\n").ok_or("muser live 的回应不完整")?;
+    let (head, rest) = out.split_once("\r\n\r\n").ok_or("incomplete response from muser live")?;
     let code: u16 = head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
     // 分块传输时，JSON 在块长度行之后：取第一个 { 到最后一个 }。
     let text = rest.find('{').map_or(rest, |i| &rest[i..]);
     let text = text.rfind('}').map_or(text, |j| &text[..=j]);
-    let v: Value = serde_json::from_str(text).map_err(|_| format!("muser live 的回应不是 JSON：{rest}"))?;
+    let v: Value = serde_json::from_str(text).map_err(|_| format!("the muser live response is not JSON: {rest}"))?;
     if code >= 400 {
-        return Err(v["error"].as_str().unwrap_or("muser live 报错").to_string());
+        return Err(v["error"].as_str().unwrap_or("muser live reported an error").to_string());
     }
     Ok(v)
 }
@@ -49,7 +49,7 @@ pub fn request(port: Option<u16>, method: &str, path: &str, body: Option<&str>) 
 /// 输出写进临时目录的 `muser-live.log`。已经有一场在进行时报错。
 pub fn spawn_detached(muser: &std::path::Path, args: &[String]) -> Result<Value, String> {
     if request(None, "GET", "/api/status", None).is_ok() {
-        return Err("已经有一场现场演奏在进行：先 muser live stop，或直接 send 接着写".into());
+        return Err("a live session is already running: run muser live stop first, or just send to keep writing".into());
     }
     let log = std::env::temp_dir().join("muser-live.log");
     let out = std::fs::File::create(&log).map_err(|e| e.to_string())?;
@@ -75,7 +75,7 @@ pub fn spawn_detached(muser: &std::path::Path, args: &[String]) -> Result<Value,
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
     let _ = std::fs::remove_file(port_file());
-    let mut child = cmd.spawn().map_err(|e| format!("启动 muser live 失败: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| format!("failed to start muser live: {e}"))?;
     for _ in 0..100 {
         std::thread::sleep(Duration::from_millis(100));
         if let Ok(v) = request(None, "GET", "/api/status", None) {
@@ -85,5 +85,5 @@ pub fn spawn_detached(muser: &std::path::Path, args: &[String]) -> Result<Value,
             break;
         }
     }
-    Err(format!("muser live 没起来：{}", std::fs::read_to_string(&log).unwrap_or_default().trim()))
+    Err(format!("muser live did not start: {}", std::fs::read_to_string(&log).unwrap_or_default().trim()))
 }

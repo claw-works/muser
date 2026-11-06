@@ -107,18 +107,18 @@ pub fn write_state_file(path: &std::path::Path, header: &StateHeader, data: &[u8
     out.push(b'\n');
     out.extend_from_slice(data);
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-        std::fs::create_dir_all(dir).map_err(|e| format!("创建 {} 失败: {e}", dir.display()))?;
+        std::fs::create_dir_all(dir).map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
     }
-    std::fs::write(path, out).map_err(|e| format!("写入 {} 失败: {e}", path.display()))
+    std::fs::write(path, out).map_err(|e| format!("failed to write {}: {e}", path.display()))
 }
 
 pub fn read_state_file(path: &std::path::Path) -> Result<(StateHeader, Vec<u8>), String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("读取状态文件 '{}' 失败: {e}", path.display()))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("failed to read state file '{}': {e}", path.display()))?;
     let rest = bytes
         .strip_prefix(STATE_MAGIC)
-        .ok_or_else(|| format!("'{}' 不是 muser 状态文件（用 `muser plugin save-state` 生成）", path.display()))?;
-    let nl = rest.iter().position(|b| *b == b'\n').ok_or("状态文件头损坏")?;
-    let header: StateHeader = serde_json::from_slice(&rest[..nl]).map_err(|e| format!("状态文件头损坏: {e}"))?;
+        .ok_or_else(|| format!("'{}' is not a muser state file (generate one with `muser plugin save-state`)", path.display()))?;
+    let nl = rest.iter().position(|b| *b == b'\n').ok_or("state file header is corrupt")?;
+    let header: StateHeader = serde_json::from_slice(&rest[..nl]).map_err(|e| format!("state file header is corrupt: {e}"))?;
     Ok((header, rest[nl + 1..].to_vec()))
 }
 
@@ -263,7 +263,7 @@ pub use stub::*;
 mod stub {
     use super::*;
 
-    pub const HOST_DISABLED: &str = "这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它";
+    pub const HOST_DISABLED: &str = "This muser build has no plugin host enabled (the `host` feature); release and default builds include it, so do not remove it with --no-default-features";
 
     pub fn info(_spec: &str) -> Result<PluginInfo, String> {
         Err(HOST_DISABLED.into())
@@ -343,59 +343,59 @@ mod imp {
     /// 二选一；`bus` 写了就直接送到那条总线（不经过本轨的效果器和推子），没写混进本轨。没列出的不进混音。
     /// `aux` 是每个辅助总线的声道数（主输出之后按顺序）。
     pub fn parse_outputs(v: &Value, channels: usize, aux: &[usize]) -> Result<Vec<OutputMix>, String> {
-        let list = v.as_array().ok_or("@outputs 应为数组：[{\"channel\": 1, \"gain_db\": 0, \"pan\": 0}, …]")?;
+        let list = v.as_array().ok_or("@outputs must be an array: [{\"channel\": 1, \"gain_db\": 0, \"pan\": 0}, …]")?;
         if list.is_empty() {
-            return Err("@outputs 不能为空".into());
+            return Err("@outputs must not be empty".into());
         }
         let mut out: Vec<OutputMix> = Vec::new();
         let mut taps = 0;
         for (i, item) in list.iter().enumerate() {
-            let o = item.as_object().ok_or_else(|| format!("@outputs[{i}] 应为对象"))?;
+            let o = item.as_object().ok_or_else(|| format!("@outputs[{i}] must be an object"))?;
             if let Some(k) = o.keys().find(|k| !["channel", "aux", "gain_db", "pan", "invert", "bus"].contains(&k.as_str())) {
-                return Err(format!("@outputs[{i}] 有未知字段 '{k}'，可用: channel / aux / gain_db / pan / invert / bus"));
+                return Err(format!("@outputs[{i}] has unknown field '{k}', available: channel / aux / gain_db / pan / invert / bus"));
             }
-            let index = |key: &str| o.get(key).map(|x| x.as_u64().filter(|&n| n >= 1).map(|n| n as usize).ok_or_else(|| format!("@outputs[{i}].{key} 应为从 1 开始的整数"))).transpose();
+            let index = |key: &str| o.get(key).map(|x| x.as_u64().filter(|&n| n >= 1).map(|n| n as usize).ok_or_else(|| format!("@outputs[{i}].{key} must be an integer starting at 1"))).transpose();
             let (channel, aux_bus) = match (index("channel")?, index("aux")?) {
                 (Some(c), None) => {
                     if c > channels {
-                        return Err(format!("@outputs[{i}].channel = {c} 超出范围：这个插件的主输出有 {channels} 路"));
+                        return Err(format!("@outputs[{i}].channel = {c} is out of range: this plugin's main output has {channels} channels"));
                     }
                     if out.iter().any(|m| m.aux.is_none() && m.channel == c - 1) {
-                        return Err(format!("@outputs 里声道 {c} 重复"));
+                        return Err(format!("@outputs lists channel {c} more than once"));
                     }
                     (c - 1, None)
                 }
                 (None, Some(a)) => {
                     if a > aux.len() {
-                        return Err(format!("@outputs[{i}].aux = {a} 超出范围：这个插件有 {} 个辅助输出（`muser plugin info` 的\"音频输出\"）", aux.len()));
+                        return Err(format!("@outputs[{i}].aux = {a} is out of range: this plugin has {} auxiliary outputs (see \"Audio outputs\" in `muser plugin info`)", aux.len()));
                     }
                     if out.iter().any(|m| m.aux == Some(a - 1)) {
-                        return Err(format!("@outputs 里辅助输出 {a} 重复"));
+                        return Err(format!("@outputs lists auxiliary output {a} more than once"));
                     }
                     (0, Some(a - 1))
                 }
-                (Some(_), Some(_)) => return Err(format!("@outputs[{i}] 的 channel 与 aux 只能写一个")),
-                (None, None) => return Err(format!("@outputs[{i}] 要写 channel（主输出第几路）或 aux（第几个辅助输出）")),
+                (Some(_), Some(_)) => return Err(format!("@outputs[{i}]: write only one of channel and aux")),
+                (None, None) => return Err(format!("@outputs[{i}] needs channel (which main output channel) or aux (which auxiliary output)")),
             };
             let num = |key: &str, default: f64| -> Result<f64, String> {
                 match o.get(key) {
                     None => Ok(default),
-                    Some(x) => x.as_f64().filter(|x| x.is_finite()).ok_or_else(|| format!("@outputs[{i}].{key} 应为数字")),
+                    Some(x) => x.as_f64().filter(|x| x.is_finite()).ok_or_else(|| format!("@outputs[{i}].{key} must be a number")),
                 }
             };
             let gain_db = num("gain_db", 0.0)?;
             let pan = num("pan", 0.0)?;
             if !(-1.0..=1.0).contains(&pan) {
-                return Err(format!("@outputs[{i}].pan = {pan} 应在 -1（左）到 1（右）之间"));
+                return Err(format!("@outputs[{i}].pan = {pan} must be between -1 (left) and 1 (right)"));
             }
             let invert = match o.get("invert") {
                 None => false,
-                Some(x) => x.as_bool().ok_or_else(|| format!("@outputs[{i}].invert 应为 true/false"))?,
+                Some(x) => x.as_bool().ok_or_else(|| format!("@outputs[{i}].invert must be true/false"))?,
             };
             let tap = match o.get("bus") {
                 None => None,
                 Some(x) => {
-                    x.as_str().filter(|b| !b.trim().is_empty()).ok_or_else(|| format!("@outputs[{i}].bus 应为总线名"))?;
+                    x.as_str().filter(|b| !b.trim().is_empty()).ok_or_else(|| format!("@outputs[{i}].bus must be a bus name"))?;
                     taps += 1;
                     Some(taps - 1)
                 }
@@ -415,7 +415,7 @@ mod imp {
 
     /// 解析 `@warmup`：0–60 秒。
     pub fn parse_warmup(v: &Value) -> Result<f64, String> {
-        v.as_f64().filter(|x| (0.0..=60.0).contains(x)).ok_or_else(|| format!("@warmup 应为 0–60 之间的秒数，实际 {v}"))
+        v.as_f64().filter(|x| (0.0..=60.0).contains(x)).ok_or_else(|| format!("@warmup must be a number of seconds between 0 and 60, got {v}"))
     }
 
     fn kind_name(k: Kind) -> &'static str {
@@ -446,33 +446,33 @@ mod imp {
         const VST3: &[u8] = b"MBVST3\0\x01";
         let (prefix_len, comp_len) = if data.starts_with(VST3) {
             let at = VST3.len() + 16;
-            let n = data.get(at..at + 8).ok_or("VST3 状态过短")?;
+            let n = data.get(at..at + 8).ok_or("VST3 state is too short")?;
             (at + 8, Some(u64::from_le_bytes(n.try_into().unwrap()) as usize))
         } else {
             (0, None)
         };
         let block = &data[prefix_len..];
         if !block.starts_with(b"VC2!") || block.len() < 8 {
-            return Err("插件状态不是 JUCE XML 格式（只支持 CLAP / VST3 版）".into());
+            return Err("plugin state is not in JUCE XML format (only the CLAP / VST3 builds are supported)".into());
         }
         let n = u32::from_le_bytes(block[4..8].try_into().unwrap()) as usize;
-        let xml_bytes = block.get(8..8 + n).ok_or("状态长度不符")?;
-        let xml = std::str::from_utf8(xml_bytes).map_err(|_| "状态里的 XML 不是 UTF-8")?;
+        let xml_bytes = block.get(8..8 + n).ok_or("state length mismatch")?;
+        let xml = std::str::from_utf8(xml_bytes).map_err(|_| "the XML in the state is not UTF-8")?;
         let xml = xml.trim_end_matches('\0');
         // 根元素：跳过 <?xml ...?> 声明。
         let root = xml
             .match_indices('<')
             .map(|(i, _)| i)
             .find(|&i| !xml[i..].starts_with("<?") && !xml[i..].starts_with("<!"))
-            .ok_or("XML 没有根元素")?;
-        let end = root + xml[root..].find('>').ok_or("XML 根元素未结束")?;
+            .ok_or("XML has no root element")?;
+        let end = root + xml[root..].find('>').ok_or("XML root element is not closed")?;
         let tag = &xml[root..end];
         let escaped = value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
         let needle = format!(" {attr}=\"");
         let new_tag = match tag.find(&needle) {
             Some(i) => {
                 let vstart = i + needle.len();
-                let vend = vstart + tag[vstart..].find('"').ok_or("属性值未结束")?;
+                let vend = vstart + tag[vstart..].find('"').ok_or("attribute value is not closed")?;
                 format!("{}{}{}", &tag[..vstart], escaped, &tag[vend..])
             }
             None => {
@@ -493,7 +493,7 @@ mod imp {
         match comp_len {
             Some(cl) => {
                 if cl < old_block_len {
-                    return Err("VST3 组件状态长度不符".into());
+                    return Err("VST3 component state length mismatch".into());
                 }
                 let new_cl = cl - old_block_len + new_block.len();
                 out.truncate(prefix_len - 8);
@@ -525,7 +525,7 @@ mod imp {
         #[cfg(unix)]
         crate::plugin_log::install();
         // SAFETY: 加载会执行第三方代码；路径由用户在工程/命令中给出，视为可信的本机插件。
-        let library = unsafe { Library::load(path) }.map_err(|e| format!("加载插件 '{path}' 失败: {e:?}"))?;
+        let library = unsafe { Library::load(path) }.map_err(|e| format!("failed to load plugin '{path}': {e:?}"))?;
         map.insert(key, library.clone());
         Ok(library)
     }
@@ -571,7 +571,7 @@ mod imp {
             let expanded = super::expand_home(path);
             let path: &str = &expanded;
             if !std::path::Path::new(path).exists() {
-                return Err(format!("找不到插件 '{path}'（用 `muser plugin scan` 查看本机插件）"));
+                return Err(format!("cannot find plugin '{path}' (use `muser plugin scan` to list plugins on this machine)"));
             }
             super::LOADED.store(true, std::sync::atomic::Ordering::Relaxed);
             let library = load_library(path)?;
@@ -581,15 +581,15 @@ mod imp {
                     .plugins()
                     .first()
                     .map(|p| p.id.clone())
-                    .ok_or_else(|| format!("'{path}' 里没有任何插件"))?,
+                    .ok_or_else(|| format!("'{path}' contains no plugins"))?,
             };
             if !library.plugins().iter().any(|p| p.id == plugin_id) {
                 let ids: Vec<String> = library.plugins().iter().map(|p| format!("{} ({})", p.id, p.name)).collect();
-                return Err(format!("'{path}' 里没有 id 为 '{plugin_id}' 的插件，可用: {}", ids.join(", ")));
+                return Err(format!("'{path}' has no plugin with id '{plugin_id}', available: {}", ids.join(", ")));
             }
             let plugin = library
                 .create(&plugin_id)
-                .map_err(|e| format!("创建插件 '{plugin_id}' 失败: {e:?}"))?;
+                .map_err(|e| format!("failed to create plugin '{plugin_id}': {e:?}"))?;
             let params = plugin.params();
             let profile = crate::profile::find(&plugin_id);
             if let Some(pr) = &profile {
@@ -597,7 +597,7 @@ mod imp {
                 let installed = &plugin.entry().version;
                 if !tested.is_empty() && tested != installed {
                     eprintln!(
-                        "[muser] 提示: 画像 '{}' 验证于版本 {tested}，已安装 {installed}，参数可能有变化",
+                        "[muser] note: profile '{}' was verified against version {tested}, installed is {installed}; parameters may have changed",
                         pr.profile.plugin.name
                     );
                 }
@@ -620,7 +620,7 @@ mod imp {
                 1 => return Ok(exact[0]),
                 n if n > 1 => {
                     return Err(format!(
-                        "参数名 '{k}' 不唯一，请改用数字 id: {}",
+                        "parameter name '{k}' is not unique, use the numeric id instead: {}",
                         exact.iter().map(|p| p.id.0.to_string()).collect::<Vec<_>>().join(", ")
                     ))
                 }
@@ -653,9 +653,9 @@ mod imp {
                     .collect();
             }
             Err(if near.is_empty() {
-                format!("插件没有参数 '{k}'（用 `muser plugin params <插件> --filter <关键词>` 搜索）")
+                format!("plugin has no parameter '{k}' (search with `muser plugin params <plugin> --filter <keyword>`)")
             } else {
-                format!("插件没有参数 '{k}'，相近的: {}", near.join(" | "))
+                format!("plugin has no parameter '{k}', similar: {}", near.join(" | "))
             })
         }
 
@@ -730,7 +730,7 @@ mod imp {
                 Value::String(s) => self.text_value(p, s).ok_or_else(|| {
                     let example = self.plugin.param_to_text(p.id, p.default).unwrap_or_default();
                     format!(
-                        "插件无法解析 '{s}'（参数 '{}'，文字示例: \"{example}\"；用 `muser plugin values` 查看可写的文字，也可以写 {}–{} 的数字）",
+                        "plugin cannot parse '{s}' (parameter '{}', example text: \"{example}\"; use `muser plugin values` to see accepted text, or write a number {}–{})",
                         p.name, p.min, p.max
                     )
                 })?,
@@ -741,10 +741,10 @@ mod imp {
                         p.min
                     }
                 }
-                _ => v.as_f64().ok_or_else(|| format!("应为数字、文字或 true/false，实际 {v}"))?,
+                _ => v.as_f64().ok_or_else(|| format!("expected a number, text or true/false, got {v}"))?,
             };
             if !x.is_finite() || x < p.min - 1e-9 || x > p.max + 1e-9 {
-                return Err(format!("{x} 超出参数 '{}' 的范围 [{}, {}]", p.name, p.min, p.max));
+                return Err(format!("{x} is outside the range of parameter '{}' [{}, {}]", p.name, p.min, p.max));
             }
             Ok(x.clamp(p.min, p.max))
         }
@@ -758,7 +758,7 @@ mod imp {
                 if !["@state", "@setup", "@preset", "@label", "@outputs", "@warmup"].contains(&k.as_str()) && !extra.contains(&k.as_str()) {
                     let mut all = vec!["@state", "@setup", "@preset", "@label", "@outputs", "@warmup"];
                     all.extend_from_slice(extra);
-                    return Err(format!("未知的保留键 '{k}'，可用: {}", all.join(" / ")));
+                    return Err(format!("unknown reserved key '{k}', available: {}", all.join(" / ")));
                 }
             }
             if let Some(v) = params.get("@outputs") {
@@ -768,24 +768,24 @@ mod imp {
                 self.warmup = parse_warmup(v)?;
             }
             if let Some(v) = params.get("@state") {
-                let path = v.as_str().ok_or("@state 应为状态文件路径")?;
+                let path = v.as_str().ok_or("@state must be a state file path")?;
                 self.load_state_file(std::path::Path::new(&*super::expand_home(path)))?;
             }
             let use_setup = match params.get("@setup") {
                 None => true,
                 Some(Value::Bool(b)) => *b,
-                Some(v) => return Err(format!("@setup 应为 true/false，实际 {v}")),
+                Some(v) => return Err(format!("@setup must be true/false, got {v}")),
             };
             let profile = self.profile.clone();
             // 选择器：工程参数里的值优先，其次是预设里的值；先于 setup / 预设 / 其余参数应用。
             let selector = profile.as_ref().and_then(|p| p.profile.selector.clone());
             let preset_params = match params.get("@preset") {
                 Some(v) => {
-                    let name = v.as_str().ok_or("@preset 应为预设名")?;
-                    let pr = profile.as_ref().ok_or("这个插件没有画像，不能用 @preset（`muser plugin profile draft` 生成一份）")?;
+                    let name = v.as_str().ok_or("@preset must be a preset name")?;
+                    let pr = profile.as_ref().ok_or("this plugin has no profile, so @preset cannot be used (generate one with `muser plugin profile draft`)")?;
                     let preset = pr.profile.preset(name).ok_or_else(|| {
                         format!(
-                            "画像里没有预设 '{name}'，可用: {}",
+                            "the profile has no preset '{name}', available: {}",
                             pr.profile.presets.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
                         )
                     })?;
@@ -802,11 +802,11 @@ mod imp {
                     }
                 }
                 if crate::vital::wants_patch(&patch) {
-                    let data = self.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
+                    let data = self.plugin.save_state().map_err(|e| format!("plugin failed to save state: {e:?}"))?;
                     let mut doc = crate::vital::read_json(&data)?;
                     crate::vital::patch(&mut doc, &patch)?;
                     let out = crate::vital::write_json(&data, &doc)?;
-                    self.plugin.load_state(&out).map_err(|e| format!("插件拒绝了改写后的状态: {e:?}"))?;
+                    self.plugin.load_state(&out).map_err(|e| format!("plugin rejected the rewritten state: {e:?}"))?;
                     for _ in 0..4 {
                         let _ = self.plugin.pump();
                     }
@@ -822,7 +822,7 @@ mod imp {
                     .find(|(k, _)| is_sel(k))
                     .map(|(_, v)| v.clone());
                 if let Some(v) = chosen {
-                    let name = v.as_str().ok_or_else(|| format!("{} 应为文字，实际 {v}", sel.key))?;
+                    let name = v.as_str().ok_or_else(|| format!("{} must be text, got {v}", sel.key))?;
                     let name = sel.resolve(name)?;
                     self.select(sel, &name)?;
                 }
@@ -830,13 +830,13 @@ mod imp {
             if use_setup {
                 if let Some(pr) = &profile {
                     let setup = pr.profile.setup.clone();
-                    self.apply_plain(&setup).map_err(|e| format!("画像 setup: {e}"))?;
+                    self.apply_plain(&setup).map_err(|e| format!("profile setup: {e}"))?;
                 }
             }
             if let Some((name, values)) = preset_params {
                 let values: serde_json::Map<String, Value> =
                     values.into_iter().filter(|(k, _)| !is_sel(k) && !k.starts_with('@')).collect();
-                self.apply_plain(&values).map_err(|e| format!("预设 '{name}': {e}"))?;
+                self.apply_plain(&values).map_err(|e| format!("preset '{name}': {e}"))?;
             }
             let rest: serde_json::Map<String, Value> = params
                 .iter()
@@ -849,10 +849,10 @@ mod imp {
         /// 切换选择器（见 [`crate::profile::Selector`]）：改写插件状态里 JUCE XML 根元素的属性并装回，
         /// 刷新参数表；`reset_params` 时把参数设为插件为新选项上报的默认值。
         fn select(&mut self, sel: &crate::profile::Selector, choice: &str) -> Result<(), String> {
-            let data = self.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
+            let data = self.plugin.save_state().map_err(|e| format!("plugin failed to save state: {e:?}"))?;
             let patched = patch_juce_state(&data, &sel.juce_xml_attribute, choice)
-                .map_err(|e| format!("切换 {} 失败: {e}", sel.key))?;
-            self.plugin.load_state(&patched).map_err(|e| format!("切换 {} 失败，插件拒绝了状态: {e:?}", sel.key))?;
+                .map_err(|e| format!("failed to switch {}: {e}", sel.key))?;
+            self.plugin.load_state(&patched).map_err(|e| format!("failed to switch {}, plugin rejected the state: {e:?}", sel.key))?;
             // 有的格式（VST3）在主线程消息里才宣布参数表变化。
             for _ in 0..4 {
                 let _ = self.plugin.pump();
@@ -863,7 +863,7 @@ mod imp {
                 let defaults: Vec<(ParamId, f64)> =
                     self.params.iter().filter(|p| !p.read_only).map(|p| (p.id, p.default)).collect();
                 for (id, x) in defaults {
-                    self.plugin.set_param(id, x).map_err(|e| format!("设置参数 {} 失败: {e:?}", id.0))?;
+                    self.plugin.set_param(id, x).map_err(|e| format!("failed to set parameter {}: {e:?}", id.0))?;
                     self.applied.push((id, x));
                 }
             }
@@ -876,14 +876,14 @@ mod imp {
             let e = self.plugin.entry();
             if h.plugin_id != e.id {
                 return Err(format!(
-                    "状态文件 '{}' 属于插件 {}（{}），不能装进 {}（{}）",
+                    "state file '{}' belongs to plugin {} ({}) and cannot be loaded into {} ({})",
                     path.display(), h.plugin_name, h.plugin_id, e.name, e.id
                 ));
             }
             if h.version != e.version {
-                eprintln!("[muser] 提示: 状态文件保存于 {} {}，已安装 {}", h.plugin_name, h.version, e.version);
+                eprintln!("[muser] note: state file was saved with {} {}, installed is {}", h.plugin_name, h.version, e.version);
             }
-            self.plugin.load_state(&data).map_err(|e| format!("插件拒绝了状态文件: {e:?}"))?;
+            self.plugin.load_state(&data).map_err(|e| format!("plugin rejected the state file: {e:?}"))?;
             self.state_loaded = true;
             // 有的插件按状态换一套参数（如 Airwindows Consolidated 按所选效果改参数名）。
             self.params = self.plugin.params();
@@ -892,7 +892,7 @@ mod imp {
 
         /// 保存插件当前状态（含已应用的参数）。插件处于激活状态时也可调用。
         pub fn save_state_file(&mut self, path: &std::path::Path) -> Result<(), String> {
-            let data = self.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
+            let data = self.plugin.save_state().map_err(|e| format!("plugin failed to save state: {e:?}"))?;
             let e = self.plugin.entry();
             let header = StateHeader {
                 plugin_id: e.id.clone(),
@@ -908,13 +908,13 @@ mod imp {
             for (key, v) in params {
                 let p = self.resolve(key)?;
                 if p.read_only {
-                    return Err(format!("参数 '{}' 是只读的", p.name));
+                    return Err(format!("parameter '{}' is read-only", p.name));
                 }
                 let x = self.value(p, v).map_err(|e| format!("{key}: {e}"))?;
                 writes.push((p.id, x));
             }
             for (id, x) in writes {
-                self.plugin.set_param(id, x).map_err(|e| format!("设置参数 {} 失败: {e:?}", id.0))?;
+                self.plugin.set_param(id, x).map_err(|e| format!("failed to set parameter {}: {e:?}", id.0))?;
                 self.applied.retain(|(i, _)| *i != id);
                 self.applied.push((id, x));
             }
@@ -984,9 +984,9 @@ mod imp {
                 .filter_map(|(id, _)| self.params.iter().find(|p| p.id == *id).map(|p| p.name.clone()))
                 .collect();
             Err(if off.is_empty() {
-                format!("插件 '{}' 预热 {MAX_BLOCKS} 块后仍在报告参数变化", self.path)
+                format!("plugin '{}' still reports parameter changes after {MAX_BLOCKS} warm-up blocks", self.path)
             } else {
-                format!("插件 '{}' 没有采纳这些参数: {}", self.path, off.join(", "))
+                format!("plugin '{}' did not adopt these parameters: {}", self.path, off.join(", "))
             })
         }
 
@@ -1003,7 +1003,7 @@ mod imp {
             let mut proc = self.activate(spec.sample_rate, spec.max_block_size)?;
             proc.prepare(&spec);
             if let Err(w) = self.settle(proc.as_mut(), &spec) {
-                eprintln!("[muser] 警告: {w}");
+                eprintln!("[muser] warning: {w}");
             }
             Ok(Some(proc))
         }
@@ -1020,7 +1020,7 @@ mod imp {
             let processor = self
                 .plugin
                 .activate_processor(sample_rate, max_block_size)
-                .map_err(|e| format!("activate 失败: {e:?}"))?;
+                .map_err(|e| format!("activate failed: {e:?}"))?;
             for (id, x) in self.applied.clone() {
                 let _ = self.plugin.set_param(id, x);
             }
@@ -1055,7 +1055,7 @@ mod imp {
                 } else {
                     Ok(())
                 };
-                r.map_err(|e| format!("打开辅助输出 {} 失败: {e}", k + 1))?;
+                r.map_err(|e| format!("failed to open auxiliary output {}: {e}", k + 1))?;
             }
             Ok(())
         }
@@ -1186,7 +1186,7 @@ mod imp {
         let mut proc = o.activate(spec_.sample_rate, spec_.max_block_size)?;
         proc.prepare(&spec_);
         if let Err(w) = o.settle(proc.as_mut(), &spec_) {
-            eprintln!("[muser] 警告: {w}");
+            eprintln!("[muser] warning: {w}");
         }
         o.save_state_file(out)?;
         drop(proc);
@@ -1292,7 +1292,7 @@ mod imp {
                 name: q.name.clone(),
                 alias: Some(role.clone()),
                 role: role.clone(),
-                description: format!("自动草稿：名称含 '{role}' 相关关键词；初始值 \"{current}\"。请试听确认作用"),
+                description: format!("Auto draft: the name contains a keyword related to '{role}'; initial value \"{current}\". Listen to confirm what it does"),
                 values,
                 observed: Vec::new(),
             });
@@ -1311,7 +1311,7 @@ mod imp {
                 };
                 match run(&subject, Some(&pp.name), &values, &AuditionSettings::default()) {
                     Ok(takes) => pp.observed = observations(spec, &pp.name, &takes),
-                    Err(err) => eprintln!("[muser] 试听 {} 失败: {err}", pp.name),
+                    Err(err) => eprintln!("[muser] audition of {} failed: {err}", pp.name),
                 }
             }
         }
@@ -1323,7 +1323,7 @@ mod imp {
                 author: user,
                 tested_version: e.version.clone(),
                 updated: String::new(),
-                notes: format!("由 `muser plugin profile draft` 自动生成的草稿（{} 个参数中挑出 {} 个）。请试听后修改说明、补充预设。", visible.len(), params.len()),
+                notes: format!("Draft generated by `muser plugin profile draft` ({} of {} parameters picked). Listen, then edit the descriptions and add presets.", visible.len(), params.len()),
                 lang: String::new(),
             },
             setup: serde_json::Map::new(),
@@ -1374,7 +1374,7 @@ mod imp {
             Some(l) => {
                 // 内置画像不改：复制一份到用户目录再记。
                 let mut p = l.profile.clone();
-                p.source.notes = format!("{}（基于 muser 内置画像）", p.source.notes);
+                p.source.notes = format!("{} (based on the muser built-in profile)", p.source.notes);
                 p
             }
             None => draft_profile(spec, false)?,
@@ -1453,10 +1453,10 @@ mod imp {
         o.apply(base_params)?;
         let p = o.resolve(key)?;
         if p.read_only {
-            return Err(format!("参数 '{}' 是只读的", p.name));
+            return Err(format!("parameter '{}' is read-only", p.name));
         }
         if !p.automatable {
-            return Err(format!("插件声明参数 '{}' 不可自动化", p.name));
+            return Err(format!("plugin declares parameter '{}' as not automatable", p.name));
         }
         let pid = p.id;
         Ok((o, pid))
@@ -1479,7 +1479,7 @@ mod imp {
         let candidates = find(&places, &formats);
         let cache_file = cache_path();
         let mut cache = if refresh { ScanCache::default() } else { ScanCache::load(&cache_file) };
-        let scanner = Scanner::this_program().map_err(|e| format!("无法启动扫描进程: {e}"))?;
+        let scanner = Scanner::this_program().map_err(|e| format!("cannot start the scan process: {e}"))?;
         let report = scanner.scan(&candidates, &mut cache);
         if let Some(dir) = cache_file.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -1550,7 +1550,7 @@ mod outputs_tests {
             json!([{ "channel": 1, "gain": 0 }]),
             json!([{ "channel": 1, "invert": "yes" }]),
         ] {
-            assert!(parse_outputs(&bad, 3, &[2]).is_err(), "{bad} 应被拒绝");
+            assert!(parse_outputs(&bad, 3, &[2]).is_err(), "{bad} should be rejected");
         }
     }
 
@@ -1564,9 +1564,9 @@ mod outputs_tests {
         .unwrap();
         assert_eq!(m.iter().map(|x| x.tap).collect::<Vec<_>>(), [Some(0), None, Some(1)]);
         assert_eq!(m[2].aux, Some(1));
-        assert!((m[2].left - 0.5).abs() < 1e-6 && (m[2].right - 1.0).abs() < 1e-6, "立体声按平衡");
+        assert!((m[2].left - 0.5).abs() < 1e-6 && (m[2].right - 1.0).abs() < 1e-6, "stereo is balanced");
         for bad in [json!([{ "aux": 3 }]), json!([{ "channel": 1, "aux": 1 }]), json!([{ "pan": 0 }]), json!([{ "aux": 1 }, { "aux": 1 }]), json!([{ "channel": 1, "bus": "" }])] {
-            assert!(parse_outputs(&bad, 2, &[2, 2]).is_err(), "{bad} 应被拒绝");
+            assert!(parse_outputs(&bad, 2, &[2, 2]).is_err(), "{bad} should be rejected");
         }
     }
 

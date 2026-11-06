@@ -47,15 +47,15 @@ fn declick() -> f64 {
 impl AudioClip {
     pub fn validate(&self, at: &str) -> Result<(), String> {
         if self.file.trim().is_empty() {
-            return Err(format!("{at}.file 不能为空"));
+            return Err(format!("{at}.file must not be empty"));
         }
         for (name, v) in [("offset", self.offset), ("fade_in", self.fade_in), ("fade_out", self.fade_out)] {
             if !(v.is_finite() && v >= 0.0) {
-                return Err(format!("{at}.{name} = {v} 应 ≥ 0（秒）"));
+                return Err(format!("{at}.{name} = {v} must be >= 0 (seconds)"));
             }
         }
         if !(-60.0..=24.0).contains(&self.gain_db) {
-            return Err(format!("{at}.gain_db = {} 超出范围 [-60, 24]", self.gain_db));
+            return Err(format!("{at}.gain_db = {} is out of range [-60, 24]", self.gain_db));
         }
         Ok(())
     }

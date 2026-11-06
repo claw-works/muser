@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "muser 接口层：AI/用户通过 CLI 驱动引擎（render 等命令）"
+description = "muser interface layer: lets AI agents and users drive the engine through the CLI (render and other commands)"
 
 [[bin]]
 name = "muser"

@@ -27,7 +27,7 @@ pub fn build(project: &Project) -> Result<Option<Tuning>, String> {
         "scala" => {
             let read = |file: &str| {
                 let path = crate::audio::resolve(project, file);
-                std::fs::read_to_string(&path).map_err(|e| format!("tuning: 读取 '{}' 失败: {e}（相对路径相对工程文件所在目录）", path.display()))
+                std::fs::read_to_string(&path).map_err(|e| format!("tuning: failed to read '{}': {e} (relative paths are relative to the project file's directory)", path.display()))
             };
             let scale = ScalaScale::parse(&read(t.scala.as_deref().unwrap_or_default())?).map_err(|e| format!("tuning.scala: {e}"))?;
             let mapping = match &t.kbm {
@@ -75,7 +75,7 @@ mod tests {
         let mut p = Project::new("t", 120.0);
         assert!(build(&p).unwrap().is_none());
         p.tuning = Some(serde_json::from_value(serde_json::json!({ "scale": "scala", "scala": "/nope.scl" })).unwrap());
-        assert!(build(&p).unwrap_err().contains("读取"));
+        assert!(build(&p).unwrap_err().contains("failed to read"));
     }
 
     /// 有音高的乐器照调律发音，鼓组不变。

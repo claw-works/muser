@@ -144,7 +144,7 @@ impl Key {
                 return (l, sig[i] + shift);
             }
         }
-        unreachable!("每个音级都能由某个音名升降一个半音得到")
+        unreachable!("every pitch class is within a semitone of some letter name")
     }
 }
 
@@ -449,7 +449,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
         let name = if t.name.is_empty() { format!("tracks[{ti}]") } else { t.name.clone() };
         let inst = t.instrument.trim();
         if inst == muser_core::audio::INSTRUMENT || inst.starts_with("drums.") {
-            notes.push(format!("没有导出 '{name}'（{}）", if inst.starts_with("drums.") { "鼓组" } else { "audio 音轨" }));
+            notes.push(format!("'{name}' not exported ({})", if inst.starts_with("drums.") { "drum kit" } else { "audio track" }));
             continue;
         }
         let mut tones = Vec::new();
@@ -471,7 +471,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
         }
     }
     let find = |name: &str| parts.iter().position(|(n, _)| n == name).ok_or_else(|| {
-        invalid(format!("没有叫 '{name}' 的乐器音轨（可选: {}）", parts.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")))
+        invalid(format!("no instrument track named '{name}' (available: {})", parts.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")))
     });
     let find_all = |names: &[String]| names.iter().map(|n| find(n)).collect::<Result<Vec<usize>, _>>();
     // 声部：(声部名, 合并进来的音轨下标)。
@@ -508,13 +508,13 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             let ins = find_all(&opts.ins)?;
             if !vocal.is_empty() {
                 let names: Vec<&str> = vocal.iter().map(|&i| parts[i].0.as_str()).collect();
-                notes.push(format!("Vocal = {}{}", names.join(" + "), if opts.vocal.is_empty() { "（自动选的，用 --vocal 指定，可写几条：a,b,c）" } else { "" }));
+                notes.push(format!("Vocal = {}{}", names.join(" + "), if opts.vocal.is_empty() { " (chosen automatically; set it with --vocal, which takes several: a,b,c)" } else { "" }));
             }
             vec![("Vocal".into(), vocal), ("Ins".into(), ins)]
         }
     };
     if voices.iter().all(|(_, v)| v.is_empty()) {
-        return Err(invalid("没有可导出的乐器音轨（鼓组与 audio 音轨不导出）".into()));
+        return Err(invalid("no instrument tracks to export (drum kits and audio tracks are not exported)".into()));
     }
 
     // 网格：能精确表示所有起点与时值的最粗单位（1/16、1/32、1/64 音符），都不行就量化到 1/32。
@@ -523,7 +523,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
     let on_grid = |u: f64| used.iter().all(|t| [t.start, t.end].iter().all(|x| ((x / u).round() * u - x).abs() < 1e-6));
     let grids: &[(u32, f64)] = if opts.dialect == Dialect::Yue2 { &[(32, 0.125), (64, 0.0625)] } else { &[(16, 0.25), (32, 0.125), (64, 0.0625)] };
     let (denominator, unit) = grids.iter().copied().find(|&(_, u)| on_grid(u)).unwrap_or_else(|| {
-        notes.push("有落不到 1/64 音符网格上的音（三连音等），已就近量化到 1/32".into());
+        notes.push("some notes do not fit the 1/64-note grid (triplets, etc.); quantized to the nearest 1/32".into());
         (32, 0.125)
     });
     // 小节按拍号表排（段落各有拍号时小节不一样长），换拍号的小节前写内联 [M:]。
@@ -545,7 +545,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
         .filter_map(|a| a.lines().find_map(|l| l.trim().strip_prefix("K:").map(|k| k.trim().to_string())))
         .collect();
     let key = match &opts.key {
-        Some(k) => Key::parse(k).ok_or_else(|| invalid(format!("调号 '{k}' 不认识：写标准大小调，如 G、Eb、F#m、Bbm")))?,
+        Some(k) => Key::parse(k).ok_or_else(|| invalid(format!("unrecognized key '{k}': use a standard major or minor key, e.g. G, Eb, F#m, Bbm")))?,
         None => match abc_keys.iter().next().filter(|_| abc_keys.len() == 1).and_then(|k| Key::parse(k)) {
             Some(k) => k,
             None => estimate_key(&parts.iter().flat_map(|(_, ts)| ts.iter().copied()).collect::<Vec<_>>()),
@@ -623,7 +623,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
                     .collect();
                 let poly = ts.iter().any(|a| ts.iter().any(|b| b.start > a.start + 1e-9 && b.start < a.end - 1e-9) || ts.iter().filter(|b| (b.start - a.start).abs() < 1e-9).count() > 1);
                 if mono && poly {
-                    notes.push(format!("{vname} 有复音（或几条音轨重叠），YuE2 的声部是单音：每个时刻只留最高的音"));
+                    notes.push(format!("{vname} is polyphonic (or several tracks overlap) but YuE2 voices are monophonic: keeping only the highest note at each moment"));
                 }
                 events(&ts, unit, slots, mono, &breaks)
             }
@@ -745,7 +745,7 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
         }
     }
     if opts.dialect == Dialect::Yue2 && section_list.is_empty() {
-        notes.push("没有标段落：加 sections（如 intro:4,verse:8,chorus:8）写出 % verse 等注释，与歌词的 [Verse] 标签对应".into());
+        notes.push("no sections marked: add sections (e.g. intro:4,verse:8,chorus:8) to write % verse etc. comments that match the [Verse] tags in the lyrics".into());
     }
     Ok(AbcExport { text: abc, notes })
 }
@@ -845,7 +845,7 @@ mod tests {
         let out = export(&p, &AbcOptions::new(Dialect::Standard)).unwrap();
         let t = &out.text;
         assert!(t.contains("[M:7/8]E14|") && t.contains("[M:4/4]A16|") && t.contains("w: "), "{t}");
-        assert!(out.notes.iter().all(|n| !n.contains("拍号")), "{:?}", out.notes);
+        assert!(out.notes.iter().all(|n| !n.contains("time signature")), "{:?}", out.notes);
         let body: String = t.lines().filter(|l| !l.starts_with("V:")).collect::<Vec<_>>().join("\n");
         let k = |n: &muser_core::Note| (n.pitch, (n.start.0 * 1000.0).round() as i64, (n.length.0 * 1000.0).round() as i64, n.lyric.clone());
         let back: Vec<_> = muser_core::abc::parse(&body).unwrap_or_else(|e| panic!("{e}\n{t}")).iter().map(k).collect();

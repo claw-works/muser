@@ -247,7 +247,7 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
                 if end > 0.0 && end < len * 0.85 {
                     let loop_len = (end / bar).ceil() * bar;
                     out.push(format!(
-                        "tracks[{ti}].parts.{key}: 内容只有 {} 拍，段落有 {} 拍（只占 {:.0}%，之后不出声）：要循环铺满就写 \"length\": {}；只在开头出声可以不管",
+                        "tracks[{ti}].parts.{key}: the content is only {} beats but the section has {} beats (it fills only {:.0}% and is silent after that): write \"length\": {} to loop it to fill the section; ignore this if sounding only at the start is intended",
                         fmt_beats(end), fmt_beats(len), end / len * 100.0, fmt_beats(loop_len)
                     ));
                 }
@@ -265,8 +265,8 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
                 missing.dedup();
                 if count > 0 {
                     out.push(format!(
-                        "tracks[{ti}] '{}': {count} 个音落在 {} 没有的鼓键上（{}），不出声：换成这套鼓有的鼓键（`muser instruments {}`），或换一套鼓",
-                        t.name, t.instrument.trim(), missing.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("、"), t.instrument.trim()
+                        "tracks[{ti}] '{}': {count} notes fall on drum keys that {} does not have ({}) and are silent: use keys this kit has (`muser instruments {}`), or switch kits",
+                        t.name, t.instrument.trim(), missing.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(", "), t.instrument.trim()
                     ));
                 }
                 continue;
@@ -278,7 +278,7 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
             let outside: Vec<u8> = notes.iter().copied().filter(|&n| n + RANGE_SLACK < lo || n > hi.saturating_add(RANGE_SLACK)).collect();
             if let (Some(&min), Some(&max)) = (outside.iter().min(), outside.iter().max()) {
                 out.push(format!(
-                    "tracks[{ti}] '{}': {} 个音远在 {} 的推荐音域 {}–{} 之外（超出一个五度以上），在 {}–{}：能发声，但可能很轻或不自然",
+                    "tracks[{ti}] '{}': {} notes are far outside the recommended range of {} ({}–{}) (more than a fifth beyond), at {}–{}: they sound, but may be very quiet or unnatural",
                     t.name, outside.len(), info.name, note_name(lo), note_name(hi), note_name(min), note_name(max)
                 ));
             }
@@ -292,7 +292,7 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
             }
             let sung = (0..t.clips.len()).any(|ci| clip_notes(&arranged, ti, ci).unwrap_or_default().iter().any(|n| n.lyric.is_some()));
             if sung {
-                out.push(format!("tracks[{ti}] '{}': 写了歌词（lyric / ABC 的 w: 行），但只有 choir.*（如 choir.solo）会唱，{} 会忽略这些歌词", t.name, t.instrument));
+                out.push(format!("tracks[{ti}] '{}': has lyrics (lyric / ABC w: lines), but only choir.* (e.g. choir.solo) sings; {} ignores them", t.name, t.instrument));
             }
         }
     }
@@ -310,7 +310,7 @@ fn fmt_beats(b: f64) -> String {
 /// MIDI 音高 → 音名（C4 = 60）。
 fn note_name(p: u8) -> String {
     const N: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-    format!("{}{}（{p}）", N[usize::from(p % 12)], i32::from(p / 12) - 1)
+    format!("{}{} ({p})", N[usize::from(p % 12)], i32::from(p / 12) - 1)
 }
 
 pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
@@ -322,7 +322,7 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
                 let path = audio::resolve(project, &a.file);
                 if !path.is_file() {
                     return Err(EngineError::Core(muser_core::CoreError::Invalid(format!(
-                        "tracks[{ti}].clips[{ci}].audio: 找不到音频文件 '{}'（相对路径相对工程文件所在目录）",
+                        "tracks[{ti}].clips[{ci}].audio: audio file '{}' not found (relative paths are relative to the project file's directory)",
                         path.display()
                     ))));
                 }
@@ -670,7 +670,7 @@ mod tests {
         let err = render(&p, RenderSettings::default()).unwrap_err();
         // host 下 validate 会加载插件检查参数，路径不存在在校验阶段就报出，并指明位置。
         let msg = err.to_string();
-        assert!(msg.contains("master_effects[0]") && msg.contains("找不到插件"), "{msg}");
+        assert!(msg.contains("master_effects[0]") && msg.contains("cannot find plugin"), "{msg}");
     }
 
     fn render_one(instrument: &str, params: serde_json::Value, notes: &[(u8, f64, f64)]) -> Result<AudioBuffer<f32>, EngineError> {
@@ -741,17 +741,17 @@ mod tests {
     #[test]
     fn bowed_release_floor_is_enforced() {
         let e = render_one("strings.violin", serde_json::json!({ "release": 0.05 }), &[]).unwrap_err().to_string();
-        assert!(e.contains("超出范围"), "{e}");
+        assert!(e.contains("out of range"), "{e}");
     }
 
     #[test]
     fn param_errors_are_precise() {
         let e = render_one("poly.moog_bass", serde_json::json!({ "cutof": 500 }), &[]).unwrap_err().to_string();
-        assert!(e.contains("cutof") && e.contains("可用") && e.contains("cutoff"), "{e}");
+        assert!(e.contains("cutof") && e.contains("available") && e.contains("cutoff"), "{e}");
         let e = render_one("strings.cello", serde_json::json!({ "vibrato_depth": 500 }), &[]).unwrap_err().to_string();
-        assert!(e.contains("vibrato_depth") && e.contains("超出范围"), "{e}");
+        assert!(e.contains("vibrato_depth") && e.contains("out of range"), "{e}");
         let e = render_one("organ.jazz", serde_json::json!({ "drawbars": "999" }), &[]).unwrap_err().to_string();
-        assert!(e.contains("drawbars") && e.contains("9 位"), "{e}");
+        assert!(e.contains("drawbars") && e.contains("9-digit"), "{e}");
         let e = render_one("organ.jazz", serde_json::json!({ "percussion": "fourth" }), &[]).unwrap_err().to_string();
         assert!(e.contains("second"), "{e}");
     }
@@ -762,7 +762,7 @@ mod tests {
         render_one("organ.gospel", serde_json::json!({ "drawbars": "888000000", "percussion": "third" }), &[(60, 0.0, 1.0)]).unwrap();
         render_one("wind.trombone", serde_json::json!({ "portamento": true }), &[(50, 0.0, 1.0)]).unwrap();
         let e = render_one("choir.aah", serde_json::json!({ "singers": 2.5 }), &[]).unwrap_err().to_string();
-        assert!(e.contains("整数"), "{e}");
+        assert!(e.contains("integer"), "{e}");
     }
 
     #[test]
@@ -772,9 +772,9 @@ mod tests {
         let quiet = render_one("drums.808", serde_json::json!({ "kick": { "level": 0.25 } }), &notes).unwrap();
         assert!(rms(&quiet) < rms(&base) * 0.5, "kick.level 应降低音量");
         let e = render_one("drums.606", serde_json::json!({ "clap": { "level": 1 } }), &[]).unwrap_err().to_string();
-        assert!(e.contains("没有鼓键 39"), "{e}");
+        assert!(e.contains("no drum key 39"), "{e}");
         let e = render_one("drums.808", serde_json::json!({ "bogus": { "level": 1 } }), &[]).unwrap_err().to_string();
-        assert!(e.contains("未知鼓件"), "{e}");
+        assert!(e.contains("unknown drum piece"), "{e}");
     }
 
     #[test]
@@ -798,7 +798,7 @@ mod tests {
         let mut p = Project::new("s", 120.0);
         p.tracks.push(Track::new("s", "sfz:/no/such/file.sfz"));
         let e = crate::validate(&p).unwrap_err().to_string();
-        assert!(e.contains("找不到 SFZ 文件"), "{e}");
+        assert!(e.contains("cannot find SFZ file"), "{e}");
     }
 
     /// 用本机的 freepats 音色库（MUSER_SFZ_PATH）做真实测试；不存在则跳过。
@@ -822,7 +822,7 @@ mod tests {
     fn sfz_real_library_makes_sound() {
         let path = crate::sfz::resolve("FM-Piano1 SFZ+FLAC-20190916/FM-Piano1 20190916.sfz");
         if !path.is_file() {
-            eprintln!("跳过：未找到 {}（设 MUSER_SFZ_PATH）", path.display());
+            eprintln!("skipped: {} not found (set MUSER_SFZ_PATH)", path.display());
             return;
         }
         let audio = render_one(&format!("sfz:{}", path.display()), serde_json::json!({}), &[(60, 0.0, 1.0), (64, 0.0, 1.0)]).unwrap();
@@ -948,17 +948,17 @@ mod tests {
         let e = err("poly.moog_bass", serde_json::json!({ "target": "instrument", "param": "cutof", "shape": "points", "points": [[0, 1]] }));
         assert!(e.contains("automation[0]") && e.contains("cutoff"), "{e}");
         let e = err("poly.moog_bass", serde_json::json!({ "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 10], [4, 99999]] }));
-        assert!(e.contains("points[0]") && e.contains("超出范围"), "{e}");
+        assert!(e.contains("points[0]") && e.contains("out of range"), "{e}");
         let e = err("strings.cello", serde_json::json!({ "target": "instrument", "param": "players", "shape": "lfo", "period_beats": 4, "min": 1, "max": 3 }));
-        assert!(e.contains("不能自动化"), "{e}");
+        assert!(e.contains("cannot be automated"), "{e}");
         let e = err("synth.poly", serde_json::json!({ "target": "effects[0]", "param": "mix", "shape": "points", "points": [[0, 0]] }));
-        assert!(e.contains("越界"), "{e}");
+        assert!(e.contains("out of range"), "{e}");
         let e = err("synth.poly", serde_json::json!({ "target": "master_gain_db", "shape": "points", "points": [[0, 0]] }));
-        assert!(e.contains("工程级"), "{e}");
+        assert!(e.contains("project-level"), "{e}");
         let e = err("synth.poly", serde_json::json!({ "target": "pan", "shape": "points", "points": [[0, -1], [4, 1]], "curve": "exp" }));
         assert!(e.contains("exp"), "{e}");
         let e = err("poly.bell_pluck", serde_json::json!({ "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 500]] }));
-        assert!(e.contains("滤波器"), "{e}");
+        assert!(e.contains("no filter"), "{e}");
         // 元音可用名字
         crate::validate(&auto_project("choir.aah", &[], serde_json::json!([
             { "target": "instrument", "param": "vowel", "shape": "points", "points": [[0, "a"], [4, "o"], [8, "u"]] }
@@ -998,7 +998,7 @@ mod tests {
         assert!(audition(
             &Subject::Effect { effect: serde_json::from_str(r#"{"type":"reverb"}"#).unwrap(), source: "synth.poly".into() },
             Some("mixx"), &[serde_json::json!(1)], &AuditionSettings::default()
-        ).unwrap_err().to_string().contains("没有参数"));
+        ).unwrap_err().to_string().contains("has no parameter"));
     }
 
     #[test]
@@ -1018,7 +1018,7 @@ mod tests {
     fn have(path: &str) -> bool {
         let ok = std::path::Path::new(&*crate::plugin::expand_home(path)).exists();
         if !ok {
-            eprintln!("跳过：未安装 {path}");
+            eprintln!("skipped: {path} not installed");
         }
         ok
     }
@@ -1043,7 +1043,7 @@ mod tests {
         // 错误：名称、文字、范围
         assert!(o.resolve("A Filter 1 Cutof").unwrap_err().contains("A Filter 1 Cutoff"));
         assert!(o.value(&t, &serde_json::json!("banana")).is_err());
-        assert!(o.value(&p, &serde_json::json!(5.0)).unwrap_err().contains("超出"));
+        assert!(o.value(&p, &serde_json::json!(5.0)).unwrap_err().contains("out of range"));
     }
 
     #[cfg(feature = "host")]
@@ -1113,7 +1113,7 @@ mod tests {
         assert_eq!(h, h2);
         assert_eq!(data, b"\x00\x01binary\nwith newline");
         std::fs::write(&path, b"not a state").unwrap();
-        assert!(crate::plugin::read_state_file(&path).unwrap_err().contains("不是 muser 状态文件"));
+        assert!(crate::plugin::read_state_file(&path).unwrap_err().contains("is not a muser state file"));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1138,7 +1138,7 @@ mod tests {
         o.profile = Some(std::sync::Arc::new(crate::profile::Loaded { origin: crate::profile::Origin::File, path: None, profile: pr }));
         assert_eq!(o.resolve("cutoff").unwrap().name, "A Filter 1 Cutoff");
         assert!(o.apply(&m(serde_json::json!({ "@preset": "nope" }))).unwrap_err().contains("bass"));
-        assert!(o.apply(&m(serde_json::json!({ "@bogus": 1 }))).unwrap_err().contains("保留键"));
+        assert!(o.apply(&m(serde_json::json!({ "@bogus": 1 }))).unwrap_err().contains("reserved key"));
         assert!(o.apply(&m(serde_json::json!({ "@setup": "yes" }))).is_err());
         o.apply(&m(serde_json::json!({ "@preset": "pad" }))).unwrap();
         let attack = o.resolve("attack").unwrap().clone();
@@ -1171,7 +1171,7 @@ mod tests {
         // 别的插件的状态被拒
         let fx: muser_core::Effect = serde_json::from_value(serde_json::json!({ "type": "plugin", "path": SURGE_FX, "params": from_state })).unwrap();
         let e = audition(&Subject::Effect { effect: fx, source: "synth.poly".into() }, None, &[], &s).unwrap_err().to_string();
-        assert!(e.contains("不能装进"), "{e}");
+        assert!(e.contains("cannot be loaded into"), "{e}");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1227,12 +1227,12 @@ mod tests {
         let w = warnings(&p(serde_json::json!({ "tempo": 120, "sections": { "a": { "bars": 8, "chords": "Am" } }, "form": ["a"],
             "tracks": [{ "name": "lead", "instrument": "wind.flute", "parts": { "a": { "abc": "L:1/8\nK:Am\nc4 A2 c2 | d4 B2 G2 A2 |" } } },
                        { "name": "bleep", "instrument": "poly.random_bleeps", "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 105, "start": 0, "length": 1 }] }] }] })));
-        assert!(w.iter().any(|x| x.contains("parts.a.abc: 第 2 小节 5 拍")), "{w:?}");
-        assert!(w.iter().any(|x| x.contains("只占") && x.contains("\"length\"")), "{w:?}");
+        assert!(w.iter().any(|x| x.contains("parts.a.abc: bar 2 is 5 beats")), "{w:?}");
+        assert!(w.iter().any(|x| x.contains("fills only") && x.contains("\"length\"")), "{w:?}");
         assert!(w.iter().any(|x| x.contains("'bleep'") && x.contains("A7")), "{w:?}");
         let kit = warnings(&p(serde_json::json!({ "tempo": 120, "tracks": [{ "name": "dust", "instrument": "drums.909",
             "clips": [{ "start": 0, "length": 4, "grid": { "shaker": "x...", "hat": "x..." } }] }] })));
-        assert!(kit.iter().any(|x| x.contains("'dust'") && x.contains("没有的鼓键上（70）")), "{kit:?}");
+        assert!(kit.iter().any(|x| x.contains("'dust'") && x.contains("does not have (70)")), "{kit:?}");
         let ok = warnings(&p(serde_json::json!({ "tempo": 120, "sections": { "a": { "bars": 2, "chords": "Am" } }, "form": ["a"],
             "tracks": [{ "name": "lead", "instrument": "wind.flute", "parts": { "a": { "abc": "L:1/8\nK:Am\nc4 A2 c2 | d4 B2 G2 |" } } }] })));
         assert!(ok.is_empty(), "{ok:?}");
@@ -1340,10 +1340,10 @@ mod tests {
         let mut bad = p.clone();
         bad.buses[0].automation[0].target = "instrument".into();
         bad.buses[0].automation[0].param = "cutoff".into();
-        assert!(crate::validate(&bad).unwrap_err().to_string().contains("总线没有乐器"));
+        assert!(crate::validate(&bad).unwrap_err().to_string().contains("a bus has no instrument"));
         let mut bad = p.clone();
         bad.tracks[0].effects.push(serde_json::from_value(serde_json::json!({ "type": "compressor", "sidechain": "grp" })).unwrap());
-        assert!(crate::validate(&bad).unwrap_err().to_string().contains("环"));
+        assert!(crate::validate(&bad).unwrap_err().to_string().contains("cycle"));
     }
 
     #[test]

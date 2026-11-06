@@ -106,7 +106,7 @@ mod audition {
                     buf.channel_mut(c)[..n].copy_from_slice(&scratch.channel(c.min(1))[..n]);
                 }
             })
-            .map_err(|e| format!("启动声卡输出失败: {e}"))
+            .map_err(|e| format!("failed to start audio output: {e}"))
     }
 }
 
@@ -125,13 +125,13 @@ pub fn run(
     use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSEventMask, NSWindow, NSWindowStyleMask};
     use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize, NSString};
 
-    let mtm = MainThreadMarker::new().ok_or("插件界面须在主线程打开")?;
+    let mtm = MainThreadMarker::new().ok_or("the plugin editor must be opened on the main thread")?;
     let mut o = Opened::open_spec(spec)?;
     o.apply(params)?;
 
     // 声卡：插件按声卡的采样率激活，音频半边交给声卡线程。
     #[cfg(feature = "devices")]
-    let device = manguebyte::devices::OutputDevice::open_default().map_err(|e| eprintln!("[muser] 打不开声卡，编辑时听不到声音: {e}")).ok();
+    let device = manguebyte::devices::OutputDevice::open_default().map_err(|e| eprintln!("[muser] cannot open the audio device; you will hear nothing while editing: {e}")).ok();
     #[cfg(feature = "devices")]
     let sr = device.as_ref().map_or(48_000.0, |d| d.sample_rate());
     #[cfg(not(feature = "devices"))]
@@ -162,14 +162,14 @@ pub fn run(
     let window = unsafe { NSWindow::initWithContentRect_styleMask_backing_defer(mtm.alloc(), rect, style, NSBackingStoreType::Buffered, false) };
     unsafe { window.setReleasedWhenClosed(false) };
     window.setTitle(&NSString::from_str(title));
-    let view = window.contentView().ok_or("窗口没有内容视图")?;
-    let parent = ParentWindow::cocoa(objc2::rc::Retained::as_ptr(&view) as usize).ok_or("无效的视图")?;
+    let view = window.contentView().ok_or("the window has no content view")?;
+    let parent = ParentWindow::cocoa(objc2::rc::Retained::as_ptr(&view) as usize).ok_or("invalid view")?;
     let size = if let Some(p) = o.plugin.as_vst3_mut() {
-        p.open_editor(parent, None).map_err(|e| format!("插件界面打不开: {e:?}"))?
+        p.open_editor(parent, None).map_err(|e| format!("cannot open the plugin editor: {e:?}"))?
     } else if let Some(p) = o.plugin.as_clap_mut() {
-        p.open_editor(parent, None).map_err(|e| format!("插件界面打不开: {e:?}"))?
+        p.open_editor(parent, None).map_err(|e| format!("cannot open the plugin editor: {e:?}"))?
     } else {
-        return Err("只支持 VST3 / CLAP 插件的界面".into());
+        return Err("only VST3 / CLAP plugin editors are supported".into());
     };
     let fit = |s: EditorSize| window.setContentSize(NSSize::new(f64::from(s.width), f64::from(s.height)));
     fit(size);
@@ -287,7 +287,7 @@ pub fn run(
     if !cancel {
         // 还没存的改动；换了插件（状态文件还不存在）时也要存一份初始音色。
         if touched.is_some() || (!saved && !out.is_file()) {
-            let data = o.plugin.save_state().map_err(|e| format!("插件保存状态失败: {e:?}"))?;
+            let data = o.plugin.save_state().map_err(|e| format!("the plugin failed to save its state: {e:?}"))?;
             write_state_file(out, &header, &data)?;
             saved = true;
             on_saved();

@@ -16,7 +16,7 @@ pub struct Migration {
 
 pub const MIGRATIONS: &[Migration] = &[Migration {
     since: "0.3.1",
-    what: "内置乐器音量校准（gain_db 0 ≈ −20 LUFS）：内置乐器音轨的 gain_db 与 gain_db 自动化减去该乐器的校准增益",
+    what: "built-in instrument level calibration (gain_db 0 = about -20 LUFS): the gain_db and gain_db automation of built-in instrument tracks have the instrument's calibration gain subtracted",
     apply: calibrate,
 }];
 
@@ -28,7 +28,7 @@ pub struct Change {
 
 /// 把 `project` 从 `from` 版本换算到当前版本，返回改了什么。`from` 写成 `0.3.0` 或 `v0.3.0`。
 pub fn migrate(project: &mut Value, from: &str) -> Result<Vec<Change>, String> {
-    let from = parse_version(from).ok_or_else(|| format!("看不懂版本 '{from}'，写成 0.3.0 这样"))?;
+    let from = parse_version(from).ok_or_else(|| format!("unrecognized version '{from}': write it like 0.3.0"))?;
     let mut changes = Vec::new();
     for m in MIGRATIONS.iter().filter(|m| from < parse_version(m.since).expect("迁移表里的版本")) {
         (m.apply)(project, &mut changes);
@@ -56,7 +56,7 @@ fn calibrate(project: &mut Value, changes: &mut Vec<Change>) {
         let old = t.get("gain_db").and_then(Value::as_f64).unwrap_or(0.0);
         let new = shift(old);
         t["gain_db"] = Value::from(new);
-        let mut detail = format!("{name}：gain_db {old} → {new}（新版在乐器输出端补了 {trim:+.1} dB）");
+        let mut detail = format!("{name}: gain_db {old} -> {new} (the new version adds {trim:+.1} dB at the instrument output)");
         let mut autos = 0;
         if let Some(list) = t.get_mut("automation").and_then(Value::as_array_mut) {
             for a in list.iter_mut().filter(|a| a.get("target").and_then(Value::as_str) == Some("gain_db")) {
@@ -76,7 +76,7 @@ fn calibrate(project: &mut Value, changes: &mut Vec<Change>) {
             }
         }
         if autos > 0 {
-            detail += &format!("，gain_db 自动化 {autos} 条同样换算");
+            detail += &format!(", {autos} gain_db automation lanes converted the same way");
         }
         changes.push(Change { track: label, detail });
     }

@@ -94,7 +94,7 @@ impl Rule {
     fn number(&self, v: &Value) -> Result<f64, String> {
         let x = match v {
             Value::String(s) if self.text.is_some() => (self.text.as_ref().unwrap())(s)
-                .ok_or_else(|| format!("插件无法解析 '{s}'，可写 {}–{} 的数字", self.min, self.max))?,
+                .ok_or_else(|| format!("the plugin cannot parse '{s}'; write a number in {}–{}", self.min, self.max))?,
             Value::String(s) => self
                 .names
                 .iter()
@@ -102,17 +102,17 @@ impl Rule {
                 .map(|i| i as f64)
                 .ok_or_else(|| {
                     if self.names.is_empty() {
-                        format!("应为数字，实际 \"{s}\"")
+                        format!("expected a number, got \"{s}\"")
                     } else {
-                        format!("应为数字或 {}，实际 \"{s}\"", self.names.join("/"))
+                        format!("expected a number or {}, got \"{s}\"", self.names.join("/"))
                     }
                 })?,
-            _ => v.as_f64().ok_or_else(|| format!("应为数字，实际 {v}"))?,
+            _ => v.as_f64().ok_or_else(|| format!("expected a number, got {v}"))?,
         };
         if !x.is_finite() || x < self.min || x > self.max {
             let unit = if self.unit.is_empty() { String::new() } else { format!(" {}", self.unit) };
             let unit = unit.as_str();
-            return Err(format!("{x} 超出范围 [{}, {}]{unit}", self.min, self.max));
+            return Err(format!("{x} is out of range [{}, {}]{unit}", self.min, self.max));
         }
         Ok(x)
     }
@@ -121,7 +121,7 @@ impl Rule {
 fn instrument_rule(track: &Track, param: &str) -> Result<(Rule, Automatable), String> {
     let (spec, how, base) = instrument::automation_param(&track.instrument, &track.instrument_params, param)?;
     let params::ParamKind::Number { min, max, unit, names, .. } = spec.kind else {
-        return Err(format!("参数 '{param}' 不能自动化"));
+        return Err(format!("parameter '{param}' cannot be automated"));
     };
     Ok((Rule { min, max, unit: unit.into(), names, base, text: None, key: None }, how))
 }
@@ -130,7 +130,7 @@ fn instrument_rule(track: &Track, param: &str) -> Result<(Rule, Automatable), St
 #[cfg(feature = "host")]
 fn plugin_rule(path: &str, id: Option<&str>, base_params: &serde_json::Map<String, Value>, param: &str) -> Result<Rule, String> {
     let (opened, pid) = crate::plugin::automation_target(path, id, base_params, param)?;
-    let p = opened.params.iter().find(|p| p.id == pid).expect("刚解析出的参数").clone();
+    let p = opened.params.iter().find(|p| p.id == pid).expect("just-resolved parameter").clone();
     let base = opened.plugin.param_value(pid).unwrap_or(p.default);
     let (min, max, unit) = (p.min, p.max, p.unit.clone());
     Ok(Rule {
@@ -146,17 +146,17 @@ fn plugin_rule(path: &str, id: Option<&str>, base_params: &serde_json::Map<Strin
 
 #[cfg(not(feature = "host"))]
 fn plugin_rule(_path: &str, _id: Option<&str>, _base: &serde_json::Map<String, Value>, _param: &str) -> Result<Rule, String> {
-    Err("插件参数自动化不可用：这个 muser 构建没有启用插件宿主（`host` 特性）；发行版与默认构建都带，别用 --no-default-features 去掉它".into())
+    Err("plugin parameter automation is unavailable: this muser build does not have the plugin host enabled (the `host` feature); release and default builds include it, so do not remove it with --no-default-features".into())
 }
 
 fn effect_rule(effect: &Effect, param: &str) -> Result<Rule, String> {
     if let Effect::Plugin { path, id, params } = effect {
         return plugin_rule(path, id.as_deref(), params, param);
     }
-    let spec = muser_core::effect_spec(effect.type_name()).expect("每个效果器都有描述");
+    let spec = muser_core::effect_spec(effect.type_name()).expect("every effect has a description");
     let p = spec.params.iter().find(|p| p.name == param).ok_or_else(|| {
         format!(
-            "{} 没有参数 '{param}'，可自动化: {}",
+            "{} has no parameter '{param}'; automatable: {}",
             spec.name,
             spec.params.iter().map(|p| p.name).collect::<Vec<_>>().join(", ")
         )
@@ -190,7 +190,7 @@ fn compile_lane(a: &Automation, rule: &Rule, seed: u64, total_beats: f64) -> Res
     };
     if let Shape::Points { curve: muser_core::Curve::Exp, .. } = &a.shape {
         if values.windows(2).any(|w| w[0] * w[1] <= 0.0) {
-            return Err("curve \"exp\" 要求相邻点同号且非零；含 0 或跨越 0 时请用 linear / smooth".into());
+            return Err("curve \"exp\" needs adjacent points of the same sign and non-zero; use linear / smooth when a value is 0 or crosses 0".into());
         }
     }
     Ok(Lane {
@@ -208,7 +208,7 @@ pub fn compile_track(project: &Project, ti: usize, total_beats: f64) -> Result<T
     for (ai, a) in track.automation.iter().enumerate() {
         let at = |e: String| format!("tracks[{ti}].automation[{ai}]: {e}");
         let seed = derive_seed(project.seed, Some(ti), ai);
-        let target = Target::parse(&a.target).ok_or_else(|| at(format!("target '{}' 无效", a.target)))?;
+        let target = Target::parse(&a.target).ok_or_else(|| at(format!("invalid target '{}'", a.target)))?;
         match target {
             Target::Instrument => {
                 let rule = match track.instrument.trim().strip_prefix("plugin:") {
@@ -221,7 +221,7 @@ pub fn compile_track(project: &Project, ti: usize, total_beats: f64) -> Result<T
                 out.instrument.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
             Target::Effect(i) => {
-                let fx = track.effects.get(i).ok_or_else(|| at(format!("没有 effects[{i}]")))?;
+                let fx = track.effects.get(i).ok_or_else(|| at(format!("no effects[{i}]")))?;
                 let rule = effect_rule(fx, &a.param).map_err(at)?;
                 out.effects[i].push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
@@ -234,12 +234,12 @@ pub fn compile_track(project: &Project, ti: usize, total_beats: f64) -> Result<T
                 out.pan.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
             Target::Send(bus) => {
-                let base = *track.sends.get(&bus).ok_or_else(|| at(format!("没有发送到 '{bus}'")))?;
+                let base = *track.sends.get(&bus).ok_or_else(|| at(format!("no send to '{bus}'")))?;
                 let rule = scalar_rule(GAIN_RANGE.0, GAIN_RANGE.1, "dB", base);
                 out.sends.entry(bus).or_default().push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
             Target::MasterGain | Target::MasterEffect(_) => {
-                return Err(at("主总线目标请写在工程级 automation".into()));
+                return Err(at("master targets belong in the project-level automation".into()));
             }
         }
     }
@@ -254,9 +254,9 @@ pub fn compile_bus(project: &Project, bi: usize, total_beats: f64) -> Result<Tra
         let at = |e: String| format!("buses[{bi}].automation[{ai}]: {e}");
         // 种子空间与音轨分开：总线用 tracks.len() + bi。
         let seed = derive_seed(project.seed, Some(project.tracks.len() + bi), ai);
-        match Target::parse(&a.target).ok_or_else(|| at(format!("target '{}' 无效", a.target)))? {
+        match Target::parse(&a.target).ok_or_else(|| at(format!("invalid target '{}'", a.target)))? {
             Target::Effect(i) => {
-                let fx = bus.effects.get(i).ok_or_else(|| at(format!("没有 effects[{i}]")))?;
+                let fx = bus.effects.get(i).ok_or_else(|| at(format!("no effects[{i}]")))?;
                 let rule = effect_rule(fx, &a.param).map_err(at)?;
                 out.effects[i].push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
@@ -269,11 +269,11 @@ pub fn compile_bus(project: &Project, bi: usize, total_beats: f64) -> Result<Tra
                 out.pan.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
             Target::Send(name) => {
-                let base = *bus.sends.get(&name).ok_or_else(|| at(format!("没有发送到 '{name}'")))?;
+                let base = *bus.sends.get(&name).ok_or_else(|| at(format!("no send to '{name}'")))?;
                 let rule = scalar_rule(GAIN_RANGE.0, GAIN_RANGE.1, "dB", base);
                 out.sends.entry(name).or_default().push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
-            _ => return Err(at("总线上可自动化的目标: effects[i] / gain_db / pan / sends.<总线>".into())),
+            _ => return Err(at("automatable targets on a bus: effects[i] / gain_db / pan / sends.<bus>".into())),
         }
     }
     Ok(out)
@@ -288,17 +288,17 @@ pub fn compile_master(project: &Project, total_beats: f64) -> Result<MasterLanes
     for (ai, a) in project.automation.iter().enumerate() {
         let at = |e: String| format!("automation[{ai}]: {e}");
         let seed = derive_seed(project.seed, None, ai);
-        match Target::parse(&a.target).ok_or_else(|| at(format!("target '{}' 无效", a.target)))? {
+        match Target::parse(&a.target).ok_or_else(|| at(format!("invalid target '{}'", a.target)))? {
             Target::MasterGain => {
                 let rule = scalar_rule(GAIN_RANGE.0, GAIN_RANGE.1, "dB", project.master_gain_db);
                 out.gain.push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
             Target::MasterEffect(i) => {
-                let fx = project.master_effects.get(i).ok_or_else(|| at(format!("没有 master_effects[{i}]")))?;
+                let fx = project.master_effects.get(i).ok_or_else(|| at(format!("no master_effects[{i}]")))?;
                 let rule = effect_rule(fx, &a.param).map_err(at)?;
                 out.effects[i].push(compile_lane(a, &rule, seed, total_beats).map_err(at)?);
             }
-            _ => return Err(at("音轨目标请写在该音轨的 automation".into())),
+            _ => return Err(at("track targets belong in that track's automation".into())),
         }
     }
     Ok(out)

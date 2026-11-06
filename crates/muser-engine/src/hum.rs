@@ -46,7 +46,7 @@ fn median(v: &mut [f64]) -> f64 {
 /// 转谱。`audio` 任意声道数（取平均），`sample_rate` 是它的采样率。
 pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) -> Result<Transcription, String> {
     if !(opts.tempo > 0.0) {
-        return Err("tempo 应 > 0".into());
+        return Err("tempo must be > 0".into());
     }
     let sr = f64::from(sample_rate);
     let n = audio.num_frames();
@@ -71,7 +71,7 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
     // 响度门限：最响处以下 30 dB，且不低于 -55 dBFS。
     let loud = frames.iter().map(|f| f.2).fold(0.0, f64::max);
     if loud < 1e-4 {
-        return Err("录音几乎没有声音".into());
+        return Err("the recording is almost silent".into());
     }
     let gate = (loud * 10f64.powf(-30.0 / 20.0)).max(10f64.powf(-55.0 / 20.0));
     // 窗的响度比帧滞后，用前后相邻帧的最大值判断"在唱"，免得音头音尾被切掉。
@@ -93,7 +93,7 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
     // 整体音准：偏离最近半音的中位数。
     let mut dev: Vec<f64> = smooth.iter().flatten().map(|m| m - m.round()).collect();
     if dev.len() < 5 {
-        return Err("没有听出音高：离麦克风近一点、哼得稳一点，或换一段更清楚的录音".into());
+        return Err("no pitch detected: get closer to the microphone, hum more steadily, or use a clearer recording".into());
     }
     let offset = median(&mut dev);
 
@@ -150,7 +150,7 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
         close(s, &mut segs);
     }
     if segs.is_empty() {
-        return Err("没有切出音：录音太短或太轻".into());
+        return Err("no notes found: the recording is too short or too quiet".into());
     }
 
     // 换成拍、对齐网格。
@@ -209,7 +209,7 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
 
 /// 读音频文件（WAV / AIFF / FLAC / Ogg / Opus / MP3 …）并转谱。
 pub fn transcribe_file(path: &std::path::Path, opts: HumOptions) -> Result<Transcription, String> {
-    let f = manguebyte::formats::read_file(path).map_err(|e| format!("读取音频文件 '{}' 失败: {e}", path.display()))?;
+    let f = manguebyte::formats::read_file(path).map_err(|e| format!("failed to read audio file '{}': {e}", path.display()))?;
     transcribe(&f.buffer, f.sample_rate, opts)
 }
 
@@ -228,7 +228,7 @@ pub fn parse_grid(s: &str) -> Result<f64, String> {
         Some(_) => None,
         None => body.parse::<f64>().ok().filter(|b| *b > 0.0),
     }
-    .ok_or_else(|| format!("网格 '{s}' 看不懂：写 1/16、1/8、1/8t、0.25（拍）或 off"))?;
+    .ok_or_else(|| format!("unrecognized grid '{s}': use 1/16, 1/8, 1/8t, 0.25 (beats) or off"))?;
     Ok(if triplet { beats * 2.0 / 3.0 } else { beats })
 }
 
@@ -294,6 +294,6 @@ mod tests {
     #[test]
     fn silence_is_an_error() {
         let quiet = AudioBuffer::<f32>::new(1, 48_000);
-        assert!(transcribe(&quiet, 48_000, HumOptions { tempo: 100.0, step: 0.25, from_start: false }).unwrap_err().contains("没有声音"));
+        assert!(transcribe(&quiet, 48_000, HumOptions { tempo: 100.0, step: 0.25, from_start: false }).unwrap_err().contains("almost silent"));
     }
 }

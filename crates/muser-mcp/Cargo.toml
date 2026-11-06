@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "muser MCP server：把引擎能力暴露为 AI agent 可调用的 tools"
+description = "muser MCP server: exposes the engine as tools an AI agent can call"
 
 [[bin]]
 name = "muser-mcp"

@@ -18,13 +18,13 @@ pub fn resolve(project: &Project, file: &str) -> PathBuf {
 
 /// 音频文件的概况：(格式, 秒, 采样率, 声道数)。
 pub fn info(path: &Path) -> Result<(String, f64, u32, usize), String> {
-    let f = manguebyte::formats::read_file(path).map_err(|e| format!("读取音频文件 '{}' 失败: {e}", path.display()))?;
+    let f = manguebyte::formats::read_file(path).map_err(|e| format!("failed to read audio file '{}': {e}", path.display()))?;
     Ok((format!("{:?}", f.format), f.buffer.num_frames() as f64 / f64::from(f.sample_rate), f.sample_rate, f.buffer.num_channels()))
 }
 
 /// 解码成 `sr` 采样率的立体声。单声道复制到两边。
 fn load(path: &Path, sr: u32) -> Result<AudioBuffer<f32>, String> {
-    let f = manguebyte::formats::read_file(path).map_err(|e| format!("读取音频文件 '{}' 失败: {e}", path.display()))?;
+    let f = manguebyte::formats::read_file(path).map_err(|e| format!("failed to read audio file '{}': {e}", path.display()))?;
     let src = &f.buffer;
     let mut stereo = AudioBuffer::<f32>::new(2, src.num_frames());
     for c in 0..2 {
@@ -52,7 +52,7 @@ fn envelope(path: &Path) -> Result<std::sync::Arc<Vec<f32>>, String> {
             return Ok(env.clone());
         }
     }
-    let f = manguebyte::formats::read_file(path).map_err(|e| format!("读取音频文件 '{}' 失败: {e}", path.display()))?;
+    let f = manguebyte::formats::read_file(path).map_err(|e| format!("failed to read audio file '{}': {e}", path.display()))?;
     let hop = ((f64::from(f.sample_rate) / ENVELOPE_RATE) as usize).max(1);
     let n = f.buffer.num_frames();
     let env: Vec<f32> = (0..n.div_ceil(hop))

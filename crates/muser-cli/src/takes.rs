@@ -41,20 +41,20 @@ fn write_list(project: &Path, takes: &[Take]) -> Result<()> {
 /// 存下一遍：`wav` 是浏览器传来的 WAV 文件内容。文件名由这里生成（轨名只留字母数字），只写进 `recordings/`。
 pub fn store(project: &Path, track: &str, start: f64, wav: &[u8]) -> Result<Take> {
     if wav.len() > MAX_BYTES {
-        bail!("录音太大（{} MB，最多 {} MB）", wav.len() >> 20, MAX_BYTES >> 20);
+        bail!("recording too large ({} MB, max {} MB)", wav.len() >> 20, MAX_BYTES >> 20);
     }
     if !(start.is_finite() && start >= 0.0) {
-        bail!("起点不对：{start}");
+        bail!("invalid start: {start}");
     }
-    let parsed = muser_engine::wav::read(wav).map_err(|e| anyhow!("不是能读的 WAV：{e:?}"))?;
+    let parsed = muser_engine::wav::read(wav).map_err(|e| anyhow!("not a readable WAV: {e:?}"))?;
     let seconds = parsed.buffer.num_frames() as f64 / f64::from(parsed.sample_rate.max(1));
     if seconds < 0.05 {
-        bail!("录音太短");
+        bail!("recording too short");
     }
     let stem: String = track.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').take(40).collect();
     let stem = if stem.is_empty() { "vocal".to_string() } else { stem };
     let d = dir(project);
-    std::fs::create_dir_all(&d).with_context(|| format!("建不了 {}", d.display()))?;
+    std::fs::create_dir_all(&d).with_context(|| format!("cannot create {}", d.display()))?;
     let mut takes = list(project);
     let n = (1..).find(|k| !d.join(format!("{stem}-take-{k:02}.wav")).exists()).unwrap_or(1);
     let name = format!("{stem}-take-{n:02}.wav");
@@ -74,11 +74,11 @@ pub fn store(project: &Path, track: &str, start: f64, wav: &[u8]) -> Result<Take
 /// 删掉一遍（文件与清单项）。`in_use` 为真时不删。
 pub fn delete(project: &Path, file: &str, in_use: bool) -> Result<()> {
     let mut takes = list(project);
-    let i = takes.iter().position(|t| t.file == file).ok_or_else(|| anyhow!("清单里没有 {file}"))?;
+    let i = takes.iter().position(|t| t.file == file).ok_or_else(|| anyhow!("{file} is not in the manifest"))?;
     if in_use {
-        bail!("{file} 正在被工程使用：先换成别的一遍或删掉那个片段");
+        bail!("{file} is in use by the project: switch to another take or delete that clip first");
     }
-    let path = dir(project).join(Path::new(file).file_name().ok_or_else(|| anyhow!("文件名不对"))?);
+    let path = dir(project).join(Path::new(file).file_name().ok_or_else(|| anyhow!("invalid file name"))?);
     let _ = std::fs::remove_file(path);
     takes.remove(i);
     write_list(project, &takes)
@@ -102,7 +102,7 @@ pub fn place(p: &mut Project, take: &Take) -> Result<()> {
     };
     let t = &mut p.tracks[i];
     if t.instrument.trim() != muser_core::audio::INSTRUMENT {
-        bail!("音轨 '{}' 不是音频轨（{}），换个轨名录", t.name, t.instrument);
+        bail!("track '{}' is not an audio track ({}); record to another track name", t.name, t.instrument);
     }
     let (a, z) = (take.start, take.start + beats);
     t.clips.retain(|c| c.start.0 + c.length.0 <= a + 1e-9 || c.start.0 >= z - 1e-9);
@@ -118,7 +118,7 @@ fn clip_json(take: &Take, beats: f64) -> Value {
 /// 保存时把一遍写进工程 JSON（与 [`place`] 一样：找轨或新建、换掉重叠的片段）。
 pub fn place_json(v: &mut Value, take: &Take, tm: &muser_core::tempo::TempoMap) -> Result<()> {
     let beats = tm.beat_at(tm.secs_at(take.start) + take.seconds) - take.start;
-    let tracks = v.get_mut("tracks").and_then(Value::as_array_mut).ok_or_else(|| anyhow!("工程文件里没有 tracks"))?;
+    let tracks = v.get_mut("tracks").and_then(Value::as_array_mut).ok_or_else(|| anyhow!("the project file has no tracks"))?;
     let i = match tracks.iter().position(|t| t.get("name").and_then(Value::as_str) == Some(take.track.as_str())) {
         Some(i) => i,
         None => {
@@ -126,8 +126,8 @@ pub fn place_json(v: &mut Value, take: &Take, tm: &muser_core::tempo::TempoMap) 
             tracks.len() - 1
         }
     };
-    let t = tracks[i].as_object_mut().ok_or_else(|| anyhow!("音轨格式不对"))?;
-    let clips = t.entry("clips").or_insert_with(|| json!([])).as_array_mut().ok_or_else(|| anyhow!("clips 不是数组"))?;
+    let t = tracks[i].as_object_mut().ok_or_else(|| anyhow!("malformed track"))?;
+    let clips = t.entry("clips").or_insert_with(|| json!([])).as_array_mut().ok_or_else(|| anyhow!("clips is not an array"))?;
     let (a, z) = (take.start, take.start + beats);
     clips.retain(|c| {
         let s = c.get("start").and_then(Value::as_f64).unwrap_or(0.0);
@@ -148,27 +148,27 @@ pub fn run(project_path: &str, clean: bool, timing: bool) -> Result<()> {
     }
     let takes = list(path);
     if takes.is_empty() {
-        println!("{project_path}：还没有录音（在 muser view 里点人声轨的 🎤 录）");
+        println!("{project_path}: no recordings yet (record with the microphone button on a vocal track in muser view)");
         return Ok(());
     }
     if clean {
         let unused: Vec<&Take> = takes.iter().filter(|t| !referenced(&project, &t.file)).collect();
         for t in &unused {
             delete(path, &t.file, false)?;
-            println!("已删除 {}", t.file);
+            println!("deleted {}", t.file);
         }
-        println!("删掉 {} 遍没用到的，留下 {} 遍", unused.len(), takes.len() - unused.len());
+        println!("deleted {} unused take(s), kept {}", unused.len(), takes.len() - unused.len());
         return Ok(());
     }
     let map = project.bar_map();
-    println!("{} 遍录音（recordings/takes.json）：", takes.len());
+    println!("{} take(s) (recordings/takes.json):", takes.len());
     for t in &takes {
         let (bar, beat) = map.bar_at(t.start);
         let file = dir(path).join(Path::new(&t.file).file_name().unwrap_or_default());
         let (voice, rms) = voice_span(&file).unwrap_or((None, f64::NEG_INFINITY));
-        let span = voice.map_or("（几乎没声音）".to_string(), |(a, z)| format!("唱的部分 {a:.2}–{z:.2} 秒"));
+        let span = voice.map_or("(almost silent)".to_string(), |(a, z)| format!("voiced {a:.2}-{z:.2} s"));
         println!(
-            "  {}  轨 {}  第 {} 小节第 {} 拍起  {:.2} 秒  平均 {:.0} dB  {}{}",
+            "  {}  track {}  from bar {} beat {}  {:.2} s  avg {:.0} dB  {}{}",
             t.file,
             t.track,
             bar + 1,
@@ -176,10 +176,10 @@ pub fn run(project_path: &str, clean: bool, timing: bool) -> Result<()> {
             t.seconds,
             rms,
             span,
-            if referenced(&project, &t.file) { "  ✓ 工程在用" } else { "" }
+            if referenced(&project, &t.file) { "  (used by the project)" } else { "" }
         );
     }
-    println!("裁掉开头结尾的空白：改片段的 audio.offset（秒）、start / length（拍）；接缝用 fade_in / fade_out。");
+    println!("To trim leading/trailing silence: edit the clip's audio.offset (seconds) and start / length (beats); use fade_in / fade_out for the seams.");
     Ok(())
 }
 
@@ -188,17 +188,17 @@ pub fn run(project_path: &str, clean: bool, timing: bool) -> Result<()> {
 fn report_timing(p: &Project) -> Result<()> {
     let rows = line_lags(p)?;
     let mut lags = Vec::new();
-    println!("逐句节奏（正数 = 比引导旋律晚，负数 = 早；吻合度是平均差几个半音，越小越可信）：");
+    println!("Per-line timing (positive = later than the guide melody, negative = earlier; fit is the average difference in semitones, lower is more reliable):");
     for (k, (text, bar, best)) in rows.iter().enumerate() {
         match best {
             Some((lag, err)) => {
-                let mark = if *err > 1.5 { "  （吻合度差，结果不可信）" } else if *lag > 0.04 { "  ← 晚" } else if *lag < -0.04 { "  ← 早" } else { "" };
-                println!("  {:>2}. 第 {:>2} 小节 {text}：{:+4.0} 毫秒（{err:.2}）{mark}", k + 1, bar + 1, lag * 1000.0);
+                let mark = if *err > 1.5 { "  (poor fit, unreliable)" } else if *lag > 0.04 { "  <- late" } else if *lag < -0.04 { "  <- early" } else { "" };
+                println!("  {:>2}. bar {:>2} {text}: {:+4.0} ms ({err:.2}){mark}", k + 1, bar + 1, lag * 1000.0);
                 if *err <= 1.5 {
                     lags.push(*lag);
                 }
             }
-            None => println!("  {:>2}. 第 {:>2} 小节 {text}：这句没有录音（或听不出音高）", k + 1, bar + 1),
+            None => println!("  {:>2}. bar {:>2} {text}: no recording for this line (or no pitch detected)", k + 1, bar + 1),
         }
     }
     if !lags.is_empty() {
@@ -206,12 +206,12 @@ fn report_timing(p: &Project) -> Result<()> {
         let med = lags[lags.len() / 2];
         let same = lags.iter().filter(|l| (*l - med).abs() < 0.04).count() * 4 >= lags.len() * 3;
         println!(
-            "整体中位数 {:+.0} 毫秒。{}",
+            "Overall median {:+.0} ms. {}",
             med * 1000.0,
             if same && med.abs() > 0.03 {
-                format!("大部分句子都偏这么多：多半是录音延迟，在录音面板的「延迟微调」里填 {:.0} 再录。", med * 1000.0)
+                format!("Most lines are off by about this much: likely recording latency; enter {:.0} in the recording panel's Latency (ms) field and record again.", med * 1000.0)
             } else {
-                "各句有早有晚，是演唱的起伏；要挪某一句：muser clip split / move（或在 view 里剪开、← → 微调）。".into()
+                "Lines vary early and late, which is normal in singing; to shift one line use muser clip split / move (or split and nudge with the arrows in view).".into()
             }
         );
     }
@@ -223,7 +223,7 @@ fn line_lags(p: &Project) -> Result<Vec<(String, usize, Option<(f64, f64)>)>> {
     let guide = muser_engine::lyric::guide_notes(p);
     let lines = muser_engine::lyric::karaoke(p);
     if guide.is_empty() || lines.is_empty() {
-        bail!("没有引导旋律：要有一条音符带 lyric（或 ABC 的 w: 歌词行）的音轨来对照");
+        bail!("no guide melody: need a track whose notes carry lyric (or an ABC w: lyrics line) to compare against");
     }
     let tm = p.tempo_map();
     let base = p.base_dir.clone().unwrap_or_default();
@@ -236,7 +236,7 @@ fn line_lags(p: &Project) -> Result<Vec<(String, usize, Option<(f64, f64)>)>> {
         .filter_map(|c| c.audio.as_ref().map(|a| (tm.secs_at(c.start.0), tm.secs_at(c.start.0 + c.length.0), a.offset, a.file.clone())))
         .collect();
     if clips.is_empty() {
-        bail!("工程里没有（没静音的）音频轨可以检查");
+        bail!("the project has no (unmuted) audio track to check");
     }
     let mut files: std::collections::HashMap<String, Option<(Vec<f32>, f64)>> = Default::default();
     let map = p.bar_map();
@@ -424,7 +424,7 @@ mod tests {
         let mut j: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         place_json(&mut j, &a, &muser_core::tempo::TempoMap::constant(120.0)).unwrap();
         assert_eq!(j["tracks"][1]["clips"][0]["audio"]["file"], json!("recordings/vocal-take-01.wav"));
-        assert!(delete(&path, &a.file, true).is_err(), "在用的不删");
+        assert!(delete(&path, &a.file, true).is_err(), "a take in use is not deleted");
         delete(&path, &a.file, false).unwrap();
         assert_eq!(list(&path).len(), 1);
         assert!(store(&path, "vocal", 0.0, b"not a wav").is_err());

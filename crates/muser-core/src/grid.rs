@@ -74,16 +74,16 @@ impl Grid {
     pub fn expand(&self, length: f64) -> Result<Vec<Note>, String> {
         let step = self.step.unwrap_or(0.25);
         if !(step > 0.0 && step <= 4.0) {
-            return Err(format!("grid.step = {step} 应在 (0, 4] 拍"));
+            return Err(format!("grid.step = {step} must be in (0, 4] beats"));
         }
         if self.rows.is_empty() {
-            return Err("grid 里没有行（如 \"kick\": \"x...x...\"）".into());
+            return Err("grid has no rows (e.g. \"kick\": \"x...x...\")".into());
         }
         let mut notes = Vec::new();
         for (key, row) in &self.rows {
             let pitch = drum_key(key).or_else(|| note_name(key)).ok_or_else(|| {
                 format!(
-                    "grid.{key}: 不是鼓件名、MIDI 数字或音名（如 c2）。鼓件: {}",
+                    "grid.{key}: not a drum name, MIDI number or note name (e.g. c2). Drum names: {}",
                     DRUM_PIECES.iter().map(|(a, _)| *a).collect::<Vec<_>>().join(" ")
                 )
             })?;
@@ -92,7 +92,7 @@ impl Grid {
                 continue;
             }
             if let Some(bad) = cells.iter().find(|c| !matches!(c, 'x' | 'X' | 'o' | '1'..='9' | '=' | '~' | '.' | '-')) {
-                return Err(format!("grid.{key}: 无法识别的字符 '{bad}'（x X o 1-9 = ~ . -）"));
+                return Err(format!("grid.{key}: unrecognized character '{bad}' (x X o 1-9 = ~ . -)"));
             }
             let steps = (length / step - 1e-9).ceil().max(0.0) as usize;
             let mut last: Option<usize> = None;
@@ -160,11 +160,11 @@ impl Drummer {
     pub fn validate(&self, at: &str) -> Result<(), String> {
         for (name, v) in [("complexity", self.complexity), ("intensity", self.intensity)] {
             if !(0.0..=1.0).contains(&v) {
-                return Err(format!("{at}.{name} = {v} 超出范围 [0, 1]"));
+                return Err(format!("{at}.{name} = {v} is out of range [0, 1]"));
             }
         }
         if let Some(n) = self.fill_every.filter(|&n| n > 64) {
-            return Err(format!("{at}.fill_every = {n} 超出范围 [0, 64]"));
+            return Err(format!("{at}.fill_every = {n} is out of range [0, 64]"));
         }
         Ok(())
     }

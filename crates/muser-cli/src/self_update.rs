@@ -16,25 +16,25 @@ pub fn run(check: bool, version: Option<String>) -> Result<()> {
         None => latest_tag()?,
     };
     if check {
-        println!("当前 {current}，最新 {latest}{}", if latest == current { "（已是最新）" } else { "：`muser self-update` 可更新" });
+        println!("current {current}, latest {latest}{}", if latest == current { "(up to date)" } else { ": run `muser self-update` to update" });
         return Ok(());
     }
     if latest == current {
-        println!("已是最新：{current}");
+        println!("already up to date: {current}");
         return Ok(());
     }
     let home = install_home();
     match &home {
-        Some(h) => println!("从 {current} 更新到 {latest}（装在 {}）…", h.display()),
+        Some(h) => println!("updating {current} -> {latest} (installed at {})...", h.display()),
         None => println!(
-            "从 {current} 更新到 {latest}。当前这份 muser 不是用安装脚本装的（{}），\n\
-             新版装到默认位置；原来那份留着不动，PATH 里排在前面的那份生效。",
+            "updating {current} -> {latest}. This muser was not installed by the install script ({}),\n\
+             so the new version goes to the default location; this copy is left untouched, and whichever comes first on PATH is the one that runs.",
             std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()
         ),
     }
-    let status = installer(&latest, home.as_deref()).status().context("无法运行安装脚本")?;
+    let status = installer(&latest, home.as_deref()).status().context("cannot run the install script")?;
     if !status.success() {
-        bail!("安装脚本失败（{status}）");
+        bail!("install script failed ({status})");
     }
     Ok(())
 }
@@ -48,11 +48,11 @@ fn latest_tag() -> Result<String> {
     let out = Command::new("curl")
         .args(["-fsSLo", NULL_DEVICE, "-w", "%{url_effective}", &format!("https://github.com/{REPO}/releases/latest")])
         .output()
-        .context("需要 curl 才能查新版本")?;
+        .context("curl is required to check for a new version")?;
     if !out.status.success() {
-        bail!("连不上 GitHub：{}", String::from_utf8_lossy(&out.stderr).trim());
+        bail!("cannot reach GitHub: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
-    tag_from_url(&String::from_utf8_lossy(&out.stdout)).context("没找到最新版本")
+    tag_from_url(&String::from_utf8_lossy(&out.stdout)).context("could not find the latest version")
 }
 
 #[cfg(windows)]
@@ -77,7 +77,7 @@ fn install_home() -> Option<PathBuf> {
 fn installer(tag: &str, home: Option<&Path>) -> Command {
     let url = |r: &str| format!("https://raw.githubusercontent.com/{REPO}/{r}/scripts/install.sh");
     let mut c = Command::new("sh");
-    c.args(["-c", "s=$(curl -fsSL \"$0\" || curl -fsSL \"$1\") || { echo '下载安装脚本失败' >&2; exit 1; }; printf '%s\\n' \"$s\" | sh", &url(tag), &url("main")]).env("MUSER_VERSION", tag);
+    c.args(["-c", "s=$(curl -fsSL \"$0\" || curl -fsSL \"$1\") || { echo 'failed to download the install script' >&2; exit 1; }; printf '%s\\n' \"$s\" | sh", &url(tag), &url("main")]).env("MUSER_VERSION", tag);
     if let Some(h) = home {
         c.env("MUSER_HOME", h);
     }

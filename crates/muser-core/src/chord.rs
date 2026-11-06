@@ -47,7 +47,7 @@ impl Chord {
     /// 解析一个和弦记号。
     pub fn parse(text: &str) -> Result<Chord, String> {
         let t = text.trim();
-        let err = || format!("和弦 '{t}' 看不懂：写成 根音 + 性质 [+ 变化音] [/低音]，如 Am7、F#m7b5、Cmaj9、G7#9、C/E");
+        let err = || format!("chord '{t}' not understood: write root + quality [+ alterations] [/bass], e.g. Am7, F#m7b5, Cmaj9, G7#9, C/E");
         let (main, bass) = match t.split_once('/') {
             Some((m, b)) => {
                 let (pc, n) = pitch_class(b).ok_or_else(err)?;
@@ -144,7 +144,7 @@ pub fn progression(text: &str, bars: u32, bar_beats: f64) -> Result<Vec<Placed>,
         text.split_whitespace().map(|c| vec![c]).collect()
     };
     if groups.is_empty() {
-        return Err("chords 为空".into());
+        return Err("chords is empty".into());
     }
     let parsed: Vec<Vec<Chord>> = groups.iter().map(|g| g.iter().map(|c| Chord::parse(c)).collect::<Result<_, _>>()).collect::<Result<_, _>>()?;
     let mut out = Vec::new();

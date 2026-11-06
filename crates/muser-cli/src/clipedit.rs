@@ -5,16 +5,16 @@ use muser_core::{Beats, Project};
 
 /// 能编辑的音频轨（没有 parts）。
 fn audio_track(p: &mut Project, ti: usize) -> Result<&mut muser_core::Track> {
-    let t = p.tracks.get_mut(ti).ok_or_else(|| anyhow!("没有 tracks[{ti}]"))?;
+    let t = p.tracks.get_mut(ti).ok_or_else(|| anyhow!("no tracks[{ti}]"))?;
     if t.instrument.trim() != muser_core::audio::INSTRUMENT || !t.parts.is_empty() {
-        bail!("只能剪开、挪动音频轨上的片段（tracks[{ti}] 是 {}）", t.instrument);
+        bail!("only clips on audio tracks can be split or moved (tracks[{ti}] is {})", t.instrument);
     }
     Ok(t)
 }
 
 fn bar(p: &Project, b: f64) -> String {
     let (k, into) = p.bar_map().bar_at(b);
-    format!("第 {} 小节第 {:.2} 拍", k + 1, into + 1.0)
+    format!("bar {} beat {:.2}", k + 1, into + 1.0)
 }
 
 /// 在第 `at` 拍把第 `ci` 个片段剪成两段（接缝各 10 毫秒淡化）。返回给人看的说明。
@@ -22,11 +22,11 @@ pub fn split(p: &mut Project, ti: usize, ci: usize, at: f64) -> Result<String> {
     let tm = p.tempo_map();
     let where_ = bar(p, at);
     let t = audio_track(p, ti)?;
-    let c = t.clips.get(ci).cloned().ok_or_else(|| anyhow!("没有这个片段"))?;
-    let audio = c.audio.clone().ok_or_else(|| anyhow!("这个片段不是音频"))?;
+    let c = t.clips.get(ci).cloned().ok_or_else(|| anyhow!("no such clip"))?;
+    let audio = c.audio.clone().ok_or_else(|| anyhow!("this clip is not audio"))?;
     let (a, z) = (c.start.0, c.start.0 + c.length.0);
     if !(at > a + 0.01 && at < z - 0.01) {
-        bail!("剪刀要落在片段中间（片段在 {a:.3}–{z:.3} 拍）");
+        bail!("the cut must fall inside the clip (the clip spans beats {a:.3}-{z:.3})");
     }
     let (mut left, mut right) = (c.clone(), c);
     left.length = Beats(at - a);
@@ -40,7 +40,7 @@ pub fn split(p: &mut Project, ti: usize, ci: usize, at: f64) -> Result<String> {
     right.audio = Some(ra);
     t.clips[ci] = left;
     t.clips.insert(ci + 1, right);
-    Ok(format!("✂ {}：在{where_}剪开", t.name))
+    Ok(format!("split {}: cut at {where_}", t.name))
 }
 
 /// 把第 `ci` 个片段挪到第 `to` 拍开始。返回说明。
@@ -49,14 +49,14 @@ pub fn move_to(p: &mut Project, ti: usize, ci: usize, to: f64) -> Result<String>
     let to = to.max(0.0);
     let (from_s, to_s) = (bar(p, p.tracks.get(ti).and_then(|t| t.clips.get(ci)).map_or(0.0, |c| c.start.0)), bar(p, to));
     let t = audio_track(p, ti)?;
-    let c = t.clips.get_mut(ci).ok_or_else(|| anyhow!("没有这个片段"))?;
+    let c = t.clips.get_mut(ci).ok_or_else(|| anyhow!("no such clip"))?;
     if c.audio.is_none() {
-        bail!("这个片段不是音频");
+        bail!("this clip is not audio");
     }
     let from = c.start.0;
     c.start = Beats(to);
     t.clips.sort_by(|x, y| x.start.0.total_cmp(&y.start.0));
-    Ok(format!("↔ {}：片段从{from_s}挪到{to_s}（{:+.0} 毫秒）", t.name, (tm.secs_at(to) - tm.secs_at(from)) * 1000.0))
+    Ok(format!("moved {}: clip from {from_s} to {to_s} ({:+.0} ms)", t.name, (tm.secs_at(to) - tm.secs_at(from)) * 1000.0))
 }
 
 /// `muser clip split|move`：改工程文件里这条音频轨的 clips（其余内容不动）。
@@ -64,22 +64,22 @@ pub fn run(project_path: &str, track: &str, split_at: Option<f64>, clip: Option<
     let text = std::fs::read_to_string(project_path)?;
     let mut v: serde_json::Value = serde_json::from_str(&text)?;
     let mut p = Project::from_json(&text).map_err(|e| anyhow!("{e}"))?;
-    let ti = p.tracks.iter().position(|t| t.name == track).ok_or_else(|| anyhow!("没有名为 '{track}' 的音轨"))?;
+    let ti = p.tracks.iter().position(|t| t.name == track).ok_or_else(|| anyhow!("no track named '{track}'"))?;
     let what = match split_at {
         Some(at) => {
-            let ci = p.tracks[ti].clips.iter().position(|c| c.audio.is_some() && at > c.start.0 && at < c.start.0 + c.length.0).ok_or_else(|| anyhow!("第 {at} 拍不在 '{track}' 的任何音频片段里"))?;
+            let ci = p.tracks[ti].clips.iter().position(|c| c.audio.is_some() && at > c.start.0 && at < c.start.0 + c.length.0).ok_or_else(|| anyhow!("beat {at} is not inside any audio clip of '{track}'"))?;
             split(&mut p, ti, ci, at)?
         }
         None => {
-            let ci = clip.ok_or_else(|| anyhow!("move 要 --clip（片段序号，muser takes 或工程里 clips 的顺序，从 0 起）"))?;
-            let start = p.tracks[ti].clips.get(ci).ok_or_else(|| anyhow!("'{track}' 没有第 {ci} 个片段"))?.start.0;
+            let ci = clip.ok_or_else(|| anyhow!("move needs --clip (the clip index: see `muser takes` or the order of clips in the project, from 0)"))?;
+            let start = p.tracks[ti].clips.get(ci).ok_or_else(|| anyhow!("'{track}' has no clip #{ci}"))?.start.0;
             let to = match (to, by_ms) {
                 (Some(t), _) => t,
                 (None, Some(ms)) => {
                     let tm = p.tempo_map();
                     tm.beat_at(tm.secs_at(start) + ms / 1000.0)
                 }
-                _ => bail!("move 要 --to <拍> 或 --by-ms <毫秒>"),
+                _ => bail!("move needs --to <beat> or --by-ms <ms>"),
             };
             move_to(&mut p, ti, ci, to)?
         }
@@ -101,9 +101,9 @@ mod tests {
         split(&mut p, 0, 0, 6.0).unwrap();
         let c = &p.tracks[0].clips;
         assert_eq!((c[0].start.0, c[0].length.0, c[1].start.0, c[1].length.0), (4.0, 2.0, 6.0, 6.0));
-        assert_eq!(c[1].audio.as_ref().unwrap().offset, 2.0, "120 BPM：2 拍 = 1 秒，接着原来的 1 秒往后");
-        assert!(split(&mut p, 0, 0, 4.0).is_err(), "剪刀落在边上不剪");
+        assert_eq!(c[1].audio.as_ref().unwrap().offset, 2.0, "120 BPM: 2 beats = 1 s, continuing after the original 1 s");
+        assert!(split(&mut p, 0, 0, 4.0).is_err(), "a cut on the edge is refused");
         let s = move_to(&mut p, 0, 1, 5.86).unwrap();
-        assert!(s.contains("-70 毫秒"), "{s}");
+        assert!(s.contains("-70 ms"), "{s}");
     }
 }

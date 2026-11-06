@@ -43,7 +43,7 @@ pub fn plugin_ref(spec: &str) -> Result<PluginRef, String> {
     list.into_iter()
         .find(|p| p.path == path && id.is_none_or(|i| i == p.id))
         .map(|p| PluginRef { path: p.path, id: p.id, name: p.name, vendor: p.vendor, version: p.version, format: p.format })
-        .ok_or_else(|| format!("扫描结果里没有插件 '{spec}'（`muser plugin scan` 查看本机插件）"))
+        .ok_or_else(|| format!("plugin '{spec}' is not in the scan results (see the plugins on this machine with `muser plugin scan`)"))
 }
 
 /// 按名字或文件找一个预设（名字不分大小写；重名时要写文件路径）。
@@ -55,8 +55,8 @@ pub fn find(p: &PluginRef, key: &str) -> Result<Preset, String> {
     let hits: Vec<&Preset> = all.iter().filter(|x| x.name.eq_ignore_ascii_case(key)).collect();
     match hits.as_slice() {
         [one] => Ok((*one).clone()),
-        [] => Err(format!("{} 没有叫 '{key}' 的音色（`muser sounds presets '{}'` 列出）", p.name, p.spec())),
-        many => Err(format!("有 {} 个叫 '{key}' 的音色，请写文件路径：{}", many.len(), many.iter().map(|x| x.file.as_str()).collect::<Vec<_>>().join("、"))),
+        [] => Err(format!("{} has no sound named '{key}' (list them with `muser sounds presets '{}'`)", p.name, p.spec())),
+        many => Err(format!("{} sounds are named '{key}'; give the file path instead: {}", many.len(), many.iter().map(|x| x.file.as_str()).collect::<Vec<_>>().join(", "))),
     }
 }
 
@@ -97,7 +97,7 @@ struct Index {
     /// 插件 id → 预设文件 → 采集的状态文件。
     #[serde(default)]
     captured: BTreeMap<String, BTreeMap<String, String>>,
-    /// 插件 id → 名字 → 用户自己调出来存下的状态（"我的音色"）。
+    /// 插件 id → 名字 → 用户自己调出来存下的状态（"My sounds"）。
     #[serde(default)]
     mine: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -107,7 +107,7 @@ fn write_index(idx: &Index) -> Result<(), String> {
     std::fs::write(index_path(), serde_json::to_string_pretty(idx).unwrap_or_default()).map_err(|e| e.to_string())
 }
 
-/// 把用户自己调出来的音色存进音色库的"我的音色"（同名覆盖）。返回音色库里的文件。
+/// 把用户自己调出来的音色存进音色库的"My sounds"（同名覆盖）。返回音色库里的文件。
 pub fn save_mine(p: &PluginRef, name: &str, state: &Path) -> Result<PathBuf, String> {
     let out = library_dir().join(slug(&p.name)).join("mine").join(format!("{}.muserstate", slug(name)));
     if let Some(d) = out.parent() {
@@ -116,7 +116,7 @@ pub fn save_mine(p: &PluginRef, name: &str, state: &Path) -> Result<PathBuf, Str
     // 已经在这个位置（就是音色库里的那份）时不用复制：复制到自己会把文件截断。
     let same = std::fs::canonicalize(state).ok().zip(std::fs::canonicalize(&out).ok()).is_some_and(|(a, b)| a == b);
     if !same {
-        std::fs::copy(state, &out).map_err(|e| format!("存进音色库失败: {e}"))?;
+        std::fs::copy(state, &out).map_err(|e| format!("failed to save into the sound library: {e}"))?;
     }
     let mut idx = read_index();
     idx.mine.entry(p.id.clone()).or_default().insert(name.to_string(), out.display().to_string());
@@ -284,7 +284,7 @@ fn nki_meta(path: &Path) -> (String, String, Vec<String>) {
     (library, category, kept)
 }
 
-/// 插件的内置音色（最前面是用户自己存下的"我的音色"）。
+/// 插件的内置音色（最前面是用户自己存下的"My sounds"）。
 pub fn presets(p: &PluginRef) -> Vec<Preset> {
     let mut out: Vec<Preset> = read_index()
         .mine
@@ -292,7 +292,7 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
         .into_iter()
         .flatten()
         .filter(|(_, f)| Path::new(f).is_file())
-        .map(|(name, f)| Preset { name: name.clone(), category: "我的音色".into(), library: "muser".into(), tags: Vec::new(), file: f.clone(), load: Load::Captured })
+        .map(|(name, f)| Preset { name: name.clone(), category: "My sounds".into(), library: "muser".into(), tags: Vec::new(), file: f.clone(), load: Load::Captured })
         .collect();
     let status = |file: &str, auto: bool| if captured_state(p, file).is_some() { Load::Captured } else if auto { Load::Auto } else { Load::Manual };
     // VST3 标准预设。
@@ -356,9 +356,9 @@ fn vst3_container(class_hex: &str, component: &[u8], controller: &[u8]) -> Resul
         .step_by(2)
         .map(|i| u8::from_str_radix(class_hex.get(i..i + 2).unwrap_or("zz"), 16))
         .collect::<Result<_, _>>()
-        .map_err(|_| format!("插件 id '{class_hex}' 不是 VST3 的 32 位十六进制类 id"))?;
+        .map_err(|_| format!("plugin id '{class_hex}' is not a 32-digit hexadecimal VST3 class id"))?;
     if id.len() != 16 {
-        return Err(format!("插件 id '{class_hex}' 不是 16 字节"));
+        return Err(format!("plugin id '{class_hex}' is not 16 bytes"));
     }
     let mut b = b"MBVST3\0\x01".to_vec();
     b.extend_from_slice(&id);
@@ -372,13 +372,13 @@ fn vst3_container(class_hex: &str, component: &[u8], controller: &[u8]) -> Resul
 /// `.vstpreset` → (组件状态, 控制器状态)。格式：`VST3`、版本、32 字符类 id、块表偏移；块表 `List`、数量、
 /// 每项（4 字符 id、偏移、长度），`Comp` 是组件状态、`Cont` 是控制器状态。
 pub(crate) fn read_vstpreset(b: &[u8], class_hex: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
-    let bad = || "不是有效的 .vstpreset".to_string();
+    let bad = || "not a valid .vstpreset".to_string();
     if b.len() < 48 || &b[..4] != b"VST3" {
         return Err(bad());
     }
     let class = std::str::from_utf8(&b[8..40]).map_err(|_| bad())?;
     if !class.eq_ignore_ascii_case(class_hex) {
-        return Err(format!("这个预设属于另一个插件（类 id {class}）"));
+        return Err(format!("this preset belongs to another plugin (class id {class})"));
     }
     let list = i64::from_le_bytes(b[40..48].try_into().map_err(|_| bad())?) as usize;
     let at = |o: usize, n: usize| b.get(o..o + n).ok_or_else(bad);
@@ -405,10 +405,10 @@ pub(crate) fn read_vstpreset(b: &[u8], class_hex: &str) -> Result<(Vec<u8>, Vec<
 /// Surge 的 `.fxp`：60 字节文件头（`CcnK` … `FPCh` … `cjs3`、名字、块长）之后是插件的状态块（`sub3` …）。
 pub(crate) fn read_fxp(b: &[u8]) -> Result<Vec<u8>, String> {
     if b.len() < 60 || &b[..4] != b"CcnK" || &b[8..12] != b"FPCh" {
-        return Err("不是有效的 .fxp 预设".into());
+        return Err("not a valid .fxp preset".into());
     }
     let size = u32::from_be_bytes(b[56..60].try_into().unwrap_or_default()) as usize;
-    b.get(60..60 + size).map(<[u8]>::to_vec).ok_or_else(|| "fxp 预设被截断".into())
+    b.get(60..60 + size).map(<[u8]>::to_vec).ok_or_else(|| "the fxp preset is truncated".into())
 }
 
 /// 这个预设的插件状态文件（在音色库里；能自动转换的第一次用时写出来）。要人工载入的返回错误，提示怎么采集。
@@ -423,7 +423,7 @@ pub fn state_for(p: &PluginRef, preset: &Preset) -> Result<PathBuf, String> {
     if out.is_file() && read_state_file(&out).is_ok() {
         return Ok(out);
     }
-    let bytes = std::fs::read(&preset.file).map_err(|e| format!("读取预设 '{}' 失败: {e}", preset.file))?;
+    let bytes = std::fs::read(&preset.file).map_err(|e| format!("failed to read preset '{}': {e}", preset.file))?;
     let ext = Path::new(&preset.file).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let data = match (ext.as_str(), p.format.as_str()) {
         ("vstpreset", "vst3") => {
@@ -434,7 +434,7 @@ pub fn state_for(p: &PluginRef, preset: &Preset) -> Result<PathBuf, String> {
         ("fxp", _) => read_fxp(&bytes)?,
         _ => {
             return Err(format!(
-                "'{}' 要在插件窗口里载入一次：`muser sounds capture '{}' '{}'`（人来点，或 agent 用 computer use），之后就能直接用",
+                "'{}' must be loaded once in the plugin window: `muser sounds capture '{}' '{}'` (a person clicks through, or an agent uses computer use); after that it can be used directly",
                 preset.name,
                 p.spec(),
                 preset.file
@@ -470,7 +470,7 @@ mod tests {
             v.extend_from_slice(&size.to_le_bytes());
         }
         assert_eq!(read_vstpreset(&v, &class.to_lowercase()).unwrap(), (b"abc".to_vec(), b"de".to_vec()));
-        assert!(read_vstpreset(&v, "00000000000000000000000000000000").unwrap_err().contains("另一个插件"));
+        assert!(read_vstpreset(&v, "00000000000000000000000000000000").unwrap_err().contains("another plugin"));
         let c = vst3_container(class, b"abc", b"de").unwrap();
         assert_eq!(&c[..8], b"MBVST3\0\x01");
         assert_eq!(c[8..24], [0xAB, 0xCD, 0xEF, 0x01, 0x91, 0x82, 0xFA, 0xEB, 0x56, 0x6D, 0x62, 0x41, 0x53, 0x67, 0x58, 0x54]);

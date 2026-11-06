@@ -31,7 +31,7 @@ pub fn timeline(project: &Project) -> Result<Vec<SectionSpan>, String> {
     let mut t = 0.0;
     for (fi, e) in project.form.iter().enumerate() {
         let name = e.section();
-        let sec = project.sections.get(name).ok_or_else(|| format!("form[{fi}]: 没有段落 '{name}'"))?;
+        let sec = project.sections.get(name).ok_or_else(|| format!("form[{fi}]: no section '{name}'"))?;
         let k = count.entry(name).or_default();
         *k += 1;
         let bar = project.section_meter(sec).beats_per_bar();
@@ -216,7 +216,7 @@ impl Ctx<'_> {
     fn render(&self, part: &Part, len: f64, chords: &[Placed], at: &str) -> Result<Vec<Note>, String> {
         let steps = part.chordal.as_deref().map(Chordal::parse).transpose().map_err(|e| format!("{at}.{e}"))?;
         if steps.is_some() && chords.is_empty() {
-            return Err(format!("{at}: chordal 要按和弦取音，这个段落没有写 chords"));
+            return Err(format!("{at}: chordal takes its notes from the chords, but this section has no chords"));
         }
         let step = part.step.unwrap_or(0.5);
         let loop_len = part.length.unwrap_or_else(|| steps.as_ref().map_or(len, |s| s.len() as f64 * step));
@@ -663,8 +663,8 @@ mod tests {
     fn errors() {
         let p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "sections": { "s": { "bars": 1 } }, "form": ["s"],
             "tracks": [{ "name": "b", "instrument": "bass.finger", "parts": { "s": { "chordal": "1" } } }] })).unwrap();
-        assert!(arranged(&p).unwrap_err().contains("没有写 chords"));
+        assert!(arranged(&p).unwrap_err().contains("has no chords"));
         let bad: Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "sections": { "s": { "bars": 1 } }, "form": ["x"], "tracks": [] })).unwrap();
-        assert!(bad.validate().unwrap_err().to_string().contains("没有段落 'x'"));
+        assert!(bad.validate().unwrap_err().to_string().contains("no section 'x'"));
     }
 }

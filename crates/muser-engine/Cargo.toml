@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "muser 引擎适配层：把 core 模型编译成 manguebyte 的 Synth/Graph 并离线渲染为 wav"
+description = "muser engine adapter layer: compiles the core model into a manguebyte Synth/Graph and renders it offline to wav"
 
 [dependencies]
 muser-core = { workspace = true }

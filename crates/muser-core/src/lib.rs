@@ -186,11 +186,11 @@ impl Project {
     /// 基本校验：tempo 为正、clip 时间非负等。
     pub fn validate(&self) -> Result<(), CoreError> {
         if !(-24..=24).contains(&self.transpose) {
-            return Err(CoreError::Invalid(format!("transpose = {}：整首变调在 −24 到 24 个半音之间", self.transpose)));
+            return Err(CoreError::Invalid(format!("transpose = {}: whole-piece transposition must be between -24 and 24 semitones", self.transpose)));
         }
         if !(self.tempo > 0.0) {
             return Err(CoreError::Invalid(format!(
-                "tempo 必须为正数，实际为 {}",
+                "tempo must be positive, got {}",
                 self.tempo
             )));
         }
@@ -219,7 +219,7 @@ impl Project {
         for (ti, track) in self.tracks.iter().enumerate() {
             if !(-1.0..=1.0).contains(&track.pan) {
                 return Err(CoreError::Invalid(format!(
-                    "tracks[{ti}].pan = {} 超出范围 [-1, 1]",
+                    "tracks[{ti}].pan = {} is out of range [-1, 1]",
                     track.pan
                 )));
             }
@@ -241,13 +241,13 @@ impl Project {
                     (Some(a), true) => {
                         a.validate(&format!("{at}.audio")).map_err(CoreError::Invalid)?;
                         if !clip.notes.is_empty() || clip.abc.is_some() || clip.grid.is_some() || clip.drummer.is_some() || !clip.pedal.is_empty() {
-                            return Err(CoreError::Invalid(format!("{at}: 音频片段不能再写音符（notes / abc / grid / drummer / pedal）")));
+                            return Err(CoreError::Invalid(format!("{at}: an audio clip cannot also contain notes (notes / abc / grid / drummer / pedal)")));
                         }
                     }
                     (Some(_), false) => {
-                        return Err(CoreError::Invalid(format!("{at}.audio: 音频片段要放在 \"instrument\": \"audio\" 的音轨上")));
+                        return Err(CoreError::Invalid(format!("{at}.audio: audio clips must be on a track with \"instrument\": \"audio\"")));
                     }
-                    (None, true) => return Err(CoreError::Invalid(format!("{at}: audio 音轨的 clip 要写 audio（音频文件）"))),
+                    (None, true) => return Err(CoreError::Invalid(format!("{at}: a clip on an audio track needs audio (an audio file)"))),
                     (None, false) => {}
                 }
                 if let Some(h) = &clip.humanize {
@@ -261,13 +261,13 @@ impl Project {
                 }
                 if clip.start.0 < 0.0 {
                     return Err(CoreError::Invalid(format!(
-                        "track[{ti}].clip[{ci}] start 为负: {}",
+                        "track[{ti}].clip[{ci}] start is negative: {}",
                         clip.start.0
                     )));
                 }
                 if clip.length.0 <= 0.0 {
                     return Err(CoreError::Invalid(format!(
-                        "track[{ti}].clip[{ci}] length 必须为正: {}",
+                        "track[{ti}].clip[{ci}] length must be positive: {}",
                         clip.length.0
                     )));
                 }
@@ -275,13 +275,13 @@ impl Project {
                 for (pi, &(a, b)) in clip.pedal.iter().enumerate() {
                     let at = format!("tracks[{ti}].clips[{ci}].pedal[{pi}]");
                     if !(a.is_finite() && b.is_finite()) || a < 0.0 || b <= a {
-                        return Err(CoreError::Invalid(format!("{at} = [{a}, {b}] 无效：应为 [起, 止]，0 ≤ 起 < 止（拍，相对 clip 起点）")));
+                        return Err(CoreError::Invalid(format!("{at} = [{a}, {b}] is invalid: expected [start, end] with 0 <= start < end (beats, relative to the clip start)")));
                     }
                     if a < prev_end {
-                        return Err(CoreError::Invalid(format!("{at} 与前一个区间重叠或顺序颠倒：区间应按时间递增、互不重叠")));
+                        return Err(CoreError::Invalid(format!("{at} overlaps the previous range or is out of order: ranges must be in increasing time order and not overlap")));
                     }
                     if a >= clip.length.0 {
-                        return Err(CoreError::Invalid(format!("{at} 起点 {a} 超出 clip 长度 {}", clip.length.0)));
+                        return Err(CoreError::Invalid(format!("{at} start {a} is beyond the clip length {}", clip.length.0)));
                     }
                     prev_end = b;
                 }
@@ -289,12 +289,12 @@ impl Project {
                 for (ni, note) in notes.iter().enumerate() {
                     if note.pitch > 127 || note.start.0 < 0.0 || note.length.0 <= 0.0 {
                         return Err(CoreError::Invalid(format!(
-                            "track[{ti}].clip[{ci}].note[{ni}] 无效: pitch 0-127、start ≥ 0、length > 0"
+                            "track[{ti}].clip[{ci}].note[{ni}] is invalid: need pitch 0-127, start >= 0, length > 0"
                         )));
                     }
                     if !(0.0..=1.0).contains(&note.velocity) {
                         return Err(CoreError::Invalid(format!(
-                            "track[{ti}].clip[{ci}].note[{ni}].velocity = {} 超出范围 [0, 1]",
+                            "track[{ti}].clip[{ci}].note[{ni}].velocity = {} is out of range [0, 1]",
                             note.velocity
                         )));
                     }
@@ -302,7 +302,7 @@ impl Project {
                     for &(at, semis) in &note.bend {
                         if !(at >= last && semis.abs() <= 2.0) {
                             return Err(CoreError::Invalid(format!(
-                                "track[{ti}].clip[{ci}].note[{ni}].bend: 点 [{at}, {semis}] 无效：拍 ≥ 0 且递增，半音在 ±2 之内"
+                                "track[{ti}].clip[{ci}].note[{ni}].bend: point [{at}, {semis}] is invalid: beats must be >= 0 and increasing, semitones within +/-2"
                             )));
                         }
                         last = at;
@@ -320,17 +320,17 @@ impl Project {
         for (name, sec) in &self.sections {
             if let Some(t) = sec.tempo {
                 if !(t.is_finite() && t > 0.0 && t <= 999.0) {
-                    return Err(format!("sections.{name}.tempo = {t} 应在 0–999 BPM 之间"));
+                    return Err(format!("sections.{name}.tempo = {t} must be between 0 and 999 BPM"));
                 }
             }
             if sec.tempo_ramp_bars.is_some_and(|r| r > sec.bars) {
-                return Err(format!("sections.{name}.tempo_ramp_bars 不能比这一段的小节数（{}）多", sec.bars));
+                return Err(format!("sections.{name}.tempo_ramp_bars cannot exceed this section's bar count ({})", sec.bars));
             }
             if sec.bars == 0 || sec.bars > 1024 {
-                return Err(format!("sections.{name}.bars = {} 应在 1–1024", sec.bars));
+                return Err(format!("sections.{name}.bars = {} must be between 1 and 1024", sec.bars));
             }
             if name.contains('#') || name == "*" {
-                return Err(format!("sections.{name}: 段落名不能含 # 或是 *"));
+                return Err(format!("sections.{name}: a section name cannot contain # or be *"));
             }
             if let Some(c) = &sec.chords {
                 chord::progression(c, sec.bars, self.section_meter(sec).beats_per_bar()).map_err(|e| format!("sections.{name}.chords: {e}"))?;
@@ -339,12 +339,12 @@ impl Project {
         for (i, e) in self.form.iter().enumerate() {
             if !self.sections.contains_key(e.section()) {
                 let names: Vec<&str> = self.sections.keys().map(String::as_str).collect();
-                return Err(format!("form[{i}]: 没有段落 '{}'（sections 里有: {}）", e.section(), names.join(", ")));
+                return Err(format!("form[{i}]: no section '{}' (sections has: {})", e.section(), names.join(", ")));
             }
             if let FormEntry::Detail(d) = e {
                 for m in &d.mute {
                     if !self.tracks.iter().any(|t| &t.name == m) {
-                        return Err(format!("form[{i}].mute: 没有叫 '{m}' 的音轨"));
+                        return Err(format!("form[{i}].mute: no track named '{m}'"));
                     }
                 }
             }
@@ -354,18 +354,18 @@ impl Project {
                 continue;
             }
             if self.form.is_empty() {
-                return Err(format!("tracks[{ti}].parts: 要先写 form（段落顺序）与 sections"));
+                return Err(format!("tracks[{ti}].parts: write form (section order) and sections first"));
             }
             if t.instrument.trim() == audio::INSTRUMENT {
-                return Err(format!("tracks[{ti}].parts: audio 音轨用 clips 放音频，不用 parts"));
+                return Err(format!("tracks[{ti}].parts: audio tracks put audio in clips, not parts"));
             }
             for (key, part) in &t.parts {
                 let (name, k) = arrange::part_key(key);
                 if name != "*" && !self.sections.contains_key(name) {
-                    return Err(format!("tracks[{ti}].parts.{key}: 没有段落 '{name}'"));
+                    return Err(format!("tracks[{ti}].parts.{key}: no section '{name}'"));
                 }
                 if k == Some(0) {
-                    return Err(format!("tracks[{ti}].parts.{key}: 第几次从 1 起"));
+                    return Err(format!("tracks[{ti}].parts.{key}: the occurrence number starts at 1"));
                 }
                 part.validate(&format!("tracks[{ti}].parts.{key}"), false)?;
             }
@@ -390,10 +390,10 @@ fn check_automation(a: &Automation, layer: Layer, effects: usize, sends: &[&str]
     let err = |m: String| CoreError::Invalid(format!("{at}: {m}"));
     let allowed = match layer {
         Layer::Master => "master_gain_db / master_effects[i]",
-        Layer::Track => "instrument / effects[i] / gain_db / pan / sends.<总线>",
-        Layer::Bus => "effects[i] / gain_db / pan / sends.<总线>",
+        Layer::Track => "instrument / effects[i] / gain_db / pan / sends.<bus>",
+        Layer::Bus => "effects[i] / gain_db / pan / sends.<bus>",
     };
-    let target = Target::parse(&a.target).ok_or_else(|| err(format!("target '{}' 无效，可选: {allowed}", a.target)))?;
+    let target = Target::parse(&a.target).ok_or_else(|| err(format!("target '{}' is invalid; choose one of: {allowed}", a.target)))?;
     let ok = matches!(
         (&target, layer),
         (Target::MasterGain | Target::MasterEffect(_), Layer::Master)
@@ -402,28 +402,28 @@ fn check_automation(a: &Automation, layer: Layer, effects: usize, sends: &[&str]
     );
     if !ok {
         let hint = match target {
-            Target::MasterGain | Target::MasterEffect(_) => "；主总线目标写在工程级 automation",
-            Target::Instrument if layer == Layer::Bus => "；总线没有乐器",
-            _ if layer == Layer::Master => "；音轨/总线的目标写在各自的 automation",
+            Target::MasterGain | Target::MasterEffect(_) => "; master targets go in the project-level automation",
+            Target::Instrument if layer == Layer::Bus => "; a bus has no instrument",
+            _ if layer == Layer::Master => "; track/bus targets go in their own automation",
             _ => "",
         };
-        return Err(err(format!("target '{}' 不能写在这里，可选: {allowed}{hint}", a.target)));
+        return Err(err(format!("target '{}' cannot be used here; choose one of: {allowed}{hint}", a.target)));
     }
     if let Target::Effect(i) | Target::MasterEffect(i) = target {
         if i >= effects {
-            return Err(err(format!("target '{}' 越界：这里只有 {effects} 个效果器", a.target)));
+            return Err(err(format!("target '{}' is out of range: there are only {effects} effects here", a.target)));
         }
     }
     if let Target::Send(name) = &target {
         if !sends.contains(&name.as_str()) {
-            return Err(err(format!("没有发送到 '{name}'：先在 sends 里写上它（可写 -80 表示从无声开始）")));
+            return Err(err(format!("no send to '{name}': add it to sends first (use -80 to start silent)")));
         }
     }
     if target.is_scalar() && !a.param.is_empty() {
-        return Err(err(format!("target '{}' 不需要 param", a.target)));
+        return Err(err(format!("target '{}' does not take param", a.target)));
     }
     if !target.is_scalar() && a.param.is_empty() {
-        return Err(err("缺少 param（要自动化的参数名）".into()));
+        return Err(err("missing param (the name of the parameter to automate)".into()));
     }
     a.check_shape().map_err(err)
 }
@@ -635,9 +635,9 @@ impl Note {
 /// 核心层错误。
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
-    #[error("JSON 序列化/反序列化错误: {0}")]
+    #[error("JSON serialization/deserialization error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("工程校验失败: {0}")]
+    #[error("project validation failed: {0}")]
     Invalid(String),
 }
 
@@ -777,7 +777,7 @@ mod tests {
         assert!(p("[[0, 3.9], [4, 7.9]]").is_ok());
         assert!(p("[[0, 9]]").is_ok(), "超出 clip 末尾时截到 clip 结束");
         assert!(p("[[2, 1]]").unwrap_err().to_string().contains("pedal[0]"));
-        assert!(p("[[0, 4], [3, 6]]").unwrap_err().to_string().contains("重叠"));
-        assert!(p("[[9, 10]]").unwrap_err().to_string().contains("超出"));
+        assert!(p("[[0, 4], [3, 6]]").unwrap_err().to_string().contains("overlaps"));
+        assert!(p("[[9, 10]]").unwrap_err().to_string().contains("beyond"));
     }
 }

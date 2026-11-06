@@ -45,21 +45,21 @@ struct Located {
 fn locate(data: &[u8]) -> Result<Located, String> {
     const VST3: &[u8] = b"MBVST3\0\x01";
     if !data.starts_with(VST3) {
-        return Err("只支持 Vital 的 VST3 版（状态里找不到 VST3 容器）".into());
+        return Err("only the VST3 build of Vital is supported (no VST3 container found in the state)".into());
     }
     let cl_at = VST3.len() + 16;
     let comp = cl_at + 8;
-    let c = data.get(comp..comp + 180).ok_or("Vital 状态过短")?;
+    let c = data.get(comp..comp + 180).ok_or("Vital state is too short")?;
     if &c[0..4] != b"VstW" || &c[16..20] != b"CcnK" || &c[24..28] != b"FBCh" {
-        return Err("Vital 状态格式不符（不是 VST2 chunk）".into());
+        return Err("Vital state format mismatch (not a VST2 chunk)".into());
     }
     let start = comp + 176;
     if data.get(start) != Some(&b'{') {
-        return Err("Vital 状态里找不到 JSON".into());
+        return Err("no JSON found in the Vital state".into());
     }
     let text = std::str::from_utf8(&data[start..]).unwrap_or_else(|e| std::str::from_utf8(&data[start..start + e.valid_up_to()]).unwrap());
     let mut de = serde_json::Deserializer::from_str(text).into_iter::<Value>();
-    de.next().ok_or("Vital 状态 JSON 为空")?.map_err(|e| format!("Vital 状态 JSON 无法解析: {e}"))?;
+    de.next().ok_or("Vital state JSON is empty")?.map_err(|e| format!("cannot parse Vital state JSON: {e}"))?;
     let end = start + de.byte_offset();
     Ok(Located {
         start,
@@ -88,7 +88,7 @@ fn write_len(d: &mut [u8], at: usize, n: usize, be: bool, v: u64) {
 /// 取出状态里的 JSON 文档。
 pub fn read_json(data: &[u8]) -> Result<Value, String> {
     let l = locate(data)?;
-    serde_json::from_slice(&data[l.start..l.end]).map_err(|e| format!("Vital 状态 JSON 无法解析: {e}"))
+    serde_json::from_slice(&data[l.start..l.end]).map_err(|e| format!("cannot parse Vital state JSON: {e}"))
 }
 
 /// 用新的 JSON 文档替换状态里的 JSON，修正各级长度。
@@ -104,7 +104,7 @@ pub fn write_json(data: &[u8], doc: &Value) -> Result<Vec<u8>, String> {
     for (at, n, be) in l.lengths {
         let v = read_len(&out, at, n, be) as i64 + delta;
         if v < 0 {
-            return Err("Vital 状态长度字段异常".into());
+            return Err("Vital state length field is invalid".into());
         }
         write_len(&mut out, at, n, be, v as u64);
     }
@@ -175,7 +175,7 @@ pub fn wavetable(name: &str) -> Result<Value, String> {
             .collect(),
         other => {
             return Err(format!(
-                "没有内置波表 '{other}'，可用: {}",
+                "no built-in wavetable '{other}', available: {}",
                 WAVETABLES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
             ));
         }
@@ -201,48 +201,48 @@ pub fn patch(doc: &mut Value, params: &Map<String, Value>) -> Result<(), String>
     let settings = doc
         .get_mut("settings")
         .and_then(Value::as_object_mut)
-        .ok_or("Vital 状态 JSON 里没有 settings")?;
+        .ok_or("no settings in the Vital state JSON")?;
     if let Some(w) = params.get("@wavetable") {
         let table: Vec<(usize, String)> = match w {
             Value::String(s) => (0..3).map(|i| (i, s.trim().to_lowercase())).collect(),
             Value::Object(m) => m
                 .iter()
                 .map(|(k, v)| {
-                    let i: usize = k.trim().parse().ok().filter(|i| (1..=3).contains(i)).ok_or_else(|| format!("@wavetable 的键应为振荡器 1 / 2 / 3，实际 '{k}'"))?;
-                    let name = v.as_str().ok_or_else(|| format!("@wavetable.{k} 应为波表名"))?;
+                    let i: usize = k.trim().parse().ok().filter(|i| (1..=3).contains(i)).ok_or_else(|| format!("@wavetable keys must be oscillator 1 / 2 / 3, got '{k}'"))?;
+                    let name = v.as_str().ok_or_else(|| format!("@wavetable.{k} must be a wavetable name"))?;
                     Ok((i - 1, name.trim().to_lowercase()))
                 })
                 .collect::<Result<_, String>>()?,
-            _ => return Err("@wavetable 应为波表名，或 {\"1\": 名称, \"2\": 名称}".into()),
+            _ => return Err("@wavetable must be a wavetable name, or {\"1\": name, \"2\": name}".into()),
         };
         let tables = settings
             .get_mut("wavetables")
             .and_then(Value::as_array_mut)
-            .ok_or("Vital 状态里没有 wavetables")?;
+            .ok_or("no wavetables in the Vital state")?;
         for (i, name) in table {
             let t = wavetable(&name)?;
-            *tables.get_mut(i).ok_or("Vital 状态里振荡器波表数量不符")? = t;
+            *tables.get_mut(i).ok_or("oscillator wavetable count mismatch in the Vital state")? = t;
         }
     }
     if let Some(m) = params.get("@modulations") {
-        let list = m.as_array().ok_or("@modulations 应为数组：[{\"source\": ..., \"destination\": ..., \"amount\": ...}]")?;
+        let list = m.as_array().ok_or("@modulations must be an array: [{\"source\": ..., \"destination\": ..., \"amount\": ...}]")?;
         if list.len() > MAX_MODS {
-            return Err(format!("@modulations 最多 {MAX_MODS} 条"));
+            return Err(format!("@modulations allows at most {MAX_MODS} entries"));
         }
         let mut slots = Vec::new();
         for (i, item) in list.iter().enumerate() {
             let at = |e: String| format!("@modulations[{i}]: {e}");
-            let o = item.as_object().ok_or_else(|| at("应为对象".into()))?;
+            let o = item.as_object().ok_or_else(|| at("expected an object".into()))?;
             for k in o.keys() {
                 if !["source", "destination", "amount", "bipolar", "stereo", "power"].contains(&k.as_str()) {
-                    return Err(at(format!("未知字段 '{k}'（可用: source / destination / amount / bipolar / stereo / power）")));
+                    return Err(at(format!("unknown field '{k}' (available: source / destination / amount / bipolar / stereo / power）")));
                 }
             }
-            let source = o.get("source").and_then(Value::as_str).ok_or_else(|| at("缺少 source".into()))?.trim().to_lowercase();
+            let source = o.get("source").and_then(Value::as_str).ok_or_else(|| at("missing source".into()))?.trim().to_lowercase();
             if !SOURCES.contains(&source.as_str()) {
-                return Err(at(format!("未知的调制源 '{source}'，可用: {}", SOURCES.join(", "))));
+                return Err(at(format!("unknown modulation source '{source}', available: {}", SOURCES.join(", "))));
             }
-            let dest = o.get("destination").and_then(Value::as_str).ok_or_else(|| at("缺少 destination".into()))?.trim().to_lowercase();
+            let dest = o.get("destination").and_then(Value::as_str).ok_or_else(|| at("missing destination".into()))?.trim().to_lowercase();
             let valid_dest = settings.get(&dest).is_some_and(Value::is_number) && !dest.starts_with("modulation_");
             if !valid_dest {
                 let near: Vec<&String> = settings
@@ -252,15 +252,15 @@ pub fn patch(doc: &mut Value, params: &Map<String, Value>) -> Result<(), String>
                     .take(12)
                     .collect();
                 return Err(at(format!(
-                    "未知的调制目标 '{dest}'（目标是 Vital 的内部参数名，如 filter_1_cutoff / osc_1_wave_frame / osc_1_level）{}",
-                    if near.is_empty() { String::new() } else { format!("；相近: {}", near.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")) }
+                    "unknown modulation destination '{dest}' (a destination is an internal Vital parameter name, e.g. filter_1_cutoff / osc_1_wave_frame / osc_1_level){}",
+                    if near.is_empty() { String::new() } else { format!("; similar: {}", near.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")) }
                 )));
             }
             let num = |k: &str, lo: f64, hi: f64, def: f64| -> Result<f64, String> {
                 match o.get(k) {
                     None => Ok(def),
                     Some(Value::Bool(b)) => Ok(if *b { 1.0 } else { 0.0 }),
-                    Some(v) => v.as_f64().filter(|x| (lo..=hi).contains(x)).ok_or_else(|| at(format!("{k} 应为 {lo}..{hi} 的数字"))),
+                    Some(v) => v.as_f64().filter(|x| (lo..=hi).contains(x)).ok_or_else(|| at(format!("{k} must be a number in {lo}..{hi}"))),
                 }
             };
             slots.push((source, dest, num("amount", -1.0, 1.0, 0.5)?, num("bipolar", 0.0, 1.0, 0.0)?, num("stereo", 0.0, 1.0, 0.0)?, num("power", -10.0, 10.0, 0.0)?));
@@ -268,7 +268,7 @@ pub fn patch(doc: &mut Value, params: &Map<String, Value>) -> Result<(), String>
         let mods = settings
             .get_mut("modulations")
             .and_then(Value::as_array_mut)
-            .ok_or("Vital 状态里没有 modulations")?;
+            .ok_or("no modulations in the Vital state")?;
         for (i, slot) in mods.iter_mut().enumerate() {
             *slot = match slots.get(i) {
                 Some((s, d, ..)) => json!({ "source": s, "destination": d }),
@@ -345,7 +345,7 @@ mod tests {
         assert_eq!(comp_len, out.len() - 32 - 8);
 
         let bad = |v: Value| patch(&mut read_json(&state).unwrap(), &serde_json::from_value(v).unwrap()).unwrap_err();
-        assert!(bad(json!({ "@modulations": [{ "source": "env_9", "destination": "filter_1_cutoff" }] })).contains("调制源"));
+        assert!(bad(json!({ "@modulations": [{ "source": "env_9", "destination": "filter_1_cutoff" }] })).contains("modulation source"));
         assert!(bad(json!({ "@modulations": [{ "source": "env_2", "destination": "filter_1_cutof" }] })).contains("filter_1_cutoff"));
         assert!(bad(json!({ "@wavetable": "nope" })).contains("basic"));
     }
@@ -357,7 +357,7 @@ mod tests {
             for k in t["groups"][0]["components"][0]["keyframes"].as_array().unwrap() {
                 let pos = k["position"].as_u64().unwrap();
                 assert!(pos <= 256);
-                assert_eq!(k["wave_data"].as_str().unwrap().len(), 10924, "与 Vital Init 的帧编码长度一致");
+                assert_eq!(k["wave_data"].as_str().unwrap().len(), 10924, "matches the frame encoding length of Vital Init");
             }
         }
     }

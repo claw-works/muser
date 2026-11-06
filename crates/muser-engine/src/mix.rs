@@ -85,7 +85,7 @@ pub fn mix_report(project: &Project, settings: RenderSettings, cache: &mut Rende
             None => master = Some(r),
         }
     }
-    let master = master.expect("主总线总在");
+    let master = master.expect("the master is always present");
     // 报告按工程里的顺序列出（渲染按计划顺序）。
     let index = |n: &NodeReport| n.node.trim_end_matches(']').rsplit('[').next().and_then(|i| i.parse::<usize>().ok()).unwrap_or(0);
     tracks.sort_by_key(index);
@@ -97,22 +97,22 @@ pub fn mix_report(project: &Project, settings: RenderSettings, cache: &mut Rende
         if let Some(l) = t.at_master_lufs {
             t.rel_lu = Some(round1(l - loudest));
         } else if !t.muted && t.output.lufs.is_none() {
-            warnings.push(format!("{} \"{}\" 没有声音（检查音符、乐器或自动化）", t.node, t.name));
+            warnings.push(format!("{} \"{}\" is silent (check the notes, instrument or automation)", t.node, t.name));
         }
     }
     for n in tracks.iter().chain(&buses) {
         if let Some(p) = n.output.peak_db.filter(|p| *p > 0.0) {
-            warnings.push(format!("{} \"{}\" 推子后峰值 +{p:.1} dBFS，降低 gain_db", n.node, n.name));
+            warnings.push(format!("{} \"{}\" peaks at +{p:.1} dBFS after the fader: lower gain_db", n.node, n.name));
         }
     }
     if let Some(p) = master.input.peak_db.filter(|p| *p > 0.0) {
         warnings.push(format!(
-            "送进主总线的信号峰值 {p:+.1} dBFS，全靠主效果链硬压：把各轨（或各总线）的 gain_db 一起降约 {:.0} dB，主总线留 3 dB 以上余量",
+            "The signal into the master peaks at {p:+.1} dBFS and relies on the master effect chain to squash it: lower the gain_db of all tracks (or buses) together by about {:.0} dB and leave 3 dB or more of headroom on the master",
             (p + 3.0).ceil()
         ));
     }
     if let Some(p) = master.output.peak_db.filter(|p| *p > -0.1) {
-        warnings.push(format!("主输出峰值 {p:+.1} dBFS，会削波；主总线最后放 limiter（ceiling_db -1）或降 master_gain_db"));
+        warnings.push(format!("The master output peaks at {p:+.1} dBFS and will clip: put a limiter last on the master (ceiling_db -1) or lower master_gain_db"));
     }
     Ok(MixReport { tracks, buses, master, warnings })
 }

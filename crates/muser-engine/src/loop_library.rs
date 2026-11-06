@@ -111,23 +111,23 @@ impl Loop {
     /// 检查：格式、名字、grid 能展开。
     pub fn check(&self) -> Result<(), String> {
         if self.format != FORMAT {
-            return Err(format!("不是 loop 文件（format 应为 \"{FORMAT}\"）"));
+            return Err(format!("not a loop file (format must be \"{FORMAT}\")"));
         }
         crate::poly_library::valid_name(&self.name)
             .then_some(())
-            .ok_or_else(|| format!("loop 名 '{}' 不可用：只能用小写字母、数字、_、-", self.name))?;
+            .ok_or_else(|| format!("loop name '{}' is not allowed: use only lowercase letters, digits, _ and -", self.name))?;
         if self.bars == 0 {
-            return Err("bars 应至少为 1".into());
+            return Err("bars must be at least 1".into());
         }
         if let Some(h) = &self.humanize {
             h.validate("humanize")?;
         }
         if self.grid.rows.is_empty() && self.notes.is_empty() {
-            return Err("loop 是空的：写 grid（鼓）或 notes（旋律）".into());
+            return Err("the loop is empty: write grid (drums) or notes (melody)".into());
         }
         for (i, n) in self.notes.iter().enumerate() {
             if n.pitch > 127 || n.start.0 < 0.0 || n.start.0 >= self.beats() || n.length.0 <= 0.0 || !(0.0..=1.0).contains(&n.velocity) {
-                return Err(format!("notes[{i}] 无效：pitch 0–127、0 ≤ start < {}（loop 长度）、length > 0、velocity 0–1", self.beats()));
+                return Err(format!("notes[{i}] is invalid: pitch 0–127, 0 <= start < {} (loop length), length > 0, velocity 0–1", self.beats()));
             }
         }
         if let Some(c) = &self.chords {
@@ -199,7 +199,7 @@ pub fn project_dir(base: Option<&Path>) -> PathBuf {
 }
 
 fn builtin() -> Vec<Loop> {
-    BUILTIN.iter().map(|(name, text)| parse(text).unwrap_or_else(|e| panic!("内置 loop {name}: {e}"))).collect()
+    BUILTIN.iter().map(|(name, text)| parse(text).unwrap_or_else(|e| panic!("built-in loop {name}: {e}"))).collect()
 }
 
 fn user_in(dir: &Path) -> Vec<Loop> {
@@ -212,7 +212,7 @@ fn user_in(dir: &Path) -> Vec<Loop> {
             std::fs::read_to_string(&p)
                 .map_err(|e| e.to_string())
                 .and_then(|t| parse(&t))
-                .map_err(|e| eprintln!("[muser] 跳过 loop 文件 {}：{e}", p.display()))
+                .map_err(|e| eprintln!("[muser] skipping loop file {}: {e}", p.display()))
                 .ok()
         })
         .collect();
@@ -251,7 +251,7 @@ pub fn load_for(name: &str, base: Option<&Path>) -> Result<Loop, String> {
         .into_iter()
         .find(|e| e.item.name == name.trim())
         .map(|e| e.item)
-        .ok_or_else(|| format!("没有叫 '{name}' 的 loop（muser loop list 查看全部）"))
+        .ok_or_else(|| format!("no loop named '{name}' (see all with muser loop list)"))
 }
 
 pub fn load(name: &str) -> Result<Loop, String> {
@@ -270,7 +270,7 @@ pub fn save_project(l: &Loop, base: Option<&Path>, overwrite: bool) -> Result<Pa
 
 /// 把项目里的 loop 复制到全局。
 pub fn share(name: &str, base: Option<&Path>, overwrite: bool) -> Result<PathBuf, String> {
-    let l = user_in(&project_dir(base)).into_iter().find(|l| l.name == name.trim()).ok_or_else(|| format!("项目里没有叫 '{name}' 的 loop（{}）", project_dir(base).display()))?;
+    let l = user_in(&project_dir(base)).into_iter().find(|l| l.name == name.trim()).ok_or_else(|| format!("no loop named '{name}' in the project ({})", project_dir(base).display()))?;
     save(&l, overwrite)
 }
 
@@ -284,13 +284,13 @@ fn save_in(dir: &Path, l: &Loop, overwrite: bool) -> Result<PathBuf, String> {
     l.check()?;
     let path = dir.join(format!("{}.json", l.name));
     if path.exists() && !overwrite {
-        return Err(format!("loop '{}' 已存在", l.name));
+        return Err(format!("loop '{}' already exists", l.name));
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("创建 {} 失败: {e}", dir.display()))?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
     let tmp = dir.join(format!(".{}.json.tmp", l.name));
     let text = serde_json::to_string_pretty(l).map_err(|e| e.to_string())? + "\n";
-    std::fs::write(&tmp, text).map_err(|e| format!("写入 {} 失败: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("写入 {} 失败: {e}", path.display()))?;
+    std::fs::write(&tmp, text).map_err(|e| format!("failed to write {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("failed to write {}: {e}", path.display()))?;
     Ok(path)
 }
 
@@ -301,7 +301,7 @@ pub fn grid_from_notes(notes: &[muser_core::Note], length: f64, step: f64) -> Re
     for n in notes {
         let pos = n.start.0 / step;
         if (pos - pos.round()).abs() > 0.25 {
-            return Err(format!("第 {:.3} 拍的音不在 {step} 拍的网格上，换更细的 --step 或先量化", n.start.0));
+            return Err(format!("the note at beat {:.3} is not on the {step}-beat grid: use a finer --step or quantize first", n.start.0));
         }
         let k = pos.round() as usize;
         if k >= steps {
@@ -358,7 +358,7 @@ mod tests {
         let mut l = builtin().into_iter().find(|l| l.name == "house_basic").unwrap();
         l.description = "我的版本".into();
         save_in(&dir, &l, false).unwrap();
-        assert!(save_in(&dir, &l, false).unwrap_err().contains("已存在"));
+        assert!(save_in(&dir, &l, false).unwrap_err().contains("already exists"));
         let list = list_in(&dir, None);
         let house: Vec<_> = list.iter().filter(|e| e.item.name == "house_basic").collect();
         assert_eq!((house.len(), house[0].source, house[0].item.description.as_str()), (1, "user", "我的版本"));
@@ -378,7 +378,7 @@ mod tests {
         assert_eq!((clip["length"].as_f64(), clip["notes"].as_array().map(Vec::len), clip.get("grid").is_none()), (Some(8.0), Some(4), true));
         assert_eq!(clip["notes"][3]["start"].as_f64(), Some(6.0));
         let empty: Loop = serde_json::from_value(json!({ "format": FORMAT, "version": VERSION, "name": "e", "bars": 1 })).unwrap();
-        assert!(empty.check().unwrap_err().contains("空"));
+        assert!(empty.check().unwrap_err().contains("empty"));
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -390,6 +390,6 @@ mod tests {
         let back = g.expand(l.beats()).unwrap();
         assert_eq!(back.iter().map(|n| (n.pitch, n.start.0)).collect::<Vec<_>>(), notes.iter().map(|n| (n.pitch, n.start.0)).collect::<Vec<_>>());
         let off = [muser_core::Note { pitch: 36, start: muser_core::Beats(0.1), length: muser_core::Beats(0.1), velocity: 0.8, accent: false, bend: Vec::new(), lyric: None }];
-        assert!(grid_from_notes(&off, 1.0, 0.25).unwrap_err().contains("网格"));
+        assert!(grid_from_notes(&off, 1.0, 0.25).unwrap_err().contains("grid"));
     }
 }

@@ -11,7 +11,7 @@ pub const TARGET_LUFS: f64 = -20.0;
 
 /// 内置乐器的参考乐句（音域、是不是鼓组取自乐器描述）。
 pub fn reference(name: &str) -> Project {
-    let info = crate::instrument::describe(name).expect("内置乐器");
+    let info = crate::instrument::describe(name).expect("built-in instrument");
     phrase(name, &Default::default(), info.range, info.family == "drums")
 }
 
