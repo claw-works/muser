@@ -101,7 +101,12 @@ signal chain (effect blocks -> destination, send amounts), and an overall signal
 - Changing volume, mute, or solo is handed to the engine to re-render (instrument output is cached; only effects, buses, and master are rerun; a 2-minute, 15-track piece takes about 1.7 seconds),
   and the new version is swapped in seamlessly from the current playback position; the result is accurate. Solo is for auditioning only and is not written to the project.
 - A track with volume automation (`gain_db`): the automation is absolute dB, and a fader change shifts it as a whole by the same amount (trim), written back together on save.
-- "Save to project file" writes back only what was changed on the page (faders, mutes, effect bypass, recordings, split / moved audio clips, whole-piece transpose); "Undo changes" returns to the values in the file; "Copy changes JSON" hands the changes to the AI.
+- Clicking an effect block opens its panel: an On switch (bypass), and for built-in effects every parameter as a slider or a choice (double-click a slider for the default), re-rendered as you drag;
+  for a plugin effect, "Open the plugin window" opens the plugin's own window (Guitar Rig, Surge XT Effects…): every change there is saved into
+  `<project>.<node>.fx<n>.muserstate` and written into that effect's `params."@state"`; "Discard window changes" restores how it was.
+- "Export" downloads the current mix as WAV or MP3 (320 kbit/s), MIDI, ABC / ABC (YuE2), a DAW package (zip: MIDI, mix, one stem per track, an import guide; same as `muser export-daw`)
+  and visualization data (JSON, same as `muser export-data`).
+- "Save to project file" writes back only what was changed on the page (faders, mutes, effect bypass and parameters, recordings, split / moved audio clips, whole-piece transpose); "Undo changes" returns to the values in the file; "Copy changes JSON" hands the changes to the AI.
 - **Record vocals** (right panel): record from the playhead or the loop range, with count-in, fine latency adjustment, and "measure latency"; each take is stored at `recordings/<track-name>-take-NN.wav` (manifest `recordings/takes.json`),
   and pasted onto the audio track (pending save); in the list, "Use" and "Delete". The project's `lyrics` are shown at the bottom of the screen as karaoke (the "Lyrics" toggle).
 - **Audio clips**: ✂ (or C) splits, drag to move (Shift snaps to 1/16), and with a clip selected ← → nudge by 10 ms each. **Transpose − / +**: transpose the whole piece (`transpose`).
@@ -161,7 +166,7 @@ For the clip shorthands (`abc` / `grid` / `drummer`) and `humanize`, see [skills
 Export a standard MIDI file (format 1, 480 ticks per quarter note): the first track holds tempo and time signature, then one MIDI track per instrument track.
 Notes match the render exactly: humanized timing and velocity, legato extension, clip trimming, abc / grid / drummer expansion; the sustain pedal is written as CC64,
 and `gain_db` / `pan` as CC7 / CC10. Drum kits go on channel 10, and other tracks get a GM sound guessed from the instrument name. Muted tracks are exported as usual (track name marked "(muted)"),
-and audio tracks are not exported. The default output is a `.mid` with the project's name. The "Export" in the `muser view` page can also download the MIDI and the full-mix WAV.
+and audio tracks are not exported. The default output is a `.mid` with the project's name. The "Export" in the `muser view` page can also download the MIDI, the full mix (WAV / MP3) and a DAW package.
 
 ### `muser analyze <project> [--audio] [--json]`
 

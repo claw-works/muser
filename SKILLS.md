@@ -412,7 +412,7 @@ By default every track goes straight to the master. To have several tracks "proc
 
 Effects go in `track.effects` (track level, before that track's gain/pan), a bus's `effects`, or `master_effects` (the master, before the master gain),
 chained in array order. Every parameter can be omitted; `{ "type": "reverb" }` is a usable reverb.
-Any effect can take `"bypass": true` to be turned off temporarily (bypass: the sound passes through unchanged, parameters and position are kept, and the automation's `effects[i]` stays the same); click the effect's tag in `muser view` to toggle.
+Any effect can take `"bypass": true` to be turned off temporarily (bypass: the sound passes through unchanged, parameters and position are kept, and the automation's `effects[i]` stays the same); in `muser view` click the effect's block to open its panel (On switch, parameters, or the plugin's own window).
 
 | type | Purpose | Sub-skill |
 |---|---|---|

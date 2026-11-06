@@ -181,8 +181,34 @@ impl Project {
     }
 
     /// 记下工程文件的位置（音频片段的相对路径相对它所在目录）。
+    /// 插件的 `@state` 状态文件写相对路径时也相对工程所在目录（乐器的 `instrument_params`、插件效果器的 `params`）。
     pub fn at_file(mut self, file: impl AsRef<std::path::Path>) -> Self {
         self.base_dir = file.as_ref().parent().map(std::path::Path::to_path_buf);
+        if let Some(dir) = self.base_dir.clone().filter(|d| !d.as_os_str().is_empty()) {
+            let fix = |params: &mut serde_json::Map<String, serde_json::Value>| {
+                if let Some(serde_json::Value::String(st)) = params.get_mut("@state") {
+                    let p = std::path::Path::new(st.as_str());
+                    if p.is_relative() && !st.starts_with('~') {
+                        *st = dir.join(p).display().to_string();
+                    }
+                }
+            };
+            let fx = |list: &mut Vec<EffectSlot>| {
+                for slot in list {
+                    if let Effect::Plugin { params, .. } = &mut slot.effect {
+                        fix(params);
+                    }
+                }
+            };
+            for t in &mut self.tracks {
+                fix(&mut t.instrument_params);
+                fx(&mut t.effects);
+            }
+            for b in &mut self.buses {
+                fx(&mut b.effects);
+            }
+            fx(&mut self.master_effects);
+        }
         self
     }
 

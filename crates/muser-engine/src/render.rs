@@ -1631,6 +1631,15 @@ fn invalid(m: String) -> EngineError {
     EngineError::Core(muser_core::CoreError::Invalid(m))
 }
 
+/// 一段已经渲染好的音频编码成 MP3（320 kbit/s，带工程的标题、速度标签）。`muser view` 导出用。
+pub fn mp3_bytes(project: &Project, audio: &AudioBuffer<f32>, sample_rate: u32) -> Result<Vec<u8>, EngineError> {
+    let meta = wav_metadata(project, sample_rate);
+    let opts = manguebyte::formats::mp3::Mp3Options::constant(320).with_metadata(&meta);
+    let mut out = std::io::Cursor::new(Vec::new());
+    manguebyte::formats::mp3::write(&mut out, audio, sample_rate, &opts).map_err(|e| EngineError::Wav(format!("failed to write MP3: {e:?}")))?;
+    Ok(out.into_inner())
+}
+
 /// 渲染工程并写出 WAV 文件（`path` 以 `.mp3` 结尾时写 MP3）。返回 (时长秒, 峰值 dBFS)。
 pub fn render_to_wav(
     project: &Project,

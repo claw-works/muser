@@ -131,7 +131,12 @@ fn chain(list: &[muser_core::EffectSlot]) -> Vec<Value> {
                 Effect::Eq { shape, .. } => (format!("eq {shape}"), None),
                 e => (e.type_name().to_string(), None),
             };
-            json!({ "type": e.type_name(), "label": label, "sidechain": sidechain, "bypass": slot.bypass })
+            // 当前的取值（页面的效果器面板用）：内置效果器的参数、插件的路径与参数。
+            let mut values = serde_json::to_value(e).unwrap_or_default();
+            if let Some(o) = values.as_object_mut() {
+                o.remove("type");
+            }
+            json!({ "type": e.type_name(), "label": label, "sidechain": sidechain, "bypass": slot.bypass, "values": values })
         })
         .collect()
 }
@@ -147,6 +152,9 @@ struct Change {
     /// 效果链每一格是否旁通（整条链，按顺序）。`node` 还可以是 `master`（主总线的效果链）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     bypass: Option<Vec<bool>>,
+    /// 改效果器的参数：效果链第几格 → 要改的字段（写法同工程里那一格，如 `{ "drive_db": 24 }`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fx: Option<BTreeMap<usize, serde_json::Map<String, Value>>>,
 }
 
 fn effects_mut<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Vec<muser_core::EffectSlot>, String> {
@@ -167,6 +175,15 @@ struct MixBody {
     /// 给出时整体替换独奏集合（节点 id）。
     #[serde(default)]
     solo: Option<Vec<String>>,
+}
+
+/// 节点的效果链第 `index` 格在工程 JSON 里的位置（JSON pointer）。
+fn fx_pointer(node: &str, index: usize) -> Option<String> {
+    if node == "master" {
+        return Some(format!("/master_effects/{index}"));
+    }
+    let (kind, i) = parse_node(node)?;
+    Some(format!("/{kind}/{i}/effects/{index}"))
 }
 
 /// 解析 `tracks[i]` / `buses[i]`。
@@ -231,6 +248,20 @@ fn apply_to_project(p: &mut Project, changes: &[Change]) -> Result<(), String> {
                 slot.bypass = *on;
             }
         }
+        if let Some(edits) = &c.fx {
+            let fx = effects_mut(p, &c.node)?;
+            for (i, m) in edits {
+                let slot = fx.get_mut(*i).ok_or_else(|| format!("{} has no effect #{i}", c.node))?;
+                if m.contains_key("type") {
+                    return Err("the effect type cannot change here".into());
+                }
+                let mut v = serde_json::to_value(&*slot).map_err(|e| e.to_string())?;
+                v.as_object_mut().ok_or("effect is not an object")?.extend(m.clone());
+                let next: muser_core::EffectSlot = serde_json::from_value(v).map_err(|e| format!("{}.effects[{i}]: {e}", c.node))?;
+                next.effect.validate()?;
+                *slot = next;
+            }
+        }
         if c.node == "master" {
             continue;
         }
@@ -273,6 +304,22 @@ fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result
                 }
             }
         }
+        if let Some(edits) = &c.fx {
+            let list = match c.node.as_str() {
+                "master" => v.get_mut("master_effects"),
+                id => {
+                    let (kind, i) = parse_node(id).ok_or_else(|| anyhow!("invalid node '{id}'"))?;
+                    v.get_mut(kind).and_then(|a| a.get_mut(i)).and_then(|o| o.get_mut("effects"))
+                }
+            }
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| anyhow!("the project file has no effect chain for {}", c.node))?;
+            // 只写改了的字段，文件里其它写法不动。
+            for (i, m) in edits {
+                let o = list.get_mut(*i).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("{} has no effect #{i}", c.node))?;
+                o.extend(m.clone());
+            }
+        }
         if c.node == "master" {
             continue;
         }
@@ -300,19 +347,33 @@ fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result
 fn diff(file: &Project, working: &Project) -> Vec<Change> {
     let mut out = Vec::new();
     let flags = |fx: &[muser_core::EffectSlot]| fx.iter().map(|e| e.bypass).collect::<Vec<_>>();
-    let mut push = |node: String, g0: f64, g1: f64, m0: bool, m1: bool, b0: Vec<bool>, b1: Vec<bool>| {
-        let c = Change { node, gain_db: (g0 != g1).then_some(g1), muted: (m0 != m1).then_some(m1), bypass: (b0 != b1).then_some(b1) };
-        if c.gain_db.is_some() || c.muted.is_some() || c.bypass.is_some() {
+    // 效果器参数：每一格里取值不同的字段（旁通另算）。
+    let params = |a: &[muser_core::EffectSlot], b: &[muser_core::EffectSlot]| {
+        let mut m = BTreeMap::new();
+        for (i, (x, y)) in a.iter().zip(b).enumerate() {
+            let (vx, vy) = (serde_json::to_value(&x.effect).unwrap_or_default(), serde_json::to_value(&y.effect).unwrap_or_default());
+            let (Some(ox), Some(oy)) = (vx.as_object(), vy.as_object()) else { continue };
+            let d: serde_json::Map<String, Value> = oy.iter().filter(|(k, v)| ox.get(*k) != Some(v)).map(|(k, v)| (k.clone(), v.clone())).collect();
+            if !d.is_empty() {
+                m.insert(i, d);
+            }
+        }
+        (!m.is_empty()).then_some(m)
+    };
+    let mut push = |node: String, g0: f64, g1: f64, m0: bool, m1: bool, (a, b): (&[muser_core::EffectSlot], &[muser_core::EffectSlot])| {
+        let (b0, b1) = (flags(a), flags(b));
+        let c = Change { node, gain_db: (g0 != g1).then_some(g1), muted: (m0 != m1).then_some(m1), bypass: (b0 != b1).then_some(b1), fx: params(a, b) };
+        if c.gain_db.is_some() || c.muted.is_some() || c.bypass.is_some() || c.fx.is_some() {
             out.push(c);
         }
     };
     for (i, (a, b)) in file.tracks.iter().zip(&working.tracks).enumerate() {
-        push(format!("tracks[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted, flags(&a.effects), flags(&b.effects));
+        push(format!("tracks[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted, (&a.effects, &b.effects));
     }
     for (i, (a, b)) in file.buses.iter().zip(&working.buses).enumerate() {
-        push(format!("buses[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted, flags(&a.effects), flags(&b.effects));
+        push(format!("buses[{i}]"), a.gain_db, b.gain_db, a.muted, b.muted, (&a.effects, &b.effects));
     }
-    push("master".into(), 0.0, 0.0, false, false, flags(&file.master_effects), flags(&working.master_effects));
+    push("master".into(), 0.0, 0.0, false, false, (&file.master_effects, &working.master_effects));
     out
 }
 
@@ -512,6 +573,8 @@ struct EditSession {
     error: Option<String>,
     /// 提示（如"载入的是另一个音色，已按它存进音色库"）。
     notice: Option<String>,
+    /// 改的是效果器：(节点 id, 效果链第几格)；`None` 时是 `track` 的乐器。
+    fx: Option<(String, usize)>,
 }
 
 /// 换了乐器：旧乐器的参数与针对乐器参数的自动化（`target: instrument`）都作废；音量、声像、效果器的自动化保留。
@@ -972,8 +1035,14 @@ impl Shared {
         let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
         eprintln!("[view] opened the UI of {spec} (track {ti}); state syncs to {}", out.display());
-        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None, notice: None });
+        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None, notice: None, fx: None });
         drop(edit);
+        self.watch_editor(child, stdout);
+        Ok(())
+    }
+
+    /// 编辑子进程：每次存了状态就同步进工程，窗口关了收尾。
+    fn watch_editor(self: &Arc<Self>, mut child: std::process::Child, stdout: std::process::ChildStdout) {
         let me = Arc::clone(self);
         std::thread::spawn(move || {
             use std::io::BufRead;
@@ -986,6 +1055,56 @@ impl Shared {
             me.edit_finish();
             eprintln!("[view] plugin window closed");
         });
+    }
+
+    /// 打开一个插件效果器的窗口（`node` 的效果链第 `index` 格）：人在窗口里调，状态随时存进
+    /// `<工程名>.<节点>.fx<index>.muserstate`，写进那一格的 `params."@state"`。
+    fn fx_open(self: &Arc<Self>, node: &str, index: usize) -> Result<(), String> {
+        if !cfg!(target_os = "macos") {
+            return Err("the plugin UI is currently supported on macOS only".into());
+        }
+        let mut edit = self.edit.lock().unwrap();
+        if edit.as_ref().is_some_and(|e| e.open) {
+            return Err("a plugin window is already open: finish or discard it first".into());
+        }
+        let text = std::fs::read_to_string(&self.path).map_err(|e| format!("failed to read the project: {e}"))?;
+        let v: Value = serde_json::from_str(&text).map_err(|e| format!("failed to parse the project: {e}"))?;
+        let pointer = fx_pointer(node, index).ok_or_else(|| format!("invalid node '{node}'"))?;
+        let slot = v.pointer(&pointer).cloned().ok_or_else(|| format!("{node} has no effect #{index}"))?;
+        if slot["type"] != "plugin" {
+            return Err("only plugin effects have their own window; built-in effects are adjusted on the page".into());
+        }
+        let path = slot["path"].as_str().ok_or("the plugin effect has no path")?;
+        let spec = match slot["id"].as_str() { Some(id) => format!("{path}#{id}"), None => path.to_string() };
+        let mut params = slot["params"].as_object().cloned().unwrap_or_default();
+        // 状态文件是相对工程的：交给子进程前换成绝对路径。
+        let dir = self.path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let dir = std::fs::canonicalize(dir).map_err(|e| format!("{e}"))?;
+        if let Some(st) = params.get("@state").and_then(Value::as_str).map(|s| dir.join(s)) {
+            params.insert("@state".into(), json!(st.display().to_string()));
+        }
+        let stem = self.path.file_stem().and_then(|s| s.to_str()).unwrap_or("project").trim_end_matches(".muser");
+        let safe: String = node.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-').to_string();
+        let out = dir.join(format!("{stem}.{safe}.fx{index}.muserstate"));
+        let backup = (slot, std::fs::read(&out).ok());
+        let plugin_name = muser_engine::plugin::split_spec(&spec).0.rsplit('/').next().unwrap_or(&spec).trim_end_matches(".vst3").trim_end_matches(".clap").to_string();
+        let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
+            .args(["plugin", "edit", &spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &format!("{plugin_name} — {node} effect {} · muser", index + 1), "-o"])
+            .arg(&out)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("failed to start the plugin UI: {e}"))?;
+        let stdin = child.stdin.take().ok_or("the child process has no stdin")?;
+        let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
+        eprintln!("[view] opened the UI of effect {spec} ({node} #{index}); state syncs to {}", out.display());
+        *edit = Some(EditSession {
+            track: 0, spec, label: plugin_name, stdin, open: true, synced: None, wrote: false, out, backup, capture: None, error: None, notice: None,
+            fx: Some((node.to_string(), index)),
+        });
+        drop(edit);
+        self.watch_editor(child, stdout);
         Ok(())
     }
 
@@ -1010,6 +1129,15 @@ impl Shared {
     fn edit_write(&self, e: &EditSession) -> Result<()> {
         let text = std::fs::read_to_string(&self.path)?;
         let mut v: Value = serde_json::from_str(&text)?;
+        if let Some((node, i)) = &e.fx {
+            let slot = fx_pointer(node, *i).and_then(|p| v.pointer_mut(&p)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no {node} effect #{i}"))?;
+            let p = slot.entry("params").or_insert_with(|| json!({}));
+            let p = p.as_object_mut().ok_or_else(|| anyhow!("params is not an object"))?;
+            p.insert("@state".into(), json!(e.out.display().to_string()));
+            std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "
+")?;
+            return Ok(());
+        }
         let t = v.get_mut("tracks").and_then(|t| t.get_mut(e.track)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no track #{}", e.track))?;
         let keep = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &e.spec));
         if !keep {
@@ -1029,6 +1157,7 @@ impl Shared {
         let mut edit = self.edit.lock().unwrap();
         let e = edit.as_mut().filter(|e| e.open).ok_or("no plugin window is open")?;
         let line = match cmd {
+            "play" if e.fx.is_some() => return Err("an effect window has no audition: play the project in the page".into()),
             "play" => {
                 let st = self.state.lock().unwrap();
                 let p = st.working.as_ref().ok_or("the project has not loaded successfully")?;
@@ -1072,10 +1201,13 @@ impl Shared {
     /// 自己调的存一份进音色库的"我的音色"。听与认要几秒，不拿着锁做。
     fn edit_finish(&self) {
         use muser_engine::presets;
-        let job = self.edit.lock().unwrap().as_ref().filter(|e| e.wrote && e.out.is_file()).map(|e| (e.spec.clone(), e.capture.clone(), e.out.clone(), e.label.clone()));
-        let outcome: Option<Result<(String, PathBuf, Option<String>), String>> = job.map(|(spec, capture, out, label)| {
+        let job = self.edit.lock().unwrap().as_ref().filter(|e| e.wrote && e.out.is_file()).map(|e| (e.spec.clone(), e.capture.clone(), e.out.clone(), e.label.clone(), e.fx.is_some()));
+        let outcome: Option<Result<(String, PathBuf, Option<String>), String>> = job.map(|(spec, capture, out, label, fx)| {
             let p = presets::plugin_ref(&spec)?;
             let Some((_, target)) = capture else {
+                if fx {
+                    return Ok((label, out, None));
+                }
                 // 自己调的音色：存进"我的音色"，工程里仍用自己的那份。
                 presets::save_mine(&p, &label, &out)?;
                 eprintln!("[view] saved to my sounds: {label}");
@@ -1136,7 +1268,14 @@ impl Shared {
             let restore = || -> Result<()> {
                 let text = std::fs::read_to_string(&self.path)?;
                 let mut v: Value = serde_json::from_str(&text)?;
-                v["tracks"][e.track] = e.backup.0.clone();
+                match &e.fx {
+                    Some((node, i)) => {
+                        if let Some(slot) = fx_pointer(node, *i).and_then(|p| v.pointer_mut(&p)) {
+                            *slot = e.backup.0.clone();
+                        }
+                    }
+                    None => v["tracks"][e.track] = e.backup.0.clone(),
+                }
                 std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
                 Ok(())
             };
@@ -1155,7 +1294,7 @@ impl Shared {
     fn edit_status(&self) -> Value {
         let edit = self.edit.lock().unwrap();
         match edit.as_ref() {
-            Some(e) => json!({ "open": e.open, "track": e.track, "spec": e.spec, "label": e.label, "error": e.error, "notice": e.notice,
+            Some(e) => json!({ "open": e.open, "track": e.track, "fx": e.fx, "spec": e.spec, "label": e.label, "error": e.error, "notice": e.notice,
                 "synced": e.synced.and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_secs_f64()) }),
             None => json!({ "open": false }),
         }
@@ -1392,6 +1531,54 @@ impl Shared {
         muser_engine::abc_export::export(&working, &opts).map(|o| o.text.into_bytes()).map_err(|e| e.to_string())
     }
 
+    /// 当前版本（正在听的混音）编码成 MP3（320 kbit/s）。
+    fn export_mp3(&self) -> Result<Vec<u8>, String> {
+        let wav = self.export_wav()?;
+        let pcm = &wav[44..];
+        let n = pcm.len() / 4;
+        let mut buf = muser_engine::AudioBuffer::<f32>::new(2, n);
+        for c in 0..2 {
+            for (i, x) in buf.channel_mut(c).iter_mut().enumerate() {
+                let k = i * 4 + c * 2;
+                *x = f32::from(i16::from_le_bytes([pcm[k], pcm[k + 1]])) / 32768.0;
+            }
+        }
+        let working = self.state.lock().unwrap().working.clone().ok_or("the project has not been loaded yet")?;
+        muser_engine::mp3_bytes(&working, &buf, self.settings.sample_rate).map_err(|e| e.to_string())
+    }
+
+    /// 导入 DAW 用的包（MIDI、整首混音、每轨分轨、说明），打成一个 zip。要从头渲染一遍（含分轨）。
+    fn export_daw(&self) -> Result<Vec<u8>, String> {
+        let working = self.state.lock().unwrap().working.clone().ok_or("the project has not been loaded yet")?;
+        let dir = std::env::temp_dir().join(format!("muser-daw-{}-{}", std::process::id(), SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_nanos())));
+        let r = muser_engine::daw::export_daw(&working, &dir, self.settings, &mut |_, _, _| {}).map_err(|e| e.to_string()).and_then(|_| {
+            let mut files = Vec::new();
+            let mut stack = vec![dir.clone()];
+            while let Some(d) = stack.pop() {
+                for entry in std::fs::read_dir(&d).map_err(|e| e.to_string())?.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        stack.push(path);
+                    } else {
+                        let rel = path.strip_prefix(&dir).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
+                        files.push((format!("{}/{rel}", self.export_stem()), std::fs::read(&path).map_err(|e| e.to_string())?));
+                    }
+                }
+            }
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            Ok(crate::zipfile::store(&files))
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        r
+    }
+
+    /// 给可视化 / 视频用的数据（音符、自动化、段落、每帧电平），JSON。
+    fn export_data(&self) -> Result<Vec<u8>, String> {
+        let working = self.state.lock().unwrap().working.clone().ok_or("the project has not been loaded yet")?;
+        let v = muser_engine::export_data::export(&working, Some(30), self.settings).map_err(|e| e.to_string())?;
+        serde_json::to_vec_pretty(&v).map_err(|e| e.to_string())
+    }
+
     /// 当前版本（正在听的混音）整首的 16-bit WAV。还在渲染时等它渲染完。
     fn export_wav(&self) -> Result<Vec<u8>, String> {
         let v = self.state.lock().unwrap().current.clone().ok_or("no rendered version yet")?;
@@ -1460,9 +1647,12 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
                 None => respond_json(req, 410, &json!({ "error": "version expired" })),
             }
         }
-        (Method::Get, "/api/export.mid" | "/api/export.wav" | "/api/export.abc" | "/api/export.yue2.abc") => {
+        (Method::Get, "/api/export.mid" | "/api/export.wav" | "/api/export.mp3" | "/api/export.daw.zip" | "/api/export.data.json" | "/api/export.abc" | "/api/export.yue2.abc") => {
             let (result, suffix, mime) = match path.as_str() {
                 "/api/export.wav" => (shared.export_wav(), "wav", "audio/wav"),
+                "/api/export.mp3" => (shared.export_mp3(), "mp3", "audio/mpeg"),
+                "/api/export.daw.zip" => (shared.export_daw(), "daw.zip", "application/zip"),
+                "/api/export.data.json" => (shared.export_data(), "data.json", "application/json"),
                 "/api/export.mid" => (shared.export_midi(), "mid", "audio/midi"),
                 "/api/export.abc" => (shared.export_abc(false), "abc", "text/vnd.abc; charset=utf-8"),
                 _ => (shared.export_abc(true), "yue2.abc", "text/vnd.abc; charset=utf-8"),
@@ -1497,6 +1687,18 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
         },
         (Method::Get, "/api/sound/choices") => respond_json(req, 200, &json!(Shared::sound_choices())),
         (Method::Get, "/api/sound/status") => respond_json(req, 200, &shared.edit_status()),
+        (Method::Get, "/api/effect-specs") => respond_json(req, 200, &json!(muser_core::effect::EFFECT_SPECS)),
+        (Method::Post, "/api/fx/open") => {
+            let r = read_body::<Value>(&mut req).and_then(|b| {
+                let node = b["node"].as_str().ok_or("node is required")?;
+                let index = b["index"].as_u64().ok_or("index is required")? as usize;
+                shared.fx_open(node, index)
+            });
+            match r {
+                Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
+                Err(e) => respond_json(req, 400, &json!({ "error": e })),
+            }
+        }
         (Method::Post, "/api/sound/open") => {
             let r = read_body::<Value>(&mut req).and_then(|b| {
                 let ti = b["track"].as_u64().ok_or("track is required")? as usize;
@@ -1705,8 +1907,8 @@ mod tests {
     fn apply_changes_to_project_and_json() {
         let mut p = project();
         let ch = vec![
-            Change { node: "tracks[0]".into(), gain_db: Some(-4.5), muted: None, bypass: None },
-            Change { node: "buses[0]".into(), gain_db: None, muted: Some(true), bypass: None },
+            Change { node: "tracks[0]".into(), gain_db: Some(-4.5), muted: None, bypass: None, fx: None },
+            Change { node: "buses[0]".into(), gain_db: None, muted: Some(true), bypass: None, fx: None },
         ];
         apply_to_project(&mut p, &ch).unwrap();
         assert_eq!((p.tracks[0].gain_db, p.buses[0].muted), (-4.5, true));
@@ -1715,9 +1917,9 @@ mod tests {
         apply_to_json(&mut v, &ch, &p).unwrap();
         assert_eq!(v["tracks"][0]["gain_db"], json!(-4.5));
         assert_eq!(v["buses"][0]["muted"], json!(true));
-        let bad = vec![Change { node: "tracks[9]".into(), gain_db: Some(0.0), muted: None, bypass: None }];
+        let bad = vec![Change { node: "tracks[9]".into(), gain_db: Some(0.0), muted: None, bypass: None, fx: None }];
         assert!(apply_to_project(&mut p, &bad).is_err());
-        let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None, bypass: None }];
+        let bad = vec![Change { node: "tracks[0]".into(), gain_db: Some(99.0), muted: None, bypass: None, fx: None }];
         assert!(apply_to_project(&mut p, &bad).unwrap_err().contains("out of range"));
     }
 
@@ -1742,8 +1944,8 @@ mod tests {
         .unwrap();
         let mut p = file.clone();
         let ch = vec![
-            Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: Some(vec![true, false]) },
-            Change { node: "master".into(), gain_db: None, muted: None, bypass: Some(vec![true]) },
+            Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: Some(vec![true, false]), fx: None },
+            Change { node: "master".into(), gain_db: None, muted: None, bypass: Some(vec![true]), fx: None },
         ];
         apply_to_project(&mut p, &ch).unwrap();
         assert!(p.tracks[0].effects[0].bypass && !p.tracks[0].effects[1].bypass && p.master_effects[0].bypass);
@@ -1753,8 +1955,27 @@ mod tests {
         assert_eq!(v["tracks"][0]["effects"][0]["bypass"], json!(true));
         assert!(v["tracks"][0]["effects"][1].get("bypass").is_none(), "关掉旁通时删掉字段");
         assert_eq!(v["master_effects"][0]["bypass"], json!(true));
-        let wrong = vec![Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: Some(vec![true]) }];
+        let wrong = vec![Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: Some(vec![true]), fx: None }];
         assert!(apply_to_project(&mut p, &wrong).unwrap_err().contains("2 entries"));
+    }
+
+    /// 效果器参数：页面改了的字段写进工作副本与文件（只写这几个字段），越界报错，`diff` 列得出来。
+    #[test]
+    fn effect_param_changes_round_trip() {
+        let text = r#"{ "tempo": 120, "tracks": [{ "name": "g", "instrument": "guitar.steel", "clips": [], "effects": [{ "type": "distortion", "cabinet": "guitar" }] }] }"#;
+        let file = Project::from_json(text).unwrap();
+        let mut p = file.clone();
+        let edit = |k: &str, v: Value| vec![Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: None,
+            fx: Some(BTreeMap::from([(0, serde_json::Map::from_iter([(k.to_string(), v)]))])) }];
+        apply_to_project(&mut p, &edit("drive_db", json!(30))).unwrap();
+        let d = diff(&file, &p);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].fx.as_ref().unwrap()[&0]["drive_db"], json!(30.0));
+        let mut v: Value = serde_json::from_str(text).unwrap();
+        apply_to_json(&mut v, &d, &p).unwrap();
+        assert_eq!(v["tracks"][0]["effects"][0], json!({ "type": "distortion", "cabinet": "guitar", "drive_db": 30.0 }), "只写改了的字段");
+        assert!(apply_to_project(&mut p, &edit("drive_db", json!(99))).unwrap_err().contains("out of range"));
+        assert!(apply_to_project(&mut p, &edit("type", json!("reverb"))).is_err());
     }
 
     #[test]
@@ -1766,7 +1987,7 @@ mod tests {
         )
         .unwrap();
         let file = p.clone();
-        let ch = vec![Change { node: "tracks[0]".into(), gain_db: Some(-6.0), muted: None, bypass: None }];
+        let ch = vec![Change { node: "tracks[0]".into(), gain_db: Some(-6.0), muted: None, bypass: None, fx: None }];
         apply_to_project(&mut p, &ch).unwrap();
         let pts = match &p.tracks[0].automation[0].shape {
             muser_core::automation::Shape::Points { points, .. } => points.iter().map(|(_, v)| v.as_f64().unwrap()).collect::<Vec<_>>(),
@@ -1781,7 +2002,7 @@ mod tests {
         let mut q = file.clone();
         q.tracks[0].clips = serde_json::from_value(json!([{ "start": 0, "length": 8, "notes": [{ "pitch": 60, "start": 0, "length": 8 }] }])).unwrap();
         let mut louder = q.clone();
-        apply_to_project(&mut louder, &[Change { node: "tracks[0]".into(), gain_db: Some(0.0), muted: None, bypass: None }]).unwrap();
+        apply_to_project(&mut louder, &[Change { node: "tracks[0]".into(), gain_db: Some(0.0), muted: None, bypass: None, fx: None }]).unwrap();
         let e = |p: &Project| muser_engine::render(p, RenderSettings { tail_seconds: 0.1, ..Default::default() }).unwrap().channel(0).iter().map(|s| f64::from(*s).powi(2)).sum::<f64>();
         assert!(e(&louder) > e(&q) * 5.0);
     }

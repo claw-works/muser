@@ -20,6 +20,7 @@ mod self_update;
 mod takes;
 mod view;
 mod web;
+mod zipfile;
 
 use std::fs;
 

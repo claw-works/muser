@@ -156,6 +156,17 @@
   .chain { display: flex; align-items: center; flex-wrap: nowrap; min-width: max-content; white-space: nowrap; font-size: 9px; }
   .chain .fx { min-height: 0; padding: 3px 6px; border: 0; border-radius: 5px; color: #0b1019; font-size: inherit; font-weight: 750; cursor: pointer; }
   .chain .fx.bypassed { background: #2a3043 !important; color: var(--faint); text-decoration: line-through; }
+  /* 效果器面板：点效果器打开，开关、参数、插件窗口 */
+  #fx-panel { position: fixed; z-index: 30; width: 340px; max-height: 70vh; overflow-y: auto; padding: 14px 16px; border: 1px solid #343c55; border-radius: 12px;
+              background: #121625; box-shadow: 0 12px 40px rgba(0,0,0,.5); font-size: 12px; }
+  #fx-panel[hidden] { display: none; }
+  #fx-panel h3 { margin: 0 0 4px; font-size: 14px; }
+  #fx-panel .fx-sum { color: var(--dim); margin-bottom: 10px; }
+  #fx-panel .fx-row { display: grid; grid-template-columns: 96px 1fr 70px; gap: 8px; align-items: center; margin: 6px 0; }
+  #fx-panel .fx-row input[type=range] { width: 100%; }
+  #fx-panel .fx-row .v { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #fx-panel .fx-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #fx-panel .fx-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .chain .wire { width: 8px; height: 1px; background: #586078; }
   .chain .dest { padding: 2px 6px; color: var(--dim); background: rgba(255,255,255,.025); border: 1px solid #41485e; border-radius: 5px; }
   .chain .dest.bus { color: #bcb5ff; border-color: rgba(138,125,255,.42); }
@@ -401,10 +412,14 @@
           </div>
           <p class="hint" id="path"></p>
         </div>
+        <div id="fx-panel" hidden role="dialog"></div>
         <div class="section-bar"><h2 data-i18n="export">Export</h2><span class="section-note" data-i18n="exportNote">Current mix, including page changes</span></div>
         <div class="panel-body">
           <div class="row">
             <button id="export-wav" data-i18n="exportWav" data-title="exportWavHint">Mix (WAV)</button>
+            <button id="export-mp3" data-i18n="exportMp3" data-title="exportMp3Hint">Mix (MP3)</button>
+            <button id="export-daw" data-i18n="exportDaw" data-title="exportDawHint">DAW package</button>
+            <button id="export-data" data-i18n="exportData" data-title="exportDataHint">Visualization data</button>
             <button id="export-mid" data-i18n="exportMidi" data-title="exportMidiHint">MIDI</button>
             <button id="export-abc" data-i18n="exportAbc" data-title="exportAbcHint">ABC</button>
             <button id="export-yue2" data-i18n="exportYue2" data-title="exportYue2Hint">ABC (YuE2)</button>
@@ -487,7 +502,13 @@ const I18N = {
     muted: " (muted)", peak: (db) => `Peak ${db} dBFS`, saved: "Saved to project file",
     copied: "Copied", copyPrompt: "Copy the JSON below:", nodeChange: (id, name, parts) => `${id} (${name}): ${parts}`,
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
-    bypassChange: (b) => `bypass → [${b.map((x) => (x ? "off" : "on")).join(", ")}]`, fxBypassed: "bypassed (click to turn on)", fxActive: "on (click to bypass)",
+    bypassChange: (b) => `bypass → [${b.map((x) => (x ? "off" : "on")).join(", ")}]`, fxBypassed: "bypassed (click to open)", fxActive: "on (click to open)",
+    fxOn: "On", fxOpenPlugin: "Open the plugin window", fxPluginHint: "Adjust in the plugin window: every change is saved into the project; close the window when done.",
+    fxDiscard: "Discard window changes", fxClose: "Close", fxReset: "Default", fxParamsChange: (n) => `${n} effect setting(s) changed`,
+    fxPluginOpened: "The plugin window is open: adjust there, then close it.",
+    exportMp3: "Mix (MP3)", exportMp3Hint: "The whole song as you hear it now, MP3 320 kbit/s with title and tempo tags",
+    exportDaw: "DAW package", exportDawHint: "A zip to import into a DAW: MIDI, the full mix, one WAV stem per track (24-bit) and a guide with tempo and time signature; renders everything again, takes a while",
+    exportData: "Visualization data", exportDataHint: "JSON for visuals and videos: notes in seconds, automation curves, sections, levels 30 times a second",
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
     keyShift: "Key", keyHint: "Transpose the whole song in semitones while you try keys for a singer (notes in the project stay as written; drums and recordings don't move). Save keeps it",
     transposeChange: (n) => `transpose → ${n > 0 ? "+" : ""}${n}`,
@@ -548,7 +569,13 @@ const I18N = {
     muted: "（静音）", peak: (db) => `峰值 ${db} dBFS`, saved: "已保存到工程文件",
     copied: "已复制", copyPrompt: "复制下面的 JSON：", nodeChange: (id, name, parts) => `${id}（${name}）: ${parts}`,
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
-    bypassChange: (b) => `效果器 → [${b.map((x) => (x ? "旁通" : "开")).join("，")}]`, fxBypassed: "已旁通（点一下打开）", fxActive: "开着（点一下旁通）",
+    bypassChange: (b) => `效果器 → [${b.map((x) => (x ? "旁通" : "开")).join("，")}]`, fxBypassed: "已旁通（点一下打开面板）", fxActive: "开着（点一下打开面板）",
+    fxOn: "开", fxOpenPlugin: "打开插件窗口", fxPluginHint: "在插件窗口里调：每次改动都会存进工程；调完关掉窗口。",
+    fxDiscard: "放弃窗口里的改动", fxClose: "关闭", fxReset: "默认", fxParamsChange: (n) => `改了 ${n} 个效果器设置`,
+    fxPluginOpened: "插件窗口打开了：在那里调，调完关掉。",
+    exportMp3: "整首混音（MP3）", exportMp3Hint: "现在听到的整首，MP3 320 kbit/s，带标题和速度标签",
+    exportDaw: "DAW 工程包", exportDawHint: "导入 DAW 用的 zip：MIDI、整首混音、每轨一个 WAV 分轨（24 位）和写着速度、拍号的说明；要重新渲染一遍，稍等",
+    exportData: "可视化数据", exportDataHint: "给可视化、视频用的 JSON：音符（秒）、自动化曲线、段落、每秒 30 次的电平",
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
     keyShift: "变调", keyHint: "整首升降几个半音，给换了人唱（比如换成女声）找合适的调；工程里的音符不改，鼓和录音不动。点「保存」才写进工程",
     transposeChange: (n) => `整首变调 → ${n > 0 ? "+" : ""}${n} 个半音`,
@@ -1044,7 +1071,7 @@ async function soundPoll() {
   if (!$("sound-drawer").classList.contains("open")) return;
   let s = { open: false };
   try { s = await (await fetch("/api/sound/status")).json(); } catch (_) {}
-  const mine = s.open && soundTrack && s.track === trackIndex(soundTrack);
+  const mine = s.open && !s.fx && soundTrack && s.track === trackIndex(soundTrack);
   $("sd-idle").hidden = mine; $("sd-live").hidden = !mine;
   if (mine) {
     $("sd-note").innerHTML = "";
@@ -1238,7 +1265,80 @@ const FX_COLORS = { eq: "#75c9ff", compressor: "#ffc46b", limiter: "#ff7c8b", re
 const fxColor = (t) => FX_COLORS[t] || "#cbd2e4";
 const fxLabel = (c) => c.label + (c.sidechain ? ` ⟵${c.sidechain}` : "");
 /** 混音行里的信号链：效果器方块用线连起来，最后指向去向；发送用虚线框列在后面。 */
-// 点效果器标签切换旁通（bypass），和推子一样是页面上的改动，「保存」写回工程。
+// 点效果器标签打开效果器面板：开关（旁通）、内置效果器的参数、插件效果器的窗口。和推子一样是页面上的改动，「保存」写回工程。
+// ---------- 效果器面板 ----------
+let fxSpecs = null, fxOpen = null, fxTimer = 0, fxPendingEdit = {};
+async function specs() {
+  if (!fxSpecs) fxSpecs = Object.fromEntries((await (await fetch("/api/effect-specs")).json()).map((x) => [x.name, x]));
+  return fxSpecs;
+}
+function chainOf(node) {
+  if (node === "master") return data.master_chain || [];
+  const n = data.nodes.find((x) => x.id === node);
+  return (n && n.chain) || [];
+}
+function closeFxPanel() { $("fx-panel").hidden = true; fxOpen = null; }
+document.addEventListener("click", (e) => { if (fxOpen && !$("fx-panel").contains(e.target)) closeFxPanel(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && fxOpen) closeFxPanel(); });
+// 参数改动攒 120 毫秒一起发（拖动滑块时不每一下都重渲染）。
+function sendFx(node, index, key, value) {
+  fxPendingEdit[key] = value;
+  clearTimeout(fxTimer);
+  fxTimer = setTimeout(() => {
+    const edit = fxPendingEdit; fxPendingEdit = {};
+    post("/api/mix", { changes: [{ node, fx: { [index]: edit } }] }).catch(() => {});
+  }, 120);
+}
+const fmtNum = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
+async function openFxPanel(node, index, anchor) {
+  const sp = await specs();
+  const c = chainOf(node)[index]; if (!c) return;
+  fxOpen = { node, index };
+  const panel = $("fx-panel"); panel.innerHTML = "";
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const top = mk("div", "fx-top"); top.appendChild(mk("h3", null, c.label));
+  const on = mk("label"); const box = document.createElement("input"); box.type = "checkbox"; box.checked = !c.bypass;
+  box.onchange = () => { const bypass = chainOf(node).map((x, j) => (j === index ? !box.checked : !!x.bypass)); post("/api/mix", { changes: [{ node, bypass }] }).catch(() => {}); };
+  on.appendChild(box); on.appendChild(document.createTextNode(" " + t("fxOn"))); top.appendChild(on); panel.appendChild(top);
+  const spec = sp[c.type];
+  if (spec) panel.appendChild(mk("div", "fx-sum", spec.summary));
+  const values = c.values || {};
+  if (c.type === "plugin") {
+    panel.appendChild(mk("div", "fx-sum", t("fxPluginHint")));
+    const acts = mk("div", "fx-actions");
+    const open = mk("button", "primary", t("fxOpenPlugin"));
+    open.onclick = async () => { await post("/api/fx/open", { node, index }).then(() => banner(t("fxPluginOpened"), "info")).catch(() => {}); };
+    const discard = mk("button", null, t("fxDiscard"));
+    discard.onclick = () => post("/api/sound/cmd", { cmd: "cancel" }).catch(() => {});
+    acts.appendChild(open); acts.appendChild(discard); panel.appendChild(acts);
+  } else if (spec) {
+    for (const ch of spec.choices) {
+      const row = mk("div", "fx-row"); row.title = ch.description;
+      row.appendChild(mk("span", null, ch.name));
+      const sel = document.createElement("select");
+      for (const o of ch.choices) { const op = document.createElement("option"); op.value = op.textContent = o; sel.appendChild(op); }
+      sel.value = values[ch.name] ?? ch.default;
+      sel.onchange = () => sendFx(node, index, ch.name, sel.value);
+      row.appendChild(sel); row.appendChild(mk("span", "v", "")); panel.appendChild(row);
+    }
+    for (const p of spec.params) {
+      const row = mk("div", "fx-row"); row.title = p.description;
+      row.appendChild(mk("span", null, p.name));
+      const r = document.createElement("input"); r.type = "range"; r.min = p.min; r.max = p.max;
+      r.step = "any"; r.value = values[p.name] ?? p.default;
+      const v = mk("span", "v", `${fmtNum(+r.value)} ${p.unit}`);
+      r.oninput = () => { v.textContent = `${fmtNum(+r.value)} ${p.unit}`; sendFx(node, index, p.name, +r.value); };
+      r.ondblclick = () => { r.value = p.default; r.oninput(); };
+      row.appendChild(r); row.appendChild(v); panel.appendChild(row);
+    }
+  }
+  const acts = mk("div", "fx-actions"); const close = mk("button", null, t("fxClose")); close.onclick = closeFxPanel; acts.appendChild(close); panel.appendChild(acts);
+  panel.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  panel.style.left = Math.min(window.innerWidth - 360, Math.max(8, r.left)) + "px";
+  panel.style.top = Math.min(window.innerHeight - panel.offsetHeight - 8, r.bottom + 6) + "px";
+}
+
 function chainView(chain, output, sends, node) {
   const box = document.createElement("div"); box.className = "chain";
   chain.forEach((c, i) => {
@@ -1246,11 +1346,7 @@ function chainView(chain, output, sends, node) {
     fx.className = "fx" + (c.bypass ? " bypassed" : ""); fx.style.background = fxColor(c.type);
     fx.textContent = fxLabel(c); fx.title = `${c.type} — ${t(c.bypass ? "fxBypassed" : "fxActive")}`;
     fx.setAttribute("aria-pressed", String(!c.bypass));
-    fx.onclick = (e) => {
-      e.stopPropagation();
-      const bypass = chain.map((x, j) => (j === i ? !x.bypass : !!x.bypass));
-      post("/api/mix", { changes: [{ node, bypass }] }).catch(() => {});
-    };
+    fx.onclick = (e) => { e.stopPropagation(); openFxPanel(node, i, fx); };
     box.appendChild(fx);
     const w = document.createElement("span"); w.className = "wire"; box.appendChild(w);
   });
@@ -1392,6 +1488,7 @@ function renderChanges() {
     if ("gain_db" in c) parts.push(t("gainChange", c.gain_db));
     if ("muted" in c) parts.push(t("muteChange", c.muted));
     if ("bypass" in c) parts.push(t("bypassChange", c.bypass));
+    if ("fx" in c) parts.push(t("fxParamsChange", Object.values(c.fx).reduce((n, m) => n + Object.keys(m).length, 0)));
     return t("nodeChange", c.node, name(c.node), parts.join(language === "zh" ? "，" : ", "));
   })).join("\n");
   $("save").disabled = $("reset").disabled = !any;
@@ -1423,12 +1520,12 @@ document.addEventListener("keydown", (e) => {
   }
 });
 function bindClipEditing(lane, n) {
-  const beatAt = (e) => { const r = lane.getBoundingClientRect(); return beatAt(Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * (total / sr)); };
+  const beatOf = (e) => { const r = lane.getBoundingClientRect(); return beatAt(Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * (total / sr)); };
   const clipAt = (beat) => (n.clips || []).findIndex((c) => c.audio && beat >= c.start && beat < c.start + c.length);
   const trackIndex = +/\d+/.exec(n.id)[0];
-  lane.addEventListener("pointermove", (e) => { if (!lane.dataset.drag) lane.classList.toggle("over-audio", !cutting && clipAt(beatAt(e)) >= 0); });
+  lane.addEventListener("pointermove", (e) => { if (!lane.dataset.drag) lane.classList.toggle("over-audio", !cutting && clipAt(beatOf(e)) >= 0); });
   lane.addEventListener("pointerdown", (e) => {
-    const beat = beatAt(e), ci = clipAt(beat);
+    const beat = beatOf(e), ci = clipAt(beat);
     if (ci < 0 || e.button !== 0) return;
     if (cutting) {
       suppressTimelineClickUntil = performance.now() + 400;
@@ -1441,7 +1538,7 @@ function bindClipEditing(lane, n) {
     const move = (ev) => {
       if (!moved && Math.abs(ev.clientX - x0) < 4) return;
       moved = true;
-      let to = Math.max(0, beatAt(ev) - grab);
+      let to = Math.max(0, beatOf(ev) - grab);
       if (ev.shiftKey) to = Math.round(to * 4) / 4;
       clip.start = to; drawTrackLanes();
     };
@@ -1982,6 +2079,9 @@ async function download(button, url) {
   button.disabled = false; button.textContent = label;
 }
 $("export-wav").addEventListener("click", () => download($("export-wav"), "/api/export.wav"));
+$("export-mp3").addEventListener("click", () => download($("export-mp3"), "/api/export.mp3"));
+$("export-daw").addEventListener("click", () => download($("export-daw"), "/api/export.daw.zip"));
+$("export-data").addEventListener("click", () => download($("export-data"), "/api/export.data.json"));
 $("export-mid").addEventListener("click", () => download($("export-mid"), "/api/export.mid"));
 $("export-abc").addEventListener("click", () => download($("export-abc"), "/api/export.abc"));
 $("export-yue2").addEventListener("click", () => download($("export-yue2"), "/api/export.yue2.abc"));
