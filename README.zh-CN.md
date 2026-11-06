@@ -193,7 +193,7 @@ git submodule update --init --recursive
 
 #### 2. 构建
 
-需要 Rust 1.85+（edition 2024）。
+需要 Rust 1.89+（edition 2024；最新的依赖需要它）。
 
 ```bash
 cargo build --release

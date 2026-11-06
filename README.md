@@ -191,7 +191,7 @@ git submodule update --init --recursive
 
 #### 2. Build
 
-Requires Rust 1.85+ (edition 2024).
+Requires Rust 1.89+ (edition 2024; the newest dependencies need it).
 
 ```bash
 cargo build --release
