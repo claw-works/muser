@@ -173,6 +173,13 @@
   .chain .send { margin-left: 6px; padding: 2px 5px; color: var(--dim); border: 1px dashed #485069; border-radius: 5px; }
   .panel { position: sticky; top: 14px; overflow: hidden; }
   .panel-body { padding: 16px; }
+  /* 右侧面板：改动 / 导出 / 录人声 三个分页，一次显示一个 */
+  .tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
+  .tabs button { min-height: 46px; border: 0; border-radius: 0; background: transparent; color: var(--dim); font-weight: 650; border-bottom: 2px solid transparent; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); background: rgba(114,229,194,.05); }
+  .tabs b { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #07130f; font-size: 11px; }
+  .tab-note { margin: 0 0 4px; }
   pre { max-height: 280px; overflow: auto; margin: 0; padding: 11px; color: #cbd2e4; background: #090b12; border: 1px solid #202538; border-radius: 9px; font: 10px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; white-space: pre-wrap; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
   .row .primary { grid-column: 1 / -1; }
@@ -401,8 +408,13 @@
         </div>
       </section>
       <aside class="panel">
-        <div class="section-bar"><h2 data-i18n="pendingChanges">Pending changes</h2><span class="section-note" data-i18n="relativeProject">Compared with project file</span></div>
-        <div class="panel-body">
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" data-tab="changes"><span data-i18n="tabChanges">Changes</span><b id="changes-count" hidden></b></button>
+          <button type="button" role="tab" data-tab="export" data-i18n="tabExport">Export</button>
+          <button type="button" role="tab" data-tab="rec" data-i18n="tabRec">Record</button>
+        </div>
+        <div class="panel-body tab-body" data-tab="changes">
+          <p class="section-note tab-note" data-i18n="relativeProject">Compared with project file</p>
           <div id="changes-empty" class="hint" data-i18n="mixMatches">Mix matches the project file</div>
           <pre id="changes" hidden></pre>
           <div class="row">
@@ -413,8 +425,8 @@
           <p class="hint" id="path"></p>
         </div>
         <div id="fx-panel" hidden role="dialog"></div>
-        <div class="section-bar"><h2 data-i18n="export">Export</h2><span class="section-note" data-i18n="exportNote">Current mix, including page changes</span></div>
-        <div class="panel-body">
+        <div class="panel-body tab-body" data-tab="export" hidden>
+          <p class="section-note tab-note" data-i18n="exportNote">Current mix, including page changes</p>
           <div class="row">
             <button id="export-wav" data-i18n="exportWav" data-title="exportWavHint">Mix (WAV)</button>
             <button id="export-mp3" data-i18n="exportMp3" data-title="exportMp3Hint">Mix (MP3)</button>
@@ -425,8 +437,8 @@
             <button id="export-yue2" data-i18n="exportYue2" data-title="exportYue2Hint">ABC (YuE2)</button>
           </div>
         </div>
-        <div class="section-bar"><h2 data-i18n="recTitle">Record a voice</h2><span class="section-note" data-i18n="recNote">Wear headphones</span></div>
-        <div class="panel-body rec">
+        <div class="panel-body rec tab-body" data-tab="rec" hidden>
+          <p class="section-note tab-note" data-i18n="recNote">Wear headphones</p>
           <div class="row">
             <label class="hint"><span data-i18n="recTrack">Track</span> <input id="rec-track" value="vocal" size="8"></label>
             <label class="hint"><span data-i18n="recCountIn">Count-in</span> <select id="rec-countin"><option value="1">1</option><option value="2">2</option><option value="0">0</option></select></label>
@@ -509,6 +521,7 @@ const I18N = {
     exportMp3: "Mix (MP3)", exportMp3Hint: "The whole song as you hear it now, MP3 320 kbit/s with title and tempo tags",
     exportDaw: "DAW package", exportDawHint: "A zip to import into a DAW: MIDI, the full mix, one WAV stem per track (24-bit) and a guide with tempo and time signature; renders everything again, takes a while",
     exportData: "Visualization data", exportDataHint: "JSON for visuals and videos: notes in seconds, automation curves, sections, levels 30 times a second",
+    tabChanges: "Changes", tabExport: "Export", tabRec: "Record",
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
     keyShift: "Key", keyHint: "Transpose the whole song in semitones while you try keys for a singer (notes in the project stay as written; drums and recordings don't move). Save keeps it",
     transposeChange: (n) => `transpose → ${n > 0 ? "+" : ""}${n}`,
@@ -576,6 +589,7 @@ const I18N = {
     exportMp3: "整首混音（MP3）", exportMp3Hint: "现在听到的整首，MP3 320 kbit/s，带标题和速度标签",
     exportDaw: "DAW 工程包", exportDawHint: "导入 DAW 用的 zip：MIDI、整首混音、每轨一个 WAV 分轨（24 位）和写着速度、拍号的说明；要重新渲染一遍，稍等",
     exportData: "可视化数据", exportDataHint: "给可视化、视频用的 JSON：音符（秒）、自动化曲线、段落、每秒 30 次的电平",
+    tabChanges: "改动", tabExport: "导出", tabRec: "录人声",
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
     keyShift: "变调", keyHint: "整首升降几个半音，给换了人唱（比如换成女声）找合适的调；工程里的音符不改，鼓和录音不动。点「保存」才写进工程",
     transposeChange: (n) => `整首变调 → ${n > 0 ? "+" : ""}${n} 个半音`,
@@ -1276,6 +1290,15 @@ const fxColor = (t) => FX_COLORS[t] || "#cbd2e4";
 const fxLabel = (c) => c.label + (c.sidechain ? ` ⟵${c.sidechain}` : "");
 /** 混音行里的信号链：效果器方块用线连起来，最后指向去向；发送用虚线框列在后面。 */
 // 点效果器标签打开效果器面板：开关（旁通）、内置效果器的参数、插件效果器的窗口。和推子一样是页面上的改动，「保存」写回工程。
+// ---------- 右侧分页 ----------
+function showTab(name) {
+  for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  for (const p of document.querySelectorAll(".tab-body")) p.hidden = p.dataset.tab !== name;
+  try { localStorage.setItem("muser-view-tab", name); } catch (_) {}
+}
+for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => showTab(b.dataset.tab);
+showTab((() => { try { return localStorage.getItem("muser-view-tab") || "changes"; } catch (_) { return "changes"; } })());
+
 // ---------- 效果器面板 ----------
 let fxSpecs = null, fxOpen = null, fxTimer = 0, fxPendingEdit = {};
 async function specs() {
@@ -1502,6 +1525,8 @@ function renderChanges() {
     return t("nodeChange", c.node, name(c.node), parts.join(language === "zh" ? "，" : ", "));
   })).join("\n");
   $("save").disabled = $("reset").disabled = !any;
+  const nChanges = list.length + pending.length + edits.length + tr.length;
+  $("changes-count").hidden = !nChanges; $("changes-count").textContent = nChanges;
   renderTakes();
 }
 
