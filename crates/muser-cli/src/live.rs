@@ -738,6 +738,8 @@ struct Live {
     stopped: std::sync::atomic::AtomicBool,
     /// agent 上次看状态时的欠载数（之后又多了就提醒，不管隔了多久）。
     underruns_seen: Mutex<usize>,
+    /// 提交时先加载好的 SFZ 采样（拿着它们，播放线程换工程时直接从共享池取用）。
+    sfz_held: Mutex<Vec<std::sync::Arc<muser_engine::sfz::Loaded>>>,
 }
 
 /// 掉帧后这么多秒内，status / wait 都提醒。
@@ -872,6 +874,7 @@ impl Live {
             bail!("the session has ended");
         }
         let change: Change = serde_json::from_value(body.clone()).context("malformed change")?;
+        self.preload(&change)?;
         let now = self.now_beat();
         let receipt = self.session.lock().unwrap().submit(change, now)?;
         self.log_change(&body, &receipt);
@@ -881,6 +884,24 @@ impl Live {
         self.push()?;
         self.save(now);
         Ok(json!({ "ok": true, "receipt": receipt }))
+    }
+
+    /// 新轨用到的 SFZ 音色先在这里（HTTP 线程）加载：大音色库要几秒，这个请求等着，音乐照常放；
+    /// 之后播放线程换上新工程时采样已经在共享池里，不会断音。段的起点在加载完以后才算，所以不会迟到。
+    fn preload(&self, change: &Change) -> Result<()> {
+        let tracks: Vec<Value> = change
+            .tracks
+            .iter()
+            .filter(|t| t.instrument.as_deref().is_some_and(|i| i.trim().starts_with("sfz:")))
+            .map(|t| json!({ "name": t.name, "instrument": t.instrument, "instrument_params": t.instrument_params.clone().unwrap_or_default(), "clips": [] }))
+            .collect();
+        if tracks.is_empty() {
+            return Ok(());
+        }
+        let p: Project = serde_json::from_value(json!({ "tempo": 120, "tracks": tracks }))?;
+        let loaded = muser_engine::instrument::preload_sfz(&p).map_err(|e| anyhow!(e))?;
+        self.sfz_held.lock().unwrap().extend(loaded);
+        Ok(())
     }
 
     /// 等到"排好的音乐短于 `runway` 秒"或自主演奏时间到了，最多 30 秒。
@@ -960,6 +981,7 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
         last_gap: Mutex::new(None),
         started: Instant::now(),
         last_underrun: Mutex::new((None, 0)),
+        sfz_held: Mutex::new(muser_engine::instrument::preload_sfz(&tpl).map_err(|e| anyhow!(e))?),
         stopped: Default::default(),
         underruns_seen: Mutex::new(0),
     });

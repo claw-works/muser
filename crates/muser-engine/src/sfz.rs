@@ -768,6 +768,22 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// 现场演奏的预加载：在别的线程加载、拿着；之后建乐器（播放线程里）取到的是同一份。
+    #[test]
+    fn preload_is_what_the_instrument_gets() {
+        let dir = std::env::temp_dir().join(format!("muser-sfzpre-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.sfz");
+        std::fs::write(&path, "<region> sample=*sine lokey=0 hikey=127").unwrap();
+        let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [
+            { "name": "a", "instrument": format!("sfz:{}", path.display()), "clips": [] },
+            { "name": "b", "instrument": "synth.poly", "clips": [] }] })).unwrap();
+        let held = std::thread::spawn(move || crate::instrument::preload_sfz(&p).unwrap()).join().unwrap();
+        assert_eq!(held.len(), 1);
+        assert!(std::sync::Arc::ptr_eq(&held[0], &load_shared(&path, &Options::default()).unwrap()));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn resolve_searches_library_roots() {
         let root = std::env::temp_dir().join(format!("muser-sfzroot-{}", std::process::id()));

@@ -52,6 +52,7 @@ the human can change direction in the conversation at any time. This is the **me
 - **Tracks you do not write rest during this section.** To keep a track going, give it a clip in this section too (`last_change` in `live status` is the full text of the previous section;
   editing on top of it is easiest: keep what should continue, change what should vary).
 - Clips are written as in an ordinary project: `notes`, `abc`, `grid`, `drummer`, `humanize` all work (`chordal` and `parts` belong to the arrangement layer and are not used live); anything beyond the end of the section is cut off.
+- **Big sampled sounds** (`sfz:` pianos and the like): the first `send` that brings one in loads its samples first and can take ~10 seconds to answer; the music keeps playing, and the section starts on time after that. Bring such a sound in a section early (or put it in the template), not on the bar where it must be heard.
 - **New track**: write `instrument` (optionally `instrument_params`, `output`, `sends`, `gain_db`, `pan`).
 - **Existing tracks** cannot change instrument, parameters, volume or pan midway: to change instrument, **open a new track**; changes to parameters, volume and pan go in `automation`.
 - **Effects**: `effects_add` connects from the start of this section (appended to the end of the effect chain, indexes continue after the existing ones), `effects_off: [index]` removes from the start of this section.

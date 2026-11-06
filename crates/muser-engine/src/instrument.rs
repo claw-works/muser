@@ -802,6 +802,23 @@ pub fn resolve_for(name: &str, params: &InstrumentParams, spec: &ProcessSpec) ->
     Ok(inst)
 }
 
+/// 先把工程里 `sfz:` 音色的采样加载进进程内的共享池（[`crate::sfz::load_shared`]），在调用的线程里做。
+/// 现场演奏在播放线程之外调它、拿着返回值：播放线程换上新工程时直接取用，不在那里读几秒钟的采样（Salamander 约 9 秒）。
+pub fn preload_sfz(project: &muser_core::Project) -> Result<Vec<std::sync::Arc<crate::sfz::Loaded>>, String> {
+    let mut out = Vec::new();
+    for t in &project.tracks {
+        if !t.instrument.trim().starts_with("sfz:") {
+            continue;
+        }
+        let Some((_, mut patch)) = lookup(&t.instrument) else { continue };
+        patch.apply(&without_label(&t.instrument_params)).map_err(|e| format!("track '{}': {e}", t.name))?;
+        if let Patch::Sfz(path, cc) = &patch {
+            out.push(crate::sfz::load_shared(path, cc).map_err(|e| format!("track '{}': {e}", t.name))?);
+        }
+    }
+    Ok(out)
+}
+
 /// 这件内置乐器在输出端补的校准增益（dB）；SFZ、插件、音频轨、不认识的乐器为 0。`muser migrate` 用它把旧工程的 `gain_db` 换算过来。
 pub fn calibration_db(name: &str, params: &InstrumentParams) -> f64 {
     let params = &*without_label(params);
