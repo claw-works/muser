@@ -1,0 +1,52 @@
+{
+  "name": "accelerando-dance",
+  "tempo": 72,
+  "seed": 5,
+  "sections": {
+    "intro":  { "bars": 4, "chords": "Dm A7 Dm A7" },
+    "slow":   { "bars": 8, "chords": "Dm Dm Gm A7 Dm Gm A7 Dm" },
+    "accel":  { "bars": 8, "chords": "Dm Dm Gm A7 Dm Gm A7 Dm", "tempo": 132, "tempo_ramp_bars": 8 },
+    "fast":   { "bars": 8, "chords": "Dm Dm Gm A7 Dm Gm A7 Dm" },
+    "faster": { "bars": 8, "chords": "Dm Dm Gm A7 Dm Gm A7 Dm", "tempo": 160, "tempo_ramp_bars": 4 },
+    "outro":  { "bars": 4, "chords": "Dm Gm A7 Dm", "tempo": 56, "tempo_ramp_bars": 4 }
+  },
+  "form": ["intro", "slow", "accel", "fast", "faster", "outro"],
+  "buses": [{ "name": "verb", "effects": [{ "type": "eq", "shape": "highpass", "frequency": 250 }, { "type": "reverb", "mix": 1.0, "decay_seconds": 2.2 }] }],
+  "master_effects": [{ "type": "compressor", "threshold_db": -16, "ratio": 2 }, { "type": "limiter", "ceiling_db": -1 }],
+  "tracks": [
+    { "name": "drums", "instrument": "drums.acoustic", "gain_db": -11, "sends": { "verb": -18 },
+      "humanize": { "timing_ms": 4, "velocity": 0.08 }, "parts": {
+        "accel":  { "grid": { "kick": "x.......x.......", "snare": "....x.......x...", "hat": "..x...x...x...x." } },
+        "fast":   { "grid": { "kick": "x...x...x...x...", "snare": "....x.......x...", "hat": "x.x.x.x.x.x.x.x." } },
+        "faster": { "grid": { "kick": "x...x...x...x...", "snare": "....x.......x..x", "hat": "xxx.xxx.xxx.xxx." },
+                    "end": { "beats": 2, "grid": { "snare": "x.x.xxxx" } } },
+        "outro":  { "grid": { "kick": "x...............", "crash": "x..............." }, "length": 16 } } },
+    { "name": "bass", "instrument": "strings.contrabass_pizz", "gain_db": -4, "humanize": { "timing_ms": 4, "velocity": 0.06 }, "parts": {
+        "slow":   { "chordal": "1 . . . 5 . . .", "octave": 2 },
+        "accel":  { "chordal": "1 . . . 5 . . .", "octave": 2 },
+        "fast":   { "chordal": "1 . 5 . 1 . 5 .", "octave": 2 },
+        "faster": { "chordal": "1 . 5 . 1 . 5 .", "octave": 2 },
+        "outro":  { "chordal": "1 - - - - - - -", "octave": 2 } } },
+    { "name": "guitar", "instrument": "guitar.nylon", "gain_db": -9, "sends": { "verb": -12 },
+      "humanize": { "timing_ms": 6, "velocity": 0.08 }, "parts": {
+        "intro":  { "chordal": "c - - - - - - -", "octave": 3, "velocity": 0.55 },
+        "slow":   { "chordal": ". . c . . . c .", "octave": 3, "velocity": 0.6 },
+        "accel":  { "chordal": ". . c . . . c .", "octave": 3, "velocity": 0.7 },
+        "fast":   { "chordal": ". c . c . c . c", "octave": 3, "velocity": 0.75 },
+        "faster": { "chordal": ". c . c . c . c", "octave": 3, "velocity": 0.85 },
+        "outro":  { "chordal": "c - - - - - - -", "octave": 3, "velocity": 0.6 } } },
+    { "name": "clarinet", "instrument": "wind.clarinet", "gain_db": -0.5, "sends": { "verb": -10 }, "humanize": { "timing_ms": 5, "velocity": 0.06 }, "parts": {
+        "slow":   { "abc": "L:1/8\nK:Dm\nA2 d2 ^c d A2 | F G A B A2 F2 | G2 B2 d2 B G | ^c2 e2 A2 G E | F2 A2 d2 f2 | g f d B G2 B2 | A ^c e g f e ^c e | d6 z2 |" },
+        "accel":  { "abc": "L:1/8\nK:Dm\nA2 d2 ^c d A2 | F G A B A2 F2 | G2 B2 d2 B G | ^c2 e2 A2 G E | F2 A2 d2 f2 | g f d B G2 B2 | A ^c e g f e ^c e | d6 z2 |" },
+        "fast":   { "abc": "L:1/8\nK:Dm\nA2 d2 ^c d A2 | F G A B A2 F2 | G2 B2 d2 B G | ^c2 e2 A2 G E | F2 A2 d2 f2 | g f d B G2 B2 | A ^c e g f e ^c e | d6 z2 |" },
+        "faster": { "abc": "L:1/8\nK:Dm\nA2 d2 ^c d A2 | F G A B A2 F2 | G2 B2 d2 B G | ^c2 e2 A2 G E | F2 A2 d2 f2 | g f d B G2 B2 | A ^c e g f e ^c e | d4 A2 d2 |" },
+        "outro":  { "abc": "L:1/8\nK:Dm\nF2 A2 d2 f2 | g f d B G2 B2 | A ^c e g f e ^c e | d8 |" } } },
+    { "name": "violin", "instrument": "strings.violin", "gain_db": -5, "sends": { "verb": -8 }, "humanize": { "timing_ms": 5, "velocity": 0.06 }, "parts": {
+        "accel":  { "chordal": "3 - - - 5 - - -", "octave": 5, "velocity": 0.6 },
+        "fast":   { "abc": "L:1/8\nK:Dm\nA2 d2 ^c d A2 | F G A B A2 F2 | G2 B2 d2 B G | ^c2 e2 A2 G E | F2 A2 d2 f2 | g f d B G2 B2 | A ^c e g f e ^c e | d6 z2 |",
+                    "transform": [{ "octave": 1 }] },
+        "faster": { "abc": "L:1/8\nK:Dm\nA2 d2 ^c d A2 | F G A B A2 F2 | G2 B2 d2 B G | ^c2 e2 A2 G E | F2 A2 d2 f2 | g f d B G2 B2 | A ^c e g f e ^c e | d4 A2 d2 |",
+                    "transform": [{ "octave": 1 }] },
+        "outro":  { "chordal": "3 - - - - - - -", "octave": 5, "velocity": 0.5 } } }
+  ]
+}
