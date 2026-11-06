@@ -7,6 +7,7 @@ Write the next version's section here before tagging; the heading must be `## vX
 
 ### Upgrade notes
 
+- **muser speaks English now**: CLI output, `--help`, error and validation messages, `analyze` / `mix-report` reports, MCP tool descriptions and results, built-in loop and plugin profile descriptions, and the docs (`SKILLS.md`, `TOOLS.md`, `skills/`) are English only (the `muser view` / live pages keep their 中文 / EN switch; `README.zh-CN.md` stays). Agents answer in the user's language as before; scripts that matched the old Chinese messages need updating. Cached sound cards are re-probed once (their summaries were Chinese).
 - SFZ instruments that use the built-in controller curves (`tune_curveccN=1` and the like) now play as designed: Ixox Flute, for one, was 50 cents sharp before and is in tune now, so projects using such libraries will sound different (better) after upgrading.
 
 ### Live performance (`muser live`)
