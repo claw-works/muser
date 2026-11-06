@@ -168,36 +168,36 @@
               "pitch": 43,
               "start": 0.0,
               "length": 4.0,
-              "velocity": 0.85
+              "velocity": 0.8
             },
             {
               "pitch": 47,
-              "start": 0.03,
-              "length": 3.97,
-              "velocity": 0.81
-            },
-            {
-              "pitch": 50,
-              "start": 0.06,
-              "length": 3.94,
+              "start": 0.15,
+              "length": 3.85,
               "velocity": 0.77
             },
             {
+              "pitch": 50,
+              "start": 0.3,
+              "length": 3.7,
+              "velocity": 0.74
+            },
+            {
               "pitch": 55,
-              "start": 0.09,
-              "length": 3.91,
-              "velocity": 0.73
+              "start": 0.45,
+              "length": 3.55,
+              "velocity": 0.71
             },
             {
               "pitch": 59,
-              "start": 0.12,
-              "length": 3.88,
-              "velocity": 0.69
+              "start": 0.6,
+              "length": 3.4,
+              "velocity": 0.68
             },
             {
               "pitch": 67,
-              "start": 0.15,
-              "length": 3.85,
+              "start": 0.75,
+              "length": 3.25,
               "velocity": 0.65
             }
           ]
