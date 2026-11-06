@@ -444,7 +444,7 @@
             <label class="hint"><span data-i18n="recCountIn">Count-in</span> <select id="rec-countin"><option value="1">1</option><option value="2">2</option><option value="0">0</option></select></label>
             <label class="hint"><span data-i18n="recNudge">Latency (ms)</span> <input id="rec-nudge" type="number" value="0" step="5" style="width:56px"></label>
           </div>
-          <div class="row"><button id="rec-btn" class="primary" data-i18n="recStart">● Record from the playhead</button>
+          <div class="row" id="rec-row"><button id="rec-btn" class="primary" data-i18n="recStart">● Record from the playhead</button>
             <button id="rec-measure" data-i18n="recMeasure" data-title="recMeasureHint">Measure latency</button></div>
           <p class="hint" id="rec-status" data-i18n="recHelp">Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.</p>
           <pre id="lyrics" hidden></pre>
@@ -1601,7 +1601,7 @@ function bindClipEditing(lane, n) {
 // ---------- 录人声 ----------
 const barOf = (beat) => { const b = data.bar_starts || []; let i = 0; while (i + 1 < b.length && b[i + 1] <= beat + 1e-9) i++; return i + 1; };
 function renderTakes() {
-  if (!nudgeLoaded) { nudgeLoaded = true; $("rec-nudge").value = localStorage.getItem(nudgeKey()) || $("rec-nudge").value; }
+  if (!nudgeLoaded) { nudgeLoaded = true; $("rec-nudge").value = localStorage.getItem(nudgeKey()) || $("rec-nudge").value; recOrder(); }
   const ly = $("lyrics"); ly.hidden = !data.lyrics; ly.textContent = data.lyrics || "";
   const box = $("takes"); box.textContent = "";
   for (const { take, in_use, saved } of (data.takes || []).slice().reverse()) {
@@ -1718,7 +1718,15 @@ $("rec-btn").onclick = () => (rec ? stopRecording() : startRecording());
 // 延迟微调记在这台电脑上（每台机器、每副耳机都不一样）。
 // 浏览器播放和声卡播放的延迟不一样，分开记。
 let nudgeLoaded = false;
-$("rec-nudge").onchange = (e) => localStorage.setItem(nudgeKey(), e.target.value);
+// 还没测过延迟（延迟微调空着或是 0）：「测延迟」排在前面、作为主按钮；测过以后「录音」在前。
+function recOrder() {
+  const unmeasured = !(+$("rec-nudge").value);
+  const row = $("rec-row"), rec = $("rec-btn"), measure = $("rec-measure");
+  if (unmeasured) row.insertBefore(measure, rec); else row.insertBefore(rec, measure);
+  measure.classList.toggle("primary", unmeasured); rec.classList.toggle("primary", !unmeasured);
+}
+$("rec-nudge").oninput = recOrder;
+$("rec-nudge").onchange = (e) => { localStorage.setItem(nudgeKey(), e.target.value); recOrder(); };
 // 测延迟：从扬声器放 8 下咔嗒声，麦克风听回来；录音时补的正是"放出去到录回来"的这段时间（减去浏览器已经报告的输出延迟）。
 $("rec-measure").onclick = async () => {
   if (rec) return;
@@ -1726,7 +1734,7 @@ $("rec-measure").onclick = async () => {
     $("rec-status").textContent = t("recMeasuring"); $("rec-measure").disabled = true;
     try {
       const j = await post("/api/device/record", { action: "measure" });
-      $("rec-nudge").value = j.ms; localStorage.setItem(nudgeKey(), String(j.ms));
+      $("rec-nudge").value = j.ms; localStorage.setItem(nudgeKey(), String(j.ms)); recOrder();
       $("rec-status").textContent = t("recMeasured", j.ms);
     } catch (_) { $("rec-status").textContent = t("recMeasureFailed"); }
     $("rec-measure").disabled = false;
@@ -1768,7 +1776,7 @@ $("rec-measure").onclick = async () => {
   delays.sort((a, b) => a - b);
   const roundTrip = delays[delays.length >> 1];
   const ms = Math.round((roundTrip - (ctx.outputLatency || 0) - (ctx.baseLatency || 0)) * 1000);
-  $("rec-nudge").value = ms; localStorage.setItem(nudgeKey(), String(ms));
+  $("rec-nudge").value = ms; localStorage.setItem(nudgeKey(), String(ms)); recOrder();
   $("rec-status").textContent = t("recMeasured", ms);
 };
 
