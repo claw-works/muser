@@ -49,6 +49,7 @@ pub enum Fx {
     TransientShaper(TransientShaper<f32>),
     MultibandCompressor(MultibandCompressor<f32>),
     Tape(TapeSaturation<f32>),
+    Distortion(crate::distortion::Distortion),
     Vocoder(MakeupVocoder),
     GranularDelay(GranularDelay<f32>),
     FormantFilter(FormantFilter<f32>),
@@ -78,6 +79,7 @@ impl Fx {
             Fx::TransientShaper(p) => p,
             Fx::MultibandCompressor(p) => p,
             Fx::Tape(p) => p,
+            Fx::Distortion(p) => p,
             Fx::Vocoder(p) => p,
             Fx::GranularDelay(p) => p,
             Fx::FormantFilter(p) => p,
@@ -160,6 +162,11 @@ impl Fx {
             (Fx::Tape(t), "wow_cents") => t.set_wow_cents(v),
             (Fx::Tape(t), "flutter_cents") => t.set_flutter_cents(v),
             (Fx::Tape(t), "mix") => t.set_mix(v),
+            (Fx::Distortion(d), "drive_db") => d.set_drive_db(v),
+            (Fx::Distortion(d), "tone_hz") => d.set_tone_hz(v),
+            (Fx::Distortion(d), "low_cut_hz") => d.set_low_cut_hz(v),
+            (Fx::Distortion(d), "output_db") => d.set_output_db(v),
+            (Fx::Distortion(d), "mix") => d.set_mix(v),
             (Fx::Vocoder(voc), name) => voc.set(name, v),
             (Fx::GranularDelay(g), "position_ms") => g.set_position_ms(v),
             (Fx::GranularDelay(g), "spray_ms") => g.set_spray_ms(v),
@@ -329,6 +336,9 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
         Effect::Tape { drive_db, asymmetry, wow_cents, flutter_cents, mix } => Fx::Tape(
             TapeSaturation::new().with_drive_db(*drive_db).with_asymmetry(*asymmetry).with_wow_cents(*wow_cents).with_flutter_cents(*flutter_cents).with_mix(*mix),
         ),
+        Effect::Distortion { mode, drive_db, tone_hz, low_cut_hz, cabinet, output_db, mix } => {
+            Fx::Distortion(crate::distortion::Distortion::new(mode, *drive_db, *tone_hz, *low_cut_hz, cabinet, *output_db, *mix))
+        }
         Effect::Vocoder { bands, low_hz, high_hz, formant_shift, attack_ms, release_ms, gain_db, mix, .. } => Fx::Vocoder(MakeupVocoder {
             vocoder: Vocoder::new()
                 .with_bands(bands.round() as usize)

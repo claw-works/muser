@@ -81,6 +81,8 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `phaser` | keys：rate 0.5Hz、feedback 0.4、mix 0.6 | 流动的"喷气式"扫频 |
 | `flanger` | keys：rate 0.2Hz、feedback 0.7、mix 0.6 | 金属感的扫动 |
 
+`distortion` 单独一段：原创的强力和弦 riff（132 BPM），钢弦吉他挂 `distortion`（drive 28、guitar 箱体），贝斯挂 overdrive（mix 0.5 保留干净的低频），配原声鼓。
+
 ## automation
 
 参数随时间变化（格式见 [skills/automation.md](../skills/automation.md)）。

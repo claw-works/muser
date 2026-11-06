@@ -327,6 +327,30 @@ pub enum Effect {
         #[serde(default = "default_tape_mix")]
         mix: f64,
     },
+    /// 失真：过载、失真、fuzz、折叠，带音色滤波和箱体模拟，响度自动补偿。
+    Distortion {
+        /// 类型：`overdrive` `distortion` `fuzz` `fold`
+        #[serde(default = "default_distortion_mode")]
+        mode: String,
+        /// 驱动（dB）
+        #[serde(default = "default_distortion_drive_db")]
+        drive_db: f64,
+        /// 失真后的低通（Hz）：越低越暗
+        #[serde(default = "default_distortion_tone_hz")]
+        tone_hz: f64,
+        /// 失真前的高通（Hz）：去掉低频，失真不糊
+        #[serde(default = "default_distortion_low_cut_hz")]
+        low_cut_hz: f64,
+        /// 箱体模拟：`none` `guitar` `bass`
+        #[serde(default = "default_distortion_cabinet")]
+        cabinet: String,
+        /// 输出（dB），在自动响度补偿之后
+        #[serde(default)]
+        output_db: f64,
+        /// 干湿比
+        #[serde(default = "default_one")]
+        mix: f64,
+    },
     /// 声码器：用另一条轨（多是人声）的频谱去塑造这条轨（多是合成器和弦）——机器人唱歌。
     Vocoder {
         /// 频带数。8 粗糙复古；16 常规；32 更清楚
@@ -494,6 +518,24 @@ fn default_multiband_compressor_mid_db() -> f64 {
 }
 fn default_multiband_compressor_high_db() -> f64 {
     0.0
+}
+fn default_distortion_mode() -> String {
+    "distortion".into()
+}
+fn default_distortion_drive_db() -> f64 {
+    18.0
+}
+fn default_distortion_tone_hz() -> f64 {
+    4500.0
+}
+fn default_distortion_low_cut_hz() -> f64 {
+    80.0
+}
+fn default_distortion_cabinet() -> String {
+    "none".into()
+}
+fn default_one() -> f64 {
+    1.0
 }
 fn default_tape_drive_db() -> f64 {
     6.0
@@ -929,6 +971,23 @@ pub static EFFECT_SPECS: &[EffectSpec] = &[
         example: r#"{ "type": "tape", "drive_db": 5, "wow_cents": 8 }"#,
     },
     EffectSpec {
+        name: "distortion",
+        summary: "Distortion: overdrive, distortion, fuzz or wavefolding, with a tone filter and cabinet simulation; loudness is compensated automatically, so more drive means more grit, not more volume.",
+        placement: "On a guitar, bass, organ or synth track for rock / metal / grunge; lightly (overdrive, drive 6-12) on drums or a bus for grit. For a rock guitar: guitar.steel + { \"mode\": \"distortion\", \"drive_db\": 24, \"cabinet\": \"guitar\" }; play power chords (root + fifth), not full triads, since distortion turns thirds muddy.",
+        params: &[
+            p("drive_db", 0.0, 48.0, 18.0, "dB", "Drive. 6-12 crunch; 18-30 rock / metal; 36+ fuzz-like saturation"),
+            p("tone_hz", 500.0, 12000.0, 4500.0, "Hz", "Low-pass after the distortion: lower is darker; 3000-5000 for guitars"),
+            p("low_cut_hz", 20.0, 1000.0, 80.0, "Hz", "High-pass before the distortion so the lows don't turn to mud; 100-200 for tight metal rhythm, 40 for bass"),
+            p("output_db", -24.0, 12.0, 0.0, "dB", "Output level after the automatic loudness compensation"),
+            p("mix", 0.0, 1.0, 1.0, "", "Dry/wet mix; around 0.5 on bass keeps the clean low end under the grit"),
+        ],
+        choices: &[
+            ChoiceSpec { name: "mode", choices: &["overdrive", "distortion", "fuzz", "fold"], default: "distortion", description: "overdrive: soft, asymmetric tube-like clipping; distortion: smooth saturation, rock / metal; fuzz: hard clipping, buzzy; fold: wavefolding, metallic synth sounds" },
+            ChoiceSpec { name: "cabinet", choices: &["none", "guitar", "bass"], default: "none", description: "Speaker cabinet simulation after the distortion: guitar rolls off the fizz above ~5 kHz and the boom below ~90 Hz with a mid push; bass keeps the lows and rolls off above ~3 kHz" },
+        ],
+        example: r#"{ "type": "distortion", "mode": "distortion", "drive_db": 24, "cabinet": "guitar" }"#,
+    },
+    EffectSpec {
         name: "vocoder",
         summary: "Vocoder: shapes this track (usually synth chords) with the spectrum of another track (usually a vocal) - a singing robot.",
         placement: "Put it on the synth/chord track (the carrier) and set \"sidechain\" to the name of the vocal track or bus (the modulator). The carrier should be sustained and harmonically rich (saw pad, string machine).",
@@ -1013,6 +1072,7 @@ impl Effect {
             Effect::TransientShaper { .. } => "transient_shaper",
             Effect::MultibandCompressor { .. } => "multiband_compressor",
             Effect::Tape { .. } => "tape",
+            Effect::Distortion { .. } => "distortion",
             Effect::Vocoder { .. } => "vocoder",
             Effect::GranularDelay { .. } => "granular_delay",
             Effect::FormantFilter { .. } => "formant_filter",
@@ -1066,6 +1126,7 @@ impl Effect {
             Effect::Widener { width, bass_mono_hz, .. } => vec![("width", width), ("bass_mono_hz", bass_mono_hz)],
             Effect::TransientShaper { attack_db, sustain_db, attack_ms, sustain_ms, .. } => vec![("attack_db", attack_db), ("sustain_db", sustain_db), ("attack_ms", attack_ms), ("sustain_ms", sustain_ms)],
             Effect::MultibandCompressor { low_hz, high_hz, threshold_db, ratio, attack_ms, release_ms, low_db, mid_db, high_db, .. } => vec![("low_hz", low_hz), ("high_hz", high_hz), ("threshold_db", threshold_db), ("ratio", ratio), ("attack_ms", attack_ms), ("release_ms", release_ms), ("low_db", low_db), ("mid_db", mid_db), ("high_db", high_db)],
+            Effect::Distortion { drive_db, tone_hz, low_cut_hz, output_db, mix, .. } => vec![("drive_db", drive_db), ("tone_hz", tone_hz), ("low_cut_hz", low_cut_hz), ("output_db", output_db), ("mix", mix)],
             Effect::Tape { drive_db, asymmetry, wow_cents, flutter_cents, mix, .. } => vec![("drive_db", drive_db), ("asymmetry", asymmetry), ("wow_cents", wow_cents), ("flutter_cents", flutter_cents), ("mix", mix)],
             Effect::Vocoder { bands, low_hz, high_hz, formant_shift, attack_ms, release_ms, gain_db, mix, .. } => vec![("bands", bands), ("low_hz", low_hz), ("high_hz", high_hz), ("formant_shift", formant_shift), ("attack_ms", attack_ms), ("release_ms", release_ms), ("gain_db", gain_db), ("mix", mix)],
             Effect::GranularDelay { position_ms, spray_ms, grain_ms, density_hz, pitch_semitones, pitch_spray, stereo_spread, feedback, mix, .. } => vec![("position_ms", position_ms), ("spray_ms", spray_ms), ("grain_ms", grain_ms), ("density_hz", density_hz), ("pitch_semitones", pitch_semitones), ("pitch_spray", pitch_spray), ("stereo_spread", stereo_spread), ("feedback", feedback), ("mix", mix)],
@@ -1102,6 +1163,13 @@ impl Effect {
                         "eq.shape = '{shape}' is invalid; choose one of: {}",
                         cs.choices.join(" / ")
                     ));
+                }
+            }
+            Effect::Distortion { mode, cabinet, .. } => {
+                for (cs, v) in spec.choices.iter().zip([mode, cabinet]) {
+                    if !cs.choices.contains(&v.trim().to_ascii_lowercase().as_str()) {
+                        return Err(format!("distortion.{} = '{v}' is invalid; choose one of: {}", cs.name, cs.choices.join(" / ")));
+                    }
                 }
             }
             Effect::Tremolo { shape, .. } | Effect::AutoPan { shape, .. } => {

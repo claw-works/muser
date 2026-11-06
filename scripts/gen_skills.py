@@ -256,6 +256,21 @@ EFFECT_EXTRA = {
             "drive makes the sound louder; use `muser mix-report` to see the post-fader loudness, then adjust gain_db.",
         ],
     },
+    "distortion": {
+        "presets": [
+            ("Crunch rhythm guitar (guitar.steel)", {"type": "distortion", "mode": "overdrive", "drive_db": 12, "cabinet": "guitar"}),
+            ("Rock / metal guitar (power chords)", {"type": "distortion", "mode": "distortion", "drive_db": 28, "low_cut_hz": 120, "tone_hz": 4000, "cabinet": "guitar"}),
+            ("Fuzz lead", {"type": "distortion", "mode": "fuzz", "drive_db": 30, "tone_hz": 3500, "cabinet": "guitar"}),
+            ("Gritty bass (clean lows kept)", {"type": "distortion", "mode": "overdrive", "drive_db": 18, "low_cut_hz": 40, "cabinet": "bass", "mix": 0.5}),
+            ("Dirty drum bus", {"type": "distortion", "mode": "overdrive", "drive_db": 8, "tone_hz": 9000, "mix": 0.4}),
+        ],
+        "tips": [
+            "Loudness is compensated automatically: raising drive_db adds grit, not volume; set the level with gain_db / output_db as usual.",
+            "Distorted guitars want power chords (root + fifth, maybe the octave); full triads with thirds turn muddy under heavy drive.",
+            "No added latency, so it can be added mid-way in a live session (`effects_add`).",
+            "For a metal rhythm: low_cut_hz 120-200 keeps the palm-muted chugs tight; double the part on a second track panned to the other side.",
+        ],
+    },
     "vocoder": {
         "presets": [
             ("Classic robot choir (carrier: sawtooth pad)", {"type": "vocoder", "sidechain": "voice", "bands": 16}),

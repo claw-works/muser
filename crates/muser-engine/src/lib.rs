@@ -14,6 +14,7 @@ pub mod drummer;
 pub mod effects;
 pub mod export_data;
 pub mod hum;
+pub mod distortion;
 pub mod instrument;
 pub mod levels;
 pub mod loop_library;

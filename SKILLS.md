@@ -427,6 +427,7 @@ Any effect can take `"bypass": true` to be turned off temporarily (bypass: the s
 | `multiband_compressor` | Three-band compression (mastering, drum bus) | [multiband_compressor.md](skills/effects/multiband_compressor.md) |
 | `transient_shaper` | Shape attack / sustain (drums) | [transient_shaper.md](skills/effects/transient_shaper.md) |
 | `tape` | Tape saturation and wobble (warm, lo-fi) | [tape.md](skills/effects/tape.md) |
+| `distortion` | Overdrive / distortion / fuzz / fold with cabinet simulation (rock and metal guitars, gritty bass) | [distortion.md](skills/effects/distortion.md) |
 | `bitcrusher` | Bit and sample-rate reduction (8-bit, old samplers) | [bitcrusher.md](skills/effects/bitcrusher.md) |
 | `tremolo` | Volume wobble, chopping | [tremolo.md](skills/effects/tremolo.md) |
 | `auto_pan` | Automatic left-right swing | [auto_pan.md](skills/effects/auto_pan.md) |
@@ -440,7 +441,7 @@ Any effect can take `"bypass": true` to be turned off temporarily (bypass: the s
 
 ### Recommended chain order
 
-- Single track: `eq → transient_shaper → compressor → tape/bitcrusher → chorus/phaser/flanger/tremolo → delay → reverb` (skip what you do not need).
+- Single track: `eq → transient_shaper → compressor → distortion/tape/bitcrusher → chorus/phaser/flanger/tremolo → delay → reverb` (skip what you do not need).
 - Master: `eq → compressor or multiband_compressor → limiter`, with the limiter always last.
 - Bass and kick generally get no reverb / chorus; for other tracks use an `eq` highpass around 150Hz to leave the low end to them.
 
