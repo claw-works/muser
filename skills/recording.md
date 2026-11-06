@@ -19,7 +19,7 @@ with the latency reported by the sound card driver compensated automatically; mo
 
 - Wear headphones, so the backing track does not leak into the microphone.
 - Right-drag on the time ruler to mark the section to record, and click "● Record the loop range" (with a count-in); if no region is marked, it records from the playhead until stop.
-- The same section can be recorded many times: a new take replaces the clip at the same position, and old ones stay in the list, where you can "Use" or "Delete" it.
+- The same section can be recorded many times: a new take replaces a take it mostly covers (a retake of the same line), and old ones stay in the list. Each take has a "Use" checkbox: several can be ticked at once and may overlap (recording line by line, the end of one take and the start of the next overlap; both are kept), and "Delete".
 - Scissors (✂ / C) cut at breath points, drag to move position, and use the left/right arrows to nudge once selected.
 - Click "Save" when satisfied; until then the project file is unchanged.
 

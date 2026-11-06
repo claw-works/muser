@@ -1348,20 +1348,35 @@ impl Shared {
     /// 存下一遍录音，贴到工作副本里（待保存）。
     fn record(&self, track: &str, start: f64, wav: &[u8]) -> Result<crate::takes::Take, String> {
         let take = crate::takes::store(&self.path, track, start, wav).map_err(|e| format!("{e:#}"))?;
-        self.use_take(&take.file)?;
+        self.use_take(&take.file, true, true)?;
         Ok(take)
     }
 
-    /// 把清单里的某一遍贴到工作副本（换掉重叠的片段），待保存。
-    fn use_take(&self, file: &str) -> Result<(), String> {
+    /// 勾选 / 取消清单里的某一遍（待保存）。勾上的可以和别的片段重叠，几遍一起响；
+    /// `replace`（刚录完的一遍）换掉大半被它盖住的旧片段。整条轨的片段在保存时照工作副本写回。
+    fn use_take(&self, file: &str, on: bool, replace: bool) -> Result<(), String> {
         let take = crate::takes::list(&self.path).into_iter().find(|t| t.file == file).ok_or_else(|| format!("no such take: {file}"))?;
         let mut st = self.state.lock().unwrap();
         let working = st.working.as_mut().ok_or("the project has not loaded successfully")?;
         let mut next = working.clone();
-        crate::takes::place(&mut next, &take).map_err(|e| format!("{e:#}"))?;
+        if on {
+            crate::takes::place(&mut next, &take, replace).map_err(|e| format!("{e:#}"))?;
+        } else {
+            crate::takes::unplace(&mut next, file);
+        }
         *working = next;
-        st.takes.retain(|t| !(t.track == take.track && (t.start - take.start).abs() < 1e-9));
-        st.takes.push(take);
+        if !on && st.file.as_ref().is_some_and(|f| crate::takes::referenced(f, file)) {
+            let name = file.rsplit('/').next().unwrap_or(file).to_string();
+            st.clip_edits.push(format!("- take {name} (unticked)"));
+        }
+        st.takes.retain(|t| t.file != take.file);
+        if on {
+            st.takes.push(take.clone());
+        }
+        // 轨在文件里已经有了：保存时整条轨的片段照工作副本写回（取消勾选、被换掉的也就去掉了）。
+        if st.file.as_ref().is_some_and(|f| f.tracks.iter().any(|t| t.name == take.track)) {
+            st.clip_dirty.insert(take.track.clone());
+        }
         self.request_render(&mut st);
         Ok(())
     }
@@ -1815,7 +1830,8 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
         (Method::Post, "/api/takes/use" | "/api/takes/delete") => {
             let body = read_body::<Value>(&mut req);
             let file = body.as_ref().ok().and_then(|b| b.get("file")).and_then(Value::as_str).unwrap_or_default().to_string();
-            let r = if url.starts_with("/api/takes/use") { shared.use_take(&file) } else { shared.delete_take(&file) };
+            let on = body.as_ref().ok().and_then(|b| b.get("on")).and_then(Value::as_bool).unwrap_or(true);
+            let r = if url.starts_with("/api/takes/use") { shared.use_take(&file, on, false) } else { shared.delete_take(&file) };
             match r {
                 Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),

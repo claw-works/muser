@@ -89,8 +89,9 @@ pub fn referenced(p: &Project, file: &str) -> bool {
     p.tracks.iter().flat_map(|t| &t.clips).any(|c| c.audio.as_ref().is_some_and(|a| a.file == file))
 }
 
-/// 把一遍贴到工作副本：名为 `take.track` 的音频轨（没有就新建），和这一遍重叠的旧片段换掉。
-pub fn place(p: &mut Project, take: &Take) -> Result<()> {
+/// 把一遍贴到工作副本：名为 `take.track` 的音频轨（没有就新建）。可以和别的片段重叠（一句一句录时前后有交叠，两遍都要）；
+/// `replace` 时（刚录的这一遍）换掉大半被它盖住的旧片段——重录同一句。
+pub fn place(p: &mut Project, take: &Take, replace: bool) -> Result<()> {
     let tm = p.tempo_map();
     let beats = tm.beat_at(tm.secs_at(take.start) + take.seconds) - take.start;
     let i = match p.tracks.iter().position(|t| t.name == take.track) {
@@ -105,17 +106,37 @@ pub fn place(p: &mut Project, take: &Take) -> Result<()> {
         bail!("track '{}' is not an audio track ({}); record to another track name", t.name, t.instrument);
     }
     let (a, z) = (take.start, take.start + beats);
-    t.clips.retain(|c| c.start.0 + c.length.0 <= a + 1e-9 || c.start.0 >= z - 1e-9);
+    t.clips.retain(|c| c.audio.as_ref().is_none_or(|x| x.file != take.file) && !(replace && mostly_covered(c.start.0, c.start.0 + c.length.0, a, z)));
     t.clips.push(serde_json::from_value(clip_json(take, beats))?);
     t.clips.sort_by(|x, y| x.start.0.total_cmp(&y.start.0));
     Ok(())
+}
+
+/// 片段 [s, e) 有八成以上落在 [a, z) 里（或反过来）：是同一句的另一遍。
+fn mostly_covered(s: f64, e: f64, a: f64, z: f64) -> bool {
+    let overlap = (e.min(z) - s.max(a)).max(0.0);
+    overlap >= 0.8 * (e - s).min(z - a).max(1e-9)
+}
+
+/// 从工作副本里拿掉这一遍的片段（取消勾选）。返回它在哪条轨上。
+pub fn unplace(p: &mut Project, file: &str) -> Option<String> {
+    let mut track = None;
+    for t in &mut p.tracks {
+        let n = t.clips.len();
+        t.clips.retain(|c| c.audio.as_ref().is_none_or(|a| a.file != file));
+        if t.clips.len() != n {
+            track = Some(t.name.clone());
+        }
+    }
+    track
 }
 
 fn clip_json(take: &Take, beats: f64) -> Value {
     json!({ "start": take.start, "length": (beats * 1000.0).round() / 1000.0, "audio": { "file": take.file } })
 }
 
-/// 保存时把一遍写进工程 JSON（与 [`place`] 一样：找轨或新建、换掉重叠的片段）。
+/// 保存时把一遍写进工程 JSON：找轨或新建，加上这一遍的片段（已经有了就不重复加）。
+/// 同一条轨上其它片段的去留由保存时整条轨照工作副本写回决定。
 pub fn place_json(v: &mut Value, take: &Take, tm: &muser_core::tempo::TempoMap) -> Result<()> {
     let beats = tm.beat_at(tm.secs_at(take.start) + take.seconds) - take.start;
     let tracks = v.get_mut("tracks").and_then(Value::as_array_mut).ok_or_else(|| anyhow!("the project file has no tracks"))?;
@@ -128,12 +149,7 @@ pub fn place_json(v: &mut Value, take: &Take, tm: &muser_core::tempo::TempoMap) 
     };
     let t = tracks[i].as_object_mut().ok_or_else(|| anyhow!("malformed track"))?;
     let clips = t.entry("clips").or_insert_with(|| json!([])).as_array_mut().ok_or_else(|| anyhow!("clips is not an array"))?;
-    let (a, z) = (take.start, take.start + beats);
-    clips.retain(|c| {
-        let s = c.get("start").and_then(Value::as_f64).unwrap_or(0.0);
-        let l = c.get("length").and_then(Value::as_f64).unwrap_or(0.0);
-        s + l <= a + 1e-9 || s >= z - 1e-9
-    });
+    clips.retain(|c| c["audio"]["file"].as_str() != Some(take.file.as_str()));
     clips.push(clip_json(take, beats));
     clips.sort_by(|x, y| x["start"].as_f64().unwrap_or(0.0).total_cmp(&y["start"].as_f64().unwrap_or(0.0)));
     Ok(())
@@ -355,6 +371,23 @@ fn voice_span(file: &Path) -> Option<(Option<(f64, f64)>, f64)> {
 
 #[cfg(test)]
 mod tests {
+    /// 勾选的几遍可以重叠；刚录的一遍换掉大半被它盖住的旧的（重录同一句），只交叠一点的留着。
+    #[test]
+    fn takes_can_overlap_and_a_retake_replaces() {
+        let mut p: Project = serde_json::from_value(json!({ "tempo": 120, "tracks": [] })).unwrap();
+        let take = |f: &str, start: f64, seconds: f64| Take { file: f.into(), track: "vocal".into(), start, seconds, recorded: 0 };
+        place(&mut p, &take("a.wav", 0.0, 4.0), true).unwrap(); // 0–8 拍
+        place(&mut p, &take("b.wav", 6.0, 4.0), true).unwrap(); // 6–14 拍：和 a 交叠 2 拍，两遍都留着
+        assert_eq!(p.tracks[0].clips.len(), 2);
+        place(&mut p, &take("c.wav", 6.5, 3.5), true).unwrap(); // 重录第二句：盖住 b 的大半，换掉 b
+        let files: Vec<_> = p.tracks[0].clips.iter().map(|c| c.audio.as_ref().unwrap().file.clone()).collect();
+        assert_eq!(files, ["a.wav", "c.wav"]);
+        place(&mut p, &take("b.wav", 6.0, 4.0), false).unwrap(); // 页面上再勾上 b：和 c 一起响
+        assert_eq!(p.tracks[0].clips.len(), 3);
+        assert_eq!(unplace(&mut p, "c.wav").as_deref(), Some("vocal"));
+        assert_eq!(p.tracks[0].clips.len(), 2);
+    }
+
     use super::*;
 
     fn wav(seconds: f64) -> Vec<u8> {
@@ -412,10 +445,10 @@ mod tests {
         assert_eq!(a.file, "recordings/vocal-take-01.wav");
         assert_eq!(b.file, "recordings/vocal-take-02.wav", "轨名里的 / 和 .. 去掉，文件只会在 recordings/ 里");
         assert_eq!(list(&path).len(), 2);
-        // 贴到工作副本：新建音频轨；第二遍和第一遍重叠，换掉它。
+        // 贴到工作副本：新建音频轨；刚录的第二遍落在第一遍里面（重录同一句），换掉它。
         let mut p = Project::from_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        place(&mut p, &a).unwrap();
-        place(&mut p, &Take { track: "vocal".into(), ..b.clone() }).unwrap();
+        place(&mut p, &a, true).unwrap();
+        place(&mut p, &Take { track: "vocal".into(), ..b.clone() }, true).unwrap();
         let v = &p.tracks[1];
         assert_eq!((v.name.as_str(), v.instrument.as_str(), v.clips.len()), ("vocal", "audio", 1));
         assert_eq!(v.clips[0].audio.as_ref().unwrap().file, "recordings/vocal-take-02.wav");

@@ -520,7 +520,7 @@ const I18N = {
     recHelp: "Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.",
     recCounting: "Count-in…", recRecording: "Recording… sing along", recUploading: "Saving the take…", recSaved: (f) => `Saved ${f}; press Save to keep it in the project`,
     recNoMic: "No microphone: allow microphone access for this page", recDropped: "Part of the take was lost (the computer fell behind): record it again if you hear a gap",
-    takeUse: "Use", takeDelete: "Delete", takeSavedHint: "Saved in the project: replace it with another take first", takeInUse: "in use", takeAt: (bar, secs) => `bar ${bar} · ${secs}s`, takePending: (f, bar) => `+ take ${f} at bar ${bar} (not saved yet)`,
+    takeUse: "Use", takeDelete: "Delete", takeSavedHint: "Saved in the project: untick it and save first", takeInUse: "in use", takeAt: (bar, secs) => `bar ${bar} · ${secs}s`, takePending: (f, bar) => `+ take ${f} at bar ${bar} (not saved yet)`,
     exportWavHint: "The whole song as you hear it now (faders, mutes and solo included), 16-bit WAV",
     exportMidiHint: "Notes of every instrument track as a standard MIDI file (audio tracks are not included)",
     soundHint: "Choose this track's sound in an instrument plugin", sound: "Sound", soundPlugin: "Instrument plugin",
@@ -587,7 +587,7 @@ const I18N = {
     recHelp: "从播放头开始录；设了循环区间就只录那一段。每一遍都存在 recordings/ 里，点「保存」才把选定的那遍写进工程。",
     recCounting: "预备拍……", recRecording: "正在录，跟着唱", recUploading: "正在存这一遍……", recSaved: (f) => `已存 ${f}；满意就点「保存」写进工程`,
     recNoMic: "没有麦克风：请允许这个页面使用麦克风", recDropped: "这一遍有一小段丢了（电脑没跟上）：听到断口就重录",
-    takeUse: "用这一遍", takeDelete: "删除", takeSavedHint: "已经保存在工程里：先换成别的一遍", takeInUse: "在用", takeAt: (bar, secs) => `第 ${bar} 小节 · ${secs} 秒`, takePending: (f, bar) => `+ 录音 ${f}，第 ${bar} 小节（还没保存）`,
+    takeUse: "用", takeDelete: "删除", takeSavedHint: "已经保存在工程里：先取消勾选并保存", takeInUse: "在用", takeAt: (bar, secs) => `第 ${bar} 小节 · ${secs} 秒`, takePending: (f, bar) => `+ 录音 ${f}，第 ${bar} 小节（还没保存）`,
     exportWavHint: "现在听到的整首（含推子、静音、独奏），16-bit WAV",
     exportMidiHint: "各乐器音轨的音符，标准 MIDI 文件（audio 音轨不包含）",
     soundHint: "在乐器插件里给这条轨选音色", sound: "音色", soundPlugin: "乐器插件",
@@ -1564,8 +1564,11 @@ function renderTakes() {
     const row = document.createElement("div"); row.className = "take";
     const b = document.createElement("b"); b.textContent = take.file.split("/").pop(); row.appendChild(b);
     const s = document.createElement("span"); s.textContent = `${take.track} · ${t("takeAt", barOf(take.start), take.seconds.toFixed(1))}${in_use ? " · " + t("takeInUse") : ""}`; row.appendChild(s);
-    const use = document.createElement("button"); use.textContent = t("takeUse"); use.disabled = in_use;
-    use.onclick = () => post("/api/takes/use", { file: take.file }).then(refresh).catch((e) => banner(String(e.message || e), "err"));
+    // 勾选：这一遍放进工程（可以和别的几遍重叠，一句一句录的时候前后交叠也都留着）；取消：拿掉。
+    const use = document.createElement("label"); use.className = "take-use";
+    const box = document.createElement("input"); box.type = "checkbox"; box.checked = in_use;
+    box.onchange = () => post("/api/takes/use", { file: take.file, on: box.checked }).then(refresh).catch((e) => { box.checked = !box.checked; banner(String(e.message || e), "err"); });
+    use.appendChild(box); use.appendChild(document.createTextNode(" " + t("takeUse")));
     const del = document.createElement("button"); del.textContent = t("takeDelete"); del.disabled = saved;
     if (saved) del.title = t("takeSavedHint");
     del.onclick = () => post("/api/takes/delete", { file: take.file }).then(refresh).catch((e) => banner(String(e.message || e), "err"));
