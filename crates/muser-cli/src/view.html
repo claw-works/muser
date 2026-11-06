@@ -180,6 +180,7 @@
   .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); background: rgba(114,229,194,.05); }
   .tabs b { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #07130f; font-size: 11px; }
   .tab-note { margin: 0 0 4px; }
+  #rec-row { grid-template-columns: 1fr; }   /* 录音、测延迟两个按钮都占满一行 */
   pre { max-height: 280px; overflow: auto; margin: 0; padding: 11px; color: #cbd2e4; background: #090b12; border: 1px solid #202538; border-radius: 9px; font: 10px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; white-space: pre-wrap; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
   .row .primary { grid-column: 1 / -1; }
@@ -445,8 +446,8 @@
             <label class="hint"><span data-i18n="recNudge">Latency (ms)</span> <input id="rec-nudge" type="number" value="0" step="5" style="width:56px"></label>
           </div>
           <div class="row" id="rec-row"><button id="rec-btn" class="primary" data-i18n="recStart">● Record from the playhead</button>
-            <button id="rec-measure" data-i18n="recMeasure" data-title="recMeasureHint">Measure latency</button></div>
-          <p class="hint" id="rec-status" data-i18n="recHelp">Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.</p>
+            <button id="rec-measure" data-i18n="recMeasure" data-title="recMeasureHint">Take off headphones and measure latency</button></div>
+          <p class="hint" id="rec-status" data-i18n="recHelp">Records from the playhead, or just the loop range if one is set.</p>
           <pre id="lyrics" hidden></pre>
           <div id="takes"></div>
         </div>
@@ -526,11 +527,11 @@ const I18N = {
     keyShift: "Key", keyHint: "Transpose the whole song in semitones while you try keys for a singer (notes in the project stay as written; drums and recordings don't move). Save keeps it",
     transposeChange: (n) => `transpose → ${n > 0 ? "+" : ""}${n}`,
     karaoke: "Lyrics", cutHint: "Scissors: click an audio clip to cut it there (C). Drag an audio clip to move it (Shift snaps to 1/16 notes); click one to select it, then ← → nudge it 10 ms (Shift: 1/16 note), Delete removes it",
-    recMeasure: "Measure latency", recMeasureHint: "Take off the headphones and turn the volume up: muser plays 8 clicks and listens for them through the microphone, then fills in the latency",
+    recMeasure: "Take off headphones and measure latency", recMeasureHint: "Take off the headphones and turn the volume up: muser plays 8 clicks and listens for them through the microphone, then fills in the latency",
     recMeasuring: "Listening for the clicks… keep quiet", recMeasured: (ms) => `Round trip measured; latency set to ${ms} ms`, recMeasureFailed: "Couldn't hear the clicks: take off the headphones, turn the volume up and try again",
     recTitle: "Record a voice", recNote: "Wear headphones", recTrack: "Track", recCountIn: "Count-in bars", recNudge: "Latency (ms)",
     recStart: "● Record from the playhead", recLoop: "● Record the loop range", recStop: "■ Stop recording",
-    recHelp: "Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.",
+    recHelp: "Records from the playhead, or just the loop range if one is set.",
     recCounting: "Count-in…", recRecording: "Recording… sing along", recUploading: "Saving the take…", recSaved: (f) => `Saved ${f}; press Save to keep it in the project`,
     recNoMic: "No microphone: allow microphone access for this page", recDropped: "Part of the take was lost (the computer fell behind): record it again if you hear a gap",
     takeUse: "Use", takeDelete: "Delete", takeSavedHint: "Saved in the project: untick it and save first", takeInUse: "in use", takeAt: (bar, secs) => `bar ${bar} · ${secs}s`, takePending: (f, bar) => `+ take ${f} at bar ${bar} (not saved yet)`,
@@ -594,11 +595,11 @@ const I18N = {
     keyShift: "变调", keyHint: "整首升降几个半音，给换了人唱（比如换成女声）找合适的调；工程里的音符不改，鼓和录音不动。点「保存」才写进工程",
     transposeChange: (n) => `整首变调 → ${n > 0 ? "+" : ""}${n} 个半音`,
     karaoke: "歌词", cutHint: "剪刀：点音频片段，在那里剪开（快捷键 C）。拖动音频片段挪位置（按住 Shift 对齐 1/16 音符）；点一下选中，再按 ← → 每次微调 10 毫秒（Shift：1/16 音符），按 Delete 删掉",
-    recMeasure: "测延迟", recMeasureHint: "摘下耳机、把音量开大：muser 放 8 下咔嗒声，用麦克风听回来，自动填好延迟微调",
+    recMeasure: "请摘下耳机测延迟", recMeasureHint: "摘下耳机、把音量开大：muser 放 8 下咔嗒声，用麦克风听回来，自动填好延迟微调",
     recMeasuring: "正在听咔嗒声……请保持安静", recMeasured: (ms) => `测好了：延迟微调设为 ${ms} 毫秒`, recMeasureFailed: "没听到咔嗒声：摘下耳机、把音量开大再试一次",
     recTitle: "录人声", recNote: "请戴耳机", recTrack: "轨名", recCountIn: "预备小节", recNudge: "延迟微调（毫秒）",
     recStart: "● 从播放头开始录", recLoop: "● 录循环区间", recStop: "■ 停止录音",
-    recHelp: "从播放头开始录；设了循环区间就只录那一段。每一遍都存在 recordings/ 里，点「保存」才把选定的那遍写进工程。",
+    recHelp: "从播放头开始录，设了循环区间就只录那一段。",
     recCounting: "预备拍……", recRecording: "正在录，跟着唱", recUploading: "正在存这一遍……", recSaved: (f) => `已存 ${f}；满意就点「保存」写进工程`,
     recNoMic: "没有麦克风：请允许这个页面使用麦克风", recDropped: "这一遍有一小段丢了（电脑没跟上）：听到断口就重录",
     takeUse: "用", takeDelete: "删除", takeSavedHint: "已经保存在工程里：先取消勾选并保存", takeInUse: "在用", takeAt: (bar, secs) => `第 ${bar} 小节 · ${secs} 秒`, takePending: (f, bar) => `+ 录音 ${f}，第 ${bar} 小节（还没保存）`,
