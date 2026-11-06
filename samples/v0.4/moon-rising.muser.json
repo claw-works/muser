@@ -14,7 +14,7 @@
     },
     "b": {
       "bars": 4,
-      "chords": "Am C D Em"
+      "chords": "Am C G Em"
     },
     "b2": {
       "bars": 4,
@@ -124,7 +124,7 @@
         },
         "b": {
           "legato": true,
-          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 B2 A2 F2 | E8 |\nw: wo zai deng ni | ni zai | na li ni zai | na"
+          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 G2 E2 D2 | E8 |\nw: wo zai deng ni | ni zai | na li ni zai | na"
         },
         "b2": {
           "legato": true,
