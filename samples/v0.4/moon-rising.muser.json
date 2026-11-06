@@ -124,11 +124,11 @@
         },
         "b": {
           "legato": true,
-          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 G2 E2 D2 | E8 |\nw: wo zai deng ni | ni zai | na li ni zai | na"
+          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 G2 E4 | z D2 E5 |\nw: wo zai deng ni | ni zai | na li ni | zai na"
         },
         "b2": {
           "legato": true,
-          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 e4 | d2 B2 A2 F2 | G8 |\nw: yue guang qing qing | zhao liang | hui jia de xiao | lu"
+          "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c6 e2 | d2 B2 A2 F2 | G8 |\nw: yue guang qing qing | zhao liang | hui jia de xiao | lu"
         },
         "bridge": {
           "legato": true,
