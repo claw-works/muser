@@ -1567,9 +1567,9 @@ function renderTakes() {
     const s = document.createElement("span"); s.textContent = `${take.track} · ${t("takeAt", barOf(take.start), take.seconds.toFixed(1))}${in_use ? " · " + t("takeInUse") : ""}`; row.appendChild(s);
     // 勾选：这一遍放进工程（可以和别的几遍重叠，一句一句录的时候前后交叠也都留着）；取消：拿掉。
     const use = document.createElement("label"); use.className = "take-use";
-    const box = document.createElement("input"); box.type = "checkbox"; box.checked = in_use;
-    box.onchange = () => post("/api/takes/use", { file: take.file, on: box.checked }).then(refresh).catch((e) => { box.checked = !box.checked; banner(String(e.message || e), "err"); });
-    use.appendChild(box); use.appendChild(document.createTextNode(" " + t("takeUse")));
+    const tick = document.createElement("input"); tick.type = "checkbox"; tick.checked = in_use;
+    tick.onchange = () => post("/api/takes/use", { file: take.file, on: tick.checked }).then(refresh).catch((e) => { tick.checked = !tick.checked; banner(String(e.message || e), "err"); });
+    use.appendChild(tick); use.appendChild(document.createTextNode(" " + t("takeUse")));
     const del = document.createElement("button"); del.textContent = t("takeDelete"); del.disabled = saved;
     if (saved) del.title = t("takeSavedHint");
     del.onclick = () => post("/api/takes/delete", { file: take.file }).then(refresh).catch((e) => banner(String(e.message || e), "err"));
