@@ -18,6 +18,9 @@
   main { max-width: 1280px; margin: 0 auto; padding: 28px 28px 40px; }
   .brand { color: var(--faint); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
   .brand span { color: var(--accent); }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  #language { height: 26px; padding: 0 10px; font-size: 12px; color: var(--dim); }
+  #language:hover { border-color: var(--accent); color: var(--accent); }
   h1 { margin: 6px 0 0; font-size: 34px; line-height: 1.15; letter-spacing: -.01em; min-height: 40px;
        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .panel { margin-top: 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
@@ -54,7 +57,7 @@
 </head>
 <body>
 <main>
-  <div class="brand">muser <span>live</span></div>
+  <div class="top"><div class="brand">muser <span>live</span></div><button id="language" type="button"></button></div>
   <h1 id="title">muser live</h1>
   <div class="panel" id="notice"><div id="now">—</div><div id="now-note"></div><div id="next"></div></div>
   <div id="ended"></div>
@@ -66,28 +69,46 @@
   </div>
 </main>
 <script>
-const zh = (navigator.language || "").toLowerCase().startsWith("zh");
-const T = zh ? {
+// 语言：页面右上角切换，记在本机；没选过就跟浏览器。
+let lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+try { const l = localStorage.getItem("muser-language"); if (l === "zh" || l === "en") lang = l; } catch (_) {}
+const I18N = { zh: {
   now: (n) => `现在 ▶ <b>${n}</b>`, next: (n, b, s) => `下一段：${n} · 第 ${b} 小节 · ${s} 秒后`, noNext: "之后：循环这一段，直到下一个指令",
   repeat: "（循环）", bar: (b, m) => `第 <b>${b}</b> 小节 · ${m}`, looping: (n) => `循环中 · 第 ${n + 1} 遍`, queued: (s) => `排好 ${s} 秒`,
   autoplay: (s) => `自主演奏还剩 ${s}`, autoplayOver: "自主演奏结束", autoplayOff: "自主演奏：不限时",
-  dropouts: (n) => `掉帧 ${n}`, load: (n, c) => `最耗：${n}（${Math.round(c * 100)}% 核）`,
+  dropouts: (n) => `掉帧 ${n}`, recentDropouts: (names) => `最近掉过帧（电脑跟不上）${names ? `：最耗资源的是 ${names}` : ""}`, load: (n, c) => `最耗：${n}（${Math.round(c * 100)}% 核）`,
   gone: "连不上 muser live（已经停了？）", master: "主输出", stop: "停止演奏", confirmStop: "停止这场演奏？（录音会写好）",
   ready: "▶ 准备", ended: (f) => `演奏结束了。${f ? `录音存在 ${f}` : ""}`, endedAway: "演奏结束了（muser live 已经退出）。",
   legend: "上面一行是每一段（浅色 = 循环出来的重复），下面每条轨在哪些段里演奏，右边是电平。白线是正在听到的位置，虚线是排到哪里。",
-} : {
+  switchTo: "EN", switchLabel: "Switch to English", sep: "、",
+}, en: {
   now: (n) => `Now ▶ <b>${n}</b>`, next: (n, b, s) => `Next: ${n} · bar ${b} · in ${s}s`, noNext: "Then: this section loops until the next instruction",
   repeat: " (loop)", bar: (b, m) => `Bar <b>${b}</b> · ${m}`, looping: (n) => `Looping · pass ${n + 1}`, queued: (s) => `${s}s queued`,
   autoplay: (s) => `Autoplay ${s} left`, autoplayOver: "Autoplay over", autoplayOff: "Autoplay: no limit",
-  dropouts: (n) => `${n} dropouts`, load: (n, c) => `Heaviest: ${n} (${Math.round(c * 100)}% of a core)`,
+  dropouts: (n) => `${n} dropouts`, recentDropouts: (names) => `Recent dropouts (the computer can't keep up)${names ? `: heaviest are ${names}` : ""}`, load: (n, c) => `Heaviest: ${n} (${Math.round(c * 100)}% of a core)`,
   gone: "Can't reach muser live (stopped?)", master: "Master", stop: "Stop", confirmStop: "Stop this session? (the recording will be saved)",
   ready: "▶ Get ready", ended: (f) => `The session is over.${f ? ` Recording: ${f}` : ""}`, endedAway: "The session is over (muser live has exited).",
   legend: "Top row: each section (lighter = loop repeats); below, where each track plays; levels on the right. The white line is what you hear, the dashed one how far it is queued.",
-};
-document.documentElement.lang = zh ? "zh" : "en";
+  switchTo: "中文", switchLabel: "切换到中文", sep: ", ",
+} };
+let T = I18N[lang];
 const $ = (id) => document.getElementById(id);
-$("legend").textContent = T.legend;
-$("stop").textContent = T.stop;
+let endedText = null;
+function applyLanguage() {
+  T = I18N[lang];
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  $("legend").textContent = T.legend;
+  $("stop").textContent = T.stop;
+  $("language").textContent = T.switchTo;
+  $("language").setAttribute("aria-label", T.switchLabel);
+  if (endedText) $("ended").textContent = endedText();
+  if (view && !over) render();
+}
+$("language").onclick = () => {
+  lang = lang === "zh" ? "en" : "zh";
+  try { localStorage.setItem("muser-language", lang); } catch (_) {}
+  applyLanguage();
+};
 let view = null, at = 0, over = false, lastSeg = null;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = (s) => { s = Math.max(0, Math.round(s)); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`; };
@@ -97,18 +118,19 @@ $("stop").onclick = async () => {
 };
 function end(text) {
   over = true;
+  endedText = text;
   $("notice").style.display = "none";
-  const e = $("ended"); e.textContent = text; e.style.display = "block";
+  const e = $("ended"); e.textContent = text(); e.style.display = "block";
   $("stop").style.visibility = "hidden";
 }
 async function poll() {
   try {
     const r = await fetch("/api/view", { cache: "no-store" });
     view = await r.json(); at = performance.now();
-    if (view.stopped) return end(T.ended(view.record));
+    if (view.stopped) { const f = view.record; return end(() => T.ended(f)); }
     render();
   } catch (_) {
-    if (view) return end(T.endedAway);
+    if (view) return end(() => T.endedAway);
     $("c-info").textContent = T.gone; $("c-info").className = "cell err";
   }
   setTimeout(poll, 150);
@@ -133,7 +155,7 @@ function render() {
   cell("c-bpm", `${Math.round(v.tempo)} BPM`);
   const h = v.load && v.load.heaviest && v.load.heaviest[0];
   if (v.error) cell("c-info", esc(v.error), "err");
-  else if (v.warning) cell("c-info", esc(v.warning), "warn");
+  else if (v.warning) cell("c-info", esc(T.recentDropouts(((v.load && v.load.heaviest) || []).map((x) => x.name).join(T.sep))), "warn");
   else if (v.underruns) cell("c-info", T.dropouts(v.underruns) + (h ? ` · ${T.load(esc(h.name), h.cores)}` : ""), "");
   else cell("c-info", h && h.cores > 0.05 ? T.load(esc(h.name), h.cores) : "", h && h.cores > 0.05 ? "" : "empty");
 }
@@ -202,7 +224,7 @@ function draw() {
   const n = X(now);
   g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.moveTo(n, 2); g.lineTo(n, H - 6); g.stroke(); g.lineWidth = 1;
 }
-poll(); draw();
+applyLanguage(); poll(); draw();
 </script>
 </body>
 </html>
