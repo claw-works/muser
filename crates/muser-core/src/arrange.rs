@@ -32,6 +32,9 @@ pub struct Section {
     /// 换速度时用这一段开头的几小节从前一段的速度渐变过来（渐快、渐慢；按时间线性）；不写或 0 = 在这一段开头直接切换。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tempo_ramp_bars: Option<u32>,
+    /// 从这一段开头起换调律（写法同工程的 `tuning`），之后的段落没写就保持。已经在响的音不变，下一个音起按新的律制。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tuning: Option<crate::tuning::Tuning>,
     /// 和弦进行，如 `"Am7 F C G"`（每个一小节）、`"F G | Em Am"`（`|` 分小节，一小节里平分）。比段落短时循环。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chords: Option<String>,

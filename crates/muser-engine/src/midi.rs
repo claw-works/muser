@@ -123,6 +123,8 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
                 Act::Pedal { down } => MidiMessage::ControlChange { channel, controller: 64, value: if down { 127 } else { 0 } },
                 // shortcut: 一个音轨一个通道，弯音会带上同时响着的其它音；要分开得按 MPE 每音一个通道导出。
                 Act::Bend { value, .. } => MidiMessage::PitchBend { channel, value },
+                // shortcut: 调律不写进 MIDI（要写得用 MTS sysex，多数 DAW 不读）；导出的音按十二平均律的键位。
+                Act::Tuning(_) => continue,
             };
             track.push_midi(tick, message);
         }

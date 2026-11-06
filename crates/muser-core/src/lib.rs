@@ -150,6 +150,19 @@ impl Project {
         m
     }
 
+    /// 段落里换调律的地方：(起点拍, 从那里起的调律)，按时间排好。没有段落写 `tuning` 时为空（整首用工程的 `tuning`）。
+    pub fn tuning_changes(&self) -> Vec<(f64, &tuning::Tuning)> {
+        let mut out = Vec::new();
+        let mut t = 0.0;
+        for s in self.form.iter().filter_map(|e| self.sections.get(e.section())) {
+            if let Some(tu) = &s.tuning {
+                out.push((t, tu));
+            }
+            t += f64::from(s.bars) * self.section_meter(s).beats_per_bar();
+        }
+        out
+    }
+
     /// 拍号表：小节和拍之间的换算（段落各有拍号时，小节不再一样长）。
     pub fn bar_map(&self) -> BarMap {
         let mut segs: Vec<(f64, TimeSignature)> = vec![(0.0, self.time_signature)];
@@ -322,6 +335,9 @@ impl Project {
                 if !(t.is_finite() && t > 0.0 && t <= 999.0) {
                     return Err(format!("sections.{name}.tempo = {t} must be between 0 and 999 BPM"));
                 }
+            }
+            if let Some(t) = &sec.tuning {
+                t.validate().map_err(|e| format!("sections.{name}.{e}"))?;
             }
             if sec.tempo_ramp_bars.is_some_and(|r| r > sec.bars) {
                 return Err(format!("sections.{name}.tempo_ramp_bars cannot exceed this section's bar count ({})", sec.bars));

@@ -118,6 +118,12 @@ When the user says "develop on your own for another 5 minutes": `muser live auto
 - For dancing, do not change too much at once (within +/-10 BPM, or use a 4-8 bar ramp); for a big style change (ballad -> drum & bass), switch directly with a fill.
 - Do not change tempo while someone is singing along.
 
+## Changing tuning
+
+- A section can write `"tuning"` (same as the project's `tuning`, see SKILLS.md "Tuning"): from the start of this section the new tuning applies, later sections keep it; `{ "scale": "equal" }` goes back to equal temperament.
+  Notes already sounding keep their pitch. Use it for styles whose scales are not 12-TET: maqam (`custom`, E and B -50), raga shruti (`custom` deviations, or `just`), gamelan (`scala`), Baroque pitch (`reference_hz` 415).
+  Ornaments (meend, andolan, slides) still go in per-note `bend`, on top of the tuning.
+
 ### Perceived tempo change (BPM unchanged)
 
 Without changing BPM it can still sound faster / slower: change **the note length the groove's accents fall on**:

@@ -75,6 +75,8 @@ pub(crate) enum Act {
     Pedal { down: bool },
     /// 弯音轮，-8192 – 8191（±2 半音）。
     Bend { value: i16, ch: Option<u8> },
+    /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
+    Tuning(u16),
 }
 
 /// 带弯音的音符轮流用的通道（避开鼓的 9 和旋律乐器的 0）。
@@ -229,13 +231,17 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             }
         }
     }
+    // 段落里换调律：在段落开头换（乐器从下一个起音起按新的律制）。
+    for (i, (beat, _)) in project.tuning_changes().iter().enumerate() {
+        acts.push((cx.frame_at(*beat), Act::Tuning(i as u16)));
+    }
     // 同一帧：先松键，再抬踏板，再踩踏板，最后按新音（换踏板时新音不被旧踏板吞掉，松开的旧音在抬踏板时停）。
     acts.sort_by_key(|&(frame, act)| {
         let order = match act {
             Act::Off { .. } => 0,
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
-            Act::Bend { .. } => 3,
+            Act::Bend { .. } | Act::Tuning(_) => 3,
             Act::Sing { .. } => 4,
             Act::On { .. } => 5,
         };
@@ -265,7 +271,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
         return acts;
     }
     let split = acts.partition_point(|&(at, _)| at < start);
-    let (mut held, mut pedal, mut wheels) = (Vec::new(), false, Vec::<Act>::new());
+    let (mut held, mut pedal, mut wheels, mut tuning) = (Vec::new(), false, Vec::<Act>::new(), None);
     for &(_, act) in &acts[..split] {
         match act {
             Act::On { .. } => held.push(act),
@@ -279,6 +285,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
                 wheels.retain(|w| !matches!(w, Act::Bend { ch: c, .. } if *c == ch));
                 wheels.push(act);
             }
+            Act::Tuning(_) => tuning = Some(act),
             Act::Sing { .. } => {}
         }
     }
@@ -294,7 +301,8 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
         },
         _ => true,
     });
-    let mut out: Vec<(usize, Act)> = Vec::with_capacity(rest.len() + held.len() + 1);
+    let mut out: Vec<(usize, Act)> = Vec::with_capacity(rest.len() + held.len() + 2);
+    out.extend(tuning.map(|a| (start, a)));
     if pedal {
         out.push((start, Act::Pedal { down: true }));
     }
@@ -312,6 +320,8 @@ struct LiveInstrument {
     /// 有带弯音的音符：踏板也发到它们的通道。
     bends: bool,
     acts: Vec<(usize, Act)>,
+    /// `Act::Tuning(i)` 换成的调律表（[`crate::tuning::changes`]）。
+    tunings: Vec<manguebyte::dsp::Tuning>,
     next: usize,
     frame: usize,
     lanes: Vec<automate::Lane>,
@@ -370,6 +380,7 @@ impl LiveInstrument {
             bends: acts.iter().any(|a| matches!(a.1, Act::Bend { .. })),
             inst,
             acts,
+            tunings: crate::tuning::changes(project).map_err(invalid)?,
             next: 0,
             frame: start,
             lanes,
@@ -395,6 +406,7 @@ impl LiveInstrument {
         let frame = self.frame;
         self.acts = schedule(project, ti, cx).into_iter().filter(|a| a.0 >= frame).collect();
         self.next = 0;
+        self.tunings = crate::tuning::changes(project).map_err(invalid)?;
         self.bends |= self.acts.iter().any(|a| matches!(a.1, Act::Bend { .. }));
         self.lanes = automate::compile_track(project, ti, beats).map_err(invalid)?.instrument;
         Ok(())
@@ -421,6 +433,11 @@ impl LiveInstrument {
                         }
                     }
                     Act::Bend { value, ch } => self.inst.bend(ch, value),
+                    Act::Tuning(i) => {
+                        if let Some(t) = self.tunings.get(usize::from(i)) {
+                            self.inst.set_tuning(t);
+                        }
+                    }
                     Act::Sing { syl, lead, len, velocity, .. } => {
                         let (lead, len) = (lead as usize, len as usize);
                         if let Some(c) = self.consonants.as_mut() {
@@ -743,7 +760,7 @@ fn instrument_key(project: &Project, ti: usize, cx: &Ctx) -> u64 {
     let ts = project.time_signature;
     let key = serde_json::json!({ "am": audio_mtimes,
         "i": t.instrument, "p": t.instrument_params, "c": t.clips, "h": t.humanize, "a": autos.iter().map(|(i, a)| serde_json::json!([i, a])).collect::<Vec<_>>(),
-        "ti": ti, "seed": project.seed, "tempo": project.tempo, "tm": format!("{:?}", cx.tm.points()), "tu": project.tuning, "tr": project.transpose, "ts": [ts.numerator, ts.denominator],
+        "ti": ti, "seed": project.seed, "tempo": project.tempo, "tm": format!("{:?}", cx.tm.points()), "tu": project.tuning, "tt": format!("{:?}", project.tuning_changes()), "tr": project.transpose, "ts": [ts.numerator, ts.denominator],
         "sr": cx.settings.sample_rate, "bs": cx.settings.block_size, "n": cx.total_frames, "st": state_mtime,
     });
     let mut h = std::collections::hash_map::DefaultHasher::new();

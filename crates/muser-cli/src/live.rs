@@ -52,6 +52,9 @@ pub struct Change {
     /// 用这一段开头的几小节从前一段的速度渐变过来（渐快、渐慢）；不写或 0 = 直接切换。
     #[serde(default)]
     pub tempo_ramp_bars: Option<u32>,
+    /// 从这一段开头起换调律（写法同工程的 `tuning`），之后的段没写就保持。
+    #[serde(default)]
+    pub tuning: Option<muser_core::tuning::Tuning>,
     /// 这一段的拍号；不写就用模板的。
     #[serde(default)]
     pub time_signature: Option<TimeSignature>,
@@ -217,6 +220,7 @@ impl Session {
             name: Some("template".into()),
             tempo: None,
             tempo_ramp_bars: None,
+            tuning: None,
             note: None,
             title: None,
             lyrics: None,
@@ -393,7 +397,7 @@ impl Session {
             if seg.patch {
                 name.push_str(&format!(" (patch from bar {})", (seg.offset / seg.ts.beats_per_bar()).round() as u32 + 1));
             }
-            sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None, tempo: seg.change.tempo, tempo_ramp_bars: seg.change.tempo_ramp_bars });
+            sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None, tempo: seg.change.tempo, tempo_ramp_bars: seg.change.tempo_ramp_bars, tuning: seg.change.tuning.clone() });
             p.form.push(muser_core::arrange::FormEntry::Name(name));
             apply(&mut p, seg).with_context(|| format!("section {}", k + 1))?;
             // 这一段里调过的音量：写在这一段之后（比它晚的段写的自动化会覆盖它）。
@@ -1163,7 +1167,18 @@ mod tests {
         assert!(s.project_until(26.0).unwrap().form.len() < s.project().unwrap().form.len());
     }
 
-    /// 总线、主输出的自动化与效果器，段落名（循环、截短的注明）。
+    /// 段里换调律：写进生成的工程的段落里，从那一段开头起换。
+    #[test]
+    fn a_section_can_change_the_tuning() {
+        let mut s = Session::new(&template()).unwrap();
+        s.submit(change(json!({ "bars": 2, "tuning": { "scale": "custom", "key": "C", "deviations": [0, -14, 0, 0, -14, 0, 0, 0, -14, 0, 0, -14] }, "tracks": [] })), 0.0).unwrap();
+        let p = s.project().unwrap();
+        let ch = p.tuning_changes();
+        assert_eq!(ch.len(), 1);
+        assert_eq!(ch[0].0, 4.0, "第 4 拍那一段起");
+        assert!(s.submit(change(json!({ "bars": 1, "tuning": { "scale": "custom", "deviations": [0, 1] }, "tracks": [] })), 0.0).is_err(), "写错的调律报错");
+    }
+
     /// 段里换速度：会话自己的速度表和生成的工程一致；渐变的段循环时停在新速度上；回执、status 的秒数按速度表算。
     #[test]
     fn tempo_changes_follow_the_map() {
@@ -1182,6 +1197,7 @@ mod tests {
         assert_eq!(s.status(12.0)["tempo"], 60.0);
     }
 
+    /// 总线、主输出的自动化与效果器，段落名（循环、截短的注明）。
     #[test]
     fn buses_master_and_names() {
         let mut s = Session::new(&template()).unwrap();

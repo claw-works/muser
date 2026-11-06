@@ -31,6 +31,8 @@ Before rendering, everything is expanded into ordinary clips; view, `mix-report`
   adding `"tempo_ramp_bars": 4` ramps from the current tempo over the first 4 bars of this section (accelerando / ritardando, uniform in time; omitted or 0 switches directly).
   Clip and automation times are still written in beats, and follow the beats when the tempo changes; the transport that plugins receive, the tempo map in MIDI export (a ramp is written as one tempo per beat),
   the inline `[Q:]` in ABC, and the bar lines in `muser view` all follow.
+- A section can also change the tuning: `"tuning": { "scale": "just", "key": "D" }` (written like the project's `tuning`, see SKILLS.md) takes effect from the start of this section, and later sections that do not write it keep it;
+  `{ "scale": "equal" }` goes back to 12-tone equal temperament. Notes already sounding keep their pitch; the next note on uses the new tuning (pitched built-in instruments and SFZ; drum kits and plugins are unaffected; MIDI export carries no tuning).
 - `form`: the sections played in order from the start of the project. An entry can be a name, or carry parameters for this pass:
   - `transpose`: transpose this pass (in semitones; chords, chordal and melody move together, the drum kit does not). Use it for a key change on the last chorus.
   - `mute`: names of tracks that rest during this pass.

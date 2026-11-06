@@ -258,6 +258,7 @@ Write `tuning` on the project, and pitched built-in instruments and the SFZ samp
 - `scala`: a `.scl` file (relative to the directory of the project file), optionally with a `kbm` key mapping; without a `kbm`, scale degree 0 is at middle C (60), one step per key. There are plenty of ready-made gamelan and experimental-tuning files (the Scala archive).
 - `reference_hz` (default 440, 415 is common for Baroque), `reference_key` (default 69 = A4), and `detune_cents` shift everything.
 - MIDI / ABC export writes keys, without the tuning.
+- **Changing tuning mid-song**: a section in `sections` (or a live section) can carry its own `"tuning"`: from that section on the new tuning applies (sustained notes keep their pitch), later sections keep it until another one writes a tuning; `{ "scale": "equal" }` returns to 12-TET. E.g. a jazz chorus in equal temperament, then a raga section in `custom` shruti deviations, then back.
 
 ## Sustain pedal: pedal
 

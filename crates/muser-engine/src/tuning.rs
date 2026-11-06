@@ -6,7 +6,23 @@ use muser_core::Project;
 
 /// 工程的调律；没写或就是十二平均律、A4 = 440 时为 `None`（乐器照常）。文件找不到、格式不对时报错。
 pub fn build(project: &Project) -> Result<Option<Tuning>, String> {
-    let Some(t) = project.tuning.as_ref().filter(|t| !t.is_standard()) else { return Ok(None) };
+    match project.tuning.as_ref() {
+        Some(t) => build_one(project, t),
+        None => Ok(None),
+    }
+}
+
+/// 段落里换的调律，顺序同 [`Project::tuning_changes`]（起点在那里）。没有段落写 `tuning` 时为空。
+/// 十二平均律、A4 = 440 的写成标准调律（换回平均律也要发出去）。
+pub fn changes(project: &Project) -> Result<Vec<Tuning>, String> {
+    project.tuning_changes().into_iter().map(|(_, t)| Ok(build_one(project, t)?.unwrap_or_default())).collect()
+}
+
+/// 一份 `tuning` → 调律表；是标准的十二平均律时为 `None`。
+fn build_one(project: &Project, t: &muser_core::tuning::Tuning) -> Result<Option<Tuning>, String> {
+    if t.is_standard() {
+        return Ok(None);
+    }
     t.validate()?;
     let key = muser_core::tuning::pitch_class(&t.key).unwrap_or(0);
     let temperament = |temperament: Temperament| Scale::Temperament { temperament, key };
@@ -76,6 +92,32 @@ mod tests {
         assert!(build(&p).unwrap().is_none());
         p.tuning = Some(serde_json::from_value(serde_json::json!({ "scale": "scala", "scala": "/nope.scl" })).unwrap());
         assert!(build(&p).unwrap_err().contains("failed to read"));
+    }
+
+    /// 段落换调律：第一段照工程的（平均律），第二段起按纯律；和整首用那种律制的渲染对应的部分一样。
+    #[test]
+    fn a_section_can_change_the_tuning() {
+        let notes = serde_json::json!([{ "pitch": 64, "start": 0, "length": 0.9 }, { "pitch": 64, "start": 4, "length": 0.9 }]);
+        let render = |sections: serde_json::Value, tuning: Option<serde_json::Value>| {
+            let mut v = serde_json::json!({ "tempo": 120, "sections": sections, "form": ["a", "b"],
+                "tracks": [{ "instrument": "synth.poly", "clips": [{ "start": 0, "length": 8, "notes": notes }] }] });
+            if let Some(t) = tuning {
+                v["tuning"] = t;
+            }
+            crate::render(&serde_json::from_value(v).unwrap(), crate::RenderSettings { tail_seconds: 0.2, ..Default::default() }).unwrap()
+        };
+        let plain = serde_json::json!({ "a": { "bars": 1 }, "b": { "bars": 1 } });
+        let switch = render(serde_json::json!({ "a": { "bars": 1 }, "b": { "bars": 1, "tuning": { "scale": "just" } } }), None);
+        let equal = render(plain.clone(), None);
+        let just = render(plain, Some(serde_json::json!({ "scale": "just" })));
+        let bar = 96_000; // 120 BPM、4/4：一小节 2 秒
+        let part = |b: &manguebyte::prelude::AudioBuffer<f32>, r: std::ops::Range<usize>| b.channel(0)[r].to_vec();
+        assert_eq!(part(&switch, 0..bar), part(&equal, 0..bar), "第一段还是平均律");
+        assert_eq!(part(&switch, bar..switch.num_frames()), part(&just, bar..just.num_frames()), "第二段起按纯律");
+        assert_ne!(part(&switch, bar..2 * bar), part(&equal, bar..2 * bar));
+        // 换回平均律：写 equal 的段落也发出去。
+        let back = render(serde_json::json!({ "a": { "bars": 1, "tuning": { "scale": "just" } }, "b": { "bars": 1, "tuning": { "scale": "equal" } } }), None);
+        assert_eq!(part(&back, bar..back.num_frames()), part(&equal, bar..equal.num_frames()));
     }
 
     /// 有音高的乐器照调律发音，鼓组不变。
