@@ -1399,10 +1399,12 @@ impl Shared {
         let ci = num("clip").ok_or("clip is missing")? as usize;
         let mut st = self.state.lock().unwrap();
         let working = st.working.as_mut().ok_or("the project has not loaded successfully")?;
+        let delete = body.get("delete").and_then(Value::as_bool).unwrap_or(false);
         let what = match (num("split"), num("start")) {
+            _ if delete => crate::clipedit::remove(working, ti, ci),
             (Some(at), _) => crate::clipedit::split(working, ti, ci, at),
             (None, Some(to)) => crate::clipedit::move_to(working, ti, ci, to),
-            _ => return Err("split or start is required".into()),
+            _ => return Err("split, start or delete is required".into()),
         }
         .map_err(|e| format!("{e:#}"))?;
         let name = working.tracks[ti].name.clone();

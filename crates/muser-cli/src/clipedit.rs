@@ -44,6 +44,18 @@ pub fn split(p: &mut Project, ti: usize, ci: usize, at: f64) -> Result<String> {
 }
 
 /// 把第 `ci` 个片段挪到第 `to` 拍开始。返回说明。
+/// 删掉第 `ci` 个片段（录音文件不删，还在录音列表里）。返回说明。
+pub fn remove(p: &mut Project, ti: usize, ci: usize) -> Result<String> {
+    let at = p.tracks.get(ti).and_then(|t| t.clips.get(ci)).map(|c| c.start.0).ok_or_else(|| anyhow!("no such clip"))?;
+    let where_ = bar(p, at);
+    let t = audio_track(p, ti)?;
+    if t.clips[ci].audio.is_none() {
+        bail!("this clip is not audio");
+    }
+    t.clips.remove(ci);
+    Ok(format!("x {}: removed the clip at {where_}", t.name))
+}
+
 pub fn move_to(p: &mut Project, ti: usize, ci: usize, to: f64) -> Result<String> {
     let tm = p.tempo_map();
     let to = to.max(0.0);
@@ -92,6 +104,18 @@ pub fn run(project_path: &str, track: &str, split_at: Option<f64>, clip: Option<
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn remove_drops_one_audio_clip() {
+        let mut p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [
+            { "name": "vocal", "instrument": "audio", "clips": [
+                { "start": 0, "length": 4, "audio": { "file": "a.wav" } }, { "start": 4, "length": 4, "audio": { "file": "a.wav", "offset": 2 } }] },
+            { "name": "keys", "instrument": "synth.poly", "clips": [{ "start": 0, "length": 4, "notes": [] }] }] })).unwrap();
+        remove(&mut p, 0, 0).unwrap();
+        assert_eq!(p.tracks[0].clips.len(), 1);
+        assert_eq!(p.tracks[0].clips[0].start.0, 4.0, "剪开后的后半截留着");
+        assert!(remove(&mut p, 1, 0).is_err(), "只删音频片段");
+    }
+
     use super::*;
 
     #[test]

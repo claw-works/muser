@@ -512,7 +512,7 @@ const I18N = {
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
     keyShift: "Key", keyHint: "Transpose the whole song in semitones while you try keys for a singer (notes in the project stay as written; drums and recordings don't move). Save keeps it",
     transposeChange: (n) => `transpose → ${n > 0 ? "+" : ""}${n}`,
-    karaoke: "Lyrics", cutHint: "Scissors: click an audio clip to cut it there (C). Drag an audio clip to move it (Shift snaps to 1/16 notes); click one to select it, then ← → nudge it 10 ms (Shift: 1/16 note)",
+    karaoke: "Lyrics", cutHint: "Scissors: click an audio clip to cut it there (C). Drag an audio clip to move it (Shift snaps to 1/16 notes); click one to select it, then ← → nudge it 10 ms (Shift: 1/16 note), Delete removes it",
     recMeasure: "Measure latency", recMeasureHint: "Take off the headphones and turn the volume up: muser plays 8 clicks and listens for them through the microphone, then fills in the latency",
     recMeasuring: "Listening for the clicks… keep quiet", recMeasured: (ms) => `Round trip measured; latency set to ${ms} ms`, recMeasureFailed: "Couldn't hear the clicks: take off the headphones, turn the volume up and try again",
     recTitle: "Record a voice", recNote: "Wear headphones", recTrack: "Track", recCountIn: "Count-in bars", recNudge: "Latency (ms)",
@@ -579,7 +579,7 @@ const I18N = {
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
     keyShift: "变调", keyHint: "整首升降几个半音，给换了人唱（比如换成女声）找合适的调；工程里的音符不改，鼓和录音不动。点「保存」才写进工程",
     transposeChange: (n) => `整首变调 → ${n > 0 ? "+" : ""}${n} 个半音`,
-    karaoke: "歌词", cutHint: "剪刀：点音频片段，在那里剪开（快捷键 C）。拖动音频片段挪位置（按住 Shift 对齐 1/16 音符）；点一下选中，再按 ← → 每次微调 10 毫秒（Shift：1/16 音符）",
+    karaoke: "歌词", cutHint: "剪刀：点音频片段，在那里剪开（快捷键 C）。拖动音频片段挪位置（按住 Shift 对齐 1/16 音符）；点一下选中，再按 ← → 每次微调 10 毫秒（Shift：1/16 音符），按 Delete 删掉",
     recMeasure: "测延迟", recMeasureHint: "摘下耳机、把音量开大：muser 放 8 下咔嗒声，用麦克风听回来，自动填好延迟微调",
     recMeasuring: "正在听咔嗒声……请保持安静", recMeasured: (ms) => `测好了：延迟微调设为 ${ms} 毫秒`, recMeasureFailed: "没听到咔嗒声：摘下耳机、把音量开大再试一次",
     recTitle: "录人声", recNote: "请戴耳机", recTrack: "轨名", recCountIn: "预备小节", recNudge: "延迟微调（毫秒）",
@@ -1519,6 +1519,15 @@ document.addEventListener("keydown", (e) => {
   if (e.target.closest("input, select, textarea")) return;
   if (e.key === "c" || e.key === "C") setCutting(!cutting);
   if (e.key === "Escape") { setCutting(false); selectedClip = null; drawTrackLanes(); }
+  // 选中的音频片段按 Delete / Backspace 删掉（剪开以后不要的那一截也这样删）；录音文件还在列表里，待保存。
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedClip) {
+    e.preventDefault();
+    const n = data.nodes.find((x) => x.id === selectedClip.id);
+    if (!n || !n.clips[selectedClip.clip]) return;
+    const clip = selectedClip.clip; selectedClip = null;
+    post("/api/clip", { track: +/\d+/.exec(n.id)[0], clip, delete: true }).then(refresh).catch(() => {});
+    return;
+  }
   if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && selectedClip) {
     e.preventDefault();
     const n = data.nodes.find((x) => x.id === selectedClip.id), c = n && n.clips[selectedClip.clip];
