@@ -47,7 +47,7 @@ the human can change direction in the conversation at any time. This is the **me
   writing a triad for them stacks into a harsh clump -- they take single notes only; some are monophonic (acid bass, solo voice), and overlapping notes glide.
 - The built-in drum kit's **ride cymbal sounds bad right now** (like a cracked gong): for jazz and country swing grooves, play `hat` (closed hat) or `pedal_hat` first;
   for a real ride, use a local SFZ / plugin drum kit (`muser sounds list`).
-- **Keep drum patterns short**: each row of a `grid` loops by itself across the whole clip, so 16 steps for one bar is enough; no need to write out all 8 bars.
+- **Keep drum patterns short**: each row of a `grid` loops by itself across the whole clip, so 16 steps for one bar is enough; no need to write out all 8 bars. But the **clip's `length` must cover the whole section** (in an 8-bar 7/8 section: `"length": 28`): the rows loop only inside the clip, so a one-bar clip plays one bar and then the drums stop.
   Ready-made grooves are in `muser loop list` / `muser loop show <name>` (disco, funk, house...); adapting one is faster than writing from scratch.
 - **Tracks you do not write rest during this section.** To keep a track going, give it a clip in this section too (`last_change` in `live status` is the full text of the previous section;
   editing on top of it is easiest: keep what should continue, change what should vary).
@@ -83,7 +83,7 @@ the human can change direction in the conversation at any time. This is the **me
 - When the person says "the saxophone is too quiet" or "the drums are too loud": `muser live mix <track> <dB>` (MCP `live_mix`); it starts after about 0.4 seconds and ramps to that fader value within 0.3 seconds,
   **no new section needed, and the form is unaffected**. For a bus write the bus name, for the master write `master`; for negative values write `muser live mix master -- -3`.
 - Check first yourself: the `mix` in `status` lists the current fader value `gain_db` and loudness `rms_db` of every track / bus / master (RMS about 1.5 seconds after the fader, sorted loud to quiet).
-  The lead (saxophone, flute, the guide melody of a voice) usually needs to be a few dB louder than the accompaniment; after a new part comes in, take a look, and if the gap is too big, adjust proactively and tell the person what you adjusted.
+  The lead (saxophone, flute, the guide melody of a voice) usually needs to be a few dB louder than the accompaniment; after a new part comes in, take a look, and if the gap is too big, adjust proactively and tell the person what you adjusted. After moving a fader, **look at `mix` once more** about 2 seconds later to confirm the balance is what you wanted.
 - If a later section writes volume automation for that track, from that section on that section's automation governs.
 
 ## The autoplay loop
@@ -100,8 +100,10 @@ During autoplay (within the duration of `--autoplay`):
    N should be at least 1.5 times that. Writing slowly is fine -- when the runway runs out the last section loops and there is no dead air, it just repeats a few more times.
 4. Each section is 4-16 bars, and the whole should develop: introduce, add layers, vary, leave space, return. **The runway matters more than length**: if writing a section will take more than half a minute,
    first submit a short one (a few edits on the previous section) as a cushion, then write the long one; otherwise the previous section repeats many times.
+   **Don't queue far ahead**: one or two sections, then `wait`. The person can change direction at any moment, and sections queued for later then have to be cut off with `now` (whole planned passages never get played).
 5. When the user names a well-known tune ("Twinkle Twinkle Little Star", "Two Tigers"): **write the melody exactly as it is** (intervals and rhythm unchanged; key and register may change),
    and put the stylistic change in the accompaniment, drums and sounds; touch the melody only when the user asks for a "variation" or "arrangement".
+   If you are not sure of the exact melody, say so before playing it and ask someone who knows the song to listen to the first line; someone singing along to a wrong tune is worse than no tune. Count syllables against notes: one note per syllable (or a slur for a melisma), or the karaoke drifts.
 
 When the human says something in the conversation (in Claude Code you see it at your next tool call): **do what the person says first**, so the next section reflects it,
 then go on with the loop. For agents that cannot take interjections mid-turn, the user will press Esc to interrupt; after answering and making the change, return to the autoplay loop (if still within the duration).
