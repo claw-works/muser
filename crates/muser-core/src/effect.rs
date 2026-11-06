@@ -526,10 +526,10 @@ fn default_distortion_drive_db() -> f64 {
     18.0
 }
 fn default_distortion_tone_hz() -> f64 {
-    4500.0
+    8000.0
 }
 fn default_distortion_low_cut_hz() -> f64 {
-    80.0
+    100.0
 }
 fn default_distortion_cabinet() -> String {
     "none".into()
@@ -972,18 +972,18 @@ pub static EFFECT_SPECS: &[EffectSpec] = &[
     },
     EffectSpec {
         name: "distortion",
-        summary: "Distortion: overdrive, distortion, fuzz or wavefolding, with a tone filter and cabinet simulation; loudness is compensated automatically, so more drive means more grit, not more volume.",
+        summary: "Distortion modelled on a guitar amp (mid push before two clipping stages, cabinet with presence peak): overdrive, distortion, fuzz or wavefolding; loudness is compensated automatically, so more drive means more grit, not more volume.",
         placement: "On a guitar, bass, organ or synth track for rock / metal / grunge; lightly (overdrive, drive 6-12) on drums or a bus for grit. For a rock guitar: guitar.steel + { \"mode\": \"distortion\", \"drive_db\": 24, \"cabinet\": \"guitar\" }; play power chords (root + fifth), not full triads, since distortion turns thirds muddy.",
         params: &[
             p("drive_db", 0.0, 48.0, 18.0, "dB", "Drive. 6-12 crunch; 18-30 rock / metal; 36+ fuzz-like saturation"),
-            p("tone_hz", 500.0, 12000.0, 4500.0, "Hz", "Low-pass after the distortion: lower is darker; 3000-5000 for guitars"),
-            p("low_cut_hz", 20.0, 1000.0, 80.0, "Hz", "High-pass before the distortion so the lows don't turn to mud; 100-200 for tight metal rhythm, 40 for bass"),
+            p("tone_hz", 500.0, 12000.0, 8000.0, "Hz", "Low-pass after the distortion: lower is darker, higher adds fizz"),
+            p("low_cut_hz", 20.0, 1000.0, 100.0, "Hz", "High-pass before the distortion so the lows don't turn to mud; 100-200 for tight metal rhythm, 40 for bass"),
             p("output_db", -24.0, 12.0, 0.0, "dB", "Output level after the automatic loudness compensation"),
             p("mix", 0.0, 1.0, 1.0, "", "Dry/wet mix; around 0.5 on bass keeps the clean low end under the grit"),
         ],
         choices: &[
             ChoiceSpec { name: "mode", choices: &["overdrive", "distortion", "fuzz", "fold"], default: "distortion", description: "overdrive: soft, asymmetric tube-like clipping; distortion: smooth saturation, rock / metal; fuzz: hard clipping, buzzy; fold: wavefolding, metallic synth sounds" },
-            ChoiceSpec { name: "cabinet", choices: &["none", "guitar", "bass"], default: "none", description: "Speaker cabinet simulation after the distortion: guitar rolls off the fizz above ~5 kHz and the boom below ~90 Hz with a mid push; bass keeps the lows and rolls off above ~3 kHz" },
+            ChoiceSpec { name: "cabinet", choices: &["none", "guitar", "bass"], default: "none", description: "Speaker cabinet simulation after the distortion: guitar: a low bump, a scooped low-mid, a presence peak near 3 kHz and a steep roll-off above ~6.5 kHz; bass keeps the lows and rolls off above ~3 kHz" },
         ],
         example: r#"{ "type": "distortion", "mode": "distortion", "drive_db": 24, "cabinet": "guitar" }"#,
     },

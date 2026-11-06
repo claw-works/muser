@@ -90,7 +90,7 @@
     {
       "name": "bass",
       "instrument": "bass.finger",
-      "gain_db": -5,
+      "gain_db": -2,
       "effects": [
         {
           "type": "distortion",
@@ -239,7 +239,7 @@
     {
       "name": "lead",
       "instrument": "guitar.steel",
-      "gain_db": 4,
+      "gain_db": 0,
       "sends": {
         "room": -10
       },

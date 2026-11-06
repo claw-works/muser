@@ -2,7 +2,7 @@
 
 # Effect: distortion
 
-Distortion: overdrive, distortion, fuzz or wavefolding, with a tone filter and cabinet simulation; loudness is compensated automatically, so more drive means more grit, not more volume.
+Distortion modelled on a guitar amp (mid push before two clipping stages, cabinet with presence peak): overdrive, distortion, fuzz or wavefolding; loudness is compensated automatically, so more drive means more grit, not more volume.
 
 **Where to put it**: On a guitar, bass, organ or synth track for rock / metal / grunge; lightly (overdrive, drive 6-12) on drums or a bus for grit. For a rock guitar: guitar.steel + { "mode": "distortion", "drive_db": 24, "cabinet": "guitar" }; play power chords (root + fifth), not full triads, since distortion turns thirds muddy.
 
@@ -13,10 +13,10 @@ Latest parameters: `muser effects distortion` (MCP: `describe_effect`)
 | Parameter | Default | Range | Description |
 |---|---|---|---|
 | `mode` | `distortion` | `overdrive` / `distortion` / `fuzz` / `fold` | overdrive: soft, asymmetric tube-like clipping; distortion: smooth saturation, rock / metal; fuzz: hard clipping, buzzy; fold: wavefolding, metallic synth sounds |
-| `cabinet` | `none` | `none` / `guitar` / `bass` | Speaker cabinet simulation after the distortion: guitar rolls off the fizz above ~5 kHz and the boom below ~90 Hz with a mid push; bass keeps the lows and rolls off above ~3 kHz |
+| `cabinet` | `none` | `none` / `guitar` / `bass` | Speaker cabinet simulation after the distortion: guitar: a low bump, a scooped low-mid, a presence peak near 3 kHz and a steep roll-off above ~6.5 kHz; bass keeps the lows and rolls off above ~3 kHz |
 | `drive_db` | 18 | 0 – 48 dB | Drive. 6-12 crunch; 18-30 rock / metal; 36+ fuzz-like saturation |
-| `tone_hz` | 4500 | 500 – 12000 Hz | Low-pass after the distortion: lower is darker; 3000-5000 for guitars |
-| `low_cut_hz` | 80 | 20 – 1000 Hz | High-pass before the distortion so the lows don't turn to mud; 100-200 for tight metal rhythm, 40 for bass |
+| `tone_hz` | 8000 | 500 – 12000 Hz | Low-pass after the distortion: lower is darker, higher adds fizz |
+| `low_cut_hz` | 100 | 20 – 1000 Hz | High-pass before the distortion so the lows don't turn to mud; 100-200 for tight metal rhythm, 40 for bass |
 | `output_db` | 0 | -24 – 12 dB | Output level after the automatic loudness compensation |
 | `mix` | 1 | 0 – 1 | Dry/wet mix; around 0.5 on bass keeps the clean low end under the grit |
 
