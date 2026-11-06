@@ -41,6 +41,7 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 | `dnb-liquid-skyline` | Liquid Drum & Bass（约 2 分钟完整曲） | 174 | F 小调 Fm7–Dbmaj7–Abmaj7–Eb7；Intro（pad 滤波渐开、高通鼓）→ Build（电钢、sub 第 25 小节进、军鼓滚奏）→ Drop 1（reese 滤波 LFO + 侧链泵感）→ Breakdown（弦乐、主旋律 hook、ride 预示）→ Drop 2（新 reese 节奏、16 分镲、ride、hook 回归）→ Outro；riser / downlifter / impact 过渡，军鼓段尾甩混响 |
 | `bach-prelude-c` | 巴赫《C 大调前奏曲》BWV 846（第 1–19 小节，约 80 秒） | 66 | 原谱（公有领域）+ 自己的演奏处理：Salamander 三角钢琴（SFZ，需本机音色库）；按谱时值（右手十六分音符不连奏）+ 真延音踏板（每小节切分换踏板，`pedal` 字段）；低音与高声部顶音略突出；力度随和声张力起伏（第 12 小节减七、第 18 小节属七最强），乐句末呼吸、结尾渐慢渐弱，落在 C 大调长和弦；时值带细微人性化（固定种子） |
 | `accelerando-dance` | 民间圆圈舞式的渐快（约 97 秒，原创旋律） | 72 → 132 → 160 → 56 | **可变速度**示例：段落的 `tempo` / `tempo_ramp_bars`。D 小调和声小调旋律（单簧管），尼龙吉他 oom-pah 伴奏、拨弦低音提琴；intro、slow 72 BPM → accel 8 小节里渐快到 132（鼓、小提琴进来）→ fast 保持 132，小提琴高八度重叠旋律 → faster 4 小节里再推到 160，段尾军鼓过门 → outro 4 小节里大渐慢到 56，落在 Dm |
+| `garage-drive` | 车库摇滚（约 42 秒，原创） | 132 | **失真效果器**示例：E 小调；clean 段钢弦吉他分解和弦（`distortion` 的 mix 自动化为 0）→ crunch 段同一轨自动化打开、overdrive drive 12 弹强力和弦 → heavy 段 drive 30，右边加一轨 distortion 双轨，fuzz 主音 + 延迟；贝斯 overdrive mix 0.5 保留干净低频 |
 | `ode-to-joy-orchestra` | 贝多芬第九交响曲第四乐章《欢乐颂》主题（约 2 分 18 秒，管弦乐） | 120 | D 大调主题陈述四次、逐次加配器（配器与对位为自己编写）：① 大提琴+低音提琴 → ② 中提琴唱旋律、大管对位、低音提琴拨弦 → ③ 小提琴唱旋律、单簧管对位、中提琴/大提琴长音 → ④ 全奏 → V7–I 尾声与定音鼓滚奏。Sonatina Symphonic Orchestra 采样（需本机音色库）：旋律声部用 Legato 音色、每个乐句一个 `"legato": true` 的 clip（句末换气、同音重复重新发音；音与音交界处不再凹陷），伴奏用 Marcato / Sustain / Pizzicato；力度用 SFZ 控制器 CC1；强拍零半音冲突 |
 
 ## instruments
@@ -213,6 +214,7 @@ muser play samples/abc/kesh-jig.muser.json
 |---|---|
 | `just-chorale` | D 大调五度纯律（`"scale": "just", "key": "D"`）：风琴和弦与弦乐旋律，大三度是纯的 5/4，和声比平均律更"静"。把 `tuning` 删掉再听一遍对比 |
 | `maqam-rast` | 木卡姆 Rast：`custom` 把 E 和 B 各降 50 音分（四分之三音），ABC 照常写 E、B。笛子旋律、大提琴持续音、鼓 |
+| `tuning-journey` | **段落换调律**（约 62 秒）：同一首里四段四种律制——平均律的风琴和弦 → 纯律（`"tuning": { "scale": "just", "key": "D" }`，同样的和弦更"静"）→ 木卡姆 Rast（`custom`，F# 和 C# 降 50 音分，笛子旋律、大提琴持续音、手鼓）→ 写 `{ "scale": "equal" }` 换回平均律收尾 |
 
 ## v0.4
 

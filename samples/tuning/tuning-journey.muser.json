@@ -1,0 +1,173 @@
+{
+  "name": "tuning/tuning-journey",
+  "tempo": 80,
+  "seed": 3,
+  "sections": {
+    "equal": {
+      "bars": 4,
+      "chords": "D G A D"
+    },
+    "just": {
+      "bars": 4,
+      "chords": "D G A D",
+      "tuning": {
+        "scale": "just",
+        "key": "D"
+      }
+    },
+    "rast": {
+      "bars": 8,
+      "chords": "D5",
+      "tuning": {
+        "scale": "custom",
+        "key": "D",
+        "deviations": [
+          0,
+          0,
+          0,
+          0,
+          -50,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          -50
+        ]
+      }
+    },
+    "home": {
+      "bars": 4,
+      "chords": "D G A D",
+      "tuning": {
+        "scale": "equal"
+      }
+    }
+  },
+  "form": [
+    "equal",
+    "just",
+    "rast",
+    "home"
+  ],
+  "buses": [
+    {
+      "name": "verb",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 2.6
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "organ",
+      "instrument": "organ.ballad",
+      "gain_db": -14,
+      "sends": {
+        "verb": -10
+      },
+      "parts": {
+        "equal": {
+          "chordal": "c - - - - - - -",
+          "octave": 4
+        },
+        "just": {
+          "chordal": "c - - - - - - -",
+          "octave": 4
+        },
+        "home": {
+          "chordal": "c - - - - - - -",
+          "octave": 4
+        }
+      }
+    },
+    {
+      "name": "strings",
+      "instrument": "strings.ensemble",
+      "gain_db": -14,
+      "sends": {
+        "verb": -8
+      },
+      "parts": {
+        "just": {
+          "chordal": "3' - - - - - - -",
+          "octave": 4
+        },
+        "home": {
+          "chordal": "3' - - - - - - -",
+          "octave": 4
+        }
+      }
+    },
+    {
+      "name": "drone",
+      "instrument": "strings.cello",
+      "gain_db": -12,
+      "sends": {
+        "verb": -12
+      },
+      "parts": {
+        "rast": {
+          "abc": "L:1/1\nK:D\nD,,|D,,|D,,|D,,|D,,|D,,|D,,|D,,|"
+        }
+      }
+    },
+    {
+      "name": "fifth",
+      "instrument": "strings.cello",
+      "gain_db": -16,
+      "sends": {
+        "verb": -12
+      },
+      "parts": {
+        "rast": {
+          "abc": "L:1/1\nK:D\nA,,|A,,|A,,|A,,|A,,|A,,|A,,|A,,|"
+        }
+      }
+    },
+    {
+      "name": "ney",
+      "instrument": "wind.flute",
+      "gain_db": -3,
+      "sends": {
+        "verb": -8
+      },
+      "humanize": {
+        "timing_ms": 8,
+        "velocity": 0.06
+      },
+      "parts": {
+        "rast": {
+          "abc": "L:1/8\nK:D\nA4 B2 c2 | d4 c2 B2 | A2 G2 F2 G2 | A6 z2 | d2 e2 f2 e2 | d2 c2 B2 A2 | G2 F2 E2 F2 | D6 z2 |"
+        },
+        "home": {
+          "abc": "L:1/8\nK:D\nA4 F2 A2 | B4 G2 B2 | c4 A2 e2 | d6 z2 |"
+        }
+      }
+    },
+    {
+      "name": "hand drum",
+      "instrument": "drums.cr78",
+      "gain_db": -14,
+      "parts": {
+        "rast": {
+          "grid": {
+            "conga_low": "x..x..x.x...x...",
+            "conga_high": "....x.......x..x"
+          }
+        }
+      }
+    }
+  ]
+}

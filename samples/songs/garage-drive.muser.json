@@ -1,0 +1,272 @@
+{
+  "name": "garage-drive",
+  "tempo": 132,
+  "seed": 7,
+  "sections": {
+    "clean": {
+      "bars": 4,
+      "chords": "Em C G D"
+    },
+    "crunch": {
+      "bars": 8,
+      "chords": "E5 C5 G5 D5"
+    },
+    "heavy": {
+      "bars": 8,
+      "chords": "E5 C5 G5 D5"
+    },
+    "outro": {
+      "bars": 2,
+      "chords": "E5"
+    }
+  },
+  "form": [
+    "clean",
+    "crunch",
+    "heavy",
+    "outro"
+  ],
+  "buses": [
+    {
+      "name": "room",
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 1.0,
+          "decay_seconds": 1.4,
+          "size": 0.5
+        }
+      ]
+    }
+  ],
+  "master_effects": [
+    {
+      "type": "compressor",
+      "threshold_db": -14,
+      "ratio": 2
+    },
+    {
+      "type": "limiter",
+      "ceiling_db": -1
+    }
+  ],
+  "tracks": [
+    {
+      "name": "drums",
+      "instrument": "drums.acoustic",
+      "gain_db": -10,
+      "sends": {
+        "room": -14
+      },
+      "parts": {
+        "clean": {
+          "grid": {
+            "hat": "x.x.x.x.x.x.x.x."
+          }
+        },
+        "crunch": {
+          "drummer": {
+            "loop": "rock_basic",
+            "complexity": 0.4,
+            "intensity": 0.6
+          }
+        },
+        "heavy": {
+          "drummer": {
+            "loop": "rock_basic",
+            "complexity": 0.7,
+            "intensity": 0.95
+          }
+        },
+        "outro": {
+          "grid": {
+            "kick": "x...............",
+            "crash": "x..............."
+          },
+          "length": 8
+        }
+      }
+    },
+    {
+      "name": "bass",
+      "instrument": "bass.finger",
+      "gain_db": -5,
+      "effects": [
+        {
+          "type": "distortion",
+          "mode": "overdrive",
+          "drive_db": 14,
+          "low_cut_hz": 40,
+          "cabinet": "bass",
+          "mix": 0.5
+        }
+      ],
+      "parts": {
+        "crunch": {
+          "chordal": "1 . 1 1 . 1 . 1",
+          "octave": 2
+        },
+        "heavy": {
+          "chordal": "1 1 1 1 1 1 1 1",
+          "octave": 2
+        },
+        "outro": {
+          "chordal": "1 - - - - - - -",
+          "octave": 2
+        }
+      }
+    },
+    {
+      "name": "guitar L",
+      "instrument": "guitar.steel",
+      "gain_db": -8,
+      "pan": -0.45,
+      "sends": {
+        "room": -16
+      },
+      "effects": [
+        {
+          "type": "distortion",
+          "mode": "overdrive",
+          "drive_db": 0,
+          "low_cut_hz": 110,
+          "tone_hz": 4200,
+          "cabinet": "guitar",
+          "mix": 0
+        }
+      ],
+      "automation": [
+        {
+          "target": "effects[0]",
+          "param": "mix",
+          "shape": "points",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              15.9,
+              0
+            ],
+            [
+              16,
+              1
+            ]
+          ]
+        },
+        {
+          "target": "effects[0]",
+          "param": "drive_db",
+          "shape": "points",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              15.9,
+              0
+            ],
+            [
+              16,
+              12
+            ],
+            [
+              47.9,
+              12
+            ],
+            [
+              48,
+              30
+            ]
+          ]
+        }
+      ],
+      "parts": {
+        "clean": {
+          "chordal": "1 5 8 3' 5' 3' 8 5",
+          "octave": 3,
+          "velocity": 0.6
+        },
+        "crunch": {
+          "chordal": "c . c c . c . c",
+          "octave": 3
+        },
+        "heavy": {
+          "chordal": "c c c c c c c c",
+          "octave": 3
+        },
+        "outro": {
+          "chordal": "c - - - - - - -",
+          "octave": 3
+        }
+      }
+    },
+    {
+      "name": "guitar R",
+      "instrument": "guitar.steel",
+      "gain_db": -11,
+      "pan": 0.45,
+      "sends": {
+        "room": -16
+      },
+      "humanize": {
+        "timing_ms": 6,
+        "velocity": 0.05
+      },
+      "effects": [
+        {
+          "type": "distortion",
+          "mode": "distortion",
+          "drive_db": 30,
+          "low_cut_hz": 130,
+          "tone_hz": 3800,
+          "cabinet": "guitar"
+        }
+      ],
+      "parts": {
+        "heavy": {
+          "chordal": "c c c c c c c c",
+          "octave": 3
+        },
+        "outro": {
+          "chordal": "c - - - - - - -",
+          "octave": 3
+        }
+      }
+    },
+    {
+      "name": "lead",
+      "instrument": "guitar.steel",
+      "gain_db": 4,
+      "sends": {
+        "room": -10
+      },
+      "humanize": {
+        "timing_ms": 5,
+        "velocity": 0.06
+      },
+      "effects": [
+        {
+          "type": "distortion",
+          "mode": "fuzz",
+          "drive_db": 30,
+          "tone_hz": 3500,
+          "cabinet": "guitar"
+        },
+        {
+          "type": "delay",
+          "time_seconds": 0.34,
+          "feedback": 0.3,
+          "mix": 0.2
+        }
+      ],
+      "parts": {
+        "heavy": {
+          "abc": "L:1/8\nK:Em\nz4 B2 e2 | g4 f2 e2 | d4 B2 G2 | A4 B4 | z2 e2 g2 b2 | a4 g2 f2 | g2 f2 e2 d2 | e8 |"
+        }
+      }
+    }
+  ]
+}
