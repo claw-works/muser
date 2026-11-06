@@ -41,6 +41,9 @@
   #k-next { margin-top: 6px; font-size: 22px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #ended { display: none; height: 108px; padding: 18px; border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-size: 18px; margin-top: 18px; }
   canvas { display: block; width: 100%; }
+  /* 标题、提示、段落标尺一直在上面；轨道多了只滚动轨道那几行 */
+  #head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 2px; }
+  #rows { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; }
   .hint { margin-top: 10px; color: var(--faint); font-size: 12px; }
   /* 状态栏：每一格位置、宽度固定，不换行 */
   #status { display: grid; grid-template-columns: 210px 170px 210px 90px 1fr auto; gap: 10px; align-items: center; height: 56px; }
@@ -57,12 +60,14 @@
 </head>
 <body>
 <main>
-  <div class="top"><div class="brand">muser <span>live</span></div><button id="language" type="button"></button></div>
-  <h1 id="title">muser live</h1>
-  <div class="panel" id="notice"><div id="now">—</div><div id="now-note"></div><div id="next"></div></div>
-  <div id="ended"></div>
+  <div id="head">
+    <div class="top"><div class="brand">muser <span>live</span></div><button id="language" type="button"></button></div>
+    <h1 id="title">muser live</h1>
+    <div class="panel" id="notice"><div id="now">—</div><div id="now-note"></div><div id="next"></div></div>
+    <div id="ended"></div>
+  </div>
   <div class="panel" id="karaoke"><div id="k-cue"></div><div id="k-now"></div><div id="k-next"></div></div>
-  <div class="panel"><canvas id="tl" height="320"></canvas><div class="hint" id="legend"></div></div>
+  <div class="panel"><canvas id="ruler" height="38"></canvas><div id="rows"><canvas id="tl" height="320"></canvas></div><div class="hint" id="legend"></div></div>
   <div class="panel" id="status">
     <div class="cell" id="c-bar">—</div><div class="cell" id="c-loop"></div><div class="cell" id="c-auto"></div>
     <div class="cell" id="c-bpm"></div><div class="cell" id="c-info"></div><button id="stop"></button>
@@ -79,7 +84,7 @@ const I18N = { zh: {
   dropouts: (n) => `掉帧 ${n}`, recentDropouts: (names) => `最近掉过帧（电脑跟不上）${names ? `：最耗资源的是 ${names}` : ""}`, load: (n, c) => `最耗：${n}（${Math.round(c * 100)}% 核）`,
   gone: "连不上 muser live（已经停了？）", master: "主输出", stop: "停止演奏", confirmStop: "停止这场演奏？（录音会写好）",
   ready: "▶ 准备", ended: (f) => `演奏结束了。${f ? `录音存在 ${f}` : ""}`, endedAway: "演奏结束了（muser live 已经退出）。",
-  legend: "上面一行是每一段（浅色 = 循环出来的重复），下面每条轨在哪些段里演奏，右边是电平。白线是正在听到的位置，虚线是排到哪里。",
+  legend: "上面一行是每一段（浅色 = 循环出来的重复），下面是主输出和每条轨在哪些段里演奏（这一屏里在演奏的排在前面，轨多了可以滚动），右边是电平。白线是正在听到的位置，虚线是排到哪里。",
   switchTo: "EN", switchLabel: "Switch to English", sep: "、",
 }, en: {
   now: (n) => `Now ▶ <b>${n}</b>`, next: (n, b, s) => `Next: ${n} · bar ${b} · in ${s}s`, noNext: "Then: this section loops until the next instruction",
@@ -88,7 +93,7 @@ const I18N = { zh: {
   dropouts: (n) => `${n} dropouts`, recentDropouts: (names) => `Recent dropouts (the computer can't keep up)${names ? `: heaviest are ${names}` : ""}`, load: (n, c) => `Heaviest: ${n} (${Math.round(c * 100)}% of a core)`,
   gone: "Can't reach muser live (stopped?)", master: "Master", stop: "Stop", confirmStop: "Stop this session? (the recording will be saved)",
   ready: "▶ Get ready", ended: (f) => `The session is over.${f ? ` Recording: ${f}` : ""}`, endedAway: "The session is over (muser live has exited).",
-  legend: "Top row: each section (lighter = loop repeats); below, where each track plays; levels on the right. The white line is what you hear, the dashed one how far it is queued.",
+  legend: "Top row: each section (lighter = loop repeats); below, the master and where each track plays (tracks playing on screen come first; scroll when there are many); levels on the right. The white line is what you hear, the dashed one how far it is queued.",
   switchTo: "中文", switchLabel: "切换到中文", sep: ", ",
 } };
 let T = I18N[lang];
@@ -182,47 +187,62 @@ function draw() {
   karaoke();
   requestAnimationFrame(draw);
   if (!view) return;
-  const cv = $("tl"), dpr = window.devicePixelRatio || 1;
-  const tracks = view.tracks.map((t) => t.name);
-  const rowH = 26, top = 38, H = top + rowH * (tracks.length + 1) + 12;
-  const W = cv.clientWidth;
-  if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px"; }
-  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const dpr = window.devicePixelRatio || 1;
   const now = view.position + (performance.now() - at) / 1000;
+  const W = $("tl").clientWidth;
   const labelW = 110, meterW = 70, x0 = labelW, x1 = W - meterW - 10;
   const span = 60, from = now - span * 0.3, px = (x1 - x0) / span;
   const X = (s) => x0 + (s - from) * px;
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const accent = css("--accent"), accent2 = css("--accent-2"), dim = css("--dim"), faint = css("--faint"), line = css("--line");
-  g.font = "12px ui-sans-serif, system-ui, sans-serif"; g.textBaseline = "middle";
-  for (const s of view.timeline.segments) {
-    if (s.end < from || s.start > from + span) continue;
+  const segs = view.timeline.segments.filter((s) => s.end >= from && s.start <= from + span);
+  // 在看得见的段里演奏的轨排在前面（原来的顺序），其余的排到后面、变暗。
+  const active = new Set(segs.flatMap((s) => s.tracks));
+  const all = view.tracks.map((t) => t.name);
+  const tracks = [...all.filter((n) => active.has(n)), ...all.filter((n) => !active.has(n))];
+  const setup = (cv, H) => {
+    if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px"; }
+    const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    g.font = "12px ui-sans-serif, system-ui, sans-serif"; g.textBaseline = "middle";
+    return g;
+  };
+  const marks = (g, H) => {
+    const q = X(view.timeline.queued_until);
+    if (q > x0 && q < x1) { g.strokeStyle = accent; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(q, 0); g.lineTo(q, H); g.stroke(); g.setLineDash([]); }
+    const n = X(now);
+    g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.moveTo(n, 0); g.lineTo(n, H); g.stroke(); g.lineWidth = 1;
+  };
+  // 标尺：每一段（小节号、拍号、名字）。
+  const top = 38, gr = setup($("ruler"), top);
+  for (const s of segs) {
     const a = Math.max(x0, X(s.start)), b = Math.min(x1, X(s.end));
     if (b <= a) continue;
-    g.fillStyle = s.repeat ? "rgba(138,125,255,.18)" : "rgba(114,229,194,.22)";
-    g.fillRect(a, 6, b - a - 2, 24);
-    g.fillStyle = s.repeat ? accent2 : accent;
+    gr.fillStyle = s.repeat ? "rgba(138,125,255,.18)" : "rgba(114,229,194,.22)";
+    gr.fillRect(a, 6, b - a - 2, 24);
+    gr.fillStyle = s.repeat ? accent2 : accent;
     const label = `${s.bar}${s.meter[0] !== 4 || s.meter[1] !== 4 ? ` · ${s.meter[0]}/${s.meter[1]}` : ""}${!s.repeat && s.name ? ` · ${s.name}` : ""}`;
-    if (b - a > 36) { g.save(); g.beginPath(); g.rect(a, 6, b - a - 4, 24); g.clip(); g.fillText(label, a + 6, 18); g.restore(); }
-    tracks.forEach((name, i) => {
-      if (!s.tracks.includes(name)) return;
-      g.fillStyle = s.repeat ? "rgba(138,125,255,.32)" : "rgba(114,229,194,.45)";
-      g.fillRect(a, top + i * rowH + 5, b - a - 2, rowH - 10);
-    });
+    if (b - a > 36) { gr.save(); gr.beginPath(); gr.rect(a, 6, b - a - 4, 24); gr.clip(); gr.fillText(label, a + 6, 18); gr.restore(); }
   }
+  marks(gr, top);
+  // 轨道行（可滚动）：主输出在最上面一行，之后是各轨。
+  const rowH = 26, names = ["", ...tracks], H = rowH * names.length + 6, g = setup($("tl"), H);
   const levels = Object.fromEntries((view.levels || []).map(([n, p]) => [n, p]));
-  [...tracks, ""].forEach((name, i) => {
-    const y = top + i * rowH;
+  names.forEach((name, i) => {
+    const y = i * rowH;
+    if (name) for (const s of segs) {
+      if (!s.tracks.includes(name)) continue;
+      const a = Math.max(x0, X(s.start)), b = Math.min(x1, X(s.end));
+      if (b <= a) continue;
+      g.fillStyle = s.repeat ? "rgba(138,125,255,.32)" : "rgba(114,229,194,.45)";
+      g.fillRect(a, y + 5, b - a - 2, rowH - 10);
+    }
     g.strokeStyle = line; g.beginPath(); g.moveTo(0, y + rowH - .5); g.lineTo(W, y + rowH - .5); g.stroke();
-    g.fillStyle = name ? dim : faint; g.fillText(name || T.master, 8, y + rowH / 2, labelW - 14);
+    g.fillStyle = !name ? faint : active.has(name) ? dim : faint; g.fillText(name || T.master, 8, y + rowH / 2, labelW - 14);
     const p = levels[name] || 0, db = p > 0 ? 20 * Math.log10(p) : -90, w = Math.max(0, Math.min(1, (db + 60) / 60)) * meterW;
     g.fillStyle = "rgba(255,255,255,.06)"; g.fillRect(W - meterW - 4, y + 8, meterW, rowH - 16);
     g.fillStyle = db > -1 ? css("--err") : db > -9 ? css("--warn") : accent; g.fillRect(W - meterW - 4, y + 8, w, rowH - 16);
   });
-  const q = X(view.timeline.queued_until);
-  if (q > x0 && q < x1) { g.strokeStyle = accent; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(q, 4); g.lineTo(q, H - 8); g.stroke(); g.setLineDash([]); }
-  const n = X(now);
-  g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.moveTo(n, 2); g.lineTo(n, H - 6); g.stroke(); g.lineWidth = 1;
+  marks(g, H);
 }
 applyLanguage(); poll(); draw();
 </script>
