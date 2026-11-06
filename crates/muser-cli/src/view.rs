@@ -1650,7 +1650,10 @@ impl Shared {
             .grown
             .wait_timeout_while(v.progress.lock().unwrap(), Duration::from_secs(2), |pr| pr.rendered <= from && !pr.done)
             .unwrap();
-        let to = (from + frames.min(48_000 * 10)).min(pr.rendered).max(from);
+        // 播放头跑到还没渲染到的地方（比如重启 view 后页面还在原来的位置）：返回空的，页面过会儿再取。
+        let have = pr.rendered.min(pr.pcm.len() / 4);
+        let from = from.min(have);
+        let to = (from + frames.min(48_000 * 10)).min(have);
         Some((pr.pcm[from * 4..to * 4].to_vec(), v.frames))
     }
 }
