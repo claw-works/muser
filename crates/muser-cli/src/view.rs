@@ -177,6 +177,21 @@ struct MixBody {
     solo: Option<Vec<String>>,
 }
 
+/// 插件窗口子进程的错误输出转进 view 的日志（插件弹的提示、加载失败都在这里）；Qt 的布局警告这类噪声不转。
+fn forward_stderr(child: &mut std::process::Child) {
+    let Some(err) = child.stderr.take() else { return };
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        for line in std::io::BufReader::new(err).lines().map_while(Result::ok) {
+            let l = line.trim();
+            let noise = l.is_empty() || l.starts_with("qrc:") || l.contains("QML") || l.starts_with('^') || l.starts_with("Rectangle {") || l.starts_with("model:") || l.starts_with("QFileSystemWatcher") || l.starts_with("Requested MSAA");
+            if !noise {
+                eprintln!("[plugin] {l}");
+            }
+        }
+    });
+}
+
 /// 节点的效果链第 `index` 格在工程 JSON 里的位置（JSON pointer）。
 fn fx_pointer(node: &str, index: usize) -> Option<String> {
     if node == "master" {
@@ -638,7 +653,8 @@ impl Shared {
         }
     }
 
-    /// 从磁盘读工程（启动时、文件变化时）。页面上未保存的改动丢弃。
+    /// 从磁盘读工程（启动时、文件变化时）。页面上未保存的推子、静音、效果器改动在新文件上重新套用
+    /// （插件窗口存状态也会改文件，不能因此丢掉页面上的改动）；套不上（结构变了）才丢弃。录音、剪辑片段的改动丢弃。
     fn reload(&self) {
         let m = mtime(&self.path);
         let loaded = std::fs::read_to_string(&self.path)
@@ -652,8 +668,19 @@ impl Shared {
                     (Some(f), Some(w)) => !diff(f, w).is_empty(),
                     _ => false,
                 };
-                if had_changes || !st.takes.is_empty() || !st.clip_edits.is_empty() {
+                let pending = match (&st.file, &st.working) {
+                    (Some(f), Some(w)) => diff(f, w),
+                    _ => Vec::new(),
+                };
+                let mut working = p.clone();
+                let kept = !pending.is_empty() && apply_to_project(&mut working, &pending).is_ok();
+                if !kept {
+                    working = p.clone();
+                }
+                if (had_changes && !kept) || !st.takes.is_empty() || !st.clip_edits.is_empty() {
                     eprintln!("[view] the project file changed; discarding the page's unsaved edits (the recording files are still in recordings/ and can be placed again)");
+                } else if kept {
+                    eprintln!("[view] the project file changed; the page's unsaved mix edits are kept on top of it");
                 }
                 st.takes.clear();
                 st.clip_dirty.clear();
@@ -663,7 +690,7 @@ impl Shared {
                 if !same_shape {
                     st.solo.clear();
                 }
-                st.working = Some(p.clone());
+                st.working = Some(working);
                 st.file = Some(p);
                 self.request_render(&mut st);
             }
@@ -1028,9 +1055,10 @@ impl Shared {
             .arg(&out)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| format!("failed to start the plugin UI: {e}"))?;
+        forward_stderr(&mut child);
         let stdin = child.stdin.take().ok_or("the child process has no stdin")?;
         let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
@@ -1093,9 +1121,10 @@ impl Shared {
             .arg(&out)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| format!("failed to start the plugin UI: {e}"))?;
+        forward_stderr(&mut child);
         let stdin = child.stdin.take().ok_or("the child process has no stdin")?;
         let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
         eprintln!("[view] opened the UI of effect {spec} ({node} #{index}); state syncs to {}", out.display());
@@ -1131,6 +1160,8 @@ impl Shared {
         let mut v: Value = serde_json::from_str(&text)?;
         if let Some((node, i)) = &e.fx {
             let slot = fx_pointer(node, *i).and_then(|p| v.pointer_mut(&p)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no {node} effect #{i}"))?;
+            // 打开窗口就是要听它：旁通着的打开（放弃时连同旁通一起恢复）。
+            slot.remove("bypass");
             let p = slot.entry("params").or_insert_with(|| json!({}));
             let p = p.as_object_mut().ok_or_else(|| anyhow!("params is not an object"))?;
             p.insert("@state".into(), json!(e.out.display().to_string()));
