@@ -201,7 +201,7 @@ fn click_sample(i: usize, beat: usize, bar: usize, sr: f32) -> f32 {
     if within > 0.08 * sr {
         return 0.0;
     }
-    let hz = if (i / beat) % bar == 0 { 1320.0 } else { 880.0 };
+    let hz = if (i / beat).is_multiple_of(bar) { 1320.0 } else { 880.0 };
     0.3 * (-within / (0.015 * sr)).exp() * (std::f32::consts::TAU * hz * within / sr).sin()
 }
 

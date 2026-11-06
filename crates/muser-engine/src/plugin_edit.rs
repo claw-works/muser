@@ -24,6 +24,8 @@ pub enum Cmd {
     Cancel,
     /// 改窗口标题（换了要载入的音色时）。
     Title { title: String },
+    /// 把窗口提到最前面（页面上又点了一次"打开"，窗口其实还开着、被挡在后面）。
+    Front,
 }
 
 /// 会话怎么结束的。
@@ -267,6 +269,11 @@ pub fn run(
                 }
                 Cmd::Done => window.close(),
                 Cmd::Title { title } => window.setTitle(&NSString::from_str(&title)),
+                Cmd::Front => {
+                    window.makeKeyAndOrderFront(None);
+                    #[allow(deprecated)]
+                    app.activateIgnoringOtherApps(true);
+                }
                 Cmd::Cancel => {
                     cancel = true;
                     window.close();

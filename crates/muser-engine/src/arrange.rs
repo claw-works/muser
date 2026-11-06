@@ -447,7 +447,7 @@ pub(crate) fn apply(ts: &[Transform], notes: &mut Vec<Note>, len: &mut f64, k: u
                 }
             }
         } else if let Some(every) = t.every {
-            if (k + 1) % every as usize == 0 {
+            if (k + 1).is_multiple_of(every as usize) {
                 apply(&t.then, notes, len, k, chords, drums, seed ^ 0x4556_0000 ^ ti as u64);
             }
         } else if let Some(p) = t.vary {

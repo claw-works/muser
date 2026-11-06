@@ -70,7 +70,7 @@ fn add_peaks(peaks: &mut [f32], total: usize, audio: &AudioBuffer<f32>, at: usiz
     let per = total.max(1).div_ceil(PEAKS).max(1);
     for i in 0..n {
         let f = at + i;
-        if (f % per) % 4 == 0 {
+        if (f % per).is_multiple_of(4) {
             let p = &mut peaks[(f / per).min(PEAKS - 1)];
             *p = p.max(audio.channel(0)[i].abs().max(audio.channel(1)[i].abs()));
         }
@@ -175,6 +175,19 @@ struct MixBody {
     /// 给出时整体替换独奏集合（节点 id）。
     #[serde(default)]
     solo: Option<Vec<String>>,
+}
+
+/// 已经开着一个插件窗口时又点了"打开"：是同一个就把它提到最前面；是别的就说清楚是哪个。
+fn front_or_busy(e: &mut EditSession, same: bool) -> Result<(), String> {
+    use std::io::Write;
+    if same {
+        return writeln!(e.stdin, "{}", json!({ "cmd": "front" })).and_then(|_| e.stdin.flush()).map_err(|err| format!("plugin window has exited: {err}"));
+    }
+    let what = match &e.fx {
+        Some((node, i)) => format!("{} ({node} effect {})", e.label, i + 1),
+        None => format!("{} (track {})", e.label, e.track + 1),
+    };
+    Err(format!("the window of {what} is still open (maybe behind other windows): close it first"))
 }
 
 /// 插件窗口子进程的错误输出转进 view 的日志（插件弹的提示、加载失败都在这里）；Qt 的布局警告这类噪声不转。
@@ -1010,8 +1023,9 @@ impl Shared {
             return Err("the plugin UI is currently supported on macOS only".into());
         }
         let mut edit = self.edit.lock().unwrap();
-        if edit.as_ref().is_some_and(|e| e.open) {
-            return Err("a plugin window is already open: finish or discard it first".into());
+        if let Some(e) = edit.as_mut().filter(|e| e.open) {
+            let same = e.fx.is_none() && e.track == ti && capture.is_none() && !fresh;
+            return front_or_busy(e, same);
         }
         let (name, current, mut params) = {
             let st = self.state.lock().unwrap();
@@ -1092,8 +1106,8 @@ impl Shared {
             return Err("the plugin UI is currently supported on macOS only".into());
         }
         let mut edit = self.edit.lock().unwrap();
-        if edit.as_ref().is_some_and(|e| e.open) {
-            return Err("a plugin window is already open: finish or discard it first".into());
+        if let Some(e) = edit.as_mut().filter(|e| e.open) {
+            return front_or_busy(e, e.fx.as_ref().is_some_and(|(n, i)| n == node && *i == index));
         }
         let text = std::fs::read_to_string(&self.path).map_err(|e| format!("failed to read the project: {e}"))?;
         let v: Value = serde_json::from_str(&text).map_err(|e| format!("failed to parse the project: {e}"))?;

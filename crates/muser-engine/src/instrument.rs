@@ -985,7 +985,7 @@ impl Playable for PluginInstrument {
         self.pending.clear();
         self.clock.advance(buffer.num_frames());
         self.blocks = self.blocks.wrapping_add(1);
-        if self.blocks % 16 == 0 {
+        if self.blocks.is_multiple_of(16) {
             let _ = self.opened.plugin.pump();
         }
     }

@@ -572,7 +572,7 @@ impl Processor<f32> for HostedPlugin {
         self.clock.advance(buffer.num_frames());
         // 定期回应插件的请求（参数回报、重启请求等），避免队列积压。
         self.blocks = self.blocks.wrapping_add(1);
-        if self.blocks % 16 == 0 {
+        if self.blocks.is_multiple_of(16) {
             let _ = self.opened.plugin.pump();
         }
     }
