@@ -397,7 +397,7 @@
     </section>
     <main>
       <section class="timeline-card">
-        <div class="section-bar"><h2 data-i18n="tracksMix">Tracks & Mix</h2><span class="section-note" data-i18n="expandHint">Click to place the playhead on the nearest beat (⌥ for anywhere) · right-drag the ruler to set a loop</span></div>
+        <div class="section-bar"><h2 data-i18n="tracksMix">Tracks & Mix</h2><span class="section-note" data-i18n="expandHint">Click snaps the playhead to the nearest bar line (⇧ beat, ⌥ anywhere) · right-drag the ruler to set a loop</span></div>
         <div class="arrangement">
           <div class="overview-row">
             <div class="overview-label" data-i18n="masterOverview">MASTER OVERVIEW</div>
@@ -495,7 +495,7 @@ const I18N = {
     liveView: "Live view", currentProject: "Current project", playShortcut: "Play / pause", loading: "Preparing audio engine…",
     positionDuration: "Position / Duration", masterOverview: "MASTER OVERVIEW",
     loop: "Loop", fullSong: "Full song", clearLoop: "Clear loop range", monitor: "Monitor", tracksMix: "Tracks & Mix",
-    expandHint: "Click to place the playhead on the nearest beat (⌥ for anywhere) · right-drag the ruler to set a loop",
+    expandHint: "Click snaps the playhead to the nearest bar line (⇧ beat, ⌥ anywhere) · right-drag the ruler to set a loop",
     commonChannels: "Shared channels", busesMaster: "Buses & Master", pendingChanges: "Pending changes",
     relativeProject: "Compared with project file", mixMatches: "Mix matches the project file",
     save: "Save to project file", reset: "Reset changes", copyJson: "Copy JSON", signalFlow: "Signal flow",
@@ -563,7 +563,7 @@ const I18N = {
     liveView: "实时视图", currentProject: "当前工程", playShortcut: "播放 / 暂停", loading: "引擎正在准备音频…",
     positionDuration: "位置 / 时长", masterOverview: "主输出总览",
     loop: "循环播放", fullSong: "整首", clearLoop: "清除循环范围", monitor: "监听", tracksMix: "轨道与混音",
-    expandHint: "单击定位，吸附到最近的拍（按住 ⌥ 自由定位）· 右键拖动标尺设循环区间",
+    expandHint: "单击定位吸附到最近的小节线（按住 ⇧ 吸附到拍，⌥ 自由定位）· 右键拖动标尺设循环区间",
     commonChannels: "公共通道", busesMaster: "总线与 Master", pendingChanges: "待保存改动",
     relativeProject: "相对工程文件", mixMatches: "混音与工程文件一致",
     save: "保存到工程文件", reset: "撤销改动", copyJson: "复制 JSON", signalFlow: "信号流",
@@ -2025,8 +2025,15 @@ function seekFromCanvas(e) {
   if (performance.now() < suppressTimelineClickUntil) return;
   const r = e.currentTarget.getBoundingClientRect();
   const frame = Math.floor(Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * total);
-  // 点一下定位吸附到最近的拍线（和循环区间一样）；按住 Option / Alt 不吸附。
-  seek(e.altKey ? frame : snapLoopFrame(frame));
+  // 点一下定位吸附到最近的小节线（轨道上画的就是小节线）；按住 Shift 吸附到拍，按住 Option / Alt 不吸附。
+  seek(e.altKey ? frame : e.shiftKey ? snapLoopFrame(frame) : snapBarFrame(frame));
+}
+function snapBarFrame(frame) {
+  if (!data || !data.bar_starts || !data.bar_starts.length) return Math.round(frame);
+  const b = beatAt(frame / sr), bars = data.bar_starts;
+  let best = bars[0];
+  for (const x of bars) { if (Math.abs(x - b) < Math.abs(best - b)) best = x; if (x > b) break; }
+  return Math.max(0, Math.min(total, Math.round(secsAt(best) * sr)));
 }
 $("timeline").addEventListener("click", seekFromCanvas);
 function frameFromTimelinePointer(e) {
