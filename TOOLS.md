@@ -109,7 +109,7 @@ signal chain (effect blocks -> destination, send amounts), and an overall signal
 - "Save to project file" writes back only what was changed on the page (faders, mutes, effect bypass and parameters, recordings, split / moved audio clips, whole-piece transpose); "Undo changes" returns to the values in the file; "Copy changes JSON" hands the changes to the AI.
 - **Record vocals** (right panel): record from the playhead or the loop range, with count-in, fine latency adjustment, and "measure latency"; each take is stored at `recordings/<track-name>-take-NN.wav` (manifest `recordings/takes.json`),
   and pasted onto the audio track (pending save); in the list each take has a "Use" checkbox (several can be ticked and overlap, e.g. when recording line by line) and "Delete". The project's `lyrics` are shown at the bottom of the screen as karaoke (the "Lyrics" toggle).
-- **Audio clips**: ✂ (or C) splits, drag to move (Shift snaps to 1/16), and with a clip selected ← → nudge by 10 ms each. **Transpose − / +**: transpose the whole piece (`transpose`).
+- **Audio clips**: ✂ (or C) splits, drag to move (Shift snaps to 1/16), and with a clip selected ← → nudge by 10 ms each, Delete removes it (e.g. the unwanted piece after a cut; the recording stays in the list). **Transpose − / +**: transpose the whole piece (`transpose`).
 - If the project file is changed by someone else (the AI): it re-renders automatically and the page refreshes (unsaved changes on the page are discarded).
 - Listens on the local machine only, with no authentication (requests with a non-local Host/Origin are rejected). On a remote machine, access it with SSH port forwarding. Use a release build.
 
