@@ -914,16 +914,25 @@ function renderStatus(s) {
   badge.className = "badge " + (s.rendering || partial ? "busy" : "live");
 }
 async function poll() {
+  let s = null;
   try {
-    const s = await poll1();
-    const partial = s.progress < 1;
-    if ($("banner").textContent === t("disconnectedMessage")) banner("");
-    renderStatus(s);
-    if (!data || s.version !== data.version || s.error !== data.error || partial || (lastStatus && lastStatus.progress < 1)) await refresh();
-    lastStatus = s;
+    s = await poll1();
   } catch (_) {
+    // 只有请求本身失败才是"连接断开"；页面自己的错误另外报（之前两种混在一起，页面出错也显示成断开）。
     $("badge").textContent = t("disconnected"); $("badge").className = "badge";
     banner(t("disconnectedMessage"), "err");
+  }
+  if (s) {
+    try {
+      const partial = s.progress < 1;
+      if ($("banner").textContent === t("disconnectedMessage")) banner("");
+      renderStatus(s);
+      if (!data || s.version !== data.version || s.error !== data.error || partial || (lastStatus && lastStatus.progress < 1)) await refresh();
+      lastStatus = s;
+    } catch (e) {
+      console.error(e);
+      banner(t("failed") + (e && e.message || e), "err");
+    }
   }
   setTimeout(poll, lastStatus && (lastStatus.rendering || lastStatus.progress < 1 || (device && (device.playing || device.seeking))) ? 250 : 800);
 }
