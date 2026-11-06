@@ -70,7 +70,7 @@
   .shortcut { color: var(--faint); font-size: 11px; white-space: nowrap; }
   kbd { margin-left: 6px; padding: 3px 7px; color: var(--dim); background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 6px; font: 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }
   /* 固定在底部：页面滚到哪里都看得到。 */
-  .banner { display: none; position: fixed; z-index: 40; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: min(760px, 86vw);
+  .banner { display: none; position: fixed; z-index: 45; left: 50%; top: 18px; transform: translateX(-50%); max-width: min(760px, 86vw);
     padding: 11px 16px; border-radius: 10px; white-space: pre-wrap; border: 1px solid transparent; box-shadow: 0 16px 40px rgba(0,0,0,.45); }
   .banner.err { display: block; color: #ffd0d6; background: #3a1620; border-color: rgba(255,124,139,.45); }
   .banner.info { display: block; color: var(--warn); background: #2b2312; border-color: rgba(255,196,107,.35); pointer-events: none; }
@@ -917,6 +917,7 @@ async function poll() {
   try {
     const s = await poll1();
     const partial = s.progress < 1;
+    if ($("banner").textContent === t("disconnectedMessage")) banner("");
     renderStatus(s);
     if (!data || s.version !== data.version || s.error !== data.error || partial || (lastStatus && lastStatus.progress < 1)) await refresh();
     lastStatus = s;
