@@ -66,6 +66,13 @@ pub fn export(project: &Project, fps: Option<u32>, settings: RenderSettings) -> 
         "master": { "gain_db": p.master_gain_db, "automation": curves(&p.automation, beats, &tm) },
         "notes_format": "[start_seconds, midi_pitch, velocity_0_127, duration_seconds]",
     });
+    // 给画面卡节奏：每一小节、每一拍在第几秒（速度、拍号会变时照样准）。
+    let map = p.bar_map();
+    let n_bars = map.bars_until(beats);
+    out["bars"] = json!((0..=n_bars).map(|b| r3(tm.secs_at(map.bar_start(b)))).collect::<Vec<_>>());
+    out["beats"] = json!((0..=beats.floor() as usize).map(|b| r3(tm.secs_at(b as f64))).collect::<Vec<_>>());
+    // 歌词：每一句、每个字唱在第几秒（和 muser view 的卡拉 OK 一样，按引导旋律）。没有带歌词的音轨时为空。
+    out["lyrics"] = json!(crate::lyric::karaoke(project));
     if let Some(fps) = fps.filter(|&f| f > 0) {
         let audio = crate::render::render(project, settings)?;
         out["envelope"] = envelope(&audio, settings.sample_rate, fps);

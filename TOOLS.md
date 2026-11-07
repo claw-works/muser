@@ -204,7 +204,7 @@ A folder for a DAW: `<name>.mid` (all instrument tracks, tempo, time signature, 
 and `IMPORT.md` (import steps for Live, Cubase, Logic, FL Studio, Studio One, Bitwig, REAPER, GarageBand, Pro Tools).
 
 ### `muser export-data <project> [-o data.json] [--fps 30]`
-JSON for visualization: each track's notes `[start seconds, pitch, velocity, duration seconds]`, sections (start and end seconds, time signature), tracks' and master's automation curves; `--fps` adds the per-frame overall / low-frequency level (dB).
+JSON for visualization: each track's notes `[start seconds, pitch, velocity, duration seconds]`, sections (start and end seconds, time signature), tracks' and master's automation curves, `bars` / `beats` (the second each bar and beat starts, following tempo and meter changes), and `lyrics` (each line and each syllable with its start / end seconds, timed by the guide melody, as in the `muser view` karaoke); `--fps` adds the per-frame overall / low-frequency level (dB).
 
 ### `muser takes <project> [--timing] [--clean]`
 Each take of a vocal recording: start, length, level, the part actually sung, and whether the project uses it. `--timing` measures, phrase by phrase, how many milliseconds early / late the vocal is against the guide melody (the track with `lyric`);
