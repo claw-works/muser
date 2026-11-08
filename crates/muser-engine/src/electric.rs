@@ -1,4 +1,4 @@
-//! 电吉他（`guitar.electric`、`guitar.electric_clean`）：manguebyte 的拨弦物理模型，没有琴箱，用电磁拾音器听弦。
+//! 电吉他（`yinse.pluck.electric_guitar`、`yinse.pluck.electric_guitar_clean`）：manguebyte 的拨弦物理模型，没有琴箱，用电磁拾音器听弦。
 //!
 //! 和原声吉他的区别都在参数上：实心琴身让弦响得久、高频留得住（失真之后才有"长延音"）；
 //! 拾音器只听它下面那一点的振动，位置决定亮暗（琴桥亮而尖、琴颈圆而暖），线圈决定共振峰
@@ -218,7 +218,7 @@ impl Electric {
 
 /// 这条音轨的扫弦间隔（秒）：电吉他取参数 `strum`（缺省 [`ElectricParams`] 的），其它乐器不扫。
 pub(crate) fn strum_seconds(instrument: &str, params: &muser_core::InstrumentParams) -> f64 {
-    if !instrument.trim().to_lowercase().starts_with("guitar.electric") {
+    if !instrument.trim().to_lowercase().starts_with("yinse.pluck.electric_guitar") {
         return 0.0;
     }
     let ms = params.get("strum").and_then(serde_json::Value::as_f64).unwrap_or(ElectricParams::humbucker_bridge().strum_ms);

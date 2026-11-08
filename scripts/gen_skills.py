@@ -258,7 +258,7 @@ EFFECT_EXTRA = {
     },
     "distortion": {
         "presets": [
-            ("Crunch rhythm guitar (guitar.electric)", {"type": "distortion", "mode": "overdrive", "drive_db": 12, "cabinet": "guitar"}),
+            ("Crunch rhythm guitar (yinse.pluck.electric_guitar)", {"type": "distortion", "mode": "overdrive", "drive_db": 12, "cabinet": "guitar"}),
             ("Rock / metal guitar (power chords)", {"type": "distortion", "mode": "distortion", "drive_db": 28, "low_cut_hz": 120, "tone_hz": 4000, "cabinet": "guitar"}),
             ("Fuzz lead", {"type": "distortion", "mode": "fuzz", "drive_db": 30, "tone_hz": 3500, "cabinet": "guitar"}),
             ("Gritty bass (clean lows kept)", {"type": "distortion", "mode": "overdrive", "drive_db": 18, "low_cut_hz": 40, "cabinet": "bass", "mix": 0.5}),
@@ -387,8 +387,8 @@ FAMILY_PAGES = {
     "guitar": ("Guitar", "guitar.md", [
         "Physically modeled plucked strings: a note starts as a pluck right away, and `length` decides when it is damped. For broken chords, overlapping the notes is more natural.",
         "Strumming: on `guitar.nylon` / `guitar.steel`, stagger the start of the notes of the same chord by 0.01-0.03 beat, from the low note to the high note. "
-        "`guitar.electric*` strum by themselves: write the chord's notes at the same start and set `strum` (ms between strings); downstrokes fall on the beat and the eighths, upstrokes on the off-beats.",
-        "**Electric guitar into an amp**: `guitar.electric` (humbucker, bridge) is made for distortion: put `{ \"type\": \"distortion\", \"mode\": \"distortion\", \"drive_db\": 24-30, \"cabinet\": \"guitar\" }` after it (or a guitar amp plugin). "
+        "`yinse.pluck.electric_guitar*` strum by themselves: write the chord's notes at the same start and set `strum` (ms between strings); downstrokes fall on the beat and the eighths, upstrokes on the off-beats.",
+        "**Electric guitar into an amp**: `yinse.pluck.electric_guitar` (humbucker, bridge) is made for distortion: put `{ \"type\": \"distortion\", \"mode\": \"distortion\", \"drive_db\": 24-30, \"cabinet\": \"guitar\" }` after it (or a guitar amp plugin). "
         "Play power chords (root + fifth + octave); thirds turn muddy under heavy drive. Its long sustain is what makes held notes and leads sing.",
         "**Palm mute per note**: `\"mute\": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.",
         "Two rhythm tracks of the same riff panned left and right (one with `\"pickup\": \"middle\"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `\"pickup\": \"neck\"` is rounder; bends use the note's `bend`.",
@@ -480,8 +480,8 @@ PARAM_EXAMPLES = {
     "synth": [("FM sound with a longer tail", "synth.fm", {"release": 1.2})],
     "guitar": [("Darker, duller fingerpicking (plucked near the neck)", "guitar.nylon", {"tone": 2500, "pluck_brightness": 1500, "pluck_position": 0.3}),
                ("Muted (palm mute feel) on an acoustic", "guitar.steel", {"decay": 0.3, "release": 0.05}),
-               ("Electric: a warm neck-pickup humbucker lead with a slow strum", "guitar.electric", {"pickup": "neck", "strum": 15}),
-               ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "guitar.electric_clean", {"pickup": "bridge", "mute": 0.4})],
+               ("Electric: a warm neck-pickup humbucker lead with a slow strum", "yinse.pluck.electric_guitar", {"pickup": "neck", "strum": 15}),
+               ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "yinse.pluck.electric_guitar_clean", {"pickup": "bridge", "mute": 0.4})],
     "bass": [("Duller, shorter fingerstyle bass", "bass.finger", {"tone": 1200, "decay": 1.0}),
              ("Screaming acid (together with accent notes)", "bass.acid", {"cutoff": 250, "resonance": 0.9, "env_mod": 0.8, "decay": 0.3, "accent": 1.0})],
     "organ": [("Soft ballad drawbars + percussion harmonic", "organ.jazz", {"drawbars": "838000000", "percussion": "second", "click": 0.2})],

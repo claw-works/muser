@@ -8,8 +8,8 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 |---|---|---|---|
 | `guitar.nylon` | 40–84 | 8 | Nylon-string classical guitar: warm and soft; suited to arpeggios, Latin, folk |
 | `guitar.steel` | 40–84 | 8 | Steel-string folk guitar: bright and crisp; suited to strumming and arpeggios |
-| `guitar.electric` | 40–88 | 8 | Electric guitar, humbucker on the bridge pickup: long sustain, thick and biting; made for distortion (rock / metal riffs, power chords, leads). Palm mute per note |
-| `guitar.electric_clean` | 40–88 | 8 | Electric guitar, single coil on the neck pickup: clean, glassy and warm; funk, pop, blues and jazz comping, arpeggios |
+| `yinse.pluck.electric_guitar` | 40–88 | 8 | Electric guitar, humbucker on the bridge pickup: long sustain, thick and biting; made for distortion (rock / metal riffs, power chords, leads). Palm mute per note |
+| `yinse.pluck.electric_guitar_clean` | 40–88 | 8 | Electric guitar, single coil on the neck pickup: clean, glassy and warm; funk, pop, blues and jazz comping, arpeggios |
 
 ## Adjustable parameters of `guitar.nylon`, `guitar.steel`
 
@@ -33,7 +33,7 @@ Preset values of each instrument:
 | `guitar.nylon` | 3 | 0.18 | 6500 | 2800 | 0.16 | 0 |
 | `guitar.steel` | 4.5 | 0.25 | 11000 | 6500 | 0.12 | 0 |
 
-## Adjustable parameters of `guitar.electric`, `guitar.electric_clean`
+## Adjustable parameters of `yinse.pluck.electric_guitar`, `yinse.pluck.electric_guitar_clean`
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
@@ -54,8 +54,8 @@ Preset values of each instrument:
 
 | instrument | `pickup` | `pickup_type` | `mute` | `strum` | `decay` | `release` | `pluck_brightness` | `pluck_position` |
 |---|---|---|---|---|---|---|---|---|
-| `guitar.electric` | 0 | 1 | 0.85 | 8 | 9 | 0.08 | 7000 | 0.13 |
-| `guitar.electric_clean` | 2 | 0 | 0.85 | 8 | 9 | 0.08 | 7000 | 0.13 |
+| `yinse.pluck.electric_guitar` | 0 | 1 | 0.85 | 8 | 9 | 0.08 | 7000 | 0.13 |
+| `yinse.pluck.electric_guitar_clean` | 2 | 0 | 0.85 | 8 | 9 | 0.08 | 7000 | 0.13 |
 
 ### Tuning examples
 
@@ -74,20 +74,20 @@ Preset values of each instrument:
 - Electric: a warm neck-pickup humbucker lead with a slow strum
 
   ```json
-  { "instrument": "guitar.electric", "instrument_params": {"pickup": "neck", "strum": 15} }
+  { "instrument": "yinse.pluck.electric_guitar", "instrument_params": {"pickup": "neck", "strum": 15} }
   ```
 
 - Electric: glassy, twangy single coil on the bridge, lighter palm mutes
 
   ```json
-  { "instrument": "guitar.electric_clean", "instrument_params": {"pickup": "bridge", "mute": 0.4} }
+  { "instrument": "yinse.pluck.electric_guitar_clean", "instrument_params": {"pickup": "bridge", "mute": 0.4} }
   ```
 
 
 ## Tips and common mistakes
 
 - Physically modeled plucked strings: a note starts as a pluck right away, and `length` decides when it is damped. For broken chords, overlapping the notes is more natural.
-- Strumming: on `guitar.nylon` / `guitar.steel`, stagger the start of the notes of the same chord by 0.01-0.03 beat, from the low note to the high note. `guitar.electric*` strum by themselves: write the chord's notes at the same start and set `strum` (ms between strings); downstrokes fall on the beat and the eighths, upstrokes on the off-beats.
-- **Electric guitar into an amp**: `guitar.electric` (humbucker, bridge) is made for distortion: put `{ "type": "distortion", "mode": "distortion", "drive_db": 24-30, "cabinet": "guitar" }` after it (or a guitar amp plugin). Play power chords (root + fifth + octave); thirds turn muddy under heavy drive. Its long sustain is what makes held notes and leads sing.
+- Strumming: on `guitar.nylon` / `guitar.steel`, stagger the start of the notes of the same chord by 0.01-0.03 beat, from the low note to the high note. `yinse.pluck.electric_guitar*` strum by themselves: write the chord's notes at the same start and set `strum` (ms between strings); downstrokes fall on the beat and the eighths, upstrokes on the off-beats.
+- **Electric guitar into an amp**: `yinse.pluck.electric_guitar` (humbucker, bridge) is made for distortion: put `{ "type": "distortion", "mode": "distortion", "drive_db": 24-30, "cabinet": "guitar" }` after it (or a guitar amp plugin). Play power chords (root + fifth + octave); thirds turn muddy under heavy drive. Its long sustain is what makes held notes and leads sing.
 - **Palm mute per note**: `"mute": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.
 - Two rhythm tracks of the same riff panned left and right (one with `"pickup": "middle"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `"pickup": "neck"` is rounder; bends use the note's `bend`.

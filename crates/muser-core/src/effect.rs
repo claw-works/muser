@@ -973,7 +973,7 @@ pub static EFFECT_SPECS: &[EffectSpec] = &[
     EffectSpec {
         name: "distortion",
         summary: "Distortion modelled on a guitar amp (mid push before two clipping stages, cabinet with presence peak): overdrive, distortion, fuzz or wavefolding; loudness is compensated automatically, so more drive means more grit, not more volume.",
-        placement: "On a guitar, bass, organ or synth track for rock / metal / grunge; lightly (overdrive, drive 6-12) on drums or a bus for grit. For a rock guitar: guitar.electric + { \"mode\": \"distortion\", \"drive_db\": 24, \"cabinet\": \"guitar\" }; play power chords (root + fifth), not full triads, since distortion turns thirds muddy.",
+        placement: "On a guitar, bass, organ or synth track for rock / metal / grunge; lightly (overdrive, drive 6-12) on drums or a bus for grit. For a rock guitar: yinse.pluck.electric_guitar + { \"mode\": \"distortion\", \"drive_db\": 24, \"cabinet\": \"guitar\" }; play power chords (root + fifth), not full triads, since distortion turns thirds muddy.",
         params: &[
             p("drive_db", 0.0, 48.0, 18.0, "dB", "Drive. 6-12 crunch; 18-30 rock / metal; 36+ fuzz-like saturation"),
             p("tone_hz", 500.0, 12000.0, 8000.0, "Hz", "Low-pass after the distortion: lower is darker, higher adds fizz"),

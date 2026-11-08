@@ -2,7 +2,7 @@
  "name": "instruments/electric-guitar",
  "tempo": 112,
  "master_gain_db": -3,
- "description": "guitar.electric (humbucker, bridge) through the built-in distortion: palm-muted chugs and open power chords, then a lead with bends; guitar.electric_clean (single coil, neck) strums a clean progression.",
+ "description": "yinse.pluck.electric_guitar (humbucker, bridge) through the built-in distortion: palm-muted chugs and open power chords, then a lead with bends; yinse.pluck.electric_guitar_clean (single coil, neck) strums a clean progression.",
  "tracks": [
   {
    "name": "drums",
@@ -716,7 +716,7 @@
   },
   {
    "name": "rhythm L",
-   "instrument": "guitar.electric",
+   "instrument": "yinse.pluck.electric_guitar",
    "gain_db": -9,
    "pan": -0.5,
    "effects": [
@@ -1432,7 +1432,7 @@
   },
   {
    "name": "rhythm R",
-   "instrument": "guitar.electric",
+   "instrument": "yinse.pluck.electric_guitar",
    "instrument_params": {
     "pickup": "middle",
     "strum": 10
@@ -1932,7 +1932,7 @@
   },
   {
    "name": "lead",
-   "instrument": "guitar.electric",
+   "instrument": "yinse.pluck.electric_guitar",
    "instrument_params": {
     "pickup": "neck"
    },
@@ -2094,7 +2094,7 @@
   },
   {
    "name": "clean",
-   "instrument": "guitar.electric_clean",
+   "instrument": "yinse.pluck.electric_guitar_clean",
    "gain_db": -6,
    "effects": [
     {

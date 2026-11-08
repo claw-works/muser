@@ -1,7 +1,8 @@
 //! 乐器注册表与描述表。
 //!
-//! 音轨的 `instrument` 字段有三种写法：
-//! - 内置乐器名，如 `"drums.808"`、`"guitar.nylon"`、`"strings.cello"`；
+//! 音轨的 `instrument` 字段有这几种写法：
+//! - 内置乐器名，如 `"drums.808"`、`"guitar.nylon"`、`"strings.cello"`（manguebyte 自带的音色）；
+//! - muser 自己做的乐器（yinse），都在 `yinse.<发声方式>.<名字>` 下，如 `"yinse.pluck.electric_guitar"`；
 //! - poly 合成器预设，如 `"poly.moog_bass"`、`"poly.warm_analog_pad"`（共 68 个）；
 //! - `"sfz:/path/to.sfz"` 用内置 SFZ 采样器加载音色库；
 //! - `"plugin:/path/to.vst3"`（可带 `#插件id`）加载第三方 VSTi/CLAP 乐器（需 `host` 特性）。
@@ -540,8 +541,8 @@ static BUILTINS: &[Builtin] = &[
     // —— 吉他 / 贝斯（物理建模拨弦）——
     b!("guitar.nylon", [], "guitar", false, (40, 84), 8, "Nylon-string classical guitar: warm and soft; suited to arpeggios, Latin, folk", || Patch::String(StringParams::nylon_guitar(), 8)),
     b!("guitar.steel", [], "guitar", false, (40, 84), 8, "Steel-string folk guitar: bright and crisp; suited to strumming and arpeggios", || Patch::String(StringParams::steel_guitar(), 8)),
-    b!("guitar.electric", ["electric"], "guitar", false, (40, 88), 8, "Electric guitar, humbucker on the bridge pickup: long sustain, thick and biting; made for distortion (rock / metal riffs, power chords, leads). Palm mute per note", || Patch::Electric(crate::electric::ElectricParams::humbucker_bridge(), 8)),
-    b!("guitar.electric_clean", [], "guitar", false, (40, 88), 8, "Electric guitar, single coil on the neck pickup: clean, glassy and warm; funk, pop, blues and jazz comping, arpeggios", || Patch::Electric(crate::electric::ElectricParams::single_coil_neck(), 8)),
+    b!("yinse.pluck.electric_guitar", [], "guitar", false, (40, 88), 8, "Electric guitar, humbucker on the bridge pickup: long sustain, thick and biting; made for distortion (rock / metal riffs, power chords, leads). Palm mute per note", || Patch::Electric(crate::electric::ElectricParams::humbucker_bridge(), 8)),
+    b!("yinse.pluck.electric_guitar_clean", [], "guitar", false, (40, 88), 8, "Electric guitar, single coil on the neck pickup: clean, glassy and warm; funk, pop, blues and jazz comping, arpeggios", || Patch::Electric(crate::electric::ElectricParams::single_coil_neck(), 8)),
     b!("bass.finger", [], "bass", false, (28, 60), 4, "Fingerstyle electric bass: round and full; the standard bass for pop / funk / R&B", || Patch::String(StringParams::finger_bass(), 4)),
     b!("bass.slap", [], "bass", false, (28, 60), 4, "Slap bass: percussive and punchy; funk / disco", || Patch::String(StringParams::slap_bass(), 4)),
     b!("bass.acid", ["acid"], "bass", false, (24, 60), 1, "TB-303 style acid bass (monophonic, overlapping notes glide); acid house / techno", || Patch::Acid(AcidParams::classic())),

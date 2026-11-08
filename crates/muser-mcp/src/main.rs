@@ -127,7 +127,7 @@ struct NoteSpec {
     /// Accent (optional). Drum kits, acid bass, etc. make accented notes louder and brighter.
     #[serde(default)]
     accent: Option<bool>,
-    /// Palm mute (optional, guitar.electric*): a short, dark note; how much is the instrument's `mute` parameter.
+    /// Palm mute (optional, yinse.pluck.electric_guitar*): a short, dark note; how much is the instrument's `mute` parameter.
     #[serde(default)]
     mute: Option<bool>,
     /// Pitch bend (guitar bends etc., optional): `[[beat, semitones], ...]`, beats relative to the note start and increasing, semitones within ±2. A bend up: `[[0, 0], [0.25, 2]]`.

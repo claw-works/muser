@@ -112,7 +112,7 @@ section content that fills only a short stretch with no `length` written (so it 
 | Drum kits | [drums.md](skills/instruments/drums.md) | `drums.808` `drums.909` `drums.acoustic` `drums.trap` `drums.lofi` ... 10 kits |
 | Synth presets | [poly.md](skills/instruments/poly.md) | 68: `poly.moog_bass` `poly.trance_supersaw` `poly.warm_analog_pad` `poly.juno_keys` ...; the full sound `patch` and the machine's sound library (`muser poly list / show`) |
 | General synths | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
-| Guitar | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` `guitar.electric` `guitar.electric_clean` |
+| Guitar | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` `yinse.pluck.electric_guitar` `yinse.pluck.electric_guitar_clean` |
 | Bass | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
 | Organ | [organ.md](skills/instruments/organ.md) | `organ.jazz` `organ.gospel` `organ.full` `organ.ballad` |
 | Mallet percussion | [mallet.md](skills/instruments/mallet.md) | `mallet.marimba` `mallet.vibraphone` `mallet.kalimba` ... |
