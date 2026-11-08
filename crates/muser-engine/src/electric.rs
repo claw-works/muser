@@ -93,15 +93,14 @@ impl ElectricParams {
         let m = self.mute.clamp(0.0, 1.0);
         let mut muted = open;
         // 掌根压在琴桥上：弦很快停下来，高频先没。
-        // 衰减按比例缩短（对数刻度）：深浅 1 时约 0.1 秒，0.85 时约 0.2 秒。
-        muted.decay = (open.decay * (0.1 / open.decay).min(1.0).powf(m)).max(0.05);
+        // 掌根压在弦上靠琴桥的地方：弦的泛音很快没了，可拨片还是亮的（起音的"咔"留着，不然像合成器的"嘟"）；
+        // 拾音器不变。衰减按对数刻度缩短：深浅 0.85（默认）约 0.4 秒，1 约 0.23 秒。
+        muted.decay = (open.decay * (0.23 / open.decay).min(1.0).powf(m)).max(0.05);
         muted.decay_per_octave = 1.0;
-        muted.high_decay = (open.high_decay * lerp(1.0, 0.15, m)).max(0.01);
-        muted.pluck_brightness = (open.pluck_brightness * lerp(1.0, 0.3, m)).max(100.0);
-        // 掌根也吸掉高频：闷音更暗、只剩低频的"咚"。
-        muted.tone = open.tone * lerp(1.0, 0.45, m);
-        muted.tone_q = lerp(open.tone_q, 0.8, m);
-        muted.release = open.release.min(0.04);
+        muted.high_decay = (open.high_decay * lerp(1.0, 0.3, m)).max(0.01);
+        muted.pluck_brightness = (open.pluck_brightness * lerp(1.0, 0.75, m)).max(100.0);
+        muted.pluck_noise = (open.pluck_noise * lerp(1.0, 1.6, m)).min(1.0);
+        muted.release = open.release.min(0.05);
         muted.level = open.level * lerp(1.0, 1.25, m);
         (open, muted)
     }
@@ -244,7 +243,7 @@ mod tests {
         let single = ElectricParams::single_coil_neck().strings().0;
         assert!(single.tone > neck.tone && single.tone_q > neck.tone_q);
         let (open, muted) = ElectricParams::humbucker_bridge().strings();
-        assert!(muted.decay < open.decay * 0.1 && muted.pluck_brightness < open.pluck_brightness);
+        assert!(muted.decay < open.decay * 0.1 && muted.high_decay < open.high_decay && muted.tone == open.tone);
         let none = ElectricParams { mute: 0.0, ..ElectricParams::humbucker_bridge() }.strings();
         assert_eq!(none.1.decay, none.0.decay);
         assert!(upstroke(1.5) && upstroke(2.25) && !upstroke(3.0) && !upstroke(0.98));
