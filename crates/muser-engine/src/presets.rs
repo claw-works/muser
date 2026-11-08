@@ -69,6 +69,9 @@ pub fn find(p: &PluginRef, key: &str) -> Result<Preset, String> {
     let hits: Vec<&Preset> = all.iter().filter(|x| x.name.eq_ignore_ascii_case(key)).collect();
     match hits.as_slice() {
         [one] => Ok((*one).clone()),
+        [] if p.name.to_lowercase().starts_with("serum 2") && key.to_lowercase().ends_with(".fxp") => {
+            Err(format!("'{key}' is a Serum 1 preset, which muser does not read: open it in Serum 2 and save it as a .SerumPreset, then use that"))
+        }
         [] => Err(format!("{} has no sound named '{key}' (list them with `muser sounds presets '{}'`)", p.name, p.spec())),
         many => Err(format!("{} sounds are named '{key}'; give the file path instead: {}", many.len(), many.iter().map(|x| x.file.as_str()).collect::<Vec<_>>().join(", "))),
     }
