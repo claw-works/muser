@@ -69,11 +69,11 @@ impl AccordionParams {
     }
     /// 干净的手风琴：两片 8 尺几乎不走音，加 16 尺，民谣、探戈伴奏。
     pub fn dry() -> Self {
-        Self { register: 0.0, musette: 4.0, cassotto: 0.45, ..Self::musette() }
+        Self { register: 0.0, musette: 4.0, cassotto: 0.35, ..Self::musette() }
     }
     /// 班多钮：16 尺 + 8 尺，偏暗，起振稍慢。
     pub fn bandoneon() -> Self {
-        Self { register: 6.0, musette: 3.0, cassotto: 0.75, attack: 0.04, ..Self::musette() }
+        Self { register: 6.0, musette: 3.0, cassotto: 0.45, attack: 0.035, ..Self::musette() }
     }
 }
 
@@ -141,13 +141,16 @@ impl AccordionVoice {
 
     /// 第 `k` 个泛音（从 1 起）在风压 `p`、簧片室 `c` 下的相对音量。
     fn amp(k: usize, f: f64, p: f64, c: f64) -> f64 {
-        // 风压大，簧片摆得更狠，高次泛音更多（倾斜变缓）。
-        let tilt = 1.25 - 0.45 * p;
-        let cut = 7_000.0 - 4_500.0 * c;
+        // 簧片每一周只开一小段（约三成）：放出去的风是一串窄脉冲，泛音缓慢下降，按 |sin(πk·0.3)| 起伏（有的泛音弱），
+        // 这是簧片"鼻音、发冲"的来源；平滑地按 1/k 下降的是风琴的音管。风压大，簧片摆得更狠，高次泛音更多。
+        let tilt = 0.95 - 0.35 * p;
+        let comb = 0.2 + 0.8 * (core::f64::consts::PI * k as f64 * 0.3).sin().abs();
+        let cut = 9_000.0 - 5_000.0 * c;
         let lp = 1.0 / (1.0 + (f / cut).powi(4));
-        // 簧片室还有一个共鸣（约 1.2 kHz），关得越深越明显。
+        // 簧片的"咬"在 3 kHz 上下；簧片室有一个共鸣（约 1.2 kHz），关得越深越明显。
+        let bite = 1.0 + 0.5 * (-((f / 3_000.0).ln()).powi(2) * 3.0).exp();
         let body = 1.0 + 0.6 * c * (-((f / 1_200.0).ln()).powi(2) * 4.0).exp();
-        (k as f64).powf(-tilt) * lp * body
+        (k as f64).powf(-tilt) * comb * lp * bite * body
     }
 
     /// 重新排泛音的频率（音高、弯音、调律变了时）。
@@ -220,13 +223,13 @@ impl Voice<f32> for AccordionVoice {
         for r in 0..self.reeds.len() {
             for k in 1..=self.counts[r] {
                 let late = 1.0 + 0.8 * (k as f64 / PARTIALS as f64);
-                self.bank.set_air(i, PartialAir { depth: 0.012, bandwidth_hz: 30.0 });
+                self.bank.set_air(i, PartialAir { depth: 0.02, bandwidth_hz: 60.0 });
                 self.bank.start_attack(
                     i,
                     &PartialAttack {
                         delay_frames: 0,
                         rise_frames: (f64::from(rise) * late) as u32,
-                        overshoot: 0.06,
+                        overshoot: 0.15,
                         settle_frames: rise,
                         breath: 0.35,
                         breath_frames: rise * 2,

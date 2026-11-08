@@ -32,8 +32,8 @@ Preset values of each instrument:
 | instrument | `register` | `musette` | `bellows` | `shake` | `shake_rate` | `cassotto` | `attack` | `release` |
 |---|---|---|---|---|---|---|---|---|
 | `yinse.blow.accordion` | 1 | 28 | 0.7 | 0 | 5.5 | 0.2 | 0.03 | 0.06 |
-| `yinse.blow.accordion_dry` | 0 | 4 | 0.7 | 0 | 5.5 | 0.45 | 0.03 | 0.06 |
-| `yinse.blow.bandoneon` | 6 | 3 | 0.7 | 0 | 5.5 | 0.75 | 0.04 | 0.06 |
+| `yinse.blow.accordion_dry` | 0 | 4 | 0.7 | 0 | 5.5 | 0.35 | 0.03 | 0.06 |
+| `yinse.blow.bandoneon` | 6 | 3 | 0.7 | 0 | 5.5 | 0.45 | 0.035 | 0.06 |
 
 ### Tuning examples
 
