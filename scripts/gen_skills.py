@@ -394,10 +394,16 @@ FAMILY_PAGES = {
         "Two rhythm tracks of the same riff panned left and right (one with `\"pickup\": \"middle\"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `\"pickup\": \"neck\"` is rounder; bends use the note's `bend`.",
     ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
-        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝) and `yinse.bow.erhu` (二胡).",
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子), `yinse.blow.xiao` (箫).",
+        "**Tremolo** (琵琶轮指, 扬琴轮音, 古筝摇指): `\"tremolo\": true` on a note plucks or strikes it again and again for its whole length (`tremolo_rate` per second); write it on long melody notes, the way players sustain on these instruments.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
         "**Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). "
         "A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
+        "**Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. "
+        "**Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes.",
+        "**Yangqin**: struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo.",
+        "**Dizi**: high (G4-C7) and lively; a note that overlaps the next slides into it, grace notes (打音、倚音) are 1/8-beat notes just before, a trill (颤音) alternates two notes in 1/8 beats; `membrane` sets the buzz. "
+        "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
         "**Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. "
         "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin. "
         "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
@@ -500,7 +506,9 @@ PARAM_EXAMPLES = {
                ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "yinse.pluck.electric_guitar_clean", {"pickup": "bridge", "mute": 0.4})],
     "chinese": [("Guzheng without vibrato, softer picks", "yinse.pluck.guzheng", {"vibrato": 0, "pluck_brightness": 4000}),
                 ("Guzheng with a deep, slow vibrato on held notes", "yinse.pluck.guzheng", {"vibrato": 45, "vibrato_rate": 4}),
-                ("A plainer, softer erhu", "yinse.bow.erhu", {"vibrato_depth": 15, "pressure": 0.4})],
+                ("A plainer, softer erhu", "yinse.bow.erhu", {"vibrato_depth": 15, "pressure": 0.4}),
+                ("A faster pipa tremolo", "yinse.pluck.pipa", {"tremolo_rate": 16}),
+                ("A dizi with a lighter membrane and a wide folk vibrato", "yinse.blow.dizi", {"membrane": 0.3, "vibrato_depth": 30})],
     "accordion": [("Tango: bandoneon register, a darker chamber and a quick bellows shake", "yinse.blow.accordion_dry", {"register": "bandoneon", "cassotto": 0.7, "shake": 0.4}),
                   ("A dry, plain solo line", "yinse.blow.accordion", {"register": "clarinet", "musette": 0})],
     "bass": [("Duller, shorter fingerstyle bass", "bass.finger", {"tone": 1200, "decay": 1.0}),

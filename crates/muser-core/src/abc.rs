@@ -306,7 +306,7 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                         let length = if staccato { l * 0.5 } else { l };
-                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, mute: false, bend: Vec::new(), lyric: None });
+                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, mute: false, tremolo: false, bend: Vec::new(), lyric: None });
                         if tie {
                             next_tied.push(notes.len() - 1);
                         }

@@ -1,0 +1,765 @@
+{
+ "name": "instruments/chinese-tour",
+ "tempo": 76,
+ "master_gain_db": -3,
+ "key": "D",
+ "description": "A tour of the yinse Chinese instruments in D pentatonic, four bars each: pipa (a strummed sweep, crisp melody, tremolo 轮指 on long notes, a bend), guqin (low and slow, slides after the pluck 走手音, its slow vibrato), yangqin (16th-note runs, tremolo 轮音), dizi (grace notes, slides, a trill, the membrane buzz), xiao (low, breathy, slurred).",
+ "tracks": [
+  {
+   "name": "pipa",
+   "instrument": "yinse.pluck.pipa",
+   "gain_db": -2,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.2
+    }
+   ],
+   "clips": [
+    {
+     "start": 0,
+     "length": 16,
+     "notes": [
+      {
+       "pitch": 45,
+       "start": 0.0,
+       "length": 1.0,
+       "velocity": 0.9
+      },
+      {
+       "pitch": 50,
+       "start": 0.03,
+       "length": 1.0,
+       "velocity": 0.9
+      },
+      {
+       "pitch": 52,
+       "start": 0.06,
+       "length": 1.0,
+       "velocity": 0.9
+      },
+      {
+       "pitch": 57,
+       "start": 0.09,
+       "length": 1.0,
+       "velocity": 0.9
+      },
+      {
+       "pitch": 69,
+       "start": 1.0,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 1.5,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 2.0,
+       "length": 0.95,
+       "velocity": 0.78,
+       "tremolo": true
+      },
+      {
+       "pitch": 76,
+       "start": 3.0,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 3.5,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 4.0,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 4.5,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 66,
+       "start": 5.0,
+       "length": 0.95,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 6.0,
+       "length": 1.95,
+       "velocity": 0.78,
+       "tremolo": true
+      },
+      {
+       "pitch": 74,
+       "start": 8.0,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 76,
+       "start": 8.5,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 78,
+       "start": 9.0,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 76,
+       "start": 9.5,
+       "length": 0.45,
+       "velocity": 0.78,
+       "bend": [
+        [
+         0,
+         0
+        ],
+        [
+         0.25,
+         2
+        ]
+       ]
+      },
+      {
+       "pitch": 74,
+       "start": 10.0,
+       "length": 0.95,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 11.0,
+       "length": 0.95,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 12.0,
+       "length": 0.95,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 13.0,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 13.5,
+       "length": 0.45,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 62,
+       "start": 14.0,
+       "length": 1.95,
+       "velocity": 0.78,
+       "tremolo": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "guqin",
+   "instrument": "yinse.pluck.guqin",
+   "gain_db": 0,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.2
+    }
+   ],
+   "clips": [
+    {
+     "start": 16,
+     "length": 16,
+     "notes": [
+      {
+       "pitch": 50,
+       "start": 0.0,
+       "length": 2.0,
+       "velocity": 0.85
+      },
+      {
+       "pitch": 45,
+       "start": 2.0,
+       "length": 1.0,
+       "velocity": 0.85
+      },
+      {
+       "pitch": 50,
+       "start": 3.0,
+       "length": 1.0,
+       "velocity": 0.85,
+       "bend": [
+        [
+         0,
+         0
+        ],
+        [
+         0.5,
+         0
+        ],
+        [
+         0.9,
+         2
+        ]
+       ]
+      },
+      {
+       "pitch": 54,
+       "start": 4.0,
+       "length": 2.0,
+       "velocity": 0.85
+      },
+      {
+       "pitch": 52,
+       "start": 6.0,
+       "length": 1.0,
+       "velocity": 0.85
+      },
+      {
+       "pitch": 50,
+       "start": 7.0,
+       "length": 1.0,
+       "velocity": 0.85
+      },
+      {
+       "pitch": 57,
+       "start": 8.0,
+       "length": 3.0,
+       "velocity": 0.85,
+       "bend": [
+        [
+         0,
+         0
+        ],
+        [
+         1.5,
+         0
+        ],
+        [
+         2.4,
+         -2
+        ]
+       ]
+      },
+      {
+       "pitch": 50,
+       "start": 12.0,
+       "length": 4.0,
+       "velocity": 0.85
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "yangqin",
+   "instrument": "yinse.strike.yangqin",
+   "gain_db": -2,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.2
+    }
+   ],
+   "clips": [
+    {
+     "start": 32,
+     "length": 16,
+     "notes": [
+      {
+       "pitch": 62,
+       "start": 0.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 66,
+       "start": 0.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 0.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 0.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 1.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 66,
+       "start": 1.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 62,
+       "start": 1.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 57,
+       "start": 1.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 64,
+       "start": 2.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 2.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 2.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 76,
+       "start": 2.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 3.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 3.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 64,
+       "start": 3.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 59,
+       "start": 3.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 66,
+       "start": 4.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 4.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 4.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 78,
+       "start": 4.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 76,
+       "start": 5.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 5.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 5.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 5.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 6.0,
+       "length": 1.98,
+       "velocity": 0.78,
+       "tremolo": true
+      },
+      {
+       "pitch": 69,
+       "start": 8.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 8.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 8.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 76,
+       "start": 8.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 78,
+       "start": 9.0,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 76,
+       "start": 9.25,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 9.5,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 71,
+       "start": 9.75,
+       "length": 0.23,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 69,
+       "start": 10.0,
+       "length": 0.98,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 74,
+       "start": 11.0,
+       "length": 0.98,
+       "velocity": 0.78,
+       "tremolo": true
+      },
+      {
+       "pitch": 62,
+       "start": 12.0,
+       "length": 1.98,
+       "velocity": 0.78
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "dizi",
+   "instrument": "yinse.blow.dizi",
+   "gain_db": -2,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.2
+    }
+   ],
+   "clips": [
+    {
+     "start": 48,
+     "length": 16,
+     "notes": [
+      {
+       "pitch": 81,
+       "start": 0.0,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 83,
+       "start": 0.125,
+       "length": 0.335,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 0.5,
+       "length": 0.46,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 78,
+       "start": 1.0,
+       "length": 0.46,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 1.5,
+       "length": 0.52,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 83,
+       "start": 2.0,
+       "length": 0.96,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 3.0,
+       "length": 0.96,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 86,
+       "start": 4.0,
+       "length": 0.77,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 88,
+       "start": 4.75,
+       "length": 0.21,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 86,
+       "start": 5.0,
+       "length": 0.46,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 83,
+       "start": 5.5,
+       "length": 0.46,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 6.0,
+       "length": 0.96,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 78,
+       "start": 7.0,
+       "length": 0.96,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 8.0,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 83,
+       "start": 8.125,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 8.25,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 83,
+       "start": 8.375,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 8.5,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 83,
+       "start": 8.625,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 8.75,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 83,
+       "start": 8.875,
+       "length": 0.085,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 9.0,
+       "length": 0.96,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 76,
+       "start": 10.0,
+       "length": 0.46,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 78,
+       "start": 10.5,
+       "length": 0.46,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 81,
+       "start": 11.0,
+       "length": 1.02,
+       "velocity": 0.78
+      },
+      {
+       "pitch": 86,
+       "start": 12.0,
+       "length": 2.96,
+       "velocity": 0.78
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "xiao",
+   "instrument": "yinse.blow.xiao",
+   "gain_db": 4,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.2
+    }
+   ],
+   "clips": [
+    {
+     "start": 64,
+     "length": 16,
+     "notes": [
+      {
+       "pitch": 69,
+       "start": 0.0,
+       "length": 1.98,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 71,
+       "start": 2.0,
+       "length": 0.92,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 69,
+       "start": 3.0,
+       "length": 0.92,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 66,
+       "start": 4.0,
+       "length": 1.92,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 64,
+       "start": 6.0,
+       "length": 0.98,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 62,
+       "start": 7.0,
+       "length": 0.92,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 64,
+       "start": 8.0,
+       "length": 1.42,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 66,
+       "start": 9.5,
+       "length": 0.48,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 69,
+       "start": 10.0,
+       "length": 1.92,
+       "velocity": 0.7
+      },
+      {
+       "pitch": 62,
+       "start": 12.0,
+       "length": 3.92,
+       "velocity": 0.7
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

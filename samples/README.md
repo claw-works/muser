@@ -58,6 +58,8 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 - `accordion-tango`：`yinse.blow.bandoneon` 的探戈（D 小调，116 BPM）：四拍一下的 marcato 和弦（1、3 拍重音），附点旋律，长音上风箱抖动。
 - `chinese-guzheng-erhu`：D 宫五声音阶（72 BPM）：`yinse.bow.erhu` 唱旋律（多数音换弓，少数两音一弓、手指滑过去），`yinse.pluck.guzheng` 用古筝自己的手法回应：
   刮奏进出乐句、大撮（八度）、勾托（八度交替）、摇指、按音（E5 推到 F#5），长音自动揉弦。
+- `chinese-tour`：yinse 的中国乐器巡礼（D 宫五声，76 BPM，每件 4 小节）：琵琶（扫弦、轮指、推弦）→ 古琴（低、慢，弹后走手音，吟猱）→
+  扬琴（十六分跑动、轮音）→ 笛子（倚音、滑音、颤音，笛膜的嗡声）→ 箫（低、气声、连奏滑音）。
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径相对音色库，
   需设 `MUSER_SFZ_PATH` 指向你的音色库目录（见 [README.zh-CN.md](../README.zh-CN.md)）。
 

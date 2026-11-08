@@ -113,7 +113,7 @@ section content that fills only a short stretch with no `length` written (so it 
 | Synth presets | [poly.md](skills/instruments/poly.md) | 68: `poly.moog_bass` `poly.trance_supersaw` `poly.warm_analog_pad` `poly.juno_keys` ...; the full sound `patch` and the machine's sound library (`muser poly list / show`) |
 | General synths | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
 | Guitar | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` `yinse.pluck.electric_guitar` `yinse.pluck.electric_guitar_clean` |
-| Chinese traditional | [chinese.md](skills/instruments/chinese.md) | `yinse.pluck.guzheng` `yinse.bow.erhu` |
+| Chinese traditional | [chinese.md](skills/instruments/chinese.md) | `yinse.pluck.guzheng` `yinse.pluck.pipa` `yinse.pluck.guqin` `yinse.strike.yangqin` `yinse.bow.erhu` `yinse.blow.dizi` `yinse.blow.xiao` |
 | Accordion | [accordion.md](skills/instruments/accordion.md) | `yinse.blow.accordion` `yinse.blow.accordion_dry` `yinse.blow.bandoneon` |
 | Bass | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
 | Organ | [organ.md](skills/instruments/organ.md) | `organ.jazz` `organ.gospel` `organ.full` `organ.ballad` |

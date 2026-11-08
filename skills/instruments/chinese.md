@@ -7,9 +7,14 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
 | `yinse.pluck.guzheng` | 38–88 | 21 | Guzheng (古筝): bright picked strings over a big paulownia soundboard, long ringing notes, left-hand vibrato on held notes; Chinese traditional, film, new-age |
+| `yinse.pluck.pipa` | 45–88 | 12 | Pipa (琵琶): pear-shaped lute plucked with picks, crisp and grainy, shorter ring; tremolo (轮指) with the note's `tremolo`, bends (推拉) with `bend` |
+| `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): seven silk strings plucked with the fingertips, low, dark and intimate, long soft ring, slow deep vibrato (吟猱); slides (走手音) with `bend` |
+| `yinse.strike.yangqin` | 43–93 | 24 | Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo` |
+| `yinse.blow.dizi` | 67–96 | 1 | Dizi (笛子): bamboo transverse flute with a buzzing membrane (笛膜), bright and lively; one note at a time, overlapping notes slide |
+| `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide |
 | `yinse.bow.erhu` | 62–96 | 1 | Erhu (二胡): two-string fiddle with a python-skin resonator, nasal and singing, wide vibrato; slurred notes (legato clips) slide into each other. One note at a time |
 
-## Adjustable parameters of `yinse.pluck.guzheng`
+## Adjustable parameters of `yinse.pluck.guzheng`, `yinse.pluck.pipa`, `yinse.pluck.guqin`, `yinse.strike.yangqin`
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
@@ -18,6 +23,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `vibrato` | 0 – 100 cents | next note | Left-hand vibrato (揉弦) on held notes, the swing either way: 0 none; 15-25 the usual; 40+ a deep, sighing vibrato. Notes that have their own `bend` (presses, slides) get none |
 | `vibrato_rate` | 0.5 – 12 Hz | next note | How fast the vibrato swings (4-6) |
 | `vibrato_delay` | 0 – 4 s | next note | How long after the pluck the vibrato starts (players pluck, then press) |
+| `tremolo_rate` | 2 – 30 Hz (integer) | — | Notes marked `"tremolo": true` (the pipa's 轮指, the yangqin's 轮音, the guzheng's 摇指) are plucked or struck this many times a second for their whole length |
 | `decay` | 0.05 – 60 s | next note | How long a string rings (middle C to -60 dB) |
 | `release` | 0.01 – 10 s | next note | How long a string rings on after its note ends: guzheng strings are rarely damped, so this is long; 0.2 for damped, clipped notes |
 | `pluck_brightness` | 100 – 20000 Hz | next note | Pick (义甲) brightness: 9000 the bright, ringing tone; 3000 a soft, round touch |
@@ -27,9 +33,59 @@ Automation column: ✓ = notes already sounding follow immediately; next note = 
 
 Preset values of each instrument:
 
-| instrument | `vibrato` | `vibrato_rate` | `vibrato_delay` | `decay` | `release` | `pluck_brightness` | `pluck_position` |
-|---|---|---|---|---|---|---|---|
-| `yinse.pluck.guzheng` | 25 | 5.5 | 0.3 | 8 | 1.6 | 9000 | 0.08 |
+| instrument | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `pluck_brightness` | `pluck_position` |
+|---|---|---|---|---|---|---|---|---|
+| `yinse.pluck.guzheng` | 25 | 5.5 | 0.3 | 10 | 8 | 1.6 | 9000 | 0.08 |
+| `yinse.pluck.pipa` | 15 | 5 | 0.35 | 12 | 2.5 | 0.3 | 7000 | 0.12 |
+| `yinse.pluck.guqin` | 18 | 3.5 | 0.5 | 8 | 9 | 2 | 2500 | 0.12 |
+| `yinse.strike.yangqin` | 0 | 5 | 0.3 | 14 | 6 | 0.6 | 10000 | 0.12 |
+
+## Adjustable parameters of `yinse.blow.dizi`
+
+Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
+
+| Parameter | Range | Automation | Description |
+|---|---|---|---|
+| `membrane` | 0 – 1 | ✓ | The dizi's membrane (笛膜): 0 none, a plain flute; 0.6 the bright, buzzing dizi sound; 1 a loud buzz. Louder notes buzz more |
+| `attack` | 0.002 – 1 s | next note | Breath build-up: short = clear tonguing; long = soft entry |
+| `release` | 0.005 – 2 s | next note | Wind-down time after release |
+| `vibrato_rate` | 0 – 12 Hz | next note | Breath vibrato rate (5-6) |
+| `vibrato_depth` | 0 – 100 cent | next note | Vibrato depth: 0 straight; 10-20 normal; 30+ the wide folk vibrato |
+| `vibrato_delay` | 0 – 4 s | next note | Delay after a note starts before the vibrato |
+| `breath_noise` | 0 – 1 | ✓ | Breath noise: more airflow |
+| `tone` | 500 – 20000 Hz | ✓ | Final low-pass: brightness |
+
+Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../automation.md).
+
+Preset values of each instrument:
+
+| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `tone` |
+|---|---|---|---|---|---|---|---|---|
+| `yinse.blow.dizi` | 0.6 | 0.03 | 0.08 | 5.5 | 12 | 0.2 | 0.45 | 8000 |
+
+## Adjustable parameters of `yinse.blow.xiao`
+
+Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
+
+| Parameter | Range | Automation | Description |
+|---|---|---|---|
+| `attack` | 0.002 – 1 s | ✓ | Breath build-up time: short = clear tonguing; long = soft entry |
+| `release` | 0.005 – 2 s | ✓ | Wind-down time after release |
+| `vibrato_rate` | 0 – 12 Hz | ✓ | Vibrato rate. 4-6 normal |
+| `vibrato_depth` | 0 – 100 cent | ✓ | Vibrato depth (cents). 0 straight tone; 10-25 normal |
+| `vibrato_delay` | 0 – 4 s | ✓ | Delay after note start before vibrato begins |
+| `tone` | 500 – 20000 Hz | ✓ | Final low-pass: brightness |
+| `breath_noise` | 0 – 1 | ✓ | Breath noise: higher means more airflow noise |
+| `brassiness` | 0 – 1 | ✓ | Brass blare (trumpet/trombone brighten when loud) |
+| `portamento` | `true` / `false` | — | Glide between legato (overlapping) notes, like a trombone slide |
+
+Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../automation.md).
+
+Preset values of each instrument:
+
+| instrument | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `tone` | `breath_noise` | `brassiness` | `portamento` |
+|---|---|---|---|---|---|---|---|---|---|
+| `yinse.blow.xiao` | 0.09 | 0.15 | 4.5 | 10 | 0.4 | 5000 | 0.7 | 0 | true |
 
 ## Adjustable parameters of `yinse.bow.erhu`
 
@@ -74,10 +130,26 @@ Preset values of each instrument:
   { "instrument": "yinse.bow.erhu", "instrument_params": {"vibrato_depth": 15, "pressure": 0.4} }
   ```
 
+- A faster pipa tremolo
+
+  ```json
+  { "instrument": "yinse.pluck.pipa", "instrument_params": {"tremolo_rate": 16} }
+  ```
+
+- A dizi with a lighter membrane and a wide folk vibrato
+
+  ```json
+  { "instrument": "yinse.blow.dizi", "instrument_params": {"membrane": 0.3, "vibrato_depth": 30} }
+  ```
+
 
 ## Tips and common mistakes
 
-- muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝) and `yinse.bow.erhu` (二胡).
+- muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子), `yinse.blow.xiao` (箫).
+- **Tremolo** (琵琶轮指, 扬琴轮音, 古筝摇指): `"tremolo": true` on a note plucks or strikes it again and again for its whole length (`tremolo_rate` per second); write it on long melody notes, the way players sustain on these instruments.
 - Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.
 - **Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).
+- **Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. **Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes.
+- **Yangqin**: struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo.
+- **Dizi**: high (G4-C7) and lively; a note that overlaps the next slides into it, grace notes (打音、倚音) are 1/8-beat notes just before, a trill (颤音) alternates two notes in 1/8 beats; `membrane` sets the buzz. **Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.
 - **Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `"legato": true` slurs everything, which sounds like a violin. Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.

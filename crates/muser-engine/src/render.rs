@@ -156,7 +156,13 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
     let consonants = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(0.0) > 0.0;
     for (ci, clip) in track.clips.iter().enumerate() {
         // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
-        let all = crate::clip_notes(project, ti, ci).unwrap_or_default();
+        let mut all = crate::clip_notes(project, ti, ci).unwrap_or_default();
+        // 轮音（琵琶的轮指、扬琴的轮音、古筝的摇指）：拆成一串重复的音（按 clip 开头的速度）。
+        if let Some(rate) = crate::chinese::tremolo_rate(&track.instrument, &track.instrument_params) {
+            if all.iter().any(|n| n.tremolo) {
+                all = crate::chinese::expand_tremolo(&all, rate, tm.bpm_at(clip.start.0) / 60.0);
+            }
+        }
         let notes: &[muser_core::Note] = &all;
         let c0 = clip.start.0;
         // 片段里第 `b` 拍（相对片段开头）离片段开头几秒。

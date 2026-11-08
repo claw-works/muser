@@ -130,6 +130,9 @@ struct NoteSpec {
     /// Palm mute (optional, yinse.pluck.electric_guitar*): a short, dark note; how much is the instrument's `mute` parameter.
     #[serde(default)]
     mute: Option<bool>,
+    /// Tremolo (optional, pipa / yangqin / guzheng): the note is plucked or struck again and again for its whole length; how fast is the instrument's `tremolo_rate`.
+    #[serde(default)]
+    tremolo: Option<bool>,
     /// Pitch bend (guitar bends etc., optional): `[[beat, semitones], ...]`, beats relative to the note start and increasing, semitones within ±2. A bend up: `[[0, 0], [0.25, 2]]`.
     #[serde(default)]
     bend: Vec<(f64, f64)>,
@@ -790,6 +793,7 @@ impl Muser {
                 }
                 note.accent = n.accent.unwrap_or(false);
                 note.mute = n.mute.unwrap_or(false);
+                note.tremolo = n.tremolo.unwrap_or(false);
                 note.bend = n.bend;
                 clip.notes.push(note);
             }
