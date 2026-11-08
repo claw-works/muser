@@ -189,7 +189,7 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
         if let Some(prev) = notes.last_mut() {
             if (prev.start.0 - start).abs() < 1e-9 {
                 if end - start > prev.length.0 {
-                    *prev = Note { pitch, start: Beats(start), length: Beats(end - start), velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32, accent: false, bend: Vec::new(), lyric: None };
+                    *prev = Note { pitch, start: Beats(start), length: Beats(end - start), velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32, accent: false, mute: false, bend: Vec::new(), lyric: None };
                 }
                 continue;
             }
@@ -198,7 +198,7 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
                 prev.length = Beats(start - prev.start.0);
             }
         }
-        notes.push(Note { pitch, start: Beats(start), length: Beats(end - start), velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32, accent: false, bend: Vec::new(), lyric: None });
+        notes.push(Note { pitch, start: Beats(start), length: Beats(end - start), velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32, accent: false, mute: false, bend: Vec::new(), lyric: None });
     }
     let end = notes.iter().map(|n| n.start.0 + n.length.0).fold(0.0, f64::max);
     let bars = ((end / 4.0) - 1e-9).ceil().max(1.0) as u32;

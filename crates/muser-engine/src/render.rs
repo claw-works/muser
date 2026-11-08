@@ -68,7 +68,7 @@ pub enum EngineError {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Act {
     /// `ch`：带弯音的音符各占一个通道（弯音轮是整个通道的），其余为 None（乐器的通道）。
-    On { key: u8, velocity: f32, accent: bool, ch: Option<u8> },
+    On { key: u8, velocity: f32, accent: bool, mute: bool, ch: Option<u8> },
     /// 唱一个音节（`choir.*` 的音符写了 `lyric`）：在辅音开始的帧发，`lead` 帧后元音落在拍上，音符长 `len` 帧。
     Sing { syl: crate::lyric::Syl, text: crate::lyric::Text, lead: u32, len: u32, velocity: f32 },
     Off { key: u8, ch: Option<u8> },
@@ -115,6 +115,34 @@ impl Ctx {
     fn windows(&self, effects: &[muser_core::EffectSlot]) -> Vec<(usize, usize)> {
         effects.iter().map(|e| (e.from.map_or(0, |b| self.frame_at(b.0)), e.until.map_or(usize::MAX, |b| self.frame_at(b.0)))).collect()
     }
+}
+
+/// 扫弦：每个音比写的起点晚几秒。同一刻起音的 3 个以上的音是一个和弦，下扫从低音弦起、上扫从高音弦起
+/// （[`crate::electric::upstroke`]），相邻两根弦隔 `gap` 秒。`gap` 为 0 时都不动。
+fn strum_offsets(notes: &[muser_core::Note], clip_start: f64, gap: f64) -> Vec<f64> {
+    let mut out = vec![0.0; notes.len()];
+    if gap <= 0.0 {
+        return out;
+    }
+    let mut seen = vec![false; notes.len()];
+    for i in 0..notes.len() {
+        if seen[i] {
+            continue;
+        }
+        let mut chord: Vec<usize> = (i..notes.len()).filter(|&j| (notes[j].start.0 - notes[i].start.0).abs() < 1e-6).collect();
+        chord.iter().for_each(|&j| seen[j] = true);
+        if chord.len() < 3 {
+            continue;
+        }
+        chord.sort_by_key(|&j| notes[j].pitch);
+        if crate::electric::upstroke(clip_start + notes[i].start.0) {
+            chord.reverse();
+        }
+        for (rank, j) in chord.into_iter().enumerate() {
+            out[j] = rank as f64 * gap;
+        }
+    }
+    out
 }
 
 /// 一条音轨的全部演奏动作（样本帧, 动作），按时间排序；同帧先 Off 后 On。
@@ -165,6 +193,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             let lens: Vec<f64> = lengths.iter().map(|l| l.0).collect();
             muser_core::humanize::perform(&h, notes, &lens, clip.start.0, seed)
         });
+        let strums = strum_offsets(notes, c0, crate::electric::strum_seconds(&track.instrument, &track.instrument_params));
         for (ni, note) in notes.iter().enumerate() {
             let (on, raw_off, velocity) = match &performed {
                 None => {
@@ -178,6 +207,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                     (at(p.start), at(p.start + p.length), p.velocity)
                 }
             };
+            let on = on + (strums[ni] * sr) as usize;
             // 音符结束不超过 clip 边界（被裁剪）。
             let off = raw_off.min(clip_end_frame);
             if off <= on {
@@ -219,7 +249,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
                 acts.push((on - lead, Act::Sing { syl, text: crate::lyric::Text::new(text), lead: lead as u32, len: (off - on) as u32, velocity }));
             }
-            acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, ch }));
+            acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
             acts.push((off, Act::Off { key: note.pitch, ch }));
         }
         for &(a, b) in &clip.pedal {
@@ -424,7 +454,7 @@ impl LiveInstrument {
                     break;
                 }
                 match act {
-                    Act::On { key, velocity, accent, ch } => self.inst.note_on(NoteRef::new(ch.unwrap_or(self.channel), key), velocity, accent),
+                    Act::On { key, velocity, accent, mute, ch } => self.inst.note_on_muted(NoteRef::new(ch.unwrap_or(self.channel), key), velocity, accent, mute),
                     Act::Off { key, ch } => self.inst.note_off(NoteRef::new(ch.unwrap_or(self.channel), key), 0.0),
                     Act::Pedal { down } => {
                         self.inst.pedal(None, down);
@@ -1738,6 +1768,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn strums_chords_down_on_the_beat_and_up_off_it() {
+        let n = |p: u8, at: f64| muser_core::Note::new(p, at, 0.4);
+        let notes = [n(40, 0.0), n(47, 0.0), n(52, 0.0), n(40, 0.5), n(47, 0.5), n(52, 0.5), n(60, 1.0), n(64, 1.0)];
+        let o = strum_offsets(&notes, 0.0, 0.01);
+        assert_eq!(&o[..3], &[0.0, 0.01, 0.02]);
+        assert_eq!(&o[3..6], &[0.02, 0.01, 0.0]);
+        assert_eq!(&o[6..], &[0.0, 0.0], "two notes are not a strummed chord");
+        assert!(strum_offsets(&notes, 0.0, 0.0).iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
     fn wav_marks_each_section_start() {
         let p: Project = serde_json::from_value(serde_json::json!({ "name": "cues", "tempo": 120,
             "sections": { "verse": { "bars": 1 }, "chorus": { "bars": 1 } },
@@ -1982,7 +2023,7 @@ mod tests {
 
     #[test]
     fn chase_resends_held_notes_and_pedal() {
-        let on = |key| Act::On { key, velocity: 0.8, accent: false, ch: None };
+        let on = |key| Act::On { key, velocity: 0.8, accent: false, mute: false, ch: None };
         let acts = vec![
             (0, Act::Pedal { down: true }),
             (0, on(60)),

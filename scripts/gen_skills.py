@@ -258,7 +258,7 @@ EFFECT_EXTRA = {
     },
     "distortion": {
         "presets": [
-            ("Crunch rhythm guitar (guitar.steel)", {"type": "distortion", "mode": "overdrive", "drive_db": 12, "cabinet": "guitar"}),
+            ("Crunch rhythm guitar (guitar.electric)", {"type": "distortion", "mode": "overdrive", "drive_db": 12, "cabinet": "guitar"}),
             ("Rock / metal guitar (power chords)", {"type": "distortion", "mode": "distortion", "drive_db": 28, "low_cut_hz": 120, "tone_hz": 4000, "cabinet": "guitar"}),
             ("Fuzz lead", {"type": "distortion", "mode": "fuzz", "drive_db": 30, "tone_hz": 3500, "cabinet": "guitar"}),
             ("Gritty bass (clean lows kept)", {"type": "distortion", "mode": "overdrive", "drive_db": 18, "low_cut_hz": 40, "cabinet": "bass", "mix": 0.5}),
@@ -386,7 +386,12 @@ FAMILY_PAGES = {
     ]),
     "guitar": ("Guitar", "guitar.md", [
         "Physically modeled plucked strings: a note starts as a pluck right away, and `length` decides when it is damped. For broken chords, overlapping the notes is more natural.",
-        "Strumming: stagger the start of the notes of the same chord by 0.01-0.03 beat, from the low note to the high note.",
+        "Strumming: on `guitar.nylon` / `guitar.steel`, stagger the start of the notes of the same chord by 0.01-0.03 beat, from the low note to the high note. "
+        "`guitar.electric*` strum by themselves: write the chord's notes at the same start and set `strum` (ms between strings); downstrokes fall on the beat and the eighths, upstrokes on the off-beats.",
+        "**Electric guitar into an amp**: `guitar.electric` (humbucker, bridge) is made for distortion: put `{ \"type\": \"distortion\", \"mode\": \"distortion\", \"drive_db\": 24-30, \"cabinet\": \"guitar\" }` after it (or a guitar amp plugin). "
+        "Play power chords (root + fifth + octave); thirds turn muddy under heavy drive. Its long sustain is what makes held notes and leads sing.",
+        "**Palm mute per note**: `\"mute\": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.",
+        "Two rhythm tracks of the same riff panned left and right (one with `\"pickup\": \"middle\"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `\"pickup\": \"neck\"` is rounder; bends use the note's `bend`.",
     ]),
     "bass": ("Bass", "bass.md", [
         "`bass.acid*` is monophonic (polyphony 1): starting the next note before the previous one ends produces a 303-style glide; for separated notes, leave gaps between the notes.",
@@ -474,7 +479,9 @@ PARAM_EXAMPLES = {
     "drums": [("Deeper, longer kick, crisper snare, quiet closed hi-hat", "drums.808", {"kick": {"tune": -3, "decay": 1.8}, "snare": {"snap": 0.8}, "closed_hat": {"level": 0.6}})],
     "synth": [("FM sound with a longer tail", "synth.fm", {"release": 1.2})],
     "guitar": [("Darker, duller fingerpicking (plucked near the neck)", "guitar.nylon", {"tone": 2500, "pluck_brightness": 1500, "pluck_position": 0.3}),
-               ("Muted (palm mute feel)", "guitar.steel", {"decay": 0.3, "release": 0.05})],
+               ("Muted (palm mute feel) on an acoustic", "guitar.steel", {"decay": 0.3, "release": 0.05}),
+               ("Electric: a warm neck-pickup humbucker lead with a slow strum", "guitar.electric", {"pickup": "neck", "strum": 15}),
+               ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "guitar.electric_clean", {"pickup": "bridge", "mute": 0.4})],
     "bass": [("Duller, shorter fingerstyle bass", "bass.finger", {"tone": 1200, "decay": 1.0}),
              ("Screaming acid (together with accent notes)", "bass.acid", {"cutoff": 250, "resonance": 0.9, "env_mod": 0.8, "decay": 0.3, "accent": 1.0})],
     "organ": [("Soft ballad drawbars + percussion harmonic", "organ.jazz", {"drawbars": "838000000", "percussion": "second", "click": 0.2})],
@@ -494,7 +501,7 @@ POLY_EXAMPLES = [
 ]
 
 
-def params_section(family, items):
+def params_section(family, items, examples=True):
     # Instruments of one family share the same parameter table (except drum kits); take the first as representative and list each one's current values.
     infos = [describe(i["name"]) for i in items]
     rep = infos[0]
@@ -521,7 +528,7 @@ def params_section(family, items):
                 if [p["name"] for p in info["params"]] != names:
                     continue
                 lines.append(f"| `{info['name']}` | " + " | ".join(fmt_val(cur[n]) for n in names) + " |\n")
-    ex = PARAM_EXAMPLES.get(family, [])
+    ex = PARAM_EXAMPLES.get(family, []) if examples else []
     if ex:
         lines.append("\n### Tuning examples\n\n")
         for title, inst, params in ex:
@@ -546,7 +553,20 @@ def family_page(family, title, tips):
             for title, inst, params in PARAM_EXAMPLES["synth"]:
                 lines.append(f"- {title}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
     else:
-        lines.append(params_section(family, items))
+        # 同一类里参数不一样的乐器（如原声吉他与电吉他）各列一张参数表；调参示例放在最后，只列一次。
+        groups = {}
+        for i in items:
+            groups.setdefault(tuple(p["name"] for p in describe(i["name"])["params"]), []).append(i)
+        if len(groups) == 1:
+            lines.append(params_section(family, items))
+        else:
+            for group in groups.values():
+                names = ", ".join(f"`{i['name']}`" for i in group)
+                lines.append(params_section(family, group, examples=False).replace("## Adjustable parameters (instrument_params)", f"## Adjustable parameters of {names}"))
+            if PARAM_EXAMPLES.get(family):
+                lines.append("\n### Tuning examples\n\n")
+                for title, inst, params in PARAM_EXAMPLES[family]:
+                    lines.append(f"- {title}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
     if family == "drums":
         lines.append("\n## GM drum keys\n\n| pitch | Drum piece |\n|---|---|\n")
         for k, n in GM_KEYS:

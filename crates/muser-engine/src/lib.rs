@@ -154,6 +154,7 @@ pub mod live_client;
 pub mod render;
 pub mod sfz;
 pub mod presets;
+mod electric;
 pub mod xfer;
 pub mod sounds;
 

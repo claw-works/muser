@@ -51,6 +51,8 @@ scripts/render_samples.sh effects    # 只渲染一个分组
   mallet.vibraphone → mallet.kalimba → strings.cello → strings.ensemble → strings.violin_pizz →
   wind.flute → wind.sax → wind.trumpet → choir.aah → poly.moog_bass → poly.trance_supersaw →
   poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck。完整列表用 `muser instruments` 查看。
+- `electric-guitar`：`guitar.electric`（双线圈、琴桥）过内置 `distortion`：掌闷的单音 chug（音符上的 `"mute": true`）与放开的强力和弦、左右两轨（右边换中间拾音器、扫弦 10 ms、人性化），
+  主奏（琴颈拾音器、推弦、延迟）；最后 4 小节 `guitar.electric_clean`（单线圈、琴颈）十六分上下扫和弦，加 chorus / reverb。
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径相对音色库，
   需设 `MUSER_SFZ_PATH` 指向你的音色库目录（见 [README.zh-CN.md](../README.zh-CN.md)）。
 

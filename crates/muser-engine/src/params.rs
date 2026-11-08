@@ -78,6 +78,7 @@ pub(crate) fn automatable(spec: &InstParamSpec, next_note: &[&str]) -> Automatab
 // 各类乐器中"只影响下一个音"的参数（依据 manguebyte 各 Voice::set_params 的文档）。
 pub(crate) const NEXT_FM: &[&str] = &["attack", "release"];
 pub(crate) const NEXT_STRING: &[&str] = &["decay", "release", "pluck_brightness", "pluck_position", "buzz"];
+pub(crate) const NEXT_ELECTRIC: &[&str] = &["decay", "release", "pluck_brightness", "pluck_position", "mute"];
 pub(crate) const NEXT_MALLET: &[&str] = &["decay", "release", "softness", "strike_position"];
 pub(crate) const NEXT_BOWED: &[&str] = &["attack", "release", "vibrato_rate", "vibrato_depth", "vibrato_delay"];
 pub(crate) const NEXT_PIECE: &[&str] = &["tune", "decay", "level", "tone", "snap", "texture", "pan"];
@@ -212,6 +213,50 @@ pub(crate) static STRING: &[ParamDef<StringParams>] = &[
     num!("pluck_brightness", 100.0, 20000.0, "Hz", "Pluck brightness: fingernail/pick is bright (5000+), fingertip is dark (1000-2000)", |p| p.pluck_brightness),
     num!("pluck_position", 0.02, 0.5, "", "Pluck position (fraction of the way from the bridge). 0.05 near the bridge, thin and bright; 0.5 mid-string, round and hollow", |p| p.pluck_position),
     num!("buzz", 0.0, 1.0, "", "Fret buzz. 0 clean; 0.3+ percussive (slap)", |p| p.buzz),
+];
+
+pub(crate) static ELECTRIC: &[ParamDef<crate::electric::ElectricParams>] = &[
+    ParamDef {
+        spec: InstParamSpec {
+            name: "pickup",
+            kind: ParamKind::Number { min: 0.0, max: 2.0, unit: "", integer: false, names: &["bridge", "middle", "neck"] },
+            description: "Which pickup: \"bridge\" (0) bright and biting, the rock / metal sound; \"middle\" (1); \"neck\" (2) round and warm, for clean, jazz, blues leads. In-between numbers blend",
+        },
+        get: |p| json!(p.pickup),
+        set: Setter::Num(|p, v| {
+            p.pickup = v;
+            Ok(())
+        }),
+    },
+    ParamDef {
+        spec: InstParamSpec {
+            name: "pickup_type",
+            kind: ParamKind::Number { min: 0.0, max: 1.0, unit: "", integer: false, names: &["single", "humbucker"] },
+            description: "Pickup coils: \"single\" (0) a high, sharp resonance, glassy and twangy; \"humbucker\" (1) a lower, broader one with more output, thick and smooth under distortion",
+        },
+        get: |p| json!(p.coil),
+        set: Setter::Num(|p, v| {
+            p.coil = v;
+            Ok(())
+        }),
+    },
+    num!("mute", 0.0, 1.0, "", "Palm mute depth for notes marked `\"mute\": true`: 0.3 a little damped; 0.7 the tight chug of rock / metal riffs; 1 a dead thud", |p| p.mute),
+    ParamDef {
+        spec: InstParamSpec {
+            name: "strum",
+            kind: ParamKind::Number { min: 0.0, max: 50.0, unit: "ms", integer: true, names: &[] },
+            description: "Strum: when 3 or more notes start together, each string sounds this long after the previous one. Downstrokes (low string first) on the beat and the eighth notes, upstrokes (high string first) on the off-beats. 0 = all at once; 5-10 a pick strum; 20+ a slow rake",
+        },
+        get: |p| json!(p.strum_ms),
+        set: Setter::Num(|p, v| {
+            p.strum_ms = v;
+            Ok(())
+        }),
+    },
+    num!("decay", 0.05, 60.0, "s", "How long an open string rings while held (middle C to -60 dB). Long sustain is what a distorted guitar needs", |p| p.string.decay),
+    num!("release", 0.01, 10.0, "s", "How fast a note stops after it is released", |p| p.string.release),
+    num!("pluck_brightness", 100.0, 20000.0, "Hz", "Pick attack brightness: 7000 a hard pick; 2000 the thumb or a soft pick", |p| p.string.pluck_brightness),
+    num!("pluck_position", 0.02, 0.5, "", "Where the pick hits (fraction of the way from the bridge): 0.06 near the bridge, thin and twangy; 0.3 over the neck, round", |p| p.string.pluck_position),
 ];
 
 pub(crate) static ACID: &[ParamDef<AcidParams>] = &[

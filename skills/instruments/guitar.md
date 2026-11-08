@@ -8,8 +8,10 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 |---|---|---|---|
 | `guitar.nylon` | 40–84 | 8 | Nylon-string classical guitar: warm and soft; suited to arpeggios, Latin, folk |
 | `guitar.steel` | 40–84 | 8 | Steel-string folk guitar: bright and crisp; suited to strumming and arpeggios |
+| `guitar.electric` | 40–88 | 8 | Electric guitar, humbucker on the bridge pickup: long sustain, thick and biting; made for distortion (rock / metal riffs, power chords, leads). Palm mute per note |
+| `guitar.electric_clean` | 40–88 | 8 | Electric guitar, single coil on the neck pickup: clean, glassy and warm; funk, pop, blues and jazz comping, arpeggios |
 
-## Adjustable parameters (instrument_params)
+## Adjustable parameters of `guitar.nylon`, `guitar.steel`
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
@@ -31,6 +33,30 @@ Preset values of each instrument:
 | `guitar.nylon` | 3 | 0.18 | 6500 | 2800 | 0.16 | 0 |
 | `guitar.steel` | 4.5 | 0.25 | 11000 | 6500 | 0.12 | 0 |
 
+## Adjustable parameters of `guitar.electric`, `guitar.electric_clean`
+
+Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
+
+| Parameter | Range | Automation | Description |
+|---|---|---|---|
+| `pickup` | 0 – 2, or `"bridge"` / `"middle"` / `"neck"` | ✓ | Which pickup: "bridge" (0) bright and biting, the rock / metal sound; "middle" (1); "neck" (2) round and warm, for clean, jazz, blues leads. In-between numbers blend |
+| `pickup_type` | 0 – 1, or `"single"` / `"humbucker"` | ✓ | Pickup coils: "single" (0) a high, sharp resonance, glassy and twangy; "humbucker" (1) a lower, broader one with more output, thick and smooth under distortion |
+| `mute` | 0 – 1 | next note | Palm mute depth for notes marked `"mute": true`: 0.3 a little damped; 0.7 the tight chug of rock / metal riffs; 1 a dead thud |
+| `strum` | 0 – 50 ms (integer) | — | Strum: when 3 or more notes start together, each string sounds this long after the previous one. Downstrokes (low string first) on the beat and the eighth notes, upstrokes (high string first) on the off-beats. 0 = all at once; 5-10 a pick strum; 20+ a slow rake |
+| `decay` | 0.05 – 60 s | next note | How long an open string rings while held (middle C to -60 dB). Long sustain is what a distorted guitar needs |
+| `release` | 0.01 – 10 s | next note | How fast a note stops after it is released |
+| `pluck_brightness` | 100 – 20000 Hz | next note | Pick attack brightness: 7000 a hard pick; 2000 the thumb or a soft pick |
+| `pluck_position` | 0.02 – 0.5 | next note | Where the pick hits (fraction of the way from the bridge): 0.06 near the bridge, thin and twangy; 0.3 over the neck, round |
+
+Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../automation.md).
+
+Preset values of each instrument:
+
+| instrument | `pickup` | `pickup_type` | `mute` | `strum` | `decay` | `release` | `pluck_brightness` | `pluck_position` |
+|---|---|---|---|---|---|---|---|---|
+| `guitar.electric` | 0 | 1 | 0.7 | 8 | 9 | 0.08 | 7000 | 0.13 |
+| `guitar.electric_clean` | 2 | 0 | 0.7 | 8 | 9 | 0.08 | 7000 | 0.13 |
+
 ### Tuning examples
 
 - Darker, duller fingerpicking (plucked near the neck)
@@ -39,14 +65,29 @@ Preset values of each instrument:
   { "instrument": "guitar.nylon", "instrument_params": {"tone": 2500, "pluck_brightness": 1500, "pluck_position": 0.3} }
   ```
 
-- Muted (palm mute feel)
+- Muted (palm mute feel) on an acoustic
 
   ```json
   { "instrument": "guitar.steel", "instrument_params": {"decay": 0.3, "release": 0.05} }
+  ```
+
+- Electric: a warm neck-pickup humbucker lead with a slow strum
+
+  ```json
+  { "instrument": "guitar.electric", "instrument_params": {"pickup": "neck", "strum": 15} }
+  ```
+
+- Electric: glassy, twangy single coil on the bridge, lighter palm mutes
+
+  ```json
+  { "instrument": "guitar.electric_clean", "instrument_params": {"pickup": "bridge", "mute": 0.4} }
   ```
 
 
 ## Tips and common mistakes
 
 - Physically modeled plucked strings: a note starts as a pluck right away, and `length` decides when it is damped. For broken chords, overlapping the notes is more natural.
-- Strumming: stagger the start of the notes of the same chord by 0.01-0.03 beat, from the low note to the high note.
+- Strumming: on `guitar.nylon` / `guitar.steel`, stagger the start of the notes of the same chord by 0.01-0.03 beat, from the low note to the high note. `guitar.electric*` strum by themselves: write the chord's notes at the same start and set `strum` (ms between strings); downstrokes fall on the beat and the eighths, upstrokes on the off-beats.
+- **Electric guitar into an amp**: `guitar.electric` (humbucker, bridge) is made for distortion: put `{ "type": "distortion", "mode": "distortion", "drive_db": 24-30, "cabinet": "guitar" }` after it (or a guitar amp plugin). Play power chords (root + fifth + octave); thirds turn muddy under heavy drive. Its long sustain is what makes held notes and leads sing.
+- **Palm mute per note**: `"mute": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.
+- Two rhythm tracks of the same riff panned left and right (one with `"pickup": "middle"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `"pickup": "neck"` is rounder; bends use the note's `bend`.

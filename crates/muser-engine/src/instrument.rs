@@ -32,6 +32,10 @@ use muser_core::InstrumentParams;
 trait Playable {
     fn prepare(&mut self, spec: &ProcessSpec);
     fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool);
+    /// 带掌闷标记的起音（音符的 `"mute"`）。默认忽略标记（只有电吉他用）。
+    fn note_on_muted(&mut self, note: NoteRef, velocity: f32, accent: bool, _mute: bool) {
+        self.note_on(note, velocity, accent);
+    }
     fn note_off(&mut self, note: NoteRef, velocity: f32);
     fn process(&mut self, buffer: &mut AudioBuffer<f32>);
     /// 通道消息：延音踏板（CC64）、弯音轮。默认忽略（鼓组）。
@@ -90,6 +94,10 @@ impl TrackInstrument {
     }
     pub fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
         self.inner.note_on(note, velocity, accent);
+    }
+    /// 起音，带音符的掌闷标记（电吉他用，其它乐器忽略）。
+    pub fn note_on_muted(&mut self, note: NoteRef, velocity: f32, accent: bool, mute: bool) {
+        self.inner.note_on_muted(note, velocity, accent, mute);
     }
     pub fn note_off(&mut self, note: NoteRef, velocity: f32) {
         self.inner.note_off(note, velocity);
@@ -167,6 +175,33 @@ fn tunable<V: Voice<f32> + 'static, P: Copy + 'static>(
     TrackInstrument::new(Tunable { synth, params, defs, push }, 0)
 }
 
+impl Playable for crate::electric::Electric {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        crate::electric::Electric::prepare(self, spec);
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        crate::electric::Electric::note_on(self, note, velocity, accent, false);
+    }
+    fn note_on_muted(&mut self, note: NoteRef, velocity: f32, accent: bool, mute: bool) {
+        crate::electric::Electric::note_on(self, note, velocity, accent, mute);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        crate::electric::Electric::note_off(self, note, velocity);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        crate::electric::Electric::process(self, buffer);
+    }
+    fn midi(&mut self, message: MidiMessage) {
+        crate::electric::Electric::midi(self, message);
+    }
+    fn set_param(&mut self, name: &str, value: f64) {
+        crate::electric::Electric::set_param(self, name, value);
+    }
+    fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        crate::electric::Electric::set_tuning(self, tuning);
+    }
+}
+
 /// 鼓组：参数名为 `鼓件.参数`，如 `kick.tune`；改动从下一次击打生效。
 struct DrumsTunable {
     synth: Synth<DrumKitVoice, f32>,
@@ -242,6 +277,7 @@ enum Patch {
     Poly(PolySynthParams),
     Fm(FmParams),
     String(StringParams, usize),
+    Electric(crate::electric::ElectricParams, usize),
     Acid(AcidParams),
     Organ(OrganParams),
     Mallet(MalletParams, usize),
@@ -269,6 +305,7 @@ impl Patch {
             }
             Patch::Fm(p) => params::apply(params::FM, p, params),
             Patch::String(p, _) => params::apply(params::STRING, p, params),
+            Patch::Electric(p, _) => params::apply(params::ELECTRIC, p, params),
             Patch::Acid(p) => params::apply(params::ACID, p, params),
             Patch::Organ(p) => params::apply(params::ORGAN, p, params),
             Patch::Mallet(p, _) => params::apply(params::MALLET, p, params),
@@ -311,6 +348,11 @@ impl Patch {
             ),
             Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
             Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
+            Patch::Electric(p, _) => (
+                params::describe(params::ELECTRIC, p, params::NEXT_ELECTRIC),
+                "Palm-mute single notes with `\"mute\": true` on the note (depth: `mute`); bends with the note's `bend`. Chords of 3+ notes are strummed (`strum`). \
+                 Made for amps: put a `distortion` with `\"cabinet\": \"guitar\"` (or a guitar amp plugin) after it for rock tones.".into(),
+            ),
             Patch::Acid(p) => (
                 params::describe(params::ACID, p, &[]),
                 "Monophonic instrument: when the next note starts before the previous one ends, it glides over in the slide time".into(),
@@ -343,6 +385,7 @@ impl Patch {
             Patch::Poly(p) => tunable(Synth::with_voices(16, move || PolySynthVoice::new(p)), p, params::POLY, |v, p| v.set_params(p)),
             Patch::Fm(p) => tunable(Synth::with_voices(16, move || FmVoice::new(p)), p, params::FM, |v, p| v.set_params(p)),
             Patch::String(p, n) => tunable(Synth::with_voices(n, move || PluckedString::new(p)), p, params::STRING, |v, p| v.set_params(p)),
+            Patch::Electric(p, n) => TrackInstrument::new(crate::electric::Electric::new(p, n), 0),
             Patch::Acid(p) => {
                 let mut s = Synth::with_voices(1, move || AcidVoice::new(p));
                 s.set_legato(true);
@@ -497,6 +540,8 @@ static BUILTINS: &[Builtin] = &[
     // —— 吉他 / 贝斯（物理建模拨弦）——
     b!("guitar.nylon", [], "guitar", false, (40, 84), 8, "Nylon-string classical guitar: warm and soft; suited to arpeggios, Latin, folk", || Patch::String(StringParams::nylon_guitar(), 8)),
     b!("guitar.steel", [], "guitar", false, (40, 84), 8, "Steel-string folk guitar: bright and crisp; suited to strumming and arpeggios", || Patch::String(StringParams::steel_guitar(), 8)),
+    b!("guitar.electric", ["electric"], "guitar", false, (40, 88), 8, "Electric guitar, humbucker on the bridge pickup: long sustain, thick and biting; made for distortion (rock / metal riffs, power chords, leads). Palm mute per note", || Patch::Electric(crate::electric::ElectricParams::humbucker_bridge(), 8)),
+    b!("guitar.electric_clean", [], "guitar", false, (40, 88), 8, "Electric guitar, single coil on the neck pickup: clean, glassy and warm; funk, pop, blues and jazz comping, arpeggios", || Patch::Electric(crate::electric::ElectricParams::single_coil_neck(), 8)),
     b!("bass.finger", [], "bass", false, (28, 60), 4, "Fingerstyle electric bass: round and full; the standard bass for pop / funk / R&B", || Patch::String(StringParams::finger_bass(), 4)),
     b!("bass.slap", [], "bass", false, (28, 60), 4, "Slap bass: percussive and punchy; funk / disco", || Patch::String(StringParams::slap_bass(), 4)),
     b!("bass.acid", ["acid"], "bass", false, (24, 60), 1, "TB-303 style acid bass (monophonic, overlapping notes glide); acid house / techno", || Patch::Acid(AcidParams::classic())),
@@ -736,6 +781,7 @@ pub(crate) fn automation_param(
         Patch::Poly(p) => find(params::POLY, p, param, &[]),
         Patch::Fm(p) => find(params::FM, p, param, params::NEXT_FM),
         Patch::String(p, _) => find(params::STRING, p, param, params::NEXT_STRING),
+        Patch::Electric(p, _) => find(params::ELECTRIC, p, param, params::NEXT_ELECTRIC),
         Patch::Acid(p) => find(params::ACID, p, param, &[]),
         Patch::Organ(p) => find(params::ORGAN, p, param, &[]),
         Patch::Mallet(p, _) => find(params::MALLET, p, param, params::NEXT_MALLET),

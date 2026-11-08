@@ -65,6 +65,8 @@ pub static MEASURED: &[(&str, f32)] = &[
     ("synth.fm", -25.0),
     ("guitar.nylon", -21.1),
     ("guitar.steel", -31.0),
+    ("guitar.electric", -15.4),
+    ("guitar.electric_clean", -17.4),
     ("bass.finger", -18.6),
     ("bass.slap", -22.8),
     ("bass.acid", -22.0),

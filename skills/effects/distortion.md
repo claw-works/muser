@@ -4,7 +4,7 @@
 
 Distortion modelled on a guitar amp (mid push before two clipping stages, cabinet with presence peak): overdrive, distortion, fuzz or wavefolding; loudness is compensated automatically, so more drive means more grit, not more volume.
 
-**Where to put it**: On a guitar, bass, organ or synth track for rock / metal / grunge; lightly (overdrive, drive 6-12) on drums or a bus for grit. For a rock guitar: guitar.steel + { "mode": "distortion", "drive_db": 24, "cabinet": "guitar" }; play power chords (root + fifth), not full triads, since distortion turns thirds muddy.
+**Where to put it**: On a guitar, bass, organ or synth track for rock / metal / grunge; lightly (overdrive, drive 6-12) on drums or a bus for grit. For a rock guitar: guitar.electric + { "mode": "distortion", "drive_db": 24, "cabinet": "guitar" }; play power chords (root + fifth), not full triads, since distortion turns thirds muddy.
 
 Latest parameters: `muser effects distortion` (MCP: `describe_effect`)
 
@@ -30,7 +30,7 @@ All parameters can be omitted and take their default when omitted; when a value 
 
 ## Scenario presets
 
-- Crunch rhythm guitar (guitar.steel)
+- Crunch rhythm guitar (guitar.electric)
 
   ```json
   {"type": "distortion", "mode": "overdrive", "drive_db": 12, "cabinet": "guitar"}

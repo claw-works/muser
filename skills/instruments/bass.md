@@ -12,7 +12,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 | `bass.acid_squelch` | 24–60 | 1 | acid bass with higher resonance and envelope, a stronger squelch |
 | `bass.acid_square` | 24–60 | 1 | acid bass, square-wave version, more hollow |
 
-## Adjustable parameters (instrument_params)
+## Adjustable parameters of `bass.finger`, `bass.slap`
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
@@ -33,6 +33,31 @@ Preset values of each instrument:
 |---|---|---|---|---|---|---|
 | `bass.finger` | 6 | 0.12 | 2600 | 1600 | 0.2 | 0 |
 | `bass.slap` | 5 | 0.1 | 6000 | 9000 | 0.28 | 0.45 |
+
+## Adjustable parameters of `bass.acid`, `bass.acid_squelch`, `bass.acid_square`
+
+Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
+
+| Parameter | Range | Automation | Description |
+|---|---|---|---|
+| `cutoff` | 30 – 8000 Hz | ✓ | Filter cutoff (with the envelope off). 200-400 dull; 800+ bright. Ideal for automated sweeps |
+| `resonance` | 0 – 1 | ✓ | Resonance. 0.5 normal; 0.8+ the classic 303 squelch |
+| `env_mod` | 0 – 1 | ✓ | Filter envelope depth: how far the filter opens at each note's attack |
+| `decay` | 0.05 – 4 s | ✓ | Filter envelope decay: short = a short "blip"; long = a drawn-out "wah" |
+| `accent` | 0 – 1 | ✓ | Accent strength: notes marked `"accent": true` are louder, open the filter further and squelch more |
+| `slide` | 0.005 – 1 s | ✓ | Slide time: glide from one note to the next when they overlap |
+| `drive_db` | -12 – 24 dB | ✓ | Overdrive: gain before the filter. 6-12 is fatter and dirtier |
+| `tune` | -24 – 24 st | ✓ | Overall transpose (semitones) |
+
+Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../automation.md).
+
+Preset values of each instrument:
+
+| instrument | `cutoff` | `resonance` | `env_mod` | `decay` | `accent` | `slide` | `drive_db` | `tune` |
+|---|---|---|---|---|---|---|---|---|
+| `bass.acid` | 320 | 0.72 | 0.6 | 0.5 | 0.7 | 0.06 | 6 | 0 |
+| `bass.acid_squelch` | 260 | 0.9 | 0.8 | 0.3 | 0.9 | 0.06 | 9 | 0 |
+| `bass.acid_square` | 420 | 0.6 | 0.5 | 0.7 | 0.7 | 0.06 | 6 | 0 |
 
 ### Tuning examples
 
