@@ -398,7 +398,8 @@ FAMILY_PAGES = {
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
         "**Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). "
         "A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
-        "**Erhu**: one note at a time. Put a phrase in a clip with `\"legato\": true`: the notes join under one bow and the finger slides between them (the erhu's portamento); a rest or a new clip starts a new bow. "
+        "**Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. "
+        "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin. "
         "Its range starts at D4 (the inner string); the singing register is A4-A5. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
     ]),
     "accordion": ("Accordion", "accordion.md", [

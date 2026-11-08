@@ -3,7 +3,7 @@
  "tempo": 72,
  "master_gain_db": -3,
  "key": "D",
- "description": "yinse.bow.erhu sings a D-pentatonic melody (legato clips: the notes slide into each other); yinse.pluck.guzheng answers in its own idiom: glissandi (刮奏) into and out of phrases, octaves (大撮), alternating-octave patterns (勾托), a tremolo (摇指) and a pressed note (按音), the left-hand vibrato on held notes.",
+ "description": "yinse.bow.erhu sings a D-pentatonic melody (a new bow on most notes, a few two-note slurs where the finger slides); yinse.pluck.guzheng answers in its own idiom: glissandi (刮奏) into and out of phrases, octaves (大撮), alternating-octave patterns (勾托), a tremolo (摇指) and a pressed note (按音), the left-hand vibrato on held notes.",
  "tracks": [
   {
    "name": "erhu",
@@ -20,84 +20,84 @@
     {
      "start": 0,
      "length": 16,
-     "legato": true,
+     "legato": false,
      "notes": [
       {
        "pitch": 69,
        "start": 0.0,
-       "length": 1.5,
+       "length": 1.56,
        "velocity": 0.75
       },
       {
        "pitch": 71,
        "start": 1.5,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 74,
        "start": 2.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 76,
        "start": 3.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 78,
        "start": 4.0,
-       "length": 2.0,
+       "length": 1.92,
        "velocity": 0.75
       },
       {
        "pitch": 76,
        "start": 6.0,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 74,
        "start": 6.5,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 71,
        "start": 7.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 69,
        "start": 8.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 71,
        "start": 9.0,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 69,
        "start": 9.5,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 66,
        "start": 10.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 64,
        "start": 11.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
@@ -111,84 +111,84 @@
     {
      "start": 16,
      "length": 16,
-     "legato": true,
+     "legato": false,
      "notes": [
       {
        "pitch": 74,
        "start": 0.0,
-       "length": 1.5,
+       "length": 1.56,
        "velocity": 0.75
       },
       {
        "pitch": 76,
        "start": 1.5,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 78,
        "start": 2.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 81,
        "start": 3.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 83,
        "start": 4.0,
-       "length": 2.0,
+       "length": 1.92,
        "velocity": 0.75
       },
       {
        "pitch": 81,
        "start": 6.0,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 78,
        "start": 6.5,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 76,
        "start": 7.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 74,
        "start": 8.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 76,
        "start": 9.0,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 74,
        "start": 9.5,
-       "length": 0.5,
+       "length": 0.42,
        "velocity": 0.75
       },
       {
        "pitch": 71,
        "start": 10.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
        "pitch": 69,
        "start": 11.0,
-       "length": 1.0,
+       "length": 0.92,
        "velocity": 0.75
       },
       {
