@@ -54,7 +54,7 @@ enum Command {
         /// Temporarily override the project's random seed (the file is not changed): re-rolls humanize and random automation.
         #[arg(long)]
         seed: Option<u64>,
-        /// Export stems to this directory instead of the full mix (one WAV per unmuted track, with its effects and its sends to buses, without master effects).
+        /// Export stems to this directory instead of the full mix (one 24-bit WAV per unmuted track, with its effects and its sends to buses, without master effects or their automation). The full mix (-o .wav) is 16-bit.
         #[arg(long, value_name = "DIR")]
         stems: Option<String>,
     },

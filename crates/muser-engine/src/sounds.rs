@@ -130,6 +130,9 @@ pub struct Card {
     /// 参考乐句（[`crate::levels::phrase`]）的响度：和内置乐器的校准值比，就知道 gain_db 从哪起调。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub level_lufs: Option<f64>,
+    /// 和内置乐器放在一起时 `gain_db` 从多少起调（把参考乐句补到内置乐器的响度）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_gain_db: Option<f64>,
     pub probe_version: u32,
 }
 
@@ -146,7 +149,11 @@ fn cache_file(spec: &str, params: &serde_json::Map<String, Value>) -> PathBuf {
 /// 本机缓存里的卡片。
 pub fn cached(spec: &str, params: &serde_json::Map<String, Value>) -> Option<Card> {
     let text = std::fs::read_to_string(cache_file(spec, params)).ok()?;
-    serde_json::from_str::<Card>(&text).ok().filter(|c| c.probe_version == PROBE_VERSION)
+    // 早先存的卡片没有 suggested_gain_db：从 level_lufs 补上（不必重听）。
+    serde_json::from_str::<Card>(&text).ok().filter(|c| c.probe_version == PROBE_VERSION).map(|mut c| {
+        c.suggested_gain_db = c.suggested_gain_db.or(c.level_lufs.map(|l| ((crate::levels::TARGET_LUFS - l) * 10.0).round() / 10.0));
+        c
+    })
 }
 
 /// 鼓组的探测鼓键：底鼓、军鼓、闭镲、开镲、强音镲、叮叮镲。
@@ -247,7 +254,7 @@ pub fn describe(spec: &str, params: &serde_json::Map<String, Value>, drums: Opti
         traits.push(format!("Volume: reference phrase {l:.1} LUFS (built-in instruments are about {:.0} at gain_db 0) -> {how}{}", crate::levels::TARGET_LUFS,
             if d.abs() < 2.0 { String::new() } else { format!("; when mixing with built-in instruments, start gain_db at {:+.0}", -d) }));
     }
-    let card = Card { spec: spec.to_string(), params: params.clone(), drums, probes: measured, summary, traits, level_lufs: level, probe_version: PROBE_VERSION };
+    let card = Card { spec: spec.to_string(), params: params.clone(), drums, probes: measured, summary, traits, level_lufs: level, suggested_gain_db: level.map(|l| ((crate::levels::TARGET_LUFS - l) * 10.0).round() / 10.0), probe_version: PROBE_VERSION };
     let path = cache_file(spec, params);
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);

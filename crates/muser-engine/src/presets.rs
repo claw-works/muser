@@ -72,6 +72,12 @@ pub fn find(p: &PluginRef, key: &str) -> Result<Preset, String> {
         [] if p.name.to_lowercase().starts_with("serum 2") && key.to_lowercase().ends_with(".fxp") => {
             Err(format!("'{key}' is a Serum 1 preset, which muser does not read: open it in Serum 2 and save it as a .SerumPreset, then use that"))
         }
+        [] if key.contains('/') || key.contains('\\') => Err(format!(
+            "{} has no sound with the file '{key}': give a name exactly as `sounds presets` lists it (Serum 2 takes it from inside the preset, not from the file name), \
+             or the `file` field from `muser sounds presets '{}' --json`",
+            p.name,
+            p.spec()
+        )),
         [] => Err(format!("{} has no sound named '{key}' (list them with `muser sounds presets '{}'`)", p.name, p.spec())),
         many => Err(format!("{} sounds are named '{key}'; give the file path instead: {}", many.len(), many.iter().map(|x| x.file.as_str()).collect::<Vec<_>>().join(", "))),
     }

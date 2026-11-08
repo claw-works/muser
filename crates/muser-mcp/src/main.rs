@@ -1591,7 +1591,7 @@ When a person says \"the sax is too quiet\" use it; you can also look at the mix
         }
     }
 
-    #[tool(description = "Listen to a sound: renders probe notes across the range (or drum keys) and returns a card: a one-line summary, traits (brightness, attack, tail, range), and the reference-phrase loudness (level_lufs) to compare with built-in instruments when setting gain_db. Cached on this machine; refresh=true listens again.")]
+    #[tool(description = "Listen to a sound: renders probe notes across the range (or drum keys) and returns a card: a one-line summary, traits (brightness, attack, tail, range), the reference-phrase loudness (level_lufs), and suggested_gain_db: the gain_db that makes it about as loud as the built-in instruments. Cached on this machine; refresh=true listens again.")]
     fn describe_sound(&self, Parameters(p): Parameters<DescribeSoundParams>) -> Result<CallToolResult, McpError> {
         let params = p.params.unwrap_or_default();
         match muser_engine::plugin::with_stdout_to_stderr(|| muser_engine::sounds::describe(&p.sound, &params, p.drums, p.refresh)) {

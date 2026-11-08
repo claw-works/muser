@@ -1742,6 +1742,8 @@ pub fn render_stems(
     std::fs::create_dir_all(dir).map_err(|e| EngineError::Wav(format!("cannot create directory {}: {e}", dir.display())))?;
     let mut base = project.clone();
     base.master_effects.clear();
+    // 主总线效果器的自动化跟着效果器一起去掉（主输出音量的自动化保留）。
+    base.automation.retain(|a| !matches!(muser_core::automation::Target::parse(&a.target), Some(muser_core::automation::Target::MasterEffect(_))));
     let mut cache = RenderCache::new();
     let mut out = Vec::new();
     let live: Vec<usize> = (0..project.tracks.len()).filter(|&i| !project.tracks[i].muted).collect();
@@ -1824,6 +1826,19 @@ mod tests {
             "clips": [{ "start": 0, "length": 16, "notes": [{ "pitch": 60, "start": 0, "length": 16 }] }] })).unwrap());
         let abc = crate::abc_export::export(&p, &crate::abc_export::AbcOptions::new(crate::abc_export::Dialect::Standard)).unwrap().text;
         assert!(abc.contains("[Q:1/4=60]") && abc.contains("[Q:1/4=120]"), "{abc}");
+    }
+
+    #[test]
+    fn stems_drop_master_effect_automation_with_the_master_effects() {
+        let p: Project = serde_json::from_value(serde_json::json!({ "name": "s", "tempo": 120,
+            "master_effects": [{ "type": "eq", "shape": "lowpass", "frequency": 18000 }],
+            "automation": [{ "target": "master_effects[0]", "param": "frequency", "shape": "points", "points": [[0, 1000], [4, 18000]] }],
+            "tracks": [{ "name": "k", "instrument": "drums.909", "clips": [{ "start": 0, "length": 4, "grid": { "kick": "x..." } }] }] }))
+        .unwrap();
+        let dir = std::env::temp_dir().join(format!("muser-stems-auto-{}", std::process::id()));
+        let stems = render_stems(&p, &dir, RenderSettings::default(), &mut |_, _, _| {}).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(stems.len(), 1);
     }
 
     #[test]
