@@ -240,7 +240,7 @@ pub(crate) static ELECTRIC: &[ParamDef<crate::electric::ElectricParams>] = &[
             Ok(())
         }),
     },
-    num!("mute", 0.0, 1.0, "", "Palm mute depth for notes marked `\"mute\": true`: 0.3 a little damped; 0.7 the tight chug of rock / metal riffs; 1 a dead thud", |p| p.mute),
+    num!("mute", 0.0, 1.0, "", "Palm mute depth for notes marked `\"mute\": true`: 0.3 a little damped; 0.85 (default) the tight chug of rock / metal riffs; 1 a dead thud", |p| p.mute),
     ParamDef {
         spec: InstParamSpec {
             name: "strum",

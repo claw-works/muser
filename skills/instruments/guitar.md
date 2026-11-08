@@ -41,7 +41,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 |---|---|---|---|
 | `pickup` | 0 – 2, or `"bridge"` / `"middle"` / `"neck"` | ✓ | Which pickup: "bridge" (0) bright and biting, the rock / metal sound; "middle" (1); "neck" (2) round and warm, for clean, jazz, blues leads. In-between numbers blend |
 | `pickup_type` | 0 – 1, or `"single"` / `"humbucker"` | ✓ | Pickup coils: "single" (0) a high, sharp resonance, glassy and twangy; "humbucker" (1) a lower, broader one with more output, thick and smooth under distortion |
-| `mute` | 0 – 1 | next note | Palm mute depth for notes marked `"mute": true`: 0.3 a little damped; 0.7 the tight chug of rock / metal riffs; 1 a dead thud |
+| `mute` | 0 – 1 | next note | Palm mute depth for notes marked `"mute": true`: 0.3 a little damped; 0.85 (default) the tight chug of rock / metal riffs; 1 a dead thud |
 | `strum` | 0 – 50 ms (integer) | — | Strum: when 3 or more notes start together, each string sounds this long after the previous one. Downstrokes (low string first) on the beat and the eighth notes, upstrokes (high string first) on the off-beats. 0 = all at once; 5-10 a pick strum; 20+ a slow rake |
 | `decay` | 0.05 – 60 s | next note | How long an open string rings while held (middle C to -60 dB). Long sustain is what a distorted guitar needs |
 | `release` | 0.01 – 10 s | next note | How fast a note stops after it is released |
@@ -54,8 +54,8 @@ Preset values of each instrument:
 
 | instrument | `pickup` | `pickup_type` | `mute` | `strum` | `decay` | `release` | `pluck_brightness` | `pluck_position` |
 |---|---|---|---|---|---|---|---|---|
-| `guitar.electric` | 0 | 1 | 0.7 | 8 | 9 | 0.08 | 7000 | 0.13 |
-| `guitar.electric_clean` | 2 | 0 | 0.7 | 8 | 9 | 0.08 | 7000 | 0.13 |
+| `guitar.electric` | 0 | 1 | 0.85 | 8 | 9 | 0.08 | 7000 | 0.13 |
+| `guitar.electric_clean` | 2 | 0 | 0.85 | 8 | 9 | 0.08 | 7000 | 0.13 |
 
 ### Tuning examples
 
