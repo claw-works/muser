@@ -6,6 +6,10 @@
 //!
 //! 每个音可以掌闷（音符上的 `"mute": true`）：闷着的音由另一组弦来弹，衰减短、更暗；
 //! 同一根弦（同一个音高）上一次的音被新音打断，开的闷的都一样。
+//!
+//! 不像合成器的两处：每一次拨弦都略有不同（拨的位置、亮度、力度方式按音符的序号确定地变一点，
+//! 连着闷音的 chug 不再一模一样）；每个音高带一点固定的走音（±3 音分，像一把真吉他的弦与品），
+//! 和弦里的五度、八度有慢慢的拍频。两者都由音高与第几个音决定，同一个工程每次渲染结果相同。
 
 use manguebyte::dsp::instruments::{BodyMode, PluckedString, StringParams};
 use manguebyte::midi::MidiMessage;
@@ -106,17 +110,37 @@ pub(crate) struct Electric {
     muted: Synth<PluckedString, f32>,
     params: ElectricParams,
     scratch: AudioBuffer<f32>,
+    /// 拨过几次（每次拨弦的变化由它与音高决定）。
+    plucks: u32,
+}
+
+/// 0–1 之间确定的伪随机数。
+fn unit(a: u64, b: u64) -> f64 {
+    let mut x = a.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_add(0xD1B5_4A32_D192_ED03);
+    x ^= x >> 31;
+    x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x ^= x >> 29;
+    (x >> 11) as f64 / (1u64 << 53) as f64
+}
+
+/// 工程的调律加上每个音高固定的一点走音（±3 音分）。
+fn detuned(t: &manguebyte::dsp::Tuning) -> manguebyte::dsp::Tuning {
+    let pitches: [f64; 128] = std::array::from_fn(|k| t.key_pitch(k as u8) + (unit(k as u64, 7) - 0.5) * 0.06);
+    manguebyte::dsp::Tuning::from_pitches(&pitches).unwrap_or_else(|_| t.clone())
 }
 
 impl Electric {
     pub(crate) fn new(params: ElectricParams, voices: usize) -> Self {
         let (o, m) = params.strings();
-        Self {
+        let mut e = Self {
             open: Synth::with_voices(voices, move || PluckedString::new(o)),
             muted: Synth::with_voices(voices, move || PluckedString::new(m)),
             params,
             scratch: AudioBuffer::new(2, 0),
-        }
+            plucks: 0,
+        };
+        e.set_tuning(&manguebyte::dsp::Tuning::default());
+        e
     }
 
     fn push(&mut self) {
@@ -133,9 +157,19 @@ impl Electric {
 
     pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool, mute: bool) {
         // 同一根弦重新拨：上一个音停下（不管它是开的还是闷的）。
+        self.plucks = self.plucks.wrapping_add(1);
+        let (o, m) = self.params.strings();
+        let mut p = if mute { m } else { o };
+        // 这一次拨弦的变化：只改"下一个音才用"的拨弦参数，正在响的音不受影响。
+        let r = |i: u64| unit(u64::from(self.plucks), i * 131 + u64::from(note.key)) * 2.0 - 1.0;
+        p.pluck_position = (p.pluck_position * (1.0 + 0.2 * r(1))).clamp(0.02, 0.5);
+        p.pluck_brightness = (p.pluck_brightness * (1.0 + 0.3 * r(2))).clamp(100.0, 20_000.0);
+        p.strike = (p.strike + 0.08 * r(3)).clamp(0.0, 1.0);
+        p.pluck_noise = (p.pluck_noise * (1.0 + 0.3 * r(4))).clamp(0.0, 1.0);
         let (play, other) = if mute { (&mut self.muted, &mut self.open) } else { (&mut self.open, &mut self.muted) };
+        play.voices_mut().for_each(|v| v.set_params(p));
         other.note_off(note, 0.0);
-        play.note_on_accented(note, velocity, accent);
+        play.note_on_accented(note, (f64::from(velocity) * (1.0 + 0.05 * r(5))).clamp(0.0, 1.0) as f32, accent);
     }
 
     pub(crate) fn note_off(&mut self, note: NoteRef, velocity: f32) {
@@ -174,8 +208,9 @@ impl Electric {
     }
 
     pub(crate) fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
-        self.open.set_tuning(tuning);
-        self.muted.set_tuning(tuning);
+        let t = detuned(tuning);
+        self.open.set_tuning(&t);
+        self.muted.set_tuning(&t);
     }
 }
 
