@@ -23,21 +23,22 @@ impl GuzhengParams {
     pub fn guzheng() -> Self {
         Self {
             string: StringParams {
-                decay: 7.0,
+                decay: 8.0,
                 decay_per_octave: 1.4,
-                high_decay: 0.3,
+                high_decay: 0.4,
                 release: 1.6,
-                pluck_position: 0.1,
+                pluck_position: 0.08,
                 pluck_brightness: 9_000.0,
                 velocity_darkening: 1.8,
                 velocity_range_db: 22.0,
-                stiffness: 0.1,
+                stiffness: 0.18,
                 strike: 0.5,
                 pluck_noise: 0.3,
-                body: [BodyMode::new(90.0, 8.0, 0.6), BodyMode::new(185.0, 10.0, 0.6), BodyMode::new(320.0, 10.0, 0.5), BodyMode::new(520.0, 8.0, 0.4)],
-                body_mix: 0.55,
+                // 1.6 米长的桐木面板：低而宽的几个共鸣。
+                body: [BodyMode::new(75.0, 4.0, 0.7), BodyMode::new(150.0, 5.0, 0.7), BodyMode::new(260.0, 5.0, 0.6), BodyMode::new(430.0, 5.0, 0.45)],
+                body_mix: 0.5,
                 pickup_position: 0.0,
-                tone: 10_000.0,
+                tone: 12_000.0,
                 tone_q: 0.6,
                 buzz: 0.0,
                 buzz_time: 0.05,
@@ -59,8 +60,8 @@ pub fn erhu() -> BowedParams {
     BowedParams {
         // 比 D4 低的音也在内弦上（二胡最低就是 D4）。
         strings: [d4, d4, d4, 440.0],
-        bow_position: 0.12,
-        pressure: 0.6,
+        bow_position: 0.1,
+        pressure: 0.7,
         attack: 0.05,
         bow_noise: 0.45,
         decay: 0.8,
@@ -77,18 +78,20 @@ pub fn erhu() -> BowedParams {
         fluctuation: 0.05,
         swell: 0.12,
         scratch: 0.5,
+        // 琴筒：筒里的空气（约 330 Hz）和蒙在一头的蟒皮（约 600 Hz）是两个宽而强的共鸣，给出二胡"厚"的底子；
+        // 往上是蟒皮的几个泛音（鼻音、发亮）。
         body: [
-            BodyMode::new(300.0, 6.0, 0.3),
-            BodyMode::new(500.0, 8.0, 1.0),
-            BodyMode::new(820.0, 10.0, 0.7),
-            BodyMode::new(1_150.0, 8.0, 0.6),
-            BodyMode::new(1_700.0, 6.0, 0.9),
-            BodyMode::new(2_600.0, 4.0, 0.8),
-            BodyMode::new(3_400.0, 5.0, 0.5),
-            BodyMode::new(4_500.0, 3.0, 0.3),
+            BodyMode::new(330.0, 3.0, 1.4),
+            BodyMode::new(600.0, 3.5, 1.3),
+            BodyMode::new(950.0, 4.0, 0.9),
+            BodyMode::new(1_400.0, 4.0, 0.8),
+            BodyMode::new(1_900.0, 3.5, 0.7),
+            BodyMode::new(2_700.0, 3.0, 0.85),
+            BodyMode::new(3_600.0, 3.0, 0.6),
+            BodyMode::new(5_000.0, 2.0, 0.35),
         ],
-        wood: 0.25,
-        body_mix: 0.9,
+        wood: 0.5,
+        body_mix: 1.0,
         tone: 8_000.0,
         ..BowedParams::violin()
     }

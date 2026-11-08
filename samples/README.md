@@ -56,8 +56,8 @@ scripts/render_samples.sh effects    # 只渲染一个分组
 - `accordion-valse`：`yinse.blow.accordion`（musette）的法式华尔兹（A 小调，3/4，176 BPM）：右手旋律用 `bellows` 自动化做乐句起伏、最后一个长音加风箱抖动；
   左手（`yinse.blow.accordion_dry`，oboe 音栓：8 尺 + 4 尺，短而脆）弹"嘭-嚓-嚓"，下面拨弦低音提琴。
 - `accordion-tango`：`yinse.blow.bandoneon` 的探戈（D 小调，116 BPM）：四拍一下的 marcato 和弦（1、3 拍重音），附点旋律，长音上风箱抖动。
-- `chinese-guzheng-erhu`：D 宫五声音阶（72 BPM）：`yinse.bow.erhu` 唱旋律（连奏 clip，音与音之间手指滑过去），`yinse.pluck.guzheng` 弹分解和弦伴奏，
-  句头刮奏、第 4 小节一个按音（E5 推到 F#5），长音自动揉弦。
+- `chinese-guzheng-erhu`：D 宫五声音阶（72 BPM）：`yinse.bow.erhu` 唱旋律（连奏 clip，音与音之间手指滑过去），`yinse.pluck.guzheng` 用古筝自己的手法回应：
+  刮奏进出乐句、大撮（八度）、勾托（八度交替）、摇指、按音（E5 推到 F#5），长音自动揉弦。
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径相对音色库，
   需设 `MUSER_SFZ_PATH` 指向你的音色库目录（见 [README.zh-CN.md](../README.zh-CN.md)）。
 
