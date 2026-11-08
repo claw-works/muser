@@ -511,7 +511,7 @@ struct ListSoundsParams {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ListPluginPresetsParams {
-    /// Instrument plugin: plugin:<path>#<id> (the spec from list_sounds), or a path.
+    /// Plugin: plugin:<path>#<id> (the spec from list_sounds or scan_plugins), or a path; for a file holding several plugins add #<id> (Serum 2 vs Serum 2 FX).
     plugin: String,
     /// Keywords separated by spaces; all must appear in the name, category, library or tags (optional), e.g. "pad warm".
     #[serde(default)]
@@ -1554,7 +1554,7 @@ When a person says \"the sax is too quiet\" use it; you can also look at the mix
         json_result(&serde_json::json!({ "total": total, "sounds": shown }))
     }
 
-    #[tool(description = "List an instrument plugin's own sounds (factory and installed sound packs: VST3 presets, Surge XT patches, Serum 2 presets, Kontakt instruments, and the user's saved sounds), with category, library and tags. load = auto (get_preset_state converts it directly) / captured / manual (must be loaded once in the plugin window with `muser sounds capture`).")]
+    #[tool(description = "List a plugin's own sounds (factory and installed sound packs: VST3 presets, Surge XT patches, Serum 2 presets and Serum 2 FX effect chains, Kontakt instruments, and the user's saved sounds), with category, library and tags. load = auto (get_preset_state converts it directly) / captured / manual (must be loaded once in the plugin window with `muser sounds capture`).")]
     fn list_plugin_presets(&self, Parameters(p): Parameters<ListPluginPresetsParams>) -> Result<CallToolResult, McpError> {
         let plugin = match muser_engine::presets::plugin_ref(&p.plugin) {
             Ok(x) => x,
@@ -1566,20 +1566,23 @@ When a person says \"the sax is too quiet\" use it; you can also look at the mix
         json_result(&serde_json::json!({ "plugin": plugin.spec(), "total": total, "presets": shown }))
     }
 
-    #[tool(description = "Get the plugin state for one of a plugin's sounds (from list_plugin_presets) and how to write it in a project: set the track's instrument and instrument_params to the returned values. The state is converted from the sound file on this machine the first time and kept in the local sound library.")]
+    #[tool(description = "Get the plugin state for one of a plugin's sounds (from list_plugin_presets) and how to write it in a project: for an instrument, set the track's instrument and instrument_params to the returned values; for an effect plugin (e.g. Serum 2 FX effect chains), add the returned effect to a track's effects or master_effects. The state is converted from the sound file on this machine the first time and kept in the local sound library.")]
     fn get_preset_state(&self, Parameters(p): Parameters<PresetStateParams>) -> Result<CallToolResult, McpError> {
         use muser_engine::presets;
-        let r = presets::plugin_ref(&p.plugin).and_then(|plugin| {
-            let x = presets::find(&plugin, &p.preset)?;
-            let state = presets::state_for(&plugin, &x)?;
-            Ok((plugin, x, state))
+        // 效果链第一次要打开一次插件（存初始状态），插件往 stdout 打的字不能混进 MCP 的输出。
+        let r = muser_engine::plugin::with_stdout_to_stderr(|| {
+            presets::plugin_ref(&p.plugin).and_then(|plugin| {
+                let x = presets::find(&plugin, &p.preset)?;
+                let state = presets::state_for(&plugin, &x)?;
+                Ok((plugin, x, state))
+            })
         });
         match r {
-            Ok((plugin, x, state)) => json_result(&serde_json::json!({
-                "state": state.display().to_string(),
-                "instrument": plugin.spec(),
-                "instrument_params": { "@state": state.display().to_string(), "@label": x.name },
-            })),
+            Ok((plugin, x, state)) => {
+                let mut v = plugin.usage(&state, &x.name);
+                v["state"] = serde_json::json!(state.display().to_string());
+                json_result(&v)
+            }
             Err(e) => Ok(user_err(e)),
         }
     }

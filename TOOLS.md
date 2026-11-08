@@ -59,9 +59,9 @@ Error messages give the exact location, e.g. `tracks[0].effects[0]: reverb.mix =
 ### `muser sounds list|describe`
 
 - `list [--kind builtin|sfz|plugin] [--filter word] [--json]`: the sounds available on this machine (built-in instruments, SFZ in `$MUSER_SFZ_PATH`, scanned instrument plugins); ones already listened to carry a one-line card description.
-- `presets <plugin> [--filter word] [--json]`: a plugin's built-in sounds (name / sound library / category / tags of VST3 standard presets, Surge `.fxp`, Serum 2 `.SerumPreset` (factory and installed sound packs; extra folders on `MUSER_SERUM_PATH`), Kontakt `.nki`),
+- `presets <plugin> [--filter word] [--json]`: a plugin's built-in sounds (name / sound library / category / tags of VST3 standard presets, Surge `.fxp`, Serum 2 `.SerumPreset` and Serum 2 FX effect chains `.SerumFX` / `.SerumFXRack` (factory and installed sound packs; extra folders on `MUSER_SERUM_PATH`), Kontakt `.nki`),
   marked by whether they can be used directly: auto (converted straight to a state) / captured (already captured) / manual (must be loaded once in the plugin window).
-- `state <plugin> <sound>`: fetch this sound's state file (in the machine's sound library `~/.config/muser/sound-library/`) and print how to write it in a project.
+- `state <plugin> <sound>`: fetch this sound's state file (in the machine's sound library `~/.config/muser/sound-library/`) and print how to write it in a project (an instrument's `instrument` / `instrument_params`, or an effect plugin's entry for `effects`).
 - `save <plugin> <name> <state-file>`: save a plugin state into "My sounds" in the sound library (same name overwrites); afterward it is available in `presets` and the view drawer.
 - `describe <sound> --keys [--from 36 --to 96 --tempo 120 --hold 4]`: key map card - hold each key for a few bars and measure whether it sounds, whether it is a loop that follows the tempo,
   how many bars per cycle, onsets per bar, loudness, brightness (loop kits, drum kits, multi-zone sounds).

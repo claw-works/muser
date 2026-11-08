@@ -156,6 +156,8 @@ muser sounds describe "plugin:<path>#<id>" --params '{"@state": "<state-file>"}'
    ```
    - **[auto]**: VST3 standard presets (`.vstpreset`), Surge's `.fxp`, Serum 2's `.SerumPreset` (factory sounds and installed sound packs), and the like can be converted straight into plugin state, and `sounds state` works on them.
      Over MCP the same steps are `list_plugin_presets` → `get_preset_state` → `describe_sound`.
+   - **Serum 2 FX effect chains**: `sounds presets` on the Serum 2 FX plugin (its `#<id>`, since Serum 2 and Serum 2 FX live in one file) lists the factory and pack effect chains;
+     `sounds state` gives an entry for `effects` (`"type": "plugin"` with `path` and `id` written separately). The first one opens Serum 2 FX once, without a window, to read its initial state.
    - **Serum 2 sound packs**: muser reads Serum 2's preset folder; packs kept somewhere else are found when that folder is on `MUSER_SERUM_PATH`.
      Only Serum 2 presets work: Serum 1 `.fxp` packs must be opened in Serum 2 and saved again. A pack that comes with its own wavetables or samples
      needs them installed where its instructions say, or Serum quietly uses other ones and the sound is wrong; tell the person this in plain words.

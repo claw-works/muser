@@ -27,12 +27,25 @@ pub struct PluginRef {
     pub version: String,
     /// vst3 / clap。
     pub format: String,
+    /// instrument / effect（插件扫描里的类型）。
+    pub kind: String,
 }
 
 impl PluginRef {
     /// 工程里写的 `instrument`。
     pub fn spec(&self) -> String {
         format!("plugin:{}#{}", self.path, self.id)
+    }
+
+    /// 用这个音色（状态文件）时工程里怎么写：乐器是音轨的 `instrument` + `instrument_params`，
+    /// 效果器是 `effects` 里的一项（`path` 和 `id` 分开写：一个文件里可能既有乐器又有效果器）。
+    pub fn usage(&self, state: &Path, label: &str) -> serde_json::Value {
+        let state = state.display().to_string();
+        if self.kind == "effect" {
+            serde_json::json!({ "effect": { "type": "plugin", "path": self.path, "id": self.id, "params": { "@state": state, "@label": label } } })
+        } else {
+            serde_json::json!({ "instrument": self.spec(), "instrument_params": { "@state": state, "@label": label } })
+        }
     }
 }
 
@@ -43,7 +56,7 @@ pub fn plugin_ref(spec: &str) -> Result<PluginRef, String> {
     let (list, _) = crate::plugin::scan(false)?;
     list.into_iter()
         .find(|p| p.path == path && id.is_none_or(|i| i == p.id))
-        .map(|p| PluginRef { path: p.path, id: p.id, name: p.name, vendor: p.vendor, version: p.version, format: p.format })
+        .map(|p| PluginRef { path: p.path, id: p.id, name: p.name, vendor: p.vendor, version: p.version, format: p.format, kind: p.kind })
         .ok_or_else(|| format!("plugin '{spec}' is not in the scan results (see the plugins on this machine with `muser plugin scan`)"))
 }
 
@@ -340,10 +353,14 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
             }
         }
     }
-    if lname.starts_with("serum 2") && !lname.contains("fx") {
-        for root in serum_dirs() {
+    if lname.starts_with("serum 2") {
+        // Serum 2 是乐器的音色，Serum 2 FX 是效果链（单个效果和整条链）。
+        let (sub, exts): (&str, &[&str]) = if lname.contains("fx") { ("Effect Chains", &["SerumFXRack", "SerumFX"]) } else { ("Presets", &["SerumPreset"]) };
+        for root in serum_dirs(sub) {
             let mut files = Vec::new();
-            walk(&root, "SerumPreset", 8, &[], &mut files);
+            for ext in exts {
+                walk(&root, ext, 8, &[], &mut files);
+            }
             for f in files {
                 let rel: Vec<String> = f.parent().and_then(|d| d.strip_prefix(&root).ok()).map(|r| r.iter().map(|c| c.to_string_lossy().into_owned()).collect()).unwrap_or_default();
                 let m = std::fs::read(&f).ok().and_then(|b| crate::xfer::meta(&b).ok()).unwrap_or_default();
@@ -368,24 +385,49 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
     out
 }
 
-/// Serum 2 的预设目录（出厂与装进去的第三方音色包），再加 `MUSER_SERUM_PATH`（用系统的路径分隔符隔开）列出的文件夹。
-fn serum_dirs() -> Vec<PathBuf> {
+/// Serum 2 预设树里的一个子目录（`Presets` 乐器音色、`Effect Chains` 效果链；出厂与装进去的第三方音色包），
+/// 再加 `MUSER_SERUM_PATH`（用系统的路径分隔符隔开）列出的文件夹。
+fn serum_dirs(sub: &str) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::env::var_os("MUSER_SERUM_PATH").map(|v| std::env::split_paths(&v).collect()).unwrap_or_default();
-    let sub = "Xfer Records/Serum 2 Presets/Presets";
-    dirs.push(PathBuf::from("/Library/Audio/Presets").join(sub));
-    dirs.push(home().join("Library/Audio/Presets").join(sub));
+    let tree = Path::new("Xfer Records").join("Serum 2 Presets");
+    dirs.push(PathBuf::from("/Library/Audio/Presets").join(&tree).join(sub));
+    dirs.push(home().join("Library/Audio/Presets").join(&tree).join(sub));
     for var in ["PROGRAMDATA", "PUBLIC"] {
         if let Some(v) = std::env::var_os(var) {
             let base = PathBuf::from(v);
-            dirs.push(base.join("Xfer").join("Serum 2 Presets").join("Presets"));
-            dirs.push(base.join("Documents").join("Xfer").join("Serum 2 Presets").join("Presets"));
-            dirs.push(base.join(sub));
+            dirs.push(base.join("Xfer").join("Serum 2 Presets").join(sub));
+            dirs.push(base.join("Documents").join("Xfer").join("Serum 2 Presets").join(sub));
+            dirs.push(base.join(&tree).join(sub));
         }
     }
-    dirs.push(home().join("Documents/Xfer/Serum 2 Presets/Presets"));
+    dirs.push(home().join("Documents/Xfer/Serum 2 Presets").join(sub));
     let mut seen = std::collections::HashSet::new();
     dirs.retain(|d| d.is_dir() && seen.insert(d.canonicalize().unwrap_or_else(|_| d.clone())));
     dirs
+}
+
+/// Serum 2 FX 自己的初始 processor 状态（效果链要装进它里面）：第一次用时打开一次插件存下来，记在本机音色库里；
+/// 插件升级（版本变了）后重新存。
+fn fx_skeleton(p: &PluginRef) -> Result<Vec<u8>, String> {
+    let file = library_dir().join(slug(&p.name)).join("_init.muserstate");
+    let fresh = read_state_file(&file).ok().filter(|(h, _)| h.plugin_id == p.id && h.version == p.version);
+    let data = match fresh {
+        Some((_, d)) => d,
+        None => {
+            if let Some(d) = file.parent() {
+                std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            crate::plugin::save_state(&format!("{}#{}", p.path, p.id), &serde_json::Map::new(), &file)
+                .map_err(|e| format!("cannot open {} to read its initial state (needed once for effect chains): {e}", p.name))?;
+            read_state_file(&file)?.1
+        }
+    };
+    // MBVST3 容器：魔数 8、类 id 16、u64 组件长度、组件（processor 状态）……
+    let n = data.get(24..32).map(|b| u64::from_le_bytes(b.try_into().unwrap_or_default()) as usize).ok_or("the saved Serum 2 FX state is too short")?;
+    if !data.starts_with(b"MBVST3\0\x01") {
+        return Err("the saved Serum 2 FX state is not a VST3 state".into());
+    }
+    data.get(32..32 + n).map(<[u8]>::to_vec).ok_or_else(|| "the saved Serum 2 FX state is truncated".into())
 }
 
 fn stem(p: &Path) -> String {
@@ -479,6 +521,7 @@ pub fn state_for(p: &PluginRef, preset: &Preset) -> Result<PathBuf, String> {
         ("fxp", "vst3") => vst3_container(&p.id, &read_fxp(&bytes)?, &[])?,
         // Serum 2：预设就是完整的 processor 状态，controller 段留空，插件照常读入。
         ("serumpreset", "vst3") => vst3_container(&p.id, &crate::xfer::preset_component(&bytes)?, &[])?,
+        ("serumfx" | "serumfxrack", "vst3") => vst3_container(&p.id, &crate::xfer::fx_component(&fx_skeleton(p)?, &bytes)?, &[])?,
         ("fxp", _) => read_fxp(&bytes)?,
         _ => {
             return Err(format!(

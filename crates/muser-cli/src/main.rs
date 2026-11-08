@@ -1187,7 +1187,11 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
             let x = presets::find(&p, &preset).map_err(|e| anyhow::anyhow!(e))?;
             let state = presets::state_for(&p, &x).map_err(|e| anyhow::anyhow!(e))?;
             println!("{}", state.display());
-            println!("In the project write: \"instrument\": \"{}\", \"instrument_params\": {{ \"@state\": \"{}\", \"@label\": \"{}\" }}", p.spec(), state.display(), x.name);
+            let usage = p.usage(&state, &x.name);
+            match usage.get("effect") {
+                Some(e) => println!("In the project add to a track's (or master_effects') effects: {e}"),
+                None => println!("In the project write: \"instrument\": {}, \"instrument_params\": {}", usage["instrument"], usage["instrument_params"]),
+            }
         }
         SoundsCommand::Save { plugin, name, state } => {
             use muser_engine::presets;

@@ -5,6 +5,10 @@
 //! 预设里的 CBOR 就是完整的 processor 快照：去掉顶层的 `fileType`、加上 `component: "processor"` 就是插件认的状态
 //! （controller 段可以为空）。改动在 CBOR 字节上做，其余条目逐字节保留（数值的宽度、键的顺序都不变）。
 //!
+//! 效果链（`.SerumFX` 单个效果、`.SerumFXRack` 整条链）给 Serum 2 FX 用：插件的 processor 状态不能只有效果链，
+//! 所以拿插件自己存的一份初始状态（[`crate::presets`] 在用户机器上打开一次 Serum 2 FX 存下来）当骨架，只把其中
+//! `FXRack0.FX` 换成文件里的效果链。
+//!
 //! 只支持 Serum 2 写的新格式；早期的 zlib 压缩格式和 Serum 1 的 `.fxp` 报错，提示在 Serum 2 里打开再另存。
 
 use std::io::Read;
@@ -45,33 +49,81 @@ pub fn meta(b: &[u8]) -> Result<Meta, String> {
     Ok(Meta { name: s("presetName"), author: s("presetAuthor"), description: s("presetDescription"), tags })
 }
 
-/// `.SerumPreset` 的内容 → VST3 processor 状态（一个 XferJson 块）。
-pub fn preset_component(b: &[u8]) -> Result<Vec<u8>, String> {
+/// 解开一个 XferJson 块：(元数据 JSON 的字节, 格式版本, CBOR)。
+fn unpack(b: &[u8]) -> Result<(&[u8], u32, Vec<u8>), String> {
     let (js, end) = header(b)?;
     let at = [end, end + 1]
         .into_iter()
         .find(|&p| b.get(p + 8..p + 12) == Some(&ZSTD_MAGIC[..]))
-        .ok_or("this Serum preset uses an older format that muser cannot read: open it in Serum 2 and save it again")?;
+        .ok_or("this Serum file uses an older format that muser cannot read: open it in Serum 2 and save it again")?;
     let size = usize::try_from(le(b, at, 4)?).map_err(|_| "invalid size")?;
     let version = le(b, at + 4, 4)? as u32;
     let mut frame = &b[at + 8..];
     let mut raw = Vec::with_capacity(size);
     ruzstd::decoding::StreamingDecoder::new(&mut frame)
-        .map_err(|e| format!("cannot decompress the Serum preset: {e}"))?
+        .map_err(|e| format!("cannot decompress the Serum file: {e}"))?
         .read_to_end(&mut raw)
-        .map_err(|e| format!("cannot decompress the Serum preset: {e}"))?;
+        .map_err(|e| format!("cannot decompress the Serum file: {e}"))?;
     if raw.len() != size {
-        return Err(format!("the Serum preset decompressed to {} bytes instead of {size}", raw.len()));
+        return Err(format!("the Serum file decompressed to {} bytes instead of {size}", raw.len()));
     }
-    let state = to_processor(&raw)?;
-    let packed = ruzstd::encoding::compress_to_vec(state.as_slice(), ruzstd::encoding::CompressionLevel::Fastest);
+    Ok((js, version, raw))
+}
+
+fn pack(js: &[u8], version: u32, raw: &[u8]) -> Vec<u8> {
+    let packed = ruzstd::encoding::compress_to_vec(raw, ruzstd::encoding::CompressionLevel::Fastest);
     let mut out = MAGIC.to_vec();
     out.extend_from_slice(&(js.len() as u64).to_le_bytes());
     out.extend_from_slice(js);
-    out.extend_from_slice(&(state.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(raw.len() as u32).to_le_bytes());
     out.extend_from_slice(&version.to_le_bytes());
     out.extend_from_slice(&packed);
-    Ok(out)
+    out
+}
+
+/// `.SerumPreset` 的内容 → VST3 processor 状态（一个 XferJson 块）。
+pub fn preset_component(b: &[u8]) -> Result<Vec<u8>, String> {
+    let (js, version, raw) = unpack(b)?;
+    Ok(pack(js, version, &to_processor(&raw)?))
+}
+
+/// 效果链文件（`.SerumFX` / `.SerumFXRack`）+ Serum 2 FX 自己存的 processor 状态（骨架）→ 新的 processor 状态。
+pub fn fx_component(skeleton: &[u8], chain: &[u8]) -> Result<Vec<u8>, String> {
+    let fx = fx_list(chain)?;
+    let (js, version, raw) = unpack(skeleton)?;
+    let rack = value_of(&raw, 0, "FXRack0")?.ok_or("the Serum 2 FX state has no FXRack0")?;
+    let slot = value_of(&raw, rack.start, "FX")?.ok_or("the Serum 2 FX state has no FXRack0.FX")?;
+    let new = [&raw[..slot.start], &fx[..], &raw[slot.end..]].concat();
+    Ok(pack(js, version, &new))
+}
+
+/// 效果链文件里的效果数组（CBOR 字节）：整条链取 `FXRack.FX`；单个效果包成一项 `[{<效果>: …, "type": …}]`。
+fn fx_list(chain: &[u8]) -> Result<Vec<u8>, String> {
+    let (js, _, raw) = unpack(chain)?;
+    let m: serde_json::Value = serde_json::from_slice(js).map_err(|e| format!("the Serum file metadata is not valid JSON: {e}"))?;
+    let file_type = m.get("fileType").and_then(|x| x.as_str()).unwrap_or_default();
+    if file_type == "SerumFXRack" {
+        // 空的 Init 链可能没有 FX：当空数组。
+        return Ok(match value_of(&raw, 0, "FXRack")? {
+            Some(r) => value_of(&raw, r.start, "FX")?.map_or(vec![0x80], |v| raw[v].to_vec()),
+            None => vec![0x80],
+        });
+    }
+    if file_type != "SerumFX" {
+        return Err(format!("not a Serum effect file (fileType '{file_type}')"));
+    }
+    let entries = map_entries(&raw, 0)?;
+    let name = |k: &std::ops::Range<usize>| text_value(&raw, k.start);
+    let wanted = m.get("fxType").and_then(|x| x.as_str()).map(str::to_string);
+    let (key, value) = entries
+        .iter()
+        .find(|(k, v)| {
+            let n = name(k).unwrap_or_default();
+            wanted.as_deref().map_or(n.starts_with("FX") && raw[v.start] >> 5 == 5, |w| n == w)
+        })
+        .ok_or("the Serum effect file has no effect in it")?;
+    let kind = entries.iter().find(|(k, _)| name(k).as_deref() == Some("type")).map_or(&[0u8][..], |(_, v)| &raw[v.clone()]);
+    Ok([&[0x81, 0xa2][..], &raw[key.clone()], &raw[value.clone()], &text("type"), kind].concat())
 }
 
 // —— CBOR：只认结构，跳过条目，不解释数值 ——
@@ -129,43 +181,58 @@ fn skip(b: &[u8], i: usize, depth: usize) -> Result<usize, String> {
 }
 
 fn text(s: &str) -> Vec<u8> {
-    let mut v = vec![0x60 | s.len() as u8];
+    let n = s.len();
+    let mut v = if n < 24 { vec![0x60 | n as u8] } else if n < 256 { vec![0x78, n as u8] } else { [&[0x79][..], &(n as u16).to_be_bytes()].concat() };
     v.extend_from_slice(s.as_bytes());
     v
 }
 
-/// 顶层 map：去掉 `fileType`（和已有的 `component`），在末尾加 `component: "processor"`。
-fn to_processor(raw: &[u8]) -> Result<Vec<u8>, String> {
-    let (major, ai, n, mut j) = head(raw, 0)?;
+/// 位置 `i` 的文字条目（不是文字时为空）。
+fn text_value(b: &[u8], i: usize) -> Option<String> {
+    let (major, ai, n, j) = head(b, i).ok()?;
+    (major == 3 && ai != 31).then(|| b.get(j..j + n as usize).map(|t| String::from_utf8_lossy(t).into_owned())).flatten()
+}
+
+/// 位置 `i` 的定长 map 的每一项：(键的范围, 值的范围)。
+fn map_entries(b: &[u8], i: usize) -> Result<Vec<(std::ops::Range<usize>, std::ops::Range<usize>)>, String> {
+    let (major, ai, n, mut j) = head(b, i)?;
     if major != 5 || ai == 31 {
-        return Err("the Serum preset data is not a CBOR map".into());
+        return Err("the Serum data is not in the expected shape (a CBOR map)".into());
     }
-    let mut kept = Vec::new();
+    let mut out = Vec::new();
     for _ in 0..n {
         let k = j;
-        let v = skip(raw, k, 0)?;
-        j = skip(raw, v, 0)?;
-        let key = &raw[k..v];
-        if key == text("fileType").as_slice() || key == text("component").as_slice() {
-            continue;
-        }
-        kept.push(&raw[k..j]);
+        let v = skip(b, k, 0)?;
+        j = skip(b, v, 0)?;
+        out.push((k..v, v..j));
     }
-    if j != raw.len() {
+    Ok(out)
+}
+
+/// 位置 `i` 的 map 里键为 `key` 的值的范围。
+fn value_of(b: &[u8], i: usize, key: &str) -> Result<Option<std::ops::Range<usize>>, String> {
+    let k = text(key);
+    Ok(map_entries(b, i)?.into_iter().find(|(r, _)| b[r.clone()] == k[..]).map(|(_, v)| v))
+}
+
+/// 顶层 map：去掉 `fileType`（和已有的 `component`），在末尾加 `component: "processor"`。
+fn to_processor(raw: &[u8]) -> Result<Vec<u8>, String> {
+    let entries = map_entries(raw, 0)?;
+    if entries.last().map_or(1, |(_, v)| v.end) != raw.len() {
         return Err("the Serum preset data has trailing bytes".into());
     }
+    let drop = [text("fileType"), text("component")];
+    let kept: Vec<_> = entries.into_iter().filter(|(k, _)| !drop.iter().any(|d| raw[k.clone()] == d[..])).collect();
     let count = kept.len() as u64 + 1;
     let mut out = if count < 24 {
         vec![0xa0 | count as u8]
     } else if count < 256 {
         vec![0xb8, count as u8]
     } else {
-        let mut h = vec![0xb9];
-        h.extend_from_slice(&(count as u16).to_be_bytes());
-        h
+        [&[0xb9][..], &(count as u16).to_be_bytes()].concat()
     };
-    for e in kept {
-        out.extend_from_slice(e);
+    for (k, v) in kept {
+        out.extend_from_slice(&raw[k.start..v.end]);
     }
     out.extend(text("component"));
     out.extend(text("processor"));
@@ -213,6 +280,44 @@ mod tests {
             let expected = [&[0xa2][..], &osc, &text("component"), &text("processor")].concat();
             assert_eq!(raw, expected);
         }
+    }
+
+    fn file(meta: &str, cbor: &[u8]) -> Vec<u8> {
+        let mut f = MAGIC.to_vec();
+        f.extend_from_slice(&(meta.len() as u64).to_le_bytes());
+        f.extend_from_slice(meta.as_bytes());
+        f.extend_from_slice(&(cbor.len() as u32).to_le_bytes());
+        f.extend_from_slice(&2u32.to_le_bytes());
+        f.extend(ruzstd::encoding::compress_to_vec(cbor, ruzstd::encoding::CompressionLevel::Fastest));
+        f
+    }
+
+    fn cbor_of(block: &[u8]) -> Vec<u8> {
+        unpack(block).unwrap().2
+    }
+
+    #[test]
+    fn puts_an_effect_chain_into_the_fx_state() {
+        // 骨架：{"Global0": 1, "FXRack0": {"FX": [], "plainParams": 7}, "component": "processor"}
+        let rack = [&[0xa2][..], &text("FX"), &[0x80], &text("plainParams"), &[0x07]].concat();
+        let skel = file(r#"{"fileType":"x"}"#, &[&[0xa3][..], &text("Global0"), &[0x01], &text("FXRack0"), &rack, &text("component"), &text("processor")].concat());
+        let chorus = [&[0xa1][..], &text("kParamWet"), &[0xf9, 0x3c, 0x00]].concat();
+        // 整条链：{"FXRack": {"FX": [chorus]}}
+        let chain = [&[0xa1][..], &text("FXRack"), &[0xa1], &text("FX"), &[0x81], &chorus].concat();
+        let out = fx_component(&skel, &file(r#"{"fileType":"SerumFXRack"}"#, &chain)).unwrap();
+        let want_rack = [&[0xa2][..], &text("FX"), &[0x81], &chorus, &text("plainParams"), &[0x07]].concat();
+        let want = [&[0xa3][..], &text("Global0"), &[0x01], &text("FXRack0"), &want_rack, &text("component"), &text("processor")].concat();
+        assert_eq!(cbor_of(&out), want);
+        // 单个效果：{"FXChorus": {...}, "type": 3}
+        let one = [&[0xa2][..], &text("FXChorus"), &chorus, &text("type"), &[0x03]].concat();
+        let out = fx_component(&skel, &file(r#"{"fileType":"SerumFX","fxType":"FXChorus"}"#, &one)).unwrap();
+        let item = [&[0x81, 0xa2][..], &text("FXChorus"), &chorus, &text("type"), &[0x03]].concat();
+        let want_rack = [&[0xa2][..], &text("FX"), &item, &text("plainParams"), &[0x07]].concat();
+        assert_eq!(cbor_of(&out), [&[0xa3][..], &text("Global0"), &[0x01], &text("FXRack0"), &want_rack, &text("component"), &text("processor")].concat());
+        // 空的 Init 链。
+        let out = fx_component(&skel, &file(r#"{"fileType":"SerumFXRack"}"#, &[0xa0])).unwrap();
+        assert_eq!(cbor_of(&out), cbor_of(&skel));
+        assert!(fx_component(&skel, &file(r#"{"fileType":"SerumPreset"}"#, &[0xa0])).is_err());
     }
 
     #[test]
