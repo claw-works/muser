@@ -14,6 +14,8 @@ manguebyte = { workspace = true, default-features = false, features = ["sampler"
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Serum 2 预设（XferJson：zstd 压缩的 CBOR）的解压与重新压缩；纯 Rust，不需要 C 工具链。
+ruzstd = "0.9.1"
 
 # 插件自己往 stderr 打的日志转到文件（plugin_log.rs），只在 unix 上。
 [target.'cfg(unix)'.dependencies]

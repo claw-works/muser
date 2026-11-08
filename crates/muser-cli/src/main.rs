@@ -1152,15 +1152,7 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
     use muser_engine::sounds;
     match command {
         SoundsCommand::List { kind, filter, json } => {
-            let terms: Vec<String> = filter.unwrap_or_default().to_lowercase().split_whitespace().map(str::to_string).collect();
-            let list: Vec<_> = sounds::list()
-                .into_iter()
-                .filter(|s| kind.as_deref().is_none_or(|k| s.kind == k))
-                .filter(|s| {
-                    let hay = format!("{} {} {} {}", s.spec, s.name, s.group, s.description).to_lowercase();
-                    terms.iter().all(|t| hay.contains(t))
-                })
-                .collect();
+            let list = sounds::search(kind.as_deref(), filter.as_deref());
             if json {
                 println!("{}", serde_json::to_string_pretty(&list)?);
                 return Ok(());
@@ -1174,14 +1166,7 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
         SoundsCommand::Presets { plugin, filter, json } => {
             use muser_engine::presets;
             let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
-            let terms: Vec<String> = filter.unwrap_or_default().to_lowercase().split_whitespace().map(str::to_string).collect();
-            let list: Vec<_> = presets::presets(&p)
-                .into_iter()
-                .filter(|x| {
-                    let hay = format!("{} {} {} {}", x.name, x.category, x.library, x.tags.join(" ")).to_lowercase();
-                    terms.iter().all(|t| hay.contains(t))
-                })
-                .collect();
+            let list = presets::search(&p, filter.as_deref());
             if json {
                 println!("{}", serde_json::to_string_pretty(&list)?);
                 return Ok(());

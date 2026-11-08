@@ -497,6 +497,54 @@ struct NameParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListSoundsParams {
+    /// Only one kind (optional): builtin / sfz / plugin.
+    #[serde(default)]
+    kind: Option<String>,
+    /// Keywords separated by spaces; all must appear in the name, group or description (optional).
+    #[serde(default)]
+    filter: Option<String>,
+    /// At most this many (default 100).
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListPluginPresetsParams {
+    /// Instrument plugin: plugin:<path>#<id> (the spec from list_sounds), or a path.
+    plugin: String,
+    /// Keywords separated by spaces; all must appear in the name, category, library or tags (optional), e.g. "pad warm".
+    #[serde(default)]
+    filter: Option<String>,
+    /// At most this many (default 60).
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct PresetStateParams {
+    /// Instrument plugin: plugin:<path>#<id>, or a path.
+    plugin: String,
+    /// The sound's name (case-insensitive) or its file path, from list_plugin_presets.
+    preset: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DescribeSoundParams {
+    /// The sound: a built-in instrument, sfz:<path>, or plugin:<path>#<id>.
+    sound: String,
+    /// Its instrument_params (optional), e.g. {"@state": "<path from get_preset_state>"}.
+    #[serde(default)]
+    params: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Probe as a drum kit (default: guessed from the name).
+    #[serde(default)]
+    drums: Option<bool>,
+    /// Listen again instead of using the cached card.
+    #[serde(default)]
+    refresh: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ListInstrumentsParams {
     /// List only one family (optional): drums / synth / guitar / bass / organ / mallet / strings / wind / choir / poly.
     #[serde(default)]
@@ -1498,6 +1546,53 @@ When a person says \"the sax is too quiet\" use it; you can also look at the mix
         }
     }
 
+    #[tool(description = "List the sounds on this machine: built-in instruments, SFZ libraries, and instrument plugins (spec = the value for a track's instrument). Filter by kind (builtin / sfz / plugin) and keywords. A card field means the sound has already been listened to (describe_sound).")]
+    fn list_sounds(&self, Parameters(p): Parameters<ListSoundsParams>) -> Result<CallToolResult, McpError> {
+        let list = muser_engine::plugin::with_stdout_to_stderr(|| muser_engine::sounds::search(p.kind.as_deref(), p.filter.as_deref()));
+        let total = list.len();
+        let shown: Vec<_> = list.into_iter().take(p.limit.unwrap_or(100).max(1)).collect();
+        json_result(&serde_json::json!({ "total": total, "sounds": shown }))
+    }
+
+    #[tool(description = "List an instrument plugin's own sounds (factory and installed sound packs: VST3 presets, Surge XT patches, Serum 2 presets, Kontakt instruments, and the user's saved sounds), with category, library and tags. load = auto (get_preset_state converts it directly) / captured / manual (must be loaded once in the plugin window with `muser sounds capture`).")]
+    fn list_plugin_presets(&self, Parameters(p): Parameters<ListPluginPresetsParams>) -> Result<CallToolResult, McpError> {
+        let plugin = match muser_engine::presets::plugin_ref(&p.plugin) {
+            Ok(x) => x,
+            Err(e) => return Ok(user_err(e)),
+        };
+        let list = muser_engine::presets::search(&plugin, p.filter.as_deref());
+        let total = list.len();
+        let shown: Vec<_> = list.into_iter().take(p.limit.unwrap_or(60).max(1)).collect();
+        json_result(&serde_json::json!({ "plugin": plugin.spec(), "total": total, "presets": shown }))
+    }
+
+    #[tool(description = "Get the plugin state for one of a plugin's sounds (from list_plugin_presets) and how to write it in a project: set the track's instrument and instrument_params to the returned values. The state is converted from the sound file on this machine the first time and kept in the local sound library.")]
+    fn get_preset_state(&self, Parameters(p): Parameters<PresetStateParams>) -> Result<CallToolResult, McpError> {
+        use muser_engine::presets;
+        let r = presets::plugin_ref(&p.plugin).and_then(|plugin| {
+            let x = presets::find(&plugin, &p.preset)?;
+            let state = presets::state_for(&plugin, &x)?;
+            Ok((plugin, x, state))
+        });
+        match r {
+            Ok((plugin, x, state)) => json_result(&serde_json::json!({
+                "state": state.display().to_string(),
+                "instrument": plugin.spec(),
+                "instrument_params": { "@state": state.display().to_string(), "@label": x.name },
+            })),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
+    #[tool(description = "Listen to a sound: renders probe notes across the range (or drum keys) and returns a card: a one-line summary, traits (brightness, attack, tail, range), and the reference-phrase loudness (level_lufs) to compare with built-in instruments when setting gain_db. Cached on this machine; refresh=true listens again.")]
+    fn describe_sound(&self, Parameters(p): Parameters<DescribeSoundParams>) -> Result<CallToolResult, McpError> {
+        let params = p.params.unwrap_or_default();
+        match muser_engine::plugin::with_stdout_to_stderr(|| muser_engine::sounds::describe(&p.sound, &params, p.drums, p.refresh)) {
+            Ok(card) => json_result(&card),
+            Err(e) => Ok(user_err(e)),
+        }
+    }
+
     #[tool(description = "List all effects with a one-line description each. Effects are used in track.effects (track level) or master_effects (master bus), chained in array order.")]
     fn list_effects(&self) -> Result<CallToolResult, McpError> {
         let list: Vec<_> = muser_core::EFFECT_SPECS
@@ -1541,6 +1636,7 @@ the others use MIDI pitch: 60=middle C). Before adding an effect, look at its pa
 Shape sounds with instrument_params (keys and ranges are in describe_instrument; only the given items are overridden); sfz:/path.sfz loads an SFZ sound library. \
 To make a sound change over time (filter sweeps, fades, pan swings, random walks) use set_automation; describe_instrument marks which parameters can be automated. \
 Random automation is determined by the project seed; set_seed changes the seed, which gives a different variation. \
+Sounds on this machine: list_sounds; a plugin's own sounds (Serum 2, Surge XT, Kontakt, VST3 presets…): list_plugin_presets → get_preset_state gives the instrument and instrument_params to write; describe_sound listens to one. \
 External plugins: find plugins with scan_plugins → see parameters with plugin_info / list_plugin_params(filter) / plugin_param_values → audition what a parameter does with audition; \
 plugin parameters use the name as the key and the value is the text the plugin displays (e.g. \"2000 Hz\"); they work in instrument_params, the params of plugin effects, and automation. \
 Plugins with a profile (get_profile) accept short aliases and \"@preset\"; save_plugin_state stores a sound, and writing \"@state\" in parameters loads it; once you have figured a plugin out, save_profile keeps the experience. \

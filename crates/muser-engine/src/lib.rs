@@ -154,6 +154,7 @@ pub mod live_client;
 pub mod render;
 pub mod sfz;
 pub mod presets;
+pub mod xfer;
 pub mod sounds;
 
 pub use instrument::{

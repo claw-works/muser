@@ -35,6 +35,19 @@ pub struct Sound {
     pub card: Option<String>,
 }
 
+/// 按种类（builtin / sfz / plugin）和关键词（空格隔开，都要出现在名字、类别或说明里）筛选 [`list`]。
+pub fn search(kind: Option<&str>, filter: Option<&str>) -> Vec<Sound> {
+    let terms: Vec<String> = filter.unwrap_or_default().to_lowercase().split_whitespace().map(str::to_string).collect();
+    list()
+        .into_iter()
+        .filter(|s| kind.is_none_or(|k| s.kind == k))
+        .filter(|s| {
+            let hay = format!("{} {} {} {}", s.spec, s.name, s.group, s.description).to_lowercase();
+            terms.iter().all(|t| hay.contains(t))
+        })
+        .collect()
+}
+
 /// 本机所有能用的音色。插件需要 `host` 特性（读扫描缓存，第一次会扫描）。
 pub fn list() -> Vec<Sound> {
     let mut out: Vec<Sound> = crate::instrument::catalog()

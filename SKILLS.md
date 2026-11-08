@@ -154,7 +154,11 @@ muser sounds describe "plugin:<path>#<id>" --params '{"@state": "<state-file>"}'
    muser sounds presets "<plugin>" --filter "pad evolving"   # name, sound library, category, tags; [auto] [captured] [needs loading]
    muser sounds state "<plugin>" "<sound-name>"                # [auto] / [captured]: gives the @state file and how to write it in the project
    ```
-   - **[auto]**: VST3 standard presets (`.vstpreset`), Surge's `.fxp`, and the like can be converted straight into plugin state, and `sounds state` works on them.
+   - **[auto]**: VST3 standard presets (`.vstpreset`), Surge's `.fxp`, Serum 2's `.SerumPreset` (factory sounds and installed sound packs), and the like can be converted straight into plugin state, and `sounds state` works on them.
+     Over MCP the same steps are `list_plugin_presets` → `get_preset_state` → `describe_sound`.
+   - **Serum 2 sound packs**: muser reads Serum 2's preset folder; packs kept somewhere else are found when that folder is on `MUSER_SERUM_PATH`.
+     Only Serum 2 presets work: Serum 1 `.fxp` packs must be opened in Serum 2 and saved again. A pack that comes with its own wavetables or samples
+     needs them installed where its instructions say, or Serum quietly uses other ones and the sound is wrong; tell the person this in plain words.
    - **[needs loading]**: Kontakt instruments (`.nki`) can only be loaded in its own UI. After loading once, the state is stored in the user's machine-local sound library
      (`~/.config/muser/sound-library/`) and becomes [captured], used directly just like the automatic ones. For how to load, see "Loading with computer use" below;
      without computer use, ask the person to load it from `muser view`'s 🎛 -> plugin -> click this sound, or in `muser sounds capture`.

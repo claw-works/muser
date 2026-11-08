@@ -2,7 +2,8 @@
 //!
 //! 来源：
 //! - **VST3 标准预设**（`.vstpreset`，任何 VST3 插件；放在系统的 VST3 预设目录 `<厂商>/<插件>/` 下）：直接换成插件状态。
-//! - **插件自己的预设格式**：Surge XT 的 `.fxp`（直接换成状态）；Kontakt 的 `.nki`（NI 的 Native Access 记录的音色库目录，
+//! - **插件自己的预设格式**：Surge XT 的 `.fxp`（直接换成状态）；Serum 2 的 `.SerumPreset`（出厂和第三方音色包都是，直接换成状态，
+//!   见 [`crate::xfer`]；放在 Serum 的预设目录或 `MUSER_SERUM_PATH` 列出的文件夹里）；Kontakt 的 `.nki`（NI 的 Native Access 记录的音色库目录，
 //!   读文件开头的明文元数据：名字、音色库、类别、风格）。
 //! - **采集**：载不了的（Kontakt 的乐器只能在它自己的界面里载入）在插件窗口里载入一次（人，或用 computer use 的 agent），
 //!   状态存进本机音色库（`~/.config/muser/sound-library/`），之后和自动的一样直接用。
@@ -284,6 +285,18 @@ fn nki_meta(path: &Path) -> (String, String, Vec<String>) {
     (library, category, kept)
 }
 
+/// 按关键词（空格隔开，都要出现在名字、类别、音色库或标签里）筛选 [`presets`]。
+pub fn search(p: &PluginRef, filter: Option<&str>) -> Vec<Preset> {
+    let terms: Vec<String> = filter.unwrap_or_default().to_lowercase().split_whitespace().map(str::to_string).collect();
+    presets(p)
+        .into_iter()
+        .filter(|x| {
+            let hay = format!("{} {} {} {}", x.name, x.category, x.library, x.tags.join(" ")).to_lowercase();
+            terms.iter().all(|t| hay.contains(t))
+        })
+        .collect()
+}
+
 /// 插件的内置音色（最前面是用户自己存下的"My sounds"）。
 pub fn presets(p: &PluginRef) -> Vec<Preset> {
     let mut out: Vec<Preset> = read_index()
@@ -327,6 +340,19 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
             }
         }
     }
+    if lname.starts_with("serum 2") && !lname.contains("fx") {
+        for root in serum_dirs() {
+            let mut files = Vec::new();
+            walk(&root, "SerumPreset", 8, &[], &mut files);
+            for f in files {
+                let rel: Vec<String> = f.parent().and_then(|d| d.strip_prefix(&root).ok()).map(|r| r.iter().map(|c| c.to_string_lossy().into_owned()).collect()).unwrap_or_default();
+                let m = std::fs::read(&f).ok().and_then(|b| crate::xfer::meta(&b).ok()).unwrap_or_default();
+                let file = f.display().to_string();
+                let name = if m.name.is_empty() { stem(&f) } else { m.name };
+                out.push(Preset { name, category: rel.join(" / "), library: m.author, tags: m.tags, load: status(&file, true), file });
+            }
+        }
+    }
     if lname.starts_with("kontakt") {
         for dir in ni_content_dirs() {
             let mut files = Vec::new();
@@ -340,6 +366,26 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
         }
     }
     out
+}
+
+/// Serum 2 的预设目录（出厂与装进去的第三方音色包），再加 `MUSER_SERUM_PATH`（用系统的路径分隔符隔开）列出的文件夹。
+fn serum_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::env::var_os("MUSER_SERUM_PATH").map(|v| std::env::split_paths(&v).collect()).unwrap_or_default();
+    let sub = "Xfer Records/Serum 2 Presets/Presets";
+    dirs.push(PathBuf::from("/Library/Audio/Presets").join(sub));
+    dirs.push(home().join("Library/Audio/Presets").join(sub));
+    for var in ["PROGRAMDATA", "PUBLIC"] {
+        if let Some(v) = std::env::var_os(var) {
+            let base = PathBuf::from(v);
+            dirs.push(base.join("Xfer").join("Serum 2 Presets").join("Presets"));
+            dirs.push(base.join("Documents").join("Xfer").join("Serum 2 Presets").join("Presets"));
+            dirs.push(base.join(sub));
+        }
+    }
+    dirs.push(home().join("Documents/Xfer/Serum 2 Presets/Presets"));
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|d| d.is_dir() && seen.insert(d.canonicalize().unwrap_or_else(|_| d.clone())));
+    dirs
 }
 
 fn stem(p: &Path) -> String {
@@ -431,6 +477,8 @@ pub fn state_for(p: &PluginRef, preset: &Preset) -> Result<PathBuf, String> {
             vst3_container(&p.id, &comp, &cont)?
         }
         ("fxp", "vst3") => vst3_container(&p.id, &read_fxp(&bytes)?, &[])?,
+        // Serum 2：预设就是完整的 processor 状态，controller 段留空，插件照常读入。
+        ("serumpreset", "vst3") => vst3_container(&p.id, &crate::xfer::preset_component(&bytes)?, &[])?,
         ("fxp", _) => read_fxp(&bytes)?,
         _ => {
             return Err(format!(

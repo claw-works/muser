@@ -3,6 +3,13 @@
 Each release's notes on GitHub are the section for its tag below (the release workflow copies it).
 Write the next version's section here before tagging; the heading must be `## vX.Y.Z`.
 
+## v0.6.0 (unreleased)
+
+### Sounds
+
+- **Serum 2 presets load directly**: `muser sounds presets` lists Serum 2's factory sounds and installed third-party packs (name, author, tags from the preset file, category from its folder), and `sounds state` turns one into plugin state without opening Serum. muser reads the preset files on this machine and converts them on first use; nothing from Xfer is shipped. Packs kept outside Serum's preset folder are found through `MUSER_SERUM_PATH`. Serum 1 `.fxp` presets and the oldest Serum 2 format are not read (open them in Serum 2 and save again).
+- **Sound tools over MCP**: `list_sounds`, `list_plugin_presets`, `get_preset_state` and `describe_sound` do what `muser sounds list / presets / state / describe` do, so agents no longer need the shell to pick a plugin's sound.
+
 ## v0.5.0
 
 The headline is **`muser live`**: an agent plays music through this machine's sound card and keeps writing it a section at a time while people listen and ask for changes. Around it: tempo and tuning changes per section, a distortion effect, an effect panel and fuller exports in `muser view`, and everything muser prints is now in English.

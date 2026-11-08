@@ -59,7 +59,7 @@ Error messages give the exact location, e.g. `tracks[0].effects[0]: reverb.mix =
 ### `muser sounds list|describe`
 
 - `list [--kind builtin|sfz|plugin] [--filter word] [--json]`: the sounds available on this machine (built-in instruments, SFZ in `$MUSER_SFZ_PATH`, scanned instrument plugins); ones already listened to carry a one-line card description.
-- `presets <plugin> [--filter word] [--json]`: a plugin's built-in sounds (name / sound library / category / tags of VST3 standard presets, Surge `.fxp`, Kontakt `.nki`),
+- `presets <plugin> [--filter word] [--json]`: a plugin's built-in sounds (name / sound library / category / tags of VST3 standard presets, Surge `.fxp`, Serum 2 `.SerumPreset` (factory and installed sound packs; extra folders on `MUSER_SERUM_PATH`), Kontakt `.nki`),
   marked by whether they can be used directly: auto (converted straight to a state) / captured (already captured) / manual (must be loaded once in the plugin window).
 - `state <plugin> <sound>`: fetch this sound's state file (in the machine's sound library `~/.config/muser/sound-library/`) and print how to write it in a project.
 - `save <plugin> <name> <state-file>`: save a plugin state into "My sounds" in the sound library (same name overwrites); afterward it is available in `presets` and the view drawer.
@@ -283,6 +283,10 @@ how to use beats as time, GM drum keys, semantic instrument names, and so on.
 | `save_plugin_state` | Save a plugin's full state (sound) file |
 | `list_instruments` | List instruments (can filter by `family`), returns name / family / pitch convention / range / polyphony / description |
 | `describe_instrument` | View an instrument's details and tunable parameters (including the preset's current values) |
+| `list_sounds` | The sounds on this machine (built-in, SFZ, instrument plugins), filtered by kind and keywords; same as `muser sounds list` |
+| `list_plugin_presets` | A plugin's own sounds with category / library / tags and how they load (auto / captured / manual); same as `muser sounds presets` |
+| `get_preset_state` | The state file of one of those sounds and the `instrument` / `instrument_params` to write; same as `muser sounds state` |
+| `describe_sound` | Listen to a sound and return its card (brightness, attack, tail, range, reference loudness); same as `muser sounds describe` |
 | `list_effects` | List all effects with descriptions |
 | `describe_effect` | View an effect's parameters (range / default / unit / sonic description), placement advice, and JSON example |
 | `live_start` | Start a live session (starts `muser live start` in the background, in its own process group, so the music keeps playing after the agent session ends) |
