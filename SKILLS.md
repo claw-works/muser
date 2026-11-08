@@ -159,6 +159,7 @@ muser sounds describe "plugin:<path>#<id>" --params '{"@state": "<state-file>"}'
    - **Serum 2 sound packs**: muser reads Serum 2's preset folder; packs kept somewhere else are found when that folder is on `MUSER_SERUM_PATH`.
      Only Serum 2 presets work: Serum 1 `.fxp` packs must be opened in Serum 2 and saved again. A pack that comes with its own wavetables or samples
      needs them installed where its instructions say, or Serum quietly uses other ones and the sound is wrong; tell the person this in plain words.
+   - Two sounds with the same name (a pack's and a factory one, say) make `sounds state` / `get_preset_state` ask for the file path instead; pass the `file` from the list.
    - **[needs loading]**: Kontakt instruments (`.nki`) can only be loaded in its own UI. After loading once, the state is stored in the user's machine-local sound library
      (`~/.config/muser/sound-library/`) and becomes [captured], used directly just like the automatic ones. For how to load, see "Loading with computer use" below;
      without computer use, ask the person to load it from `muser view`'s 🎛 -> plugin -> click this sound, or in `muser sounds capture`.
