@@ -13,6 +13,12 @@ Write the next version's section here before tagging; the heading must be `## vX
 - **Serum 2 presets load directly**: `muser sounds presets` lists Serum 2's factory sounds and installed third-party packs (name, author, tags from the preset file, category from its folder), and `sounds state` turns one into plugin state without opening Serum. muser reads the preset files on this machine and converts them on first use; nothing from Xfer is shipped. Packs kept outside Serum's preset folder are found through `MUSER_SERUM_PATH`. Serum 1 `.fxp` presets and the oldest Serum 2 format are not read (open them in Serum 2 and save again).
 - **Serum 2 FX effect chains load directly**: on the Serum 2 FX plugin, `sounds presets` lists the `.SerumFX` (one effect) and `.SerumFXRack` (a whole chain) files, and `sounds state` gives the entry to put in `effects`. The chain goes into Serum 2 FX's own initial state, which muser reads once by opening the plugin without a window and keeps in the sound library (again after a plugin update). The 9 factory chains still in the oldest format are not read.
 - **Sound tools over MCP**: `list_sounds`, `list_plugin_presets`, `get_preset_state` and `describe_sound` do what `muser sounds list / presets / state / describe` do, so agents no longer need the shell to pick a plugin's sound.
+- **Sound cards suggest a gain**: `sounds describe` / `describe_sound` give `suggested_gain_db`, the `gain_db` that makes a sound about as loud as the built-in instruments (cards already cached get it without listening again).
+
+### Fixes
+
+- **Stems with master automation**: `render --stems` failed validation when the project automated a master effect (the stems drop the master effects but kept their automation). The `--stems` help now also says the stems are 24-bit (the full mix is 16-bit).
+- `sounds state` given a file path that is not in the list explains that sound names are the listed names (Serum 2 takes them from inside the preset, not from the file name).
 
 ## v0.5.0
 
