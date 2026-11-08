@@ -6,6 +6,7 @@
 //! - 控制接口只在 127.0.0.1：`muser live send|status|wait|autoplay|stop` 与 muser-mcp 的 live 工具都转发到这里。
 //! - 整场随时写进 `--record` 的工程文件，离线渲染与现场一致。
 
+#![cfg_attr(not(feature = "device"), allow(dead_code, unused_imports))] // 无声卡版只留下 serve 的报错，其余用不上
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -726,6 +727,7 @@ fn effects_change(effects: &mut Vec<EffectSlot>, bc: &BusChange, off: f64, what:
 
 // ---------- 常驻进程 ----------
 
+#[cfg(feature = "device")]
 struct Live {
     session: Mutex<Session>,
     player: muser_engine::playback::Player,
@@ -747,8 +749,10 @@ struct Live {
 }
 
 /// 掉帧后这么多秒内，status / wait 都提醒。
+#[cfg(feature = "device")]
 const UNDERRUN_WARN: Duration = Duration::from_secs(30);
 
+#[cfg(feature = "device")]
 impl Live {
     fn now_beat(&self) -> f64 {
         self.session.lock().unwrap().tm().beat_at(self.player.status().position)
@@ -966,6 +970,13 @@ pub fn parse_duration(s: &str) -> Result<Option<Duration>> {
 }
 
 /// 启动一场现场演奏（前台常驻，直到 `muser live stop`）。
+#[cfg(not(feature = "device"))]
+#[allow(clippy::too_many_arguments)]
+pub fn serve(_: &str, _: muser_engine::RenderSettings, _: u16, _: Option<Duration>, _: Option<String>, _: bool, _: Option<String>) -> Result<()> {
+    bail!("this muser build has no sound card playback (the device feature), so it cannot play live")
+}
+
+#[cfg(feature = "device")]
 #[allow(clippy::too_many_arguments)]
 pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>, open: bool, title: Option<String>) -> Result<()> {
     let text = std::fs::read_to_string(template).with_context(|| format!("cannot read template {template}"))?;

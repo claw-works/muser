@@ -50,6 +50,10 @@ jobs:
       - name: Test engine without plugin host
         run: cargo test -p muser-engine --locked
 
+      # 发布里的 -headless 版（不带声卡）：和 release.yml 同样的特性组合，免得只在打 tag 时才发现编不过。
+      - name: Check headless build
+        run: cargo clippy -p muser-cli -p muser-mcp --no-default-features --features muser-cli/host,muser-mcp/host --locked -- -D warnings
+
       - name: Smoke test CLI
         shell: bash
         run: |
