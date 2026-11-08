@@ -61,9 +61,10 @@ pub fn erhu() -> BowedParams {
         // 比 D4 低的音也在内弦上（二胡最低就是 D4）。
         strings: [d4, d4, d4, 440.0],
         bow_position: 0.1,
-        pressure: 0.7,
+        pressure: 0.8,
         attack: 0.05,
-        bow_noise: 0.6,
+        // 二胡的"毛"：马尾夹在两弦之间、松香多，整个音里一直有擦弦的颗粒（不光是开头），弓速也不那么稳。
+        bow_noise: 0.9,
         decay: 0.8,
         decay_per_octave: 1.3,
         high_decay: 0.2,
@@ -75,7 +76,7 @@ pub fn erhu() -> BowedParams {
         legato_time: 0.12,
         portamento: true,
         drift: 4.0,
-        fluctuation: 0.05,
+        fluctuation: 0.12,
         swell: 0.12,
         scratch: 0.6,
         // 琴筒：琴码立在蟒皮上，蟒皮像鼓面一样把弦的力放出去：低于约 400 Hz 放得很少（二胡没有小提琴那种木头的"厚"），

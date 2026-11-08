@@ -400,7 +400,7 @@ FAMILY_PAGES = {
         "A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
         "**Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. "
         "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin. "
-        "Its range starts at D4 (the inner string); the singing register is A4-A5. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
+        "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
     ]),
     "accordion": ("Accordion", "accordion.md", [
         "muser's own free-reed instrument (yinse): `yinse.blow.accordion` (musette: three middle reeds tuned apart, the French shimmer), `yinse.blow.accordion_dry` (fuller and nearly in tune: tango, folk, polka), `yinse.blow.bandoneon` (low + middle reeds an octave apart: the tango sound).",

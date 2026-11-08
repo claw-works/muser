@@ -52,7 +52,7 @@ Preset values of each instrument:
 
 | instrument | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `tone` | `pressure` | `players` |
 |---|---|---|---|---|---|---|---|---|
-| `yinse.bow.erhu` | 0.05 | 0.2 | 6.5 | 40 | 0.1 | 8000 | 0.7 | 1 |
+| `yinse.bow.erhu` | 0.05 | 0.2 | 6.5 | 40 | 0.1 | 8000 | 0.8 | 1 |
 
 ### Tuning examples
 
@@ -80,4 +80,4 @@ Preset values of each instrument:
 - muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝) and `yinse.bow.erhu` (二胡).
 - Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.
 - **Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).
-- **Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `"legato": true` slurs everything, which sounds like a violin. Its range starts at D4 (the inner string); the singing register is A4-A5. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.
+- **Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `"legato": true` slurs everything, which sounds like a violin. Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.
