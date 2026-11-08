@@ -194,6 +194,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             muser_core::humanize::perform(&h, notes, &lens, clip.start.0, seed)
         });
         let strums = strum_offsets(notes, c0, crate::electric::strum_seconds(&track.instrument, &track.instrument_params));
+        let vibrato = crate::chinese::vibrato_for(&track.instrument, &track.instrument_params);
         for (ni, note) in notes.iter().enumerate() {
             let (on, raw_off, velocity) = match &performed {
                 None => {
@@ -213,7 +214,15 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             if off <= on {
                 continue;
             }
-            let ch = (!note.bend.is_empty()).then(|| {
+            // 弯音曲线按拍：用这个音开头的速度换算（渐变中按当时的速度近似）。
+            let bps = tm.bpm_at(c0 + note.start.0) / 60.0;
+            // 古筝的揉弦：音符自己没写弯音时，渲染器写一条（见 crate::chinese）。
+            let auto = match (note.bend.is_empty(), vibrato) {
+                (true, Some(v)) => crate::chinese::vibrato_bend(lengths[ni].0, bps, v),
+                _ => Vec::new(),
+            };
+            let bend: &[(f64, f64)] = if note.bend.is_empty() { &auto } else { &note.bend };
+            let ch = (!bend.is_empty()).then(|| {
                 bent += 1;
                 BEND_CHANNELS[(bent - 1) % BEND_CHANNELS.len()]
             });
@@ -221,10 +230,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 // 每 ~5 ms 一个点，值不变就不发。
                 let step = ((sr * 0.005) as usize).max(1);
                 let mut last = None;
-                // 弯音曲线按拍：用这个音开头的速度换算（渐变中按当时的速度近似）。
-                let bps = tm.bpm_at(c0 + note.start.0) / 60.0;
                 for f in (on..off).step_by(step) {
-                    let v = bend_value(&note.bend, (f - on) as f64 / sr * bps);
+                    let v = bend_value(bend, (f - on) as f64 / sr * bps);
                     if last != Some(v) {
                         acts.push((f, Act::Bend { value: v, ch }));
                         last = Some(v);

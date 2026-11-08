@@ -393,6 +393,14 @@ FAMILY_PAGES = {
         "**Palm mute per note**: `\"mute\": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.",
         "Two rhythm tracks of the same riff panned left and right (one with `\"pickup\": \"middle\"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `\"pickup\": \"neck\"` is rounder; bends use the note's `bend`.",
     ]),
+    "chinese": ("Chinese traditional instruments", "chinese.md", [
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝) and `yinse.bow.erhu` (二胡).",
+        "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
+        "**Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). "
+        "A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
+        "**Erhu**: one note at a time. Put a phrase in a clip with `\"legato\": true`: the notes join under one bow and the finger slides between them (the erhu's portamento); a rest or a new clip starts a new bow. "
+        "Its range starts at D4 (the inner string); the singing register is A4-A5. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
+    ]),
     "accordion": ("Accordion", "accordion.md", [
         "muser's own free-reed instrument (yinse): `yinse.blow.accordion` (musette: three middle reeds tuned apart, the French shimmer), `yinse.blow.accordion_dry` (fuller and nearly in tune: tango, folk, polka), `yinse.blow.bandoneon` (low + middle reeds an octave apart: the tango sound).",
         "Reeds sustain as long as the key is held: write the note's `length` as long as it should sound; for staccato (tango marcato, polka off-beats) write short notes.",
@@ -489,6 +497,9 @@ PARAM_EXAMPLES = {
                ("Muted (palm mute feel) on an acoustic", "guitar.steel", {"decay": 0.3, "release": 0.05}),
                ("Electric: a warm neck-pickup humbucker lead with a slow strum", "yinse.pluck.electric_guitar", {"pickup": "neck", "strum": 15}),
                ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "yinse.pluck.electric_guitar_clean", {"pickup": "bridge", "mute": 0.4})],
+    "chinese": [("Guzheng without vibrato, softer picks", "yinse.pluck.guzheng", {"vibrato": 0, "pluck_brightness": 4000}),
+                ("Guzheng with a deep, slow vibrato on held notes", "yinse.pluck.guzheng", {"vibrato": 45, "vibrato_rate": 4}),
+                ("A plainer, softer erhu", "yinse.bow.erhu", {"vibrato_depth": 15, "pressure": 0.4})],
     "accordion": [("Tango: bandoneon register, a darker chamber and a quick bellows shake", "yinse.blow.accordion_dry", {"register": "bandoneon", "cassotto": 0.7, "shake": 0.4}),
                   ("A dry, plain solo line", "yinse.blow.accordion", {"register": "clarinet", "musette": 0})],
     "bass": [("Duller, shorter fingerstyle bass", "bass.finger", {"tone": 1200, "decay": 1.0}),

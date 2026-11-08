@@ -67,6 +67,8 @@ pub static MEASURED: &[(&str, f32)] = &[
     ("guitar.steel", -31.0),
     ("yinse.pluck.electric_guitar", -15.4),
     ("yinse.pluck.electric_guitar_clean", -17.4),
+    ("yinse.pluck.guzheng", -28.1),
+    ("yinse.bow.erhu", -29.4),
     ("yinse.blow.accordion", -19.5),
     ("yinse.blow.accordion_dry", -17.8),
     ("yinse.blow.bandoneon", -22.0),

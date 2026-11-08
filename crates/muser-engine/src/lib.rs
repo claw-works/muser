@@ -156,6 +156,7 @@ pub mod sfz;
 pub mod presets;
 mod electric;
 mod accordion;
+mod chinese;
 pub mod xfer;
 pub mod sounds;
 

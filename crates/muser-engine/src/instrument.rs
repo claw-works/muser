@@ -280,6 +280,7 @@ enum Patch {
     String(StringParams, usize),
     Electric(crate::electric::ElectricParams, usize),
     Accordion(crate::accordion::AccordionParams),
+    Guzheng(crate::chinese::GuzhengParams),
     Acid(AcidParams),
     Organ(OrganParams),
     Mallet(MalletParams, usize),
@@ -309,6 +310,7 @@ impl Patch {
             Patch::String(p, _) => params::apply(params::STRING, p, params),
             Patch::Electric(p, _) => params::apply(params::ELECTRIC, p, params),
             Patch::Accordion(p) => params::apply(params::ACCORDION, p, params),
+            Patch::Guzheng(p) => params::apply(params::GUZHENG, p, params),
             Patch::Acid(p) => params::apply(params::ACID, p, params),
             Patch::Organ(p) => params::apply(params::ORGAN, p, params),
             Patch::Mallet(p, _) => params::apply(params::MALLET, p, params),
@@ -351,6 +353,11 @@ impl Patch {
             ),
             Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
             Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
+            Patch::Guzheng(p) => (
+                params::describe(params::GUZHENG, p, params::NEXT_GUZHENG),
+                "Tuned like any pitched instrument (write the notes you want; for the traditional sound keep to the pentatonic scale, e.g. D E F# A B). \
+                 Presses and slides (按音、滑音) are the note's `bend`; glissandi (刮奏) are fast runs of pentatonic notes; tremolo (摇指) is fast repeated notes.".into(),
+            ),
             Patch::Accordion(p) => (
                 params::describe(params::ACCORDION, p, params::NEXT_ACCORDION),
                 "Chords and bass in the left hand are plain notes in the low register. Shape phrases with `bellows` automation (louder and brighter together); `velocity` also pushes the bellows a little.".into(),
@@ -393,6 +400,7 @@ impl Patch {
             Patch::Fm(p) => tunable(Synth::with_voices(16, move || FmVoice::new(p)), p, params::FM, |v, p| v.set_params(p)),
             Patch::String(p, n) => tunable(Synth::with_voices(n, move || PluckedString::new(p)), p, params::STRING, |v, p| v.set_params(p)),
             Patch::Electric(p, n) => TrackInstrument::new(crate::electric::Electric::new(p, n), 0),
+            Patch::Guzheng(p) => tunable(Synth::with_voices(21, move || PluckedString::new(p.string)), p, params::GUZHENG, |v, p| v.set_params(p.string)),
             Patch::Accordion(p) => tunable(Synth::with_voices(16, move || crate::accordion::AccordionVoice::new(p)), p, params::ACCORDION, |v, p| v.set_params(p)),
             Patch::Acid(p) => {
                 let mut s = Synth::with_voices(1, move || AcidVoice::new(p));
@@ -401,7 +409,12 @@ impl Patch {
             }
             Patch::Organ(p) => tunable(Synth::new(OrganVoice::voices(16, p)), p, params::ORGAN, |v, p| v.set_params(p)),
             Patch::Mallet(p, n) => tunable(Synth::with_voices(n, move || MalletVoice::new(p)), p, params::MALLET, |v, p| v.set_params(p)),
-            Patch::Bowed(p, n) => tunable(Synth::with_voices(n, move || BowedString::new(p)), p, params::BOWED, |v, p| v.set_params(p)),
+            Patch::Bowed(p, n) => {
+                let mut s = Synth::with_voices(n, move || BowedString::new(p));
+                // 单音的拉弦乐器（二胡）：连着的音是一弓里的换指，按 portamento 滑过去。
+                s.set_legato(n == 1);
+                tunable(s, p, params::BOWED, |v, p| v.set_params(p))
+            }
             Patch::Wind(p, n) => tunable(Synth::with_voices(n, move || WindVoice::new(p)), p, params::WIND, |v, p| v.set_params(p)),
             Patch::Choir(p, n) => tunable(Synth::with_voices(n, move || ChoirVoice::new(p)), p, params::CHOIR, |v, p| v.set_params(p)),
             Patch::Sfz(path, cc) => sfz_instrument(&path, &cc)?,
@@ -555,6 +568,9 @@ static BUILTINS: &[Builtin] = &[
     b!("bass.acid", ["acid"], "bass", false, (24, 60), 1, "TB-303 style acid bass (monophonic, overlapping notes glide); acid house / techno", || Patch::Acid(AcidParams::classic())),
     b!("bass.acid_squelch", [], "bass", false, (24, 60), 1, "acid bass with higher resonance and envelope, a stronger squelch", || Patch::Acid(AcidParams::squelch())),
     b!("bass.acid_square", [], "bass", false, (24, 60), 1, "acid bass, square-wave version, more hollow", || Patch::Acid(AcidParams::square())),
+    // —— 中国民族乐器（muser 自己的，yinse）——
+    b!("yinse.pluck.guzheng", [], "chinese", false, (38, 88), 21, "Guzheng (古筝): bright picked strings over a big paulownia soundboard, long ringing notes, left-hand vibrato on held notes; Chinese traditional, film, new-age", || Patch::Guzheng(crate::chinese::GuzhengParams::guzheng())),
+    b!("yinse.bow.erhu", [], "chinese", false, (62, 96), 1, "Erhu (二胡): two-string fiddle with a python-skin resonator, nasal and singing, wide vibrato; slurred notes (legato clips) slide into each other. One note at a time", || Patch::Bowed(crate::chinese::erhu(), 1)),
     // —— 手风琴（muser 自己的，yinse）——
     b!("yinse.blow.accordion", [], "accordion", false, (41, 93), 16, "Accordion, musette register: three middle reeds tuned apart, the shimmering French sound; chanson, waltz musette, folk", || Patch::Accordion(crate::accordion::AccordionParams::musette())),
     b!("yinse.blow.accordion_dry", [], "accordion", false, (41, 93), 16, "Accordion, master register with the reeds nearly in tune: full and dry; tango, folk, polka, accompaniment", || Patch::Accordion(crate::accordion::AccordionParams::dry())),
@@ -795,6 +811,7 @@ pub(crate) fn automation_param(
         Patch::String(p, _) => find(params::STRING, p, param, params::NEXT_STRING),
         Patch::Electric(p, _) => find(params::ELECTRIC, p, param, params::NEXT_ELECTRIC),
         Patch::Accordion(p) => find(params::ACCORDION, p, param, params::NEXT_ACCORDION),
+        Patch::Guzheng(p) => find(params::GUZHENG, p, param, params::NEXT_GUZHENG),
         Patch::Acid(p) => find(params::ACID, p, param, &[]),
         Patch::Organ(p) => find(params::ORGAN, p, param, &[]),
         Patch::Mallet(p, _) => find(params::MALLET, p, param, params::NEXT_MALLET),

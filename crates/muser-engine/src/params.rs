@@ -259,6 +259,18 @@ pub(crate) static ELECTRIC: &[ParamDef<crate::electric::ElectricParams>] = &[
     num!("pluck_position", 0.02, 0.5, "", "Where the pick hits (fraction of the way from the bridge): 0.06 near the bridge, thin and twangy; 0.3 over the neck, round", |p| p.string.pluck_position),
 ];
 
+pub(crate) const NEXT_GUZHENG: &[&str] = &["decay", "release", "pluck_brightness", "pluck_position", "vibrato", "vibrato_rate", "vibrato_delay"];
+
+pub(crate) static GUZHENG: &[ParamDef<crate::chinese::GuzhengParams>] = &[
+    num!("vibrato", 0.0, 100.0, "cents", "Left-hand vibrato (揉弦) on held notes, the swing either way: 0 none; 15-25 the usual; 40+ a deep, sighing vibrato. Notes that have their own `bend` (presses, slides) get none", |p| p.vibrato),
+    num!("vibrato_rate", 0.5, 12.0, "Hz", "How fast the vibrato swings (4-6)", |p| p.vibrato_rate),
+    num!("vibrato_delay", 0.0, 4.0, "s", "How long after the pluck the vibrato starts (players pluck, then press)", |p| p.vibrato_delay),
+    num!("decay", 0.05, 60.0, "s", "How long a string rings (middle C to -60 dB)", |p| p.string.decay),
+    num!("release", 0.01, 10.0, "s", "How long a string rings on after its note ends: guzheng strings are rarely damped, so this is long; 0.2 for damped, clipped notes", |p| p.string.release),
+    num!("pluck_brightness", 100.0, 20000.0, "Hz", "Pick (义甲) brightness: 9000 the bright, ringing tone; 3000 a soft, round touch", |p| p.string.pluck_brightness),
+    num!("pluck_position", 0.02, 0.5, "", "Where the pick plucks (fraction from the bridge): 0.06 near the bridge, thin and metallic; 0.25 towards the middle, round and warm", |p| p.string.pluck_position),
+];
+
 pub(crate) const NEXT_ACCORDION: &[&str] = &["musette", "attack"];
 
 pub(crate) static ACCORDION: &[ParamDef<crate::accordion::AccordionParams>] = &[
