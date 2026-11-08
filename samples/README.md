@@ -53,6 +53,9 @@ scripts/render_samples.sh effects    # 只渲染一个分组
   poly.warm_analog_pad → poly.juno_keys → poly.bell_pluck。完整列表用 `muser instruments` 查看。
 - `electric-guitar`：`yinse.pluck.electric_guitar`（双线圈、琴桥）过内置 `distortion`：掌闷的单音 chug（音符上的 `"mute": true`）与放开的强力和弦、左右两轨（右边换中间拾音器、扫弦 10 ms、人性化），
   主奏（琴颈拾音器、推弦、延迟）；最后 4 小节 `yinse.pluck.electric_guitar_clean`（单线圈、琴颈）十六分上下扫和弦，加 chorus / reverb。
+- `accordion-valse`：`yinse.blow.accordion`（musette）的法式华尔兹（A 小调，3/4，176 BPM）：右手旋律用 `bellows` 自动化做乐句起伏、最后一个长音加风箱抖动；
+  左手（`yinse.blow.accordion_dry`，bandoneon 音栓）弹"嘭-嚓-嚓"，下面拨弦低音提琴。
+- `accordion-tango`：`yinse.blow.bandoneon` 的探戈（D 小调，116 BPM）：四拍一下的 marcato 和弦（1、3 拍重音），附点旋律，长音上风箱抖动。
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径相对音色库，
   需设 `MUSER_SFZ_PATH` 指向你的音色库目录（见 [README.zh-CN.md](../README.zh-CN.md)）。
 

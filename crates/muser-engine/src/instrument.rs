@@ -279,6 +279,7 @@ enum Patch {
     Fm(FmParams),
     String(StringParams, usize),
     Electric(crate::electric::ElectricParams, usize),
+    Accordion(crate::accordion::AccordionParams),
     Acid(AcidParams),
     Organ(OrganParams),
     Mallet(MalletParams, usize),
@@ -307,6 +308,7 @@ impl Patch {
             Patch::Fm(p) => params::apply(params::FM, p, params),
             Patch::String(p, _) => params::apply(params::STRING, p, params),
             Patch::Electric(p, _) => params::apply(params::ELECTRIC, p, params),
+            Patch::Accordion(p) => params::apply(params::ACCORDION, p, params),
             Patch::Acid(p) => params::apply(params::ACID, p, params),
             Patch::Organ(p) => params::apply(params::ORGAN, p, params),
             Patch::Mallet(p, _) => params::apply(params::MALLET, p, params),
@@ -349,6 +351,10 @@ impl Patch {
             ),
             Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
             Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
+            Patch::Accordion(p) => (
+                params::describe(params::ACCORDION, p, params::NEXT_ACCORDION),
+                "Chords and bass in the left hand are plain notes in the low register. Shape phrases with `bellows` automation (louder and brighter together); `velocity` also pushes the bellows a little.".into(),
+            ),
             Patch::Electric(p, _) => (
                 params::describe(params::ELECTRIC, p, params::NEXT_ELECTRIC),
                 "Palm-mute single notes with `\"mute\": true` on the note (depth: `mute`); bends with the note's `bend`. Chords of 3+ notes are strummed (`strum`). \
@@ -387,6 +393,7 @@ impl Patch {
             Patch::Fm(p) => tunable(Synth::with_voices(16, move || FmVoice::new(p)), p, params::FM, |v, p| v.set_params(p)),
             Patch::String(p, n) => tunable(Synth::with_voices(n, move || PluckedString::new(p)), p, params::STRING, |v, p| v.set_params(p)),
             Patch::Electric(p, n) => TrackInstrument::new(crate::electric::Electric::new(p, n), 0),
+            Patch::Accordion(p) => tunable(Synth::with_voices(16, move || crate::accordion::AccordionVoice::new(p)), p, params::ACCORDION, |v, p| v.set_params(p)),
             Patch::Acid(p) => {
                 let mut s = Synth::with_voices(1, move || AcidVoice::new(p));
                 s.set_legato(true);
@@ -548,6 +555,10 @@ static BUILTINS: &[Builtin] = &[
     b!("bass.acid", ["acid"], "bass", false, (24, 60), 1, "TB-303 style acid bass (monophonic, overlapping notes glide); acid house / techno", || Patch::Acid(AcidParams::classic())),
     b!("bass.acid_squelch", [], "bass", false, (24, 60), 1, "acid bass with higher resonance and envelope, a stronger squelch", || Patch::Acid(AcidParams::squelch())),
     b!("bass.acid_square", [], "bass", false, (24, 60), 1, "acid bass, square-wave version, more hollow", || Patch::Acid(AcidParams::square())),
+    // —— 手风琴（muser 自己的，yinse）——
+    b!("yinse.blow.accordion", [], "accordion", false, (41, 93), 16, "Accordion, musette register: three middle reeds tuned apart, the shimmering French sound; chanson, waltz musette, folk", || Patch::Accordion(crate::accordion::AccordionParams::musette())),
+    b!("yinse.blow.accordion_dry", [], "accordion", false, (41, 93), 16, "Accordion, master register with the reeds nearly in tune: full and dry; tango, folk, polka, accompaniment", || Patch::Accordion(crate::accordion::AccordionParams::dry())),
+    b!("yinse.blow.bandoneon", [], "accordion", false, (36, 88), 16, "Bandoneon: low and middle reeds an octave apart, dark and reedy; the tango sound", || Patch::Accordion(crate::accordion::AccordionParams::bandoneon())),
     // —— 风琴 ——
     b!("organ.jazz", [], "organ", false, (36, 96), 16, "Drawbar organ (Hammond style) jazz sound: soft, with percussion overtones", || Patch::Organ(OrganParams::jazz())),
     b!("organ.gospel", [], "organ", false, (36, 96), 16, "Gospel organ: full and bright; suited to chord beds", || Patch::Organ(OrganParams::gospel())),
@@ -783,6 +794,7 @@ pub(crate) fn automation_param(
         Patch::Fm(p) => find(params::FM, p, param, params::NEXT_FM),
         Patch::String(p, _) => find(params::STRING, p, param, params::NEXT_STRING),
         Patch::Electric(p, _) => find(params::ELECTRIC, p, param, params::NEXT_ELECTRIC),
+        Patch::Accordion(p) => find(params::ACCORDION, p, param, params::NEXT_ACCORDION),
         Patch::Acid(p) => find(params::ACID, p, param, &[]),
         Patch::Organ(p) => find(params::ORGAN, p, param, &[]),
         Patch::Mallet(p, _) => find(params::MALLET, p, param, params::NEXT_MALLET),

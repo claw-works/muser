@@ -155,6 +155,7 @@ pub mod render;
 pub mod sfz;
 pub mod presets;
 mod electric;
+mod accordion;
 pub mod xfer;
 pub mod sounds;
 

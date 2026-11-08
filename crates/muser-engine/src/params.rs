@@ -259,6 +259,30 @@ pub(crate) static ELECTRIC: &[ParamDef<crate::electric::ElectricParams>] = &[
     num!("pluck_position", 0.02, 0.5, "", "Where the pick hits (fraction of the way from the bridge): 0.06 near the bridge, thin and twangy; 0.3 over the neck, round", |p| p.string.pluck_position),
 ];
 
+pub(crate) const NEXT_ACCORDION: &[&str] = &["musette", "attack"];
+
+pub(crate) static ACCORDION: &[ParamDef<crate::accordion::AccordionParams>] = &[
+    ParamDef {
+        spec: InstParamSpec {
+            name: "register",
+            kind: ParamKind::Number { min: 0.0, max: 7.0, unit: "", integer: true, names: crate::accordion::REGISTER_NAMES },
+            description: "Register (which reeds sound): \"master\" all of them, the fullest; \"musette\" three middle reeds, the shimmering French sound; \"violin\" two, a light shimmer; \"clarinet\" one, plain; \"bassoon\" the low reed alone; \"oboe\" middle + high, bright; \"bandoneon\" low + middle, the tango sound; \"organ\" low + high, hollow. From the next note",
+        },
+        get: |p| json!(p.register),
+        set: Setter::Num(|p, v| {
+            p.register = v;
+            Ok(())
+        }),
+    },
+    num!("musette", 0.0, 60.0, "cents", "How far the middle reeds are tuned apart: 0 dry; 10-15 a light tremolo; 25-35 the wet French musette (beats about 6 times a second at A4)", |p| p.musette),
+    num!("bellows", 0.0, 1.0, "", "Bellows pressure: more is louder and brighter. Automate it for the push and pull of a phrase (swells, accents)", |p| p.bellows),
+    num!("shake", 0.0, 1.0, "", "Bellows shake: a tremolo of the volume, as players shake the bellows in tango and folk music. 0 off; 0.5 clear", |p| p.shake),
+    num!("shake_rate", 0.5, 12.0, "Hz", "How fast the bellows shake (about 4-7)", |p| p.shake_rate),
+    num!("cassotto", 0.0, 1.0, "", "Tone chamber: 0 open, bright and direct; 1 the reeds sit in the chamber, darker and rounder", |p| p.cassotto),
+    num!("attack", 0.002, 0.5, "s", "How long the reeds take to speak: 0.02 crisp; 0.05+ a soft swell", |p| p.attack),
+    num!("release", 0.005, 5.0, "s", "How fast a note stops after the key is released", |p| p.release),
+];
+
 pub(crate) static ACID: &[ParamDef<AcidParams>] = &[
     num!("cutoff", 30.0, 8000.0, "Hz", "Filter cutoff (with the envelope off). 200-400 dull; 800+ bright. Ideal for automated sweeps", |p| p.cutoff),
     num!("resonance", 0.0, 1.0, "", "Resonance. 0.5 normal; 0.8+ the classic 303 squelch", |p| p.resonance),

@@ -393,6 +393,13 @@ FAMILY_PAGES = {
         "**Palm mute per note**: `\"mute\": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.",
         "Two rhythm tracks of the same riff panned left and right (one with `\"pickup\": \"middle\"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `\"pickup\": \"neck\"` is rounder; bends use the note's `bend`.",
     ]),
+    "accordion": ("Accordion", "accordion.md", [
+        "muser's own free-reed instrument (yinse): `yinse.blow.accordion` (musette: three middle reeds tuned apart, the French shimmer), `yinse.blow.accordion_dry` (fuller and nearly in tune: tango, folk, polka), `yinse.blow.bandoneon` (low + middle reeds an octave apart: the tango sound).",
+        "Reeds sustain as long as the key is held: write the note's `length` as long as it should sound; for staccato (tango marcato, polka off-beats) write short notes.",
+        "Phrase with the bellows: automate `bellows` (louder and brighter together) for swells and accents, the way a player pushes and pulls; a little `shake` (bellows shake) suits tango and folk endings.",
+        "Left hand: write bass notes (one octave below middle C and lower) and short chords in the middle register on their own track; a waltz is bass on 1, chord on 2 and 3.",
+        "`register` changes the colour at the next note: \"musette\" for chanson and waltz, \"bandoneon\" or \"master\" for tango, \"clarinet\" for a plain solo line.",
+    ]),
     "bass": ("Bass", "bass.md", [
         "`bass.acid*` is monophonic (polyphony 1): starting the next note before the previous one ends produces a 303-style glide; for separated notes, leave gaps between the notes.",
         "Bass generally sits in 28-55; below 28 many speakers cannot reproduce it.",
@@ -482,6 +489,8 @@ PARAM_EXAMPLES = {
                ("Muted (palm mute feel) on an acoustic", "guitar.steel", {"decay": 0.3, "release": 0.05}),
                ("Electric: a warm neck-pickup humbucker lead with a slow strum", "yinse.pluck.electric_guitar", {"pickup": "neck", "strum": 15}),
                ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "yinse.pluck.electric_guitar_clean", {"pickup": "bridge", "mute": 0.4})],
+    "accordion": [("Tango: bandoneon register, a darker chamber and a quick bellows shake", "yinse.blow.accordion_dry", {"register": "bandoneon", "cassotto": 0.7, "shake": 0.4}),
+                  ("A dry, plain solo line", "yinse.blow.accordion", {"register": "clarinet", "musette": 0})],
     "bass": [("Duller, shorter fingerstyle bass", "bass.finger", {"tone": 1200, "decay": 1.0}),
              ("Screaming acid (together with accent notes)", "bass.acid", {"cutoff": 250, "resonance": 0.9, "env_mod": 0.8, "decay": 0.3, "accent": 1.0})],
     "organ": [("Soft ballad drawbars + percussion harmonic", "organ.jazz", {"drawbars": "838000000", "percussion": "second", "click": 0.2})],
