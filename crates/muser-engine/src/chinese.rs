@@ -427,7 +427,7 @@ pub fn erhu() -> BowedParams {
             BodyMode::new(330.0, 3.0, 0.0),
             BodyMode::new(600.0, 5.0, 1.6),
             BodyMode::new(1_250.0, 5.0, 0.7),
-            BodyMode::new(1_800.0, 5.0, 2.4),
+            BodyMode::new(1_800.0, 6.0, 2.2),
             BodyMode::new(2_200.0, 5.0, 0.0),
             BodyMode::new(3_000.0, 3.0, 0.08),
             BodyMode::new(4_800.0, 3.0, 0.6),
@@ -445,7 +445,7 @@ pub fn erhu() -> BowedParams {
 pub(crate) struct Erhu {
     synth: Synth<BowedString, f32>,
     params: BowedParams,
-    eq: [Filter<f32>; 4],
+    eq: Vec<Filter<f32>>,
 }
 
 impl Erhu {
@@ -455,11 +455,17 @@ impl Erhu {
         Self {
             synth,
             params,
-            eq: [
+            // 照两段录音（《赛马》、F4 长音）量出来的琴筒出声：低于 400 Hz 少，1 kHz 附近是谷，1.4 kHz 一个峰，
+            // 2–2.8 kHz 几乎没有，3.1 kHz 又有一小片亮。
+            eq: vec![
                 Filter::new(FilterShape::Highpass, 420.0, 0.7),
                 Filter::new(FilterShape::Highpass, 420.0, 0.7),
-                Filter::new(FilterShape::Lowpass, 2_600.0, 0.7),
-                Filter::new(FilterShape::Peak { gain_db: -6.0 }, 2_200.0, 2.0),
+                Filter::new(FilterShape::Peak { gain_db: -10.0 }, 980.0, 5.0),
+                Filter::new(FilterShape::Peak { gain_db: 6.0 }, 1_300.0, 3.0),
+                Filter::new(FilterShape::Lowpass, 2_300.0, 0.7),
+                Filter::new(FilterShape::Lowpass, 2_300.0, 0.7),
+                Filter::new(FilterShape::Peak { gain_db: -18.0 }, 2_450.0, 3.0),
+                Filter::new(FilterShape::Peak { gain_db: 16.0 }, 3_100.0, 5.0),
             ],
         }
     }
