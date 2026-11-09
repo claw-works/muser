@@ -640,8 +640,8 @@ pub struct Note {
     /// 快慢由乐器参数 `tremolo_rate` 决定。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub tremolo: bool,
-    /// 滑音（可省略，默认 false）：这个音的最后一段滑到下一个音的音高上（`yinse.voice.*` 唱歌的滑音），
-    /// 下一个字在滑到的地方接上。ABC 里写 `!slide!`。其它乐器忽略。
+    /// 滑音（可省略，默认 false）：这个字从上一个字的音高滑进自己的音高（`yinse.voice.*` 唱歌的滑音，
+    /// 在这个字的开头滑）。ABC 里写 `!slide!`（标准 ABC 的"滑进这个音"）。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub slide: bool,
     /// 换气（可省略，默认 false）：这个音之前留一口气（`yinse.voice.*`）：前一个音提早收住，空出来的地方唱一声吸气；

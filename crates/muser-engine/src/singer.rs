@@ -566,11 +566,11 @@ impl SingerVoice {
         }
     }
 
-    /// 滑音：在 `frames` 帧里滑到 `key` 的音高（下一个音接着从那里唱）。
+    /// 滑音：在 `frames` 帧里从现在的音高滑到 `key` 的音高（滑进刚起的这个字）。
     pub(crate) fn slide(&mut self, key: u8, frames: u64) {
         self.target_pitch = self.tuning.key_pitch(key);
-        // 指数地滑：`frames` 帧里走完约 95%。
-        self.slide_tau = Some(frames as f64 / 3.0);
+        // 指数地滑：`frames` 帧里走完约 86%（听得出是滑上去的）。
+        self.slide_tau = Some(frames as f64 / 2.0);
     }
 
     /// 下一个音唱的字、这个音（元音部分）有多长、辅音提前了多少（帧）。
@@ -764,7 +764,7 @@ impl Voice<f32> for SingerVoice {
         self.velocity = f64::from(velocity);
         self.target_pitch = self.tuning.key_pitch(note.key);
         self.carried = self.active;
-        // 上一个字滑过来的话，这个字从滑到的地方（同一个音高）接着唱，之后照常。
+        // 滑音只管它那个字：新字开始时恢复平常的滑音快慢（要滑的话，紧跟着的 Slide 再设）。
         self.slide_tau = None;
         if !self.active {
             self.pitch = self.target_pitch;

@@ -77,7 +77,7 @@ pub(crate) enum Act {
     Bend { value: i16, ch: Option<u8> },
     /// 下一个音唱的字（`yinse.voice.*`）：在起音的同一帧、起音之前发，`len` 是这个音有多长（帧）。
     Lyric { text: crate::lyric::Text, len: u32, lead: u32 },
-    /// 滑音（`yinse.voice.*`）：从这一帧起，用 `frames` 帧滑到 `key` 的音高。
+    /// 滑音（`yinse.voice.*`）：从这一帧起，用 `frames` 帧滑到 `key` 的音高（滑进刚起的这个音）。
     Slide { key: u8, frames: u32 },
     /// 换气（`yinse.voice.*`）：从这一帧起，`frames` 帧的一声吸气。
     Inhale { frames: u32 },
@@ -304,15 +304,12 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                     acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: (off - on) as u32, lead: lead as u32 }));
                 }
             }
-            if singer && note.slide {
-                // 滑到下一个音：在下一个音（的元音）开始前、这个音的最后一段里滑过去（至多 0.35 秒、这个音的四成）。
-                if let Some(next) = notes.iter().filter(|m| m.start.0 > note.start.0 + 1e-9).min_by(|a, b| a.start.0.total_cmp(&b.start.0)) {
-                    let arrive = (clip_start + rel(next.start.0) * sr) as usize;
-                    let frames = ((0.35 * sr) as usize).min((arrive.saturating_sub(on)) * 2 / 5).max(1);
-                    acts.push((arrive.saturating_sub(frames), Act::Slide { key: next.pitch, frames: frames as u32 }));
-                }
-            }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
+            if singer && note.slide {
+                // 滑进这个音：从上一个字的音高起，在这个字的开头（至多 0.4 秒、这个音的一半）里滑到自己的音高。
+                let frames = ((0.4 * sr) as usize).min(off.saturating_sub(on) / 2).max(1);
+                acts.push((on_at, Act::Slide { key: note.pitch, frames: frames as u32 }));
+            }
             acts.push((off, Act::Off { key: note.pitch, ch }));
         }
         for &(a, b) in &inhales {
@@ -341,7 +338,9 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
             Act::Bend { .. } | Act::Tuning(_) => 3,
-            Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } | Act::Inhale { .. } => 4,
+            Act::Sing { .. } | Act::Lyric { .. } | Act::Inhale { .. } => 4,
+            // 滑音紧跟在起音之后（起音先定下目标音高，滑音再把滑的快慢放慢）。
+            Act::Slide { .. } => 6,
             Act::On { .. } => 5,
         };
         (frame, order)

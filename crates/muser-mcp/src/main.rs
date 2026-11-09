@@ -133,7 +133,7 @@ struct NoteSpec {
     /// Tremolo (optional, pipa / yangqin / guzheng): the note is plucked or struck again and again for its whole length; how fast is the instrument's `tremolo_rate`.
     #[serde(default)]
     tremolo: Option<bool>,
-    /// Slide (optional, yinse.voice.*): the end of this note slides to the next note's pitch, where the next word starts.
+    /// Slide (optional, yinse.voice.*): this word starts at the previous note's pitch and slides into its own.
     #[serde(default)]
     slide: Option<bool>,
     /// Breath (optional, yinse.voice.*): take a breath before this note (the previous note ends early, an inhale fills the gap).
