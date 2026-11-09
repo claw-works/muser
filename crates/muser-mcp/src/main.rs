@@ -148,7 +148,7 @@ struct NoteSpec {
     /// Breath (optional, yinse.voice.*): take a breath before this note (the previous note ends early, an inhale fills the gap).
     #[serde(default)]
     breath: Option<bool>,
-    /// Damp (optional, yinse.pluck.guzheng_modal / guqin): the hand stops the string when this note ends (止音, × in guzheng scores); otherwise it keeps ringing.
+    /// Damp (optional, yinse.pluck.guzheng / guqin): the hand stops the string when this note ends (止音, × in guzheng scores); otherwise it keeps ringing.
     #[serde(default)]
     damp: Option<bool>,
     /// Slide out (optional, yinse.voice.*): the end of this word slides to the next note's pitch, where the next word starts.

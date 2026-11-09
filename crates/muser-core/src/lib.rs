@@ -338,7 +338,7 @@ impl Project {
                         )));
                     }
                     if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
-                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin and yinse.pluck.guzheng_modal accept per-note string techniques")));
+                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin and yinse.pluck.guzheng accept per-note string techniques")));
                     }
                     if note.harmonic.is_some_and(|h| !(2..=8).contains(&h)) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].harmonic: node denominator must be 2-8")));
@@ -636,7 +636,7 @@ pub enum Technique {
 
 /// 接受逐音奏法（`technique` / `harmonic`）、可弯 ±24 半音的乐器（模态弦模型）。
 pub fn takes_technique(instrument: &str) -> bool {
-    ["yinse.pluck.guqin", "yinse.pluck.guzheng_modal"].iter().any(|n| instrument.trim().eq_ignore_ascii_case(n))
+    ["yinse.pluck.guqin", "yinse.pluck.guzheng"].iter().any(|n| instrument.trim().eq_ignore_ascii_case(n))
 }
 
 /// 一个音符。
@@ -675,7 +675,7 @@ pub struct Note {
     #[serde(default, skip_serializing_if = "is_false")]
     pub breath: bool,
     /// 止音（可省略，默认 false）：这个音结束时手按住弦，余音很快收掉（古筝、古琴谱上的 `×`）；
-    /// 不写就任弦自己响。`yinse.pluck.guzheng_modal`、`yinse.pluck.guqin`；其它乐器忽略。
+    /// 不写就任弦自己响。`yinse.pluck.guzheng`、`yinse.pluck.guqin`；其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub damp: bool,
     /// 弯音（吉他推弦、滑进音、尾音下滑）：`[拍, 半音]` 折线，拍相对音符起点、递增，半音在 ±2 之内

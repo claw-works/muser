@@ -407,11 +407,15 @@ FAMILY_PAGES = {
         "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子), `yinse.blow.xiao` (箫).",
         "**Tremolo** (琵琶轮指, 扬琴轮音, 古筝摇指): `\"tremolo\": true` on a note plucks or strikes it again and again for its whole length (`tremolo_rate` per second); write it on long melody notes, the way players sustain on these instruments.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
-        "**Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). "
-        "A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
+        "**Guzheng**: 21 strings tuned to D pentatonic (D2-D6); other pitches (the 4 and 7, G and C#) are pressed from the string below automatically. "
+        "Strings ring until they are damped: `\"damp\": true` on a note stops it when it ends (止音, the × in guzheng scores). Held notes get a light left-hand vibrato (揉弦) by themselves (`vibrato`); "
+        "write a deeper vibrato (颤音) as a sine `bend` of about ±0.4 semitones at 5-6 Hz. "
+        "Every note follows its `bend` (up to ±24 semitones, phase-continuous): a slide up after the pluck (上滑音) is `[[0, 0], [0.15, 0], [0.4, 3]]` from 3 to 5 or 6 to 1; "
+        "a slide down into the note (下滑音) `[[0, 2], [0.2, 2], [0.45, 0]]`; a return slide (回滑音) on one pluck goes up, back and up again; pressing three times (重颤) is three small humps. "
+        "Harmonics (泛音) take `\"technique\": \"harmonic\", \"harmonic\": 2`. A glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
         "**Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. "
         "**Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes. "
-        "The guqin has its own modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
+        "The guqin and guzheng share a modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
         "Set the track's `technique`, or override a note with `\"technique\": \"harmonic\", \"harmonic\": 2` (`\"open\"`, `\"pressed\"`, `\"harmonic\"`, `\"auto\"`). "
         "`pitch` is always the sounding pitch: C4 with harmonic=2 models a C3 string touched halfway along it. "
         "Node denominators 2-8 suppress the modes that do not have a node there; this is not just an octave shift or a low-pass preset. "

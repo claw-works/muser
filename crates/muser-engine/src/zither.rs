@@ -62,7 +62,7 @@ pub(crate) static GUZHENG: Profile = Profile {
 pub(crate) fn profile(instrument: &str) -> Option<&'static Profile> {
     match instrument.trim().to_lowercase().as_str() {
         "yinse.pluck.guqin" => Some(&GUQIN),
-        "yinse.pluck.guzheng_modal" => Some(&GUZHENG),
+        "yinse.pluck.guzheng" => Some(&GUZHENG),
         _ => None,
     }
 }
@@ -113,20 +113,25 @@ impl Default for ZitherParams {
 impl ZitherParams {
     pub(crate) fn guzheng() -> Self {
         let mut pluck = GuzhengParams::guzheng();
+        // 揉弦浅：谱上标了颤音的音再写深的弯音。
+        pluck.vibrato = 10.0;
         let s = &mut pluck.string;
-        // 对着三段古筝独奏录音（渔舟唱晚、樱花、出水莲）的长时频谱：起音不比脆长亮，但 1–4 kHz 的分音留得久，
-        // 面板在中高频也有共鸣（"铮"）。近似着色，不是测得的某张筝。
-        s.pluck_brightness = 8_500.0;
-        s.high_decay = 0.4;
-        s.strike = 0.5;
+        // 义甲拨下去亮而脆、高频很快退掉，剩下以基音为主的余音；1.6 米桐木面板低而宽的共鸣，加上其余弦的共鸣。
+        // 用户在《渔舟唱晚》慢板上对比几版后选的（"共鸣4"）。
+        s.decay = 9.0;
+        s.release = 1.2;
+        s.pluck_brightness = 9_000.0;
+        s.high_decay = 0.12;
+        s.strike = 0.6;
+        s.body_mix = 0.6;
         s.tone = 12_000.0;
         s.body = [
-            BodyMode::new(180.0, 2.0, 0.8),
-            BodyMode::new(650.0, 2.0, 1.2),
-            BodyMode::new(1_500.0, 2.0, 1.5),
-            BodyMode::new(3_000.0, 1.5, 1.2),
+            BodyMode::new(75.0, 4.0, 1.6),
+            BodyMode::new(150.0, 5.0, 1.6),
+            BodyMode::new(260.0, 5.0, 1.0),
+            BodyMode::new(430.0, 5.0, 0.8),
         ];
-        Self { pluck, sympathetic: 0.25, profile: &GUZHENG, ..Default::default() }
+        Self { pluck, sympathetic: 0.6, profile: &GUZHENG, ..Default::default() }
     }
 
     /// 这个音跟着弯音、揉弦吗。
@@ -721,7 +726,7 @@ mod tests {
             tone.sample(48_000.0, 2.0, p);
         }
         assert!((tone.pitch - 64.0).abs() < 0.01, "pressing behind the bridge raises an open string");
-        assert!(bends("yinse.pluck.guzheng_modal", &Default::default(), 62, None));
+        assert!(bends("yinse.pluck.guzheng", &Default::default(), 62, None));
         assert!(!bends("yinse.pluck.guqin", &Default::default(), 50, None), "a guqin open string does not");
     }
 

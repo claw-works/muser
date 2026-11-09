@@ -2,9 +2,8 @@
 //! 扬琴 `yinse.strike.yangqin`、二胡 `yinse.bow.erhu`、笛子 `yinse.blow.dizi`、箫 `yinse.blow.xiao`。
 //!
 //! 都在 manguebyte 的物理模型上配参数：
-//! - **古筝**：拨弦模型。钢丝缠尼龙的弦，义甲在靠右边岳山的地方拨（亮、带一点"铮"），桐木大面板的共鸣，
-//!   弦响得很久（松开也不止音，筝的弦是自己慢慢停的）。左手的**揉弦**（按在雁柱左边的弦上，音高起伏）由
-//!   渲染器按 `vibrato` 写成弯音：音符开头一段之后才揉；音符自己写了 `bend`（按音、滑音）就按它的来，不再加揉弦。
+//! - **古筝**：和古琴共用的模态弦模型（见 [`crate::zither`]）：21 根弦定 D 调五声，桐木面板与其余弦的共鸣；
+//!   五声以外的音从下面一根弦按出来，每个音都跟着弯音（按音、滑音）和左手揉弦。
 //! - **二胡**：拉弦模型。两根弦（D4、A4），蟒皮琴筒：没有木头箱体的密集共鸣，几个蟒皮与琴筒的共鸣让它带鼻音、
 //!   发亮；弓毛夹在两弦之间，擦弦声多。揉弦宽而慢起，连奏（clip 的 `legato`）的音之间手指滑过去（单音，滑音）。
 //! - **琵琶**：拨弦模型。梨形木头琴身，义甲弹得脆、颗粒感强，余音比古筝短（品位高，手指按弦就止住一些）。轮指是音符的 `tremolo`。
@@ -160,9 +159,8 @@ impl GuzhengParams {
 /// 按乐器名取拨弦类的预设（揉弦、轮音的默认值从这里来）。
 fn pluck_preset(instrument: &str) -> Option<GuzhengParams> {
     Some(match instrument.trim().to_lowercase().as_str() {
-        "yinse.pluck.guzheng" => GuzhengParams::guzheng(),
         "yinse.pluck.pipa" => GuzhengParams::pipa(),
-        "yinse.pluck.guzheng_modal" => GuzhengParams::guzheng(),
+        "yinse.pluck.guzheng" => crate::zither::ZitherParams::guzheng().pluck,
         "yinse.pluck.guqin" => GuzhengParams::guqin(),
         "yinse.strike.yangqin" => GuzhengParams::yangqin(),
         _ => return None,
