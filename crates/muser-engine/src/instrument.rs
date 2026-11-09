@@ -52,7 +52,7 @@ trait Playable {
     /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
     fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
     /// 古琴逐音奏法，在同帧起音前按通道和键位交给对应音符。
-    fn guqin(&mut self, _note: NoteRef, _technique: muser_core::GuqinNote) {}
+    fn technique(&mut self, _note: NoteRef, _technique: crate::guqin::NoteTechnique) {}
     /// 上一块送到总线的各路直接输出（插件的 `@outputs` 写了 `bus` 的项，按顺序）。默认没有。
     fn taps(&self) -> &[AudioBuffer<f32>] {
         &[]
@@ -144,8 +144,8 @@ impl TrackInstrument {
     pub fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
         self.inner.set_tuning(tuning);
     }
-    pub(crate) fn guqin(&mut self, note: NoteRef, technique: muser_core::GuqinNote) {
-        self.inner.guqin(note, technique);
+    pub(crate) fn technique(&mut self, note: NoteRef, technique: crate::guqin::NoteTechnique) {
+        self.inner.technique(note, technique);
     }
     /// 上一次 [`process`](Self::process) 送到总线的各路直接输出（立体声，帧数与那一块相同）。
     pub fn taps(&self) -> &[AudioBuffer<f32>] {
@@ -249,7 +249,7 @@ impl Playable for crate::chinese::Courses {
 }
 
 impl Playable for crate::guqin::Guqin {
-    fn guqin(&mut self, note: NoteRef, technique: muser_core::GuqinNote) {
+    fn technique(&mut self, note: NoteRef, technique: crate::guqin::NoteTechnique) {
         crate::guqin::Guqin::playing(self, note, technique);
     }
     fn prepare(&mut self, spec: &ProcessSpec) {
@@ -590,7 +590,7 @@ impl Patch {
                 "Choose technique: \"open\" (散音), \"pressed\" (按音), or \"harmonic\" (泛音); \"auto\" uses open notes at C2 D2 F2 G2 A2 C3 D3 and pressed notes elsewhere. \
                  Pitch is always the sounding pitch; harmonic=4 touches at one quarter of the string and preserves every fourth mode. \
                  Only pressed notes follow bend curves (up to +/-24 semitones), with continuous phase and hand-motion noise. \
-                 Override individual notes with \"guqin\": {\"technique\":\"harmonic\", \"harmonic\":2}, or choose a track default. \
+                 Override individual notes with \"technique\": \"harmonic\", \"harmonic\": 2, or choose a track default. \
                  Open notes at other pitches extend the model beyond the seven-string tuning.".into(),
             ),
             Patch::Accordion(p) => (

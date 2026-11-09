@@ -108,7 +108,7 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
         let pan = (64.0 + t.pan * 63.0).round().clamp(0.0, 127.0) as u8;
         track.push_midi(0, MidiMessage::ControlChange { channel, controller: 7, value: volume });
         track.push_midi(0, MidiMessage::ControlChange { channel, controller: 10, value: pan });
-        if t.instrument.trim().eq_ignore_ascii_case("yinse.pluck.guqin") {
+        if muser_core::takes_technique(&t.instrument) {
             // 古琴走手的音程可超过普通弯音轮的 ±2；导出时同时声明实际使用的范围。
             for (controller, value) in [(101, 0), (100, 0), (6, crate::guqin::BEND_RANGE as u8), (38, 0), (101, 127), (100, 127)] {
                 track.push_midi(0, MidiMessage::ControlChange { channel, controller, value });
@@ -123,8 +123,8 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
                     continue;
                 }
                 Act::Slide { .. } | Act::Inhale { .. } => continue,
-                Act::Guqin { key, technique, .. } => {
-                    track.push_meta(tick, MetaEvent::Text(format!("guqin key={key} technique={:?} harmonic={:?}", technique.technique, technique.harmonic)));
+                Act::Technique { key, technique: (technique, harmonic), .. } => {
+                    track.push_meta(tick, MetaEvent::Text(format!("technique key={key} technique={technique:?} harmonic={harmonic:?}")));
                     continue;
                 }
                 Act::Lyric { text, .. } => {
@@ -158,7 +158,7 @@ mod tests {
         let p: Project = serde_json::from_value(serde_json::json!({
             "name":"q","tempo":60,"tracks":[{"name":"q","instrument":"yinse.pluck.guqin",
             "clips":[{"start":0,"length":3,"notes":[{"pitch":57,"start":0,"length":2,
-            "guqin":{"technique":"pressed"},"bend":[[0,0],[1,12],[2,12]]}]}]}]
+            "technique":"pressed","bend":[[0,0],[1,12],[2,12]]}]}]}]
         })).unwrap();
         let bytes = export(&p).unwrap().bytes;
         let f = MidiFile::from_bytes(&bytes).unwrap();

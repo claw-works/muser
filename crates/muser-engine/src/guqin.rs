@@ -59,15 +59,18 @@ pub(crate) enum Technique {
     Harmonic,
 }
 
+/// 一个音的奏法与泛音节点（见 `muser_core::Note::string_technique`）。
+pub(crate) type NoteTechnique = (muser_core::Technique, Option<u8>);
+
 impl GuqinParams {
-    fn with_note(mut self, note: muser_core::GuqinNote) -> Self {
-        self.technique = match note.technique {
-            muser_core::GuqinTechnique::Auto => 0.0,
-            muser_core::GuqinTechnique::Open => 1.0,
-            muser_core::GuqinTechnique::Pressed => 2.0,
-            muser_core::GuqinTechnique::Harmonic => 3.0,
+    fn with_note(mut self, (technique, harmonic): NoteTechnique) -> Self {
+        self.technique = match technique {
+            muser_core::Technique::Auto => 0.0,
+            muser_core::Technique::Open => 1.0,
+            muser_core::Technique::Pressed => 2.0,
+            muser_core::Technique::Harmonic => 3.0,
         };
-        if let Some(h) = note.harmonic {
+        if let Some(h) = harmonic {
             self.harmonic = f64::from(h);
         }
         self
@@ -85,8 +88,8 @@ impl GuqinParams {
 }
 
 /// 渲染器据此只给按音加吟猱。显式弯音在引擎里同样只作用于按音。
-pub(crate) fn pressed(instrument: &str, params: &muser_core::InstrumentParams, key: u8, note: Option<muser_core::GuqinNote>) -> bool {
-    if !instrument.trim().eq_ignore_ascii_case("yinse.pluck.guqin") {
+pub(crate) fn pressed(instrument: &str, params: &muser_core::InstrumentParams, key: u8, note: Option<NoteTechnique>) -> bool {
+    if !muser_core::takes_technique(instrument) {
         return true;
     }
     let technique = match params.get("technique") {
@@ -419,7 +422,7 @@ pub(crate) struct Guqin {
     sympathetic: [Resonance; 21],
     tilt: f64,
     dc: f64,
-    pending: Vec<(NoteRef, muser_core::GuqinNote)>,
+    pending: Vec<(NoteRef, NoteTechnique)>,
 }
 
 impl Guqin {
@@ -458,7 +461,7 @@ impl Guqin {
         self.synth.note_on_accented(note, velocity, accent);
         self.synth.voices_mut().for_each(|v| v.params = self.params);
     }
-    pub(crate) fn playing(&mut self, note: NoteRef, technique: muser_core::GuqinNote) {
+    pub(crate) fn playing(&mut self, note: NoteRef, technique: NoteTechnique) {
         self.pending.retain(|(n, _)| *n != note);
         self.pending.push((note, technique));
     }
@@ -608,8 +611,8 @@ mod tests {
         q.prepare(&ProcessSpec { sample_rate: 48_000.0, num_channels: 2, max_block_size: 256 });
         let open = NoteRef::new(0, 48);
         let harmonic = NoteRef::new(0, 62);
-        q.playing(open, muser_core::GuqinNote { technique: muser_core::GuqinTechnique::Open, harmonic: None });
-        q.playing(harmonic, muser_core::GuqinNote { technique: muser_core::GuqinTechnique::Harmonic, harmonic: Some(2) });
+        q.playing(open, (muser_core::Technique::Open, None));
+        q.playing(harmonic, (muser_core::Technique::Harmonic, Some(2)));
         q.note_on(open, 0.8, false);
         q.note_on(harmonic, 0.8, false);
         let tones: Vec<_> = q.synth.voices_mut().filter(|v| v.now.active).map(|v| (v.now.key_pitch, v.now.technique)).collect();

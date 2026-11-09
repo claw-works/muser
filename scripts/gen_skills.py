@@ -412,7 +412,7 @@ FAMILY_PAGES = {
         "**Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. "
         "**Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes. "
         "The guqin has its own modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
-        "Set the track's `technique`, or override a note with `\"guqin\": {\"technique\": \"harmonic\", \"harmonic\": 2}`. "
+        "Set the track's `technique`, or override a note with `\"technique\": \"harmonic\", \"harmonic\": 2` (`\"open\"`, `\"pressed\"`, `\"harmonic\"`, `\"auto\"`). "
         "`pitch` is always the sounding pitch: C4 with harmonic=2 models a C3 string touched halfway along it. "
         "Node denominators 2-8 suppress the modes that do not have a node there; this is not just an octave shift or a low-pass preset. "
         "Pressed notes support `bend` up to ±24 semitones, with continuous mode phase, contact damping and motion noise (`slide_noise`). "

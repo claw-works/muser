@@ -307,7 +307,7 @@ fn chordal_notes(steps: &[Step], step: f64, loop_len: f64, rep_start: f64, chord
         let Some(c) = chord::at(chords, rep_start + t) else { continue };
         let root = base + i32::from(c.root);
         let note = |pitch: i32, accent: bool| {
-            (0..=127).contains(&pitch).then_some(Note { pitch: pitch.clamp(0, 127) as u8, start: Beats(t), length: Beats(step), velocity: if accent { 1.0 } else { vel }, accent, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, bend: Vec::new(), lyric: None, guqin: None })
+            (0..=127).contains(&pitch).then_some(Note { pitch: pitch.clamp(0, 127) as u8, start: Beats(t), length: Beats(step), velocity: if accent { 1.0 } else { vel }, accent, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, bend: Vec::new(), lyric: None, technique: None, harmonic: None })
         };
         let new: Vec<Note> = match steps[i % steps.len()] {
             Step::Rest => {

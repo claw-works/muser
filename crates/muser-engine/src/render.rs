@@ -82,7 +82,7 @@ pub(crate) enum Act {
     /// 换气（`yinse.voice.*`）：从这一帧起，`frames` 帧的一声吸气。
     Inhale { frames: u32 },
     /// 逐音古琴奏法，在同帧起音之前按键位与通道投递，和弦中的各音互不覆盖。
-    Guqin { key: u8, ch: Option<u8>, technique: muser_core::GuqinNote },
+    Technique { key: u8, ch: Option<u8>, technique: crate::guqin::NoteTechnique },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -262,7 +262,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             // 弯音曲线按拍：用这个音开头的速度换算（渐变中按当时的速度近似）。
             let bps = tm.bpm_at(c0 + note.start.0) / 60.0;
             // 古筝的揉弦：音符自己没写弯音时，渲染器写一条（见 crate::chinese）。
-            let auto = match (note.bend.is_empty() && crate::guqin::pressed(&track.instrument, &track.instrument_params, note.pitch, note.guqin), vibrato) {
+            let auto = match (note.bend.is_empty() && crate::guqin::pressed(&track.instrument, &track.instrument_params, note.pitch, note.string_technique()), vibrato) {
                 (true, Some(v)) => crate::chinese::vibrato_bend(lengths[ni].0, bps, v),
                 _ => Vec::new(),
             };
@@ -277,7 +277,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 let mut last = None;
                 for f in (on..off).step_by(step) {
                     let beats = (f - on) as f64 / sr * bps;
-                    let v = if track.instrument.trim().eq_ignore_ascii_case("yinse.pluck.guqin") {
+                    let v = if muser_core::takes_technique(&track.instrument) {
                         bend_value_with_range(bend, beats, crate::guqin::BEND_RANGE)
                     } else {
                         bend_value(bend, beats)
@@ -316,8 +316,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
-            if let Some(technique) = note.guqin {
-                acts.push((on_at, Act::Guqin { key: note.pitch, ch, technique }));
+            if let Some(technique) = note.string_technique() {
+                acts.push((on_at, Act::Technique { key: note.pitch, ch, technique }));
             }
             if singer && note.slide_out {
                 // 滑出：在下一个字（的元音）开始前、这个字的最后一段里滑到下一个音的音高（至多 0.35 秒、这个音的四成）。
@@ -360,7 +360,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
             Act::Bend { .. } | Act::Tuning(_) => 3,
-            Act::Sing { .. } | Act::Lyric { .. } | Act::Inhale { .. } | Act::Guqin { .. } => 4,
+            Act::Sing { .. } | Act::Lyric { .. } | Act::Inhale { .. } | Act::Technique { .. } => 4,
             // 滑音紧跟在起音之后（起音先定下目标音高，滑音再把滑的快慢放慢）。
             Act::Slide { .. } => 6,
             Act::On { .. } => 5,
@@ -396,11 +396,11 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
     for &(at, act) in &acts[..split] {
         match act {
             Act::On { key, ch, .. } => {
-                guqin.retain(|(tag_at, g)| *tag_at == at || !matches!(g, Act::Guqin { key: k, ch: c, .. } if *k == key && *c == ch));
+                guqin.retain(|(tag_at, g)| *tag_at == at || !matches!(g, Act::Technique { key: k, ch: c, .. } if *k == key && *c == ch));
                 held.push(act);
             }
             Act::Off { key, ch } => {
-                guqin.retain(|(_, g)| !matches!(g, Act::Guqin { key: k, ch: c, .. } if *k == key && *c == ch));
+                guqin.retain(|(_, g)| !matches!(g, Act::Technique { key: k, ch: c, .. } if *k == key && *c == ch));
                 if let Some(i) = held.iter().position(|a| matches!(a, Act::On { key: k, ch: c, .. } if *k == key && *c == ch)) {
                     held.remove(i);
                 }
@@ -411,8 +411,8 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
                 wheels.push(act);
             }
             Act::Tuning(_) => tuning = Some(act),
-            Act::Guqin { key, ch, .. } => {
-                guqin.retain(|(_, g)| !matches!(g, Act::Guqin { key: k, ch: c, .. } if *k == key && *c == ch));
+            Act::Technique { key, ch, .. } => {
+                guqin.retain(|(_, g)| !matches!(g, Act::Technique { key: k, ch: c, .. } if *k == key && *c == ch));
                 guqin.push((at, act));
             }
             Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } | Act::Inhale { .. } => {}
@@ -437,7 +437,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
     }
     out.extend(wheels.into_iter().map(|a| (start, a)));
     out.extend(guqin.into_iter().map(|(_, g)| g).filter(|g| {
-        matches!(g, Act::Guqin { key, ch, .. } if held.iter().any(|a| matches!(a, Act::On { key: k, ch: c, .. } if k == key && c == ch)))
+        matches!(g, Act::Technique { key, ch, .. } if held.iter().any(|a| matches!(a, Act::On { key: k, ch: c, .. } if k == key && c == ch)))
     }).map(|a| (start, a)));
     out.extend(held.into_iter().map(|a| (start, a)));
     out.extend(rest);
@@ -573,7 +573,7 @@ impl LiveInstrument {
                     Act::Lyric { text, len, lead } => self.inst.lyric(text.as_str(), u64::from(len), u64::from(lead)),
                     Act::Slide { key, frames } => self.inst.slide(key, u64::from(frames)),
                     Act::Inhale { frames } => self.inst.inhale(u64::from(frames)),
-                    Act::Guqin { key, ch, technique } => self.inst.guqin(NoteRef::new(ch.unwrap_or(self.channel), key), technique),
+                    Act::Technique { key, ch, technique } => self.inst.technique(NoteRef::new(ch.unwrap_or(self.channel), key), technique),
                     Act::Sing { syl, lead, len, velocity, .. } => {
                         let (lead, len) = (lead as usize, len as usize);
                         if let Some(c) = self.consonants.as_mut() {
@@ -1880,18 +1880,18 @@ mod tests {
         let p: Project = serde_json::from_value(serde_json::json!({
             "name":"q","tempo":60,"tracks":[{"name":"q","instrument":"yinse.pluck.guqin",
             "instrument_params":{"vibrato":0},"clips":[{"start":0,"length":4,"notes":[
-                {"pitch":48,"start":0,"length":3,"guqin":{"technique":"open"}},
-                {"pitch":62,"start":0,"length":3,"guqin":{"technique":"harmonic","harmonic":2}},
-                {"pitch":57,"start":0,"length":3,"guqin":{"technique":"pressed"},"bend":[[0,0],[1,12],[2,12]]}
+                {"pitch":48,"start":0,"length":3,"technique":"open"},
+                {"pitch":62,"start":0,"length":3,"technique":"harmonic","harmonic":2},
+                {"pitch":57,"start":0,"length":3,"technique":"pressed","bend":[[0,0],[1,12],[2,12]]}
             ]}]}]
         })).unwrap();
         let acts = schedule(&p, 0, &Ctx::new(&p, RenderSettings::default()));
-        assert_eq!(acts.iter().filter(|(_, a)| matches!(a, Act::Guqin { .. })).count(), 3);
+        assert_eq!(acts.iter().filter(|(_, a)| matches!(a, Act::Technique { .. })).count(), 3);
         assert!(acts.iter().any(|(at, a)| *at == 48_000 && matches!(a, Act::Bend { value: 4096, .. })));
         let on = acts.iter().position(|(_, a)| matches!(a, Act::On { .. })).unwrap();
-        assert!(acts[..on].iter().filter(|(_, a)| matches!(a, Act::Guqin { .. })).count() == 3);
+        assert!(acts[..on].iter().filter(|(_, a)| matches!(a, Act::Technique { .. })).count() == 3);
         let from_middle = chase(acts, 72_000);
-        assert_eq!(from_middle.iter().filter(|(_, a)| matches!(a, Act::Guqin { .. })).count(), 3);
+        assert_eq!(from_middle.iter().filter(|(_, a)| matches!(a, Act::Technique { .. })).count(), 3);
         assert!(from_middle.iter().any(|(_, a)| matches!(a, Act::Bend { value: 4096, .. })));
     }
 

@@ -115,7 +115,7 @@ impl Grid {
                         continue;
                     }
                 };
-                notes.push(Note { pitch, start: Beats(k as f64 * step), length: Beats(step), velocity, accent: c == 'X', mute: false, tremolo: false, slide: false, slide_out: false, breath: false, bend: Vec::new(), lyric: None, guqin: None });
+                notes.push(Note { pitch, start: Beats(k as f64 * step), length: Beats(step), velocity, accent: c == 'X', mute: false, tremolo: false, slide: false, slide_out: false, breath: false, bend: Vec::new(), lyric: None, technique: None, harmonic: None });
                 last = Some(notes.len() - 1);
             }
         }
