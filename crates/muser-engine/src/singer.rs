@@ -539,23 +539,34 @@ impl SingerVoice {
         let in_lead = self.at < self.lead_frames;
         let (mut av, mut ab, mut af, mut asp) = (1.0, 0.0, 0.0, 0.0);
         if in_lead {
-            let fade = |a: f64, b: f64| (((t - a) / 0.008).min((b - t) / 0.008)).clamp(0.0, 1.0);
-            av = if self.syl.onset.voiced() { 1.0 } else { 0.0 };
+            // 噪声的起落：摩擦 20 ms 进来、15 ms 出去，不是一下子开关（一下子开关听起来是另外一个"斯"）。
+            let fade = |a: f64, b: f64| (((t - a) / 0.02).min((b - t) / 0.015)).clamp(0.0, 1.0);
+            // 无声的辅音：上一个字的声音在 12 ms 里收掉，不是一下切断（一下切断是"搭"的一声）。
+            av = if self.syl.onset.voiced() { 1.0 } else { (1.0 - t / 0.012).max(0.0) };
             if t >= closure && t < burst_end {
-                ab = 1.0 - (t - closure) / segs[1].max(1e-4);
+                // 爆破：1 ms 冲上去、很快衰减（真的爆破很短也不响）。
+                let x = t - closure;
+                ab = (x / 0.001).min(1.0) * (-x / 0.003).exp();
             }
-            if t >= burst_end && t < fric_end {
-                af = fade(burst_end, fric_end);
+            if t >= burst_end - 0.002 && t < fric_end {
+                af = fade(burst_end - 0.002, fric_end);
             }
-            if t >= fric_end && t < asp_end {
-                asp = fade(fric_end, asp_end);
+            if t >= fric_end - 0.005 && t < asp_end {
+                asp = fade(fric_end - 0.005, asp_end);
             }
             if self.syl.onset.manner == Manner::Rhotic {
-                af = 0.15;
+                af = 0.06;
             }
         } else if self.syl.onset.manner != Manner::None && !self.syl.onset.voiced() {
-            // 声带开始振动：15 ms 里起来。
-            av = ((self.at - self.lead_frames) as f64 / (0.015 * sr)).min(1.0);
+            // 声带开始振动：15 ms 里起来；摩擦、送气在元音开头再拖 15 ms 才没（和元音接上）。
+            let after = (self.at - self.lead_frames) as f64 / sr;
+            av = (after / 0.015).min(1.0);
+            let tail = (1.0 - after / 0.015).max(0.0);
+            if segs[3] > 0.0 {
+                asp = tail;
+            } else if segs[2] > 0.0 {
+                af = tail;
+            }
         }
         // 鼻音（声母的哼声、鼻韵尾）：嘴闭着，声音小、闷。
         let mut murmur_gain = 1.0;
@@ -623,7 +634,7 @@ impl SingerVoice {
         self.tilt += (g - self.tilt) * k;
         // 气声：跟着声门开合（开相里多）；送气、h 是声道里的噪声（带着后面元音的颜色）。
         let breath = self.rng.signed() * part.breath * p.breath * if ph < open { 1.0 } else { 0.3 } * av;
-        let aspiration = self.rng.signed() * 0.25 * asp;
+        let aspiration = self.rng.signed() * 0.18 * asp;
         let mut x = self.tilt * av + breath + aspiration;
         for r in self.tract.iter_mut() {
             x = r.tick(x);
@@ -640,7 +651,7 @@ impl SingerVoice {
         for r in self.burst.iter_mut() {
             b = r.tick(b);
         }
-        x + 1.2 * f + 4.0 * b
+        x + 0.6 * f + 1.5 * b
     }
 }
 
