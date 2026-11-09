@@ -6,7 +6,7 @@
 //! - **声道**：五个共振峰串起来（F1–F5，各自的频率与带宽），目标随音素变化、平滑地滑过去（协同发音）。
 //!   高音时第一共振峰抬到基音之上（女高音的"共振峰调整"），不然高音唱不响。
 //! - **歌词**：音符的 `lyric` 是拼音（或英文拼法）。这一版唱韵母：单元音、复韵母在音符里滑过去（ai、iao …），
-//!   声母（辅音）、鼻韵尾在下一步。
+//!   声母提前起音，鼻韵尾在音符末尾收进去。
 //!
 //! 单音：连着的音（重叠）滑过去，像连唱；断开的音重新起声。
 
@@ -150,6 +150,43 @@ impl Onset {
     fn voiced(&self) -> bool {
         matches!(self.manner, Manner::Nasal | Manner::Lateral | Manner::Rhotic)
     }
+
+    /// 爆破、摩擦、送气的连续包络；跨过元音起点时沿用同一条曲线，不能重新起一次噪声。
+    fn noise_levels(&self, t: f64, lead: f64) -> [f64; 3] {
+        let s = self.segments();
+        let burst_end = s[0] + s[1];
+        let fric_end = burst_end + s[2];
+        let burst = if s[1] > 0.0 {
+            let x = (t - s[0]).max(0.0);
+            noise_gate(t, s[0], burst_end, 0.001, 0.002) * (-x / 0.003).exp()
+        } else {
+            0.0
+        };
+        let fric = if s[2] > 0.0 {
+            let end = if s[3] > 0.0 { fric_end + 0.01 } else { lead + 0.015 };
+            noise_gate(t, burst_end, end, 0.02, 0.025)
+        } else if self.manner == Manner::Rhotic {
+            0.06 * noise_gate(t, 0.0, lead + 0.015, 0.02, 0.025)
+        } else {
+            0.0
+        };
+        let aspiration = if s[3] > 0.0 {
+            noise_gate(t, fric_end, lead + 0.015, (s[3] * 0.5).min(0.02), 0.025)
+        } else {
+            0.0
+        };
+        [burst, fric, aspiration]
+    }
+}
+
+fn smoothstep(x: f64) -> f64 {
+    let x = x.clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
+}
+
+/// 起落斜率也归零，避免短噪声被包络边沿切出额外的瞬态。
+fn noise_gate(t: f64, start: f64, end: f64, attack: f64, release: f64) -> f64 {
+    smoothstep((t - start) / attack) * smoothstep((end - t) / release)
 }
 
 /// 韵尾。
@@ -451,8 +488,6 @@ pub(crate) struct SingerVoice {
     // 辅音的噪声：摩擦（两级带通）、爆破（两级带通）。
     fric: [Resonator; 2],
     burst: [Resonator; 2],
-    /// 元音开头是否已经把共振峰放到"锁点"上。
-    landed: bool,
     /// 这个字开始时上一个字还在响（连着唱）：辅音前要把它收掉。
     carried: bool,
     // 鼻腔：一个共振 + 一个零点（见 NASAL_POLE）。
@@ -494,7 +529,6 @@ impl SingerVoice {
             at: 0,
             fric: [Resonator::default(); 2],
             burst: [Resonator::default(); 2],
-            landed: true,
             carried: false,
             nasal_pole: Resonator::default(),
             nasal_zero: Antiresonator::default(),
@@ -577,47 +611,17 @@ impl SingerVoice {
         let f0 = 440.0 * ((semis - 69.0) / 12.0).exp2();
 
         let scale = part.formants * p.formant_shift;
-        // 元音开始的那一帧：塞音、塞擦音、擦音之后，共振峰从"锁点"起（b d g 的区别主要在这段滑动里）。
-        if !self.landed && self.at >= self.lead_frames {
-            self.landed = true;
-            if !self.syl.onset.voiced() && self.syl.onset.manner != Manner::None {
-                self.formants = locus_start(self.syl.onset, male(self.syl.vowels[0])).map(|f| f * scale);
-            }
-        }
-        // 辅音段的几样声音：t 是从这个字开始（辅音开头）算起的秒数。
-        let segs = self.syl.onset.segments();
-        let (closure, burst_end, fric_end, asp_end) = (segs[0], segs[0] + segs[1], segs[0] + segs[1] + segs[2], segs[0] + segs[1] + segs[2] + segs[3]);
+        // 噪声包络跨过元音起点连续运行，不在起点重新开启。
+        let [ab, af, asp] = self.syl.onset.noise_levels(t, self.lead_frames as f64 / sr);
         let in_lead = self.at < self.lead_frames;
-        let (mut av, mut ab, mut af, mut asp) = (1.0, 0.0, 0.0, 0.0);
+        let mut av = 1.0;
         if in_lead {
-            // 噪声的起落：摩擦 20 ms 进来、15 ms 出去，不是一下子开关（一下子开关听起来是另外一个"斯"）。
-            let fade = |a: f64, b: f64| (((t - a) / 0.02).min((b - t) / 0.015)).clamp(0.0, 1.0);
-            // 无声的辅音：上一个字的声音在 12 ms 里收掉，不是一下切断（一下切断是"搭"的一声）。
-            av = if self.syl.onset.voiced() { 1.0 } else if self.carried { (1.0 - t / 0.012).max(0.0) } else { 0.0 };
-            if t >= closure && t < burst_end {
-                // 爆破：1 ms 冲上去、很快衰减（真的爆破很短也不响）。
-                let x = t - closure;
-                ab = (x / 0.001).min(1.0) * (-x / 0.003).exp();
-            }
-            if t >= burst_end - 0.002 && t < fric_end {
-                af = fade(burst_end - 0.002, fric_end);
-            }
-            if t >= fric_end - 0.005 && t < asp_end {
-                asp = fade(fric_end - 0.005, asp_end);
-            }
-            if self.syl.onset.manner == Manner::Rhotic {
-                af = 0.06;
-            }
+            // 上一个字在闭塞前平滑收掉。
+            av = if self.syl.onset.voiced() { 1.0 } else if self.carried { 1.0 - smoothstep(t / 0.012) } else { 0.0 };
         } else if self.syl.onset.manner != Manner::None && !self.syl.onset.voiced() {
-            // 声带开始振动：15 ms 里起来；摩擦、送气在元音开头再拖 15 ms 才没（和元音接上）。
+            // 声带开始振动：与尚未消失的摩擦、送气平滑交接。
             let after = (self.at - self.lead_frames) as f64 / sr;
-            av = (after / 0.015).min(1.0);
-            let tail = (1.0 - after / 0.015).max(0.0);
-            if segs[3] > 0.0 {
-                asp = tail;
-            } else if segs[2] > 0.0 {
-                af = tail;
-            }
+            av = smoothstep(after / 0.015);
         }
         // 鼻音（声母的哼声、鼻韵尾）：嘴闭着，声音小、闷。
         let mut murmur_gain = 1.0;
@@ -745,9 +749,12 @@ impl Voice<f32> for SingerVoice {
         self.syl = syl;
         self.note_frames = frames;
         self.lead_frames = lead;
-        self.landed = lead == 0;
         if !self.active {
-            let start = murmur(syl.onset).unwrap_or_else(|| male(syl.vowels[0]));
+            // 从辅音锁点起，之后只平滑移动；元音起点不重设带着历史状态的滤波器。
+            let start = murmur(syl.onset).unwrap_or_else(|| {
+                let vowel = male(syl.vowels[0]);
+                if syl.onset.manner == Manner::None { vowel } else { locus_start(syl.onset, vowel) }
+            });
             self.formants = start.map(|f| f * self.part().formants * self.params.formant_shift);
         }
         self.at = 0;
@@ -909,6 +916,56 @@ mod tests {
         assert_eq!(syllable("yue").onset, Onset::NONE);
         // 送气的比不送气的提前得多；擦音最长。
         assert!(lead_seconds("pa") > lead_seconds("ba") && lead_seconds("sa") > lead_seconds("ba") && lead_seconds("a") == 0.0);
+    }
+
+    #[test]
+    fn consonant_noise_does_not_restart_at_vowel_onset() {
+        for text in ["ba", "pa", "da", "ta", "chuang", "qian", "shi", "ju", "si", "xiang", "ren"] {
+            let onset = syllable(text).onset;
+            for sr in [44_100.0, 48_000.0, 96_000.0] {
+                let frames = (onset.lead() * sr) as u64;
+                let lead = frames as f64 / sr;
+                let before = onset.noise_levels(lead - 1.0 / sr, lead);
+                let at = onset.noise_levels(lead, lead);
+                for k in 0..3 {
+                    assert!((at[k] - before[k]).abs() < 0.003, "{text}: noise jumps at vowel onset");
+                }
+                let mut previous = at;
+                for i in 1..=(0.02 * sr) as u64 {
+                    let next = onset.noise_levels(lead + i as f64 / sr, lead);
+                    for k in 0..3 {
+                        assert!(next[k] <= previous[k] + 1e-12, "{text}: noise starts again after the consonant");
+                    }
+                    previous = next;
+                }
+                assert_eq!(previous, [0.0; 3]);
+            }
+        }
+    }
+
+    #[test]
+    fn vowel_onset_does_not_reset_the_carried_tract() {
+        let mut v = SingerVoice::new(SingerParams::preset(1));
+        v.lyric("ming", 24_000, (lead_seconds("ming") * v.sr) as u64);
+        v.note_on(NoteRef::new(0, 64), 0.8);
+        for _ in 0..28_000 {
+            v.sample();
+            v.at += 1;
+        }
+        for text in ["shi", "di", "qian", "xiang"] {
+            v.lyric(text, 24_000, (lead_seconds(text) * v.sr) as u64);
+            v.note_on(NoteRef::new(0, 66), 0.8);
+            while v.at < v.lead_frames {
+                v.sample();
+                v.at += 1;
+            }
+            let before = v.formants;
+            v.sample();
+            for (a, b) in before.into_iter().zip(v.formants) {
+                assert!((a - b).abs() < 20.0, "{text}: formants jump at vowel onset");
+            }
+            assert!(v.formants.iter().all(|f| f.is_finite()));
+        }
     }
 
     #[test]
