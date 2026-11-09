@@ -31,6 +31,8 @@ pub struct GuzhengParams {
     pub vibrato_delay: f64,
     /// 轮音（音符的 `tremolo`）每秒弹几下。
     pub tremolo_rate: f64,
+    /// 琴身放不出的低频：这个频率以下滤掉（0 不滤）。
+    pub high_pass: f64,
 }
 
 /// 拨弦的默认值（古筝的弦，各乐器在上面改）。
@@ -69,15 +71,15 @@ impl GuzhengParams {
                 decay_per_octave: 1.4,
                 high_decay: 0.4,
                 release: 1.6,
-                pluck_position: 0.08,
-                pluck_brightness: 9_000.0,
+                pluck_position: 0.2,
+                pluck_brightness: 4_000.0,
                 velocity_darkening: 1.8,
                 velocity_range_db: 22.0,
                 stiffness: 0.18,
-                strike: 0.5,
-                pluck_noise: 0.3,
-                // 1.6 米长的桐木面板：低而宽的几个共鸣。
-                body: [BodyMode::new(75.0, 4.0, 0.7), BodyMode::new(150.0, 5.0, 0.7), BodyMode::new(260.0, 5.0, 0.6), BodyMode::new(430.0, 5.0, 0.45)],
+                strike: 0.35,
+                pluck_noise: 0.15,
+                // 1.6 米长的桐木面板：低而宽的几个共鸣。拨弦的亮度、位置、噪声照一段古筝独奏录音量过（同样的音，频谱与起音的亮度对上）。
+                body: [BodyMode::new(75.0, 4.0, 1.0), BodyMode::new(150.0, 5.0, 1.0), BodyMode::new(260.0, 5.0, 0.6), BodyMode::new(430.0, 5.0, 0.45)],
                 body_mix: 0.5,
                 pickup_position: 0.0,
                 tone: 12_000.0,
@@ -93,25 +95,26 @@ impl GuzhengParams {
             vibrato_rate: 5.5,
             vibrato_delay: 0.3,
             tremolo_rate: 10.0,
+            high_pass: 0.0,
         }
     }
 
     /// 琵琶：梨形木头琴身（中频的几个共鸣），义甲弹得脆；余音短一些。
     pub fn pipa() -> Self {
-        let mut s = strings([BodyMode::new(180.0, 6.0, 0.6), BodyMode::new(330.0, 8.0, 0.6), BodyMode::new(560.0, 8.0, 0.5), BodyMode::new(900.0, 6.0, 0.4)]);
-        s.decay = 2.5;
+        let mut s = strings([BodyMode::new(180.0, 6.0, 0.12), BodyMode::new(330.0, 8.0, 0.35), BodyMode::new(560.0, 8.0, 0.5), BodyMode::new(900.0, 6.0, 0.4)]);
+        s.decay = 1.5;
         s.decay_per_octave = 1.5;
-        s.high_decay = 0.2;
-        s.release = 0.3;
-        s.pluck_position = 0.12;
-        s.pluck_brightness = 7_000.0;
+        s.high_decay = 0.35;
+        s.release = 0.12;
+        s.pluck_position = 0.14;
+        s.pluck_brightness = 4_500.0;
         s.stiffness = 0.08;
         s.strike = 0.6;
-        s.pluck_noise = 0.4;
+        s.pluck_noise = 0.25;
         s.body_mix = 0.6;
         s.tone = 9_000.0;
         s.buzz = 0.04;
-        Self { string: s, vibrato: 15.0, vibrato_rate: 5.0, vibrato_delay: 0.35, tremolo_rate: 12.0 }
+        Self { string: s, vibrato: 15.0, vibrato_rate: 5.0, vibrato_delay: 0.35, tremolo_rate: 12.0, high_pass: 460.0 }
     }
 
     /// 古琴：丝弦、指肉弹，很暗；长琴身的低频共鸣，余音长而柔；吟猱慢而深。
@@ -128,7 +131,7 @@ impl GuzhengParams {
         s.pluck_noise = 0.15;
         s.body_mix = 0.6;
         s.tone = 5_000.0;
-        Self { string: s, vibrato: 18.0, vibrato_rate: 3.5, vibrato_delay: 0.5, tremolo_rate: 8.0 }
+        Self { string: s, vibrato: 18.0, vibrato_rate: 3.5, vibrato_delay: 0.5, tremolo_rate: 8.0, high_pass: 0.0 }
     }
 
     /// 扬琴：竹槌敲钢丝弦（击弦：`strike` 1），亮、金属味，梯形琴箱；有制音（松开后不太长）。
@@ -146,7 +149,7 @@ impl GuzhengParams {
         s.pluck_noise = 0.15;
         s.body_mix = 0.45;
         s.tone = 11_000.0;
-        Self { string: s, vibrato: 0.0, vibrato_rate: 5.0, vibrato_delay: 0.3, tremolo_rate: 14.0 }
+        Self { string: s, vibrato: 0.0, vibrato_rate: 5.0, vibrato_delay: 0.3, tremolo_rate: 14.0, high_pass: 0.0 }
     }
 }
 
@@ -406,7 +409,7 @@ pub fn erhu() -> BowedParams {
         pressure: 0.8,
         attack: 0.05,
         // 二胡的"毛"：马尾夹在两弦之间、松香多，整个音里一直有擦弦的颗粒（不光是开头），弓速也不那么稳。
-        bow_noise: 0.9,
+        bow_noise: 0.7,
         decay: 0.8,
         decay_per_octave: 1.3,
         high_decay: 0.2,
@@ -456,14 +459,15 @@ impl Erhu {
             synth,
             params,
             // 照两段录音（《赛马》、F4 长音）量出来的琴筒出声：低于 400 Hz 少，1 kHz 附近是谷，1.4 kHz 一个峰，
-            // 2–2.8 kHz 几乎没有，3.1 kHz 又有一小片亮。
+            // 2–2.8 kHz 几乎没有，3.1 kHz 又有一小片亮，4–8 kHz 还有一层泛音（《赛马》、F4、B5 三段录音）。
             eq: vec![
                 Filter::new(FilterShape::Highpass, 420.0, 0.7),
                 Filter::new(FilterShape::Highpass, 420.0, 0.7),
                 Filter::new(FilterShape::Peak { gain_db: -10.0 }, 980.0, 5.0),
                 Filter::new(FilterShape::Peak { gain_db: 6.0 }, 1_300.0, 3.0),
-                Filter::new(FilterShape::Lowpass, 2_300.0, 0.7),
-                Filter::new(FilterShape::Lowpass, 2_300.0, 0.7),
+                // 2 kHz 上下是谷，4–8 kHz 又有一层亮（高音更明显，见 B5 长音录音）。
+                Filter::new(FilterShape::Lowpass, 3_000.0, 0.7),
+                Filter::new(FilterShape::Peak { gain_db: 4.0 }, 5_000.0, 1.2),
                 Filter::new(FilterShape::Peak { gain_db: -18.0 }, 2_450.0, 3.0),
                 Filter::new(FilterShape::Peak { gain_db: 16.0 }, 3_100.0, 5.0),
             ],

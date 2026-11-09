@@ -275,6 +275,41 @@ impl Playable for crate::chinese::Erhu {
     }
 }
 
+/// 一件乐器后面接一串固定的滤波（照录音补乐器的出声：小琴身放不出低频之类）。
+struct WithEq {
+    inner: Box<dyn Playable>,
+    eq: Vec<manguebyte::prelude::Filter<f32>>,
+}
+
+impl Playable for WithEq {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        self.inner.prepare(spec);
+        self.eq.iter_mut().for_each(|f| f.prepare(spec));
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        self.inner.note_on(note, velocity, accent);
+    }
+    fn note_on_muted(&mut self, note: NoteRef, velocity: f32, accent: bool, mute: bool) {
+        self.inner.note_on_muted(note, velocity, accent, mute);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        self.inner.note_off(note, velocity);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        self.inner.process(buffer);
+        self.eq.iter_mut().for_each(|f| f.process(buffer));
+    }
+    fn midi(&mut self, message: MidiMessage) {
+        self.inner.midi(message);
+    }
+    fn set_param(&mut self, name: &str, value: f64) {
+        self.inner.set_param(name, value);
+    }
+    fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        self.inner.set_tuning(tuning);
+    }
+}
+
 /// 鼓组：参数名为 `鼓件.参数`，如 `kick.tune`；改动从下一次击打生效。
 struct DrumsTunable {
     synth: Synth<DrumKitVoice, f32>,
@@ -482,7 +517,16 @@ impl Patch {
             Patch::Yangqin(p) => TrackInstrument::new(crate::chinese::Courses::new(p, 24), 0),
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
             Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
-            Patch::Guzheng(p) => tunable(Synth::with_voices(21, move || PluckedString::new(p.string)), p, params::GUZHENG, |v, p| v.set_params(p.string)),
+            Patch::Guzheng(p) => {
+                let t = tunable(Synth::with_voices(21, move || PluckedString::new(p.string)), p, params::GUZHENG, |v, p| v.set_params(p.string));
+                match p.high_pass {
+                    hz if hz > 0.0 => {
+                        use manguebyte::prelude::{Filter, FilterShape};
+                        TrackInstrument::new(WithEq { inner: t.inner, eq: vec![Filter::new(FilterShape::Highpass, hz, 0.7), Filter::new(FilterShape::Highpass, hz, 0.7)] }, 0)
+                    }
+                    _ => t,
+                }
+            }
             Patch::Accordion(p) => tunable(Synth::with_voices(16, move || crate::accordion::AccordionVoice::new(p)), p, params::ACCORDION, |v, p| v.set_params(p)),
             Patch::Acid(p) => {
                 let mut s = Synth::with_voices(1, move || AcidVoice::new(p));
