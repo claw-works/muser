@@ -44,7 +44,7 @@ trait Playable {
     /// 自动化：运行中改一个参数（名称与 `instrument_params` 相同，鼓组为 `鼓件.参数`）。
     fn set_param(&mut self, _name: &str, _value: f64) {}
     /// 下一个音唱的字与这个音的长度（帧）：`yinse.voice.*` 用，其它乐器忽略。
-    fn lyric(&mut self, _text: &str, _frames: u64) {}
+    fn lyric(&mut self, _text: &str, _frames: u64, _lead: u64) {}
     /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
     fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
     /// 上一块送到总线的各路直接输出（插件的 `@outputs` 写了 `bus` 的项，按顺序）。默认没有。
@@ -99,8 +99,8 @@ impl TrackInstrument {
         self.inner.note_on(note, velocity, accent);
     }
     /// 下一个音唱的字（`yinse.voice.*`）。
-    pub fn lyric(&mut self, text: &str, frames: u64) {
-        self.inner.lyric(text, frames);
+    pub fn lyric(&mut self, text: &str, frames: u64, lead: u64) {
+        self.inner.lyric(text, frames, lead);
     }
     /// 起音，带音符的掌闷标记（电吉他用，其它乐器忽略）。
     pub fn note_on_muted(&mut self, note: NoteRef, velocity: f32, accent: bool, mute: bool) {
@@ -287,6 +287,8 @@ struct Singer {
     voice: crate::singer::SingerVoice,
     params: crate::singer::SingerParams,
     key: Option<u8>,
+    /// 当前这个键按下了几次没松（辅音提前时，同一个音高的下一个字会在上一个字松开之前开始）。
+    downs: u32,
 }
 
 impl Playable for Singer {
@@ -295,12 +297,16 @@ impl Playable for Singer {
     }
     fn note_on(&mut self, note: NoteRef, velocity: f32, _accent: bool) {
         manguebyte::prelude::Voice::note_on(&mut self.voice, note, velocity);
+        self.downs = if self.key == Some(note.key) { self.downs + 1 } else { 1 };
         self.key = Some(note.key);
     }
     fn note_off(&mut self, note: NoteRef, velocity: f32) {
         if self.key == Some(note.key) {
-            manguebyte::prelude::Voice::note_off(&mut self.voice, velocity);
-            self.key = None;
+            self.downs = self.downs.saturating_sub(1);
+            if self.downs == 0 {
+                manguebyte::prelude::Voice::note_off(&mut self.voice, velocity);
+                self.key = None;
+            }
         }
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
@@ -312,8 +318,8 @@ impl Playable for Singer {
             manguebyte::prelude::Voice::pitch_bend(&mut self.voice, f64::from(value) / 8192.0 * 2.0);
         }
     }
-    fn lyric(&mut self, text: &str, frames: u64) {
-        self.voice.lyric(text, frames);
+    fn lyric(&mut self, text: &str, frames: u64, lead: u64) {
+        self.voice.lyric(text, frames, lead);
     }
     fn set_param(&mut self, name: &str, value: f64) {
         if params::set_number(params::SINGER, &mut self.params, name, value) {
@@ -520,7 +526,7 @@ impl Patch {
             Patch::Singer(p) => (
                 params::describe(params::SINGER, p, params::NEXT_SINGER),
                 "Sings the note's `lyric` (pinyin, e.g. \"ming\", \"yue\"; English spellings approximately). One note at a time: overlapping notes are sung legato and glide. \
-                 This version sings the vowels (finals, with diphthongs gliding inside the note); consonants come next.".into(),
+                 The initial consonant starts a little before the note so the vowel lands on the beat; -n / -ng close the note.".into(),
             ),
             Patch::Erhu(p) => (params::describe(params::BOWED, p, params::NEXT_BOWED), "One note at a time: a note that overlaps the next slides into it under one bow; a small gap is a new bow.".into()),
             Patch::Dizi(p) => (params::describe(params::DIZI, p, params::NEXT_DIZI), "One note at a time: overlapping notes slide into each other (滑音); trills and grace notes (打音、叠音、颤音) are short notes.".into()),
@@ -574,7 +580,7 @@ impl Patch {
             Patch::Yangqin(p) => TrackInstrument::new(crate::chinese::Courses::new(p, 24), 0),
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
             Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
-            Patch::Singer(p) => TrackInstrument::new(Singer { voice: crate::singer::SingerVoice::new(p), params: p, key: None }, 0),
+            Patch::Singer(p) => TrackInstrument::new(Singer { voice: crate::singer::SingerVoice::new(p), params: p, key: None, downs: 0 }, 0),
             Patch::Guzheng(p) => {
                 let t = tunable(Synth::with_voices(21, move || PluckedString::new(p.string)), p, params::GUZHENG, |v, p| v.set_params(p.string));
                 match p.high_pass {

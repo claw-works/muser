@@ -76,7 +76,7 @@ pub(crate) enum Act {
     /// 弯音轮，-8192 – 8191（±2 半音）。
     Bend { value: i16, ch: Option<u8> },
     /// 下一个音唱的字（`yinse.voice.*`）：在起音的同一帧、起音之前发，`len` 是这个音有多长（帧）。
-    Lyric { text: crate::lyric::Text, len: u32 },
+    Lyric { text: crate::lyric::Text, len: u32, lead: u32 },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -267,7 +267,10 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             }
             if singer {
                 if let Some(text) = note.lyric.as_deref() {
-                    acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: (off - on) as u32 }));
+                    // 辅音提前：元音落在拍上，辅音（成阻、爆破、摩擦、送气）在它之前。
+                    let lead = ((crate::singer::lead_seconds(text) * sr) as usize).min(on_at);
+                    on_at -= lead;
+                    acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: (off - on) as u32, lead: lead as u32 }));
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
@@ -489,7 +492,7 @@ impl LiveInstrument {
                             self.inst.set_tuning(t);
                         }
                     }
-                    Act::Lyric { text, len } => self.inst.lyric(text.as_str(), u64::from(len)),
+                    Act::Lyric { text, len, lead } => self.inst.lyric(text.as_str(), u64::from(len), u64::from(lead)),
                     Act::Sing { syl, lead, len, velocity, .. } => {
                         let (lead, len) = (lead as usize, len as usize);
                         if let Some(c) = self.consonants.as_mut() {

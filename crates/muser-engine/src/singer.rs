@@ -80,29 +80,153 @@ pub(crate) const PART_NAMES: &[&str] = &["soprano", "alto", "tenor", "bass", "ch
 
 // —— 拼音 ——
 
-/// 一个音节里要唱的元音（依次滑过去，最多三个）与每个元音占这个音的比例（介音短、韵腹长、韵尾短）。
+/// 辅音的部位：决定爆破、摩擦的频谱，和元音开头共振峰从哪里滑进来（音轨"锁点"）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Place {
+    /// 双唇、唇齿（b p m f）。
+    Labial,
+    /// 舌尖前（z c s）。
+    Dental,
+    /// 舌尖中（d t n l）。
+    Alveolar,
+    /// 舌尖后（zh ch sh r）。
+    Retroflex,
+    /// 舌面（j q x）。
+    Palatal,
+    /// 舌根（g k h）。
+    Velar,
+}
+
+/// 辅音的方式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Manner {
+    None,
+    /// 塞音：成阻（无声）→ 爆破 →（送气）→ 元音。
+    Stop { aspirated: bool },
+    /// 塞擦音：成阻 → 爆破 → 摩擦 →（送气）→ 元音。
+    Affricate { aspirated: bool },
+    /// 擦音：一段摩擦噪声 → 元音。
+    Fricative,
+    /// 鼻音：嘴闭着、从鼻腔出的哼声 → 元音。
+    Nasal,
+    /// 边音 l。
+    Lateral,
+    /// 卷舌的 r。
+    Rhotic,
+}
+
+/// 声母。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Onset {
+    pub place: Place,
+    pub manner: Manner,
+}
+
+impl Onset {
+    pub const NONE: Self = Self { place: Place::Alveolar, manner: Manner::None };
+
+    /// 各段的时长（秒）：成阻、爆破、摩擦、送气、哼声（有声的辅音）。
+    fn segments(&self) -> [f64; 5] {
+        match self.manner {
+            Manner::None => [0.0; 5],
+            Manner::Stop { aspirated: false } => [0.035, 0.008, 0.0, 0.01, 0.0],
+            Manner::Stop { aspirated: true } => [0.03, 0.01, 0.0, 0.07, 0.0],
+            Manner::Affricate { aspirated: false } => [0.025, 0.005, 0.05, 0.0, 0.0],
+            Manner::Affricate { aspirated: true } => [0.02, 0.005, 0.06, 0.05, 0.0],
+            Manner::Fricative => [0.0, 0.0, if self.place == Place::Velar { 0.08 } else { 0.12 }, 0.0, 0.0],
+            Manner::Nasal => [0.0, 0.0, 0.0, 0.0, 0.07],
+            Manner::Lateral => [0.0, 0.0, 0.0, 0.0, 0.05],
+            Manner::Rhotic => [0.0, 0.0, 0.0, 0.0, 0.07],
+        }
+    }
+
+    /// 辅音从元音开始前多久起（秒）：元音要落在拍上，辅音提前。
+    pub fn lead(&self) -> f64 {
+        self.segments().iter().sum()
+    }
+
+    fn voiced(&self) -> bool {
+        matches!(self.manner, Manner::Nasal | Manner::Lateral | Manner::Rhotic)
+    }
+}
+
+/// 韵尾。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Coda {
+    None,
+    /// -n。
+    N,
+    /// -ng。
+    Ng,
+}
+
+/// 一个音节：声母、依次滑过去的元音（最多三个）与每个元音占这个音的比例（介音短、韵腹长、韵尾短）、鼻韵尾。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Syllable {
+    pub onset: Onset,
     pub vowels: [Vowel; 3],
     pub shares: [f64; 3],
     pub n: usize,
+    pub coda: Coda,
 }
 
 impl Syllable {
     fn one(v: Vowel) -> Self {
-        Self { vowels: [v; 3], shares: [1.0, 0.0, 0.0], n: 1 }
+        Self { onset: Onset::NONE, vowels: [v; 3], shares: [1.0, 0.0, 0.0], n: 1, coda: Coda::None }
     }
     fn two(a: Vowel, b: Vowel, glide_first: bool) -> Self {
         let shares = if glide_first { [0.12, 0.88, 0.0] } else { [0.7, 0.3, 0.0] };
-        Self { vowels: [a, b, b], shares, n: 2 }
+        Self { vowels: [a, b, b], shares, n: 2, ..Self::one(a) }
     }
     fn three(a: Vowel, b: Vowel, c: Vowel) -> Self {
-        Self { vowels: [a, b, c], shares: [0.12, 0.6, 0.28], n: 3 }
+        Self { vowels: [a, b, c], shares: [0.12, 0.6, 0.28], n: 3, ..Self::one(a) }
     }
 }
 
-/// 拼音（或英文拼法）→ 要唱的元音。声母只用来认出"资 / 知"的 i、j q x y 后面的 u（= ü）；鼻韵尾这一版不唱。
+/// 这个字的辅音要提前多久开始（秒），渲染器据此把音符提前。
+pub fn lead_seconds(text: &str) -> f64 {
+    syllable(text).onset.lead()
+}
+
+/// 拼音（或英文拼法）→ 音节。
 pub fn syllable(text: &str) -> Syllable {
+    let mut syl = finals(text);
+    let s: String = text.to_lowercase().chars().filter(|c| c.is_alphabetic() || *c == 'ü').collect();
+    use Manner::*;
+    use Place::*;
+    let o = |place, manner| Onset { place, manner };
+    const INITIALS: &[&str] = &["zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "r", "z", "c", "s"];
+    syl.onset = match INITIALS.iter().find(|i| s.starts_with(**i)).copied().unwrap_or("") {
+        "b" => o(Labial, Stop { aspirated: false }),
+        "p" => o(Labial, Stop { aspirated: true }),
+        "m" => o(Labial, Nasal),
+        "f" => o(Labial, Fricative),
+        "d" => o(Alveolar, Stop { aspirated: false }),
+        "t" => o(Alveolar, Stop { aspirated: true }),
+        "n" => o(Alveolar, Nasal),
+        "l" => o(Alveolar, Lateral),
+        "g" => o(Velar, Stop { aspirated: false }),
+        "k" => o(Velar, Stop { aspirated: true }),
+        "h" => o(Velar, Fricative),
+        "j" => o(Palatal, Affricate { aspirated: false }),
+        "q" => o(Palatal, Affricate { aspirated: true }),
+        "x" => o(Palatal, Fricative),
+        "zh" => o(Retroflex, Affricate { aspirated: false }),
+        "ch" => o(Retroflex, Affricate { aspirated: true }),
+        "sh" => o(Retroflex, Fricative),
+        "r" => o(Retroflex, Rhotic),
+        "z" => o(Dental, Affricate { aspirated: false }),
+        "c" => o(Dental, Affricate { aspirated: true }),
+        "s" => o(Dental, Fricative),
+        _ => Onset::NONE,
+    };
+    // 鼻韵尾（er 不算；单独的 n / ng 也不算）。
+    syl.coda = if s.len() > 2 && s.ends_with("ng") { Coda::Ng } else if s.len() > 1 && s.ends_with('n') && !s.ends_with("er") { Coda::N } else { Coda::None };
+    syl
+}
+
+/// 韵母 → 要唱的元音。声母只用来认出"资 / 知"的 i、j q x y 后面的 u（= ü）。
+fn finals(text: &str) -> Syllable {
     use Vowel::*;
     let s: String = text.to_lowercase().chars().filter(|c| c.is_alphabetic() || *c == 'ü').collect::<String>().replace('v', "ü");
     const INITIALS: &[&str] = &["zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "r", "z", "c", "s", "y", "w"];
@@ -279,7 +403,14 @@ pub(crate) struct SingerVoice {
     // 音节：元音序列与这个音的长度（帧），已唱了几帧。
     syl: Syllable,
     note_frames: u64,
+    /// 辅音段多少帧（元音从这里开始）。
+    lead_frames: u64,
     at: u64,
+    // 辅音的噪声：摩擦（两级带通）、爆破（两级带通）。
+    fric: [Resonator; 2],
+    burst: [Resonator; 2],
+    /// 元音开头是否已经把共振峰放到"锁点"上。
+    landed: bool,
     // 包络
     env: f64,
     held: bool,
@@ -288,7 +419,7 @@ pub(crate) struct SingerVoice {
     rng: Rng,
     notes: u64,
     /// 下一个音的歌词（`Lyric` 先到，`note_on` 再用）。
-    pending: Option<(Syllable, u64)>,
+    pending: Option<(Syllable, u64, u64)>,
 }
 
 impl SingerVoice {
@@ -310,7 +441,11 @@ impl SingerVoice {
             formants: male(Vowel::A),
             syl: Syllable::one(Vowel::A),
             note_frames: 48_000,
+            lead_frames: 0,
             at: 0,
+            fric: [Resonator::default(); 2],
+            burst: [Resonator::default(); 2],
+            landed: true,
             env: 0.0,
             held: false,
             active: false,
@@ -325,19 +460,33 @@ impl SingerVoice {
         self.params = p;
     }
 
-    /// 下一个音唱的字与这个音有多长（帧）。
-    pub(crate) fn lyric(&mut self, text: &str, frames: u64) {
-        self.pending = Some((syllable(text), frames.max(1)));
+    /// 下一个音唱的字、这个音（元音部分）有多长、辅音提前了多少（帧）。
+    pub(crate) fn lyric(&mut self, text: &str, frames: u64, lead: u64) {
+        self.pending = Some((syllable(text), frames.max(1), lead));
     }
 
     fn part(&self) -> Part {
         PARTS[(self.params.part.round().max(0.0) as usize).min(PARTS.len() - 1)]
     }
 
-    /// 这一刻的共振峰目标：按音节里的元音与唱到的位置在它们之间滑。
+    /// 这一刻的共振峰目标（男声尺度）：辅音段用辅音的形状，元音段按元音与唱到的位置在它们之间滑，韵尾合到鼻音。
     fn target(&self) -> [f64; 5] {
         let s = self.syl;
-        let x = (self.at as f64 / self.note_frames as f64).min(1.0);
+        if self.at < self.lead_frames {
+            if let Some(f) = murmur(s.onset) {
+                return f;
+            }
+            // 无声的辅音段：用元音开头的样子（送气、h 带着后面元音的颜色）。
+            return locus_start(s.onset, male(s.vowels[0]));
+        }
+        let v = self.at - self.lead_frames;
+        if let Some(coda) = nasal_coda(s.coda) {
+            let n = coda_frames(self.note_frames, self.sr);
+            if v + n >= self.note_frames {
+                return coda;
+            }
+        }
+        let x = (v as f64 / self.note_frames as f64).min(1.0);
         // 每个元音占的区间，交界处 25% 的长度里滑过去。
         let mut edges = [0.0; 3];
         let mut acc = 0.0;
@@ -374,17 +523,75 @@ impl SingerVoice {
         let semis = self.pitch + self.bend + vib_amt * (TAU * self.vib_phase).sin();
         let f0 = 440.0 * ((semis - 69.0) / 12.0).exp2();
 
+        let scale = part.formants * p.formant_shift;
+        // 元音开始的那一帧：塞音、塞擦音、擦音之后，共振峰从"锁点"起（b d g 的区别主要在这段滑动里）。
+        if !self.landed && self.at >= self.lead_frames {
+            self.landed = true;
+            if !self.syl.onset.voiced() && self.syl.onset.manner != Manner::None {
+                self.formants = locus_start(self.syl.onset, male(self.syl.vowels[0])).map(|f| f * scale);
+            }
+        }
+        // 辅音段的几样声音：t 是从这个字开始（辅音开头）算起的秒数。
+        let segs = self.syl.onset.segments();
+        let (closure, burst_end, fric_end, asp_end) = (segs[0], segs[0] + segs[1], segs[0] + segs[1] + segs[2], segs[0] + segs[1] + segs[2] + segs[3]);
+        let in_lead = self.at < self.lead_frames;
+        let (mut av, mut ab, mut af, mut asp) = (1.0, 0.0, 0.0, 0.0);
+        if in_lead {
+            let fade = |a: f64, b: f64| (((t - a) / 0.008).min((b - t) / 0.008)).clamp(0.0, 1.0);
+            av = if self.syl.onset.voiced() { 1.0 } else { 0.0 };
+            if t >= closure && t < burst_end {
+                ab = 1.0 - (t - closure) / segs[1].max(1e-4);
+            }
+            if t >= burst_end && t < fric_end {
+                af = fade(burst_end, fric_end);
+            }
+            if t >= fric_end && t < asp_end {
+                asp = fade(fric_end, asp_end);
+            }
+            if self.syl.onset.manner == Manner::Rhotic {
+                af = 0.15;
+            }
+        } else if self.syl.onset.manner != Manner::None && !self.syl.onset.voiced() {
+            // 声带开始振动：15 ms 里起来。
+            av = ((self.at - self.lead_frames) as f64 / (0.015 * sr)).min(1.0);
+        }
+        // 鼻音（声母的哼声、鼻韵尾）：嘴闭着，声音小、闷。
+        let mut murmur_gain = 1.0;
+        if in_lead && murmur(self.syl.onset).is_some() && self.syl.onset.manner == Manner::Nasal {
+            murmur_gain = 0.35;
+        }
+        if !in_lead && self.syl.coda != Coda::None {
+            let v = self.at - self.lead_frames;
+            let n = coda_frames(self.note_frames, sr);
+            if v + n >= self.note_frames {
+                murmur_gain = 1.0 - 0.6 * ((v + n - self.note_frames) as f64 / (0.04 * sr)).min(1.0);
+            }
+        }
+
         // 声道：目标共振峰（按声部、整体比例），平滑地滑过去；高音时 F1 抬到基音之上。
         if self.at.is_multiple_of(32) {
-            let scale = part.formants * p.formant_shift;
             let mut tgt = self.target().map(|f| f * scale);
-            tgt[0] = tgt[0].max(f0 * 1.15);
+            if !in_lead {
+                tgt[0] = tgt[0].max(f0 * 1.15);
+            }
             tgt[1] = tgt[1].max(tgt[0] + 200.0);
-            let k = 1.0 - (-32.0 / (0.012 * sr)).exp();
+            // 元音开头 60 ms 里滑得慢一些（听得出辅音到元音的过渡），其余跟得快。
+            let after = (self.at.saturating_sub(self.lead_frames)) as f64 / sr;
+            let tau = if !in_lead && after < 0.06 && self.syl.onset.manner != Manner::None { 0.022 } else { 0.012 };
+            let k = 1.0 - (-32.0 / (tau * sr)).exp();
+            let nasal = murmur_gain < 0.99;
             for i in 0..5 {
                 self.formants[i] += (tgt[i] - self.formants[i]) * k;
-                let bw = BANDWIDTHS[i] * (1.0 + 0.5 * (part.formants - 1.0));
+                let bw = BANDWIDTHS[i] * (1.0 + 0.5 * (part.formants - 1.0)) * if nasal { 2.0 } else { 1.0 };
                 self.tract[i].set(self.formants[i], bw, sr);
+            }
+            let (fc, fbw, _) = frication(self.syl.onset, self.formants[1]);
+            for r in self.fric.iter_mut() {
+                r.set(fc * scale.sqrt(), fbw, sr);
+            }
+            let (bc, bbw) = burst_band(self.syl.onset, self.formants[1]);
+            for r in self.burst.iter_mut() {
+                r.set(bc, bbw, sr);
             }
         }
 
@@ -410,13 +617,26 @@ impl SingerVoice {
         let cut = 600.0 + 5_400.0 * p.brightness.clamp(0.0, 1.0) * (0.6 + 0.4 * self.velocity);
         let k = 1.0 - (-TAU * cut / sr).exp();
         self.tilt += (g - self.tilt) * k;
-        // 气声：跟着声门开合（开相里多）。
-        let noise = self.rng.signed() * part.breath * p.breath * if ph < open { 1.0 } else { 0.3 };
-        let mut x = self.tilt + noise;
+        // 气声：跟着声门开合（开相里多）；送气、h 是声道里的噪声（带着后面元音的颜色）。
+        let breath = self.rng.signed() * part.breath * p.breath * if ph < open { 1.0 } else { 0.3 } * av;
+        let aspiration = self.rng.signed() * 0.25 * asp;
+        let mut x = self.tilt * av + breath + aspiration;
         for r in self.tract.iter_mut() {
             x = r.tick(x);
         }
-        x
+        x *= murmur_gain;
+        // 摩擦、爆破：噪声经过各自的带通（舌、唇前面的那一小段腔），不经过整条声道。
+        let level = frication(self.syl.onset, self.formants[1]).2;
+        let (n1, n2) = (self.rng.signed(), self.rng.signed());
+        let mut f = n1 * af * level;
+        for r in self.fric.iter_mut() {
+            f = r.tick(f);
+        }
+        let mut b = n2 * ab * 0.8;
+        for r in self.burst.iter_mut() {
+            b = r.tick(b);
+        }
+        x + 1.2 * f + 6.0 * b
     }
 }
 
@@ -437,11 +657,14 @@ impl Voice<f32> for SingerVoice {
             self.tract = [Resonator::default(); 5];
             self.env = 0.0;
         }
-        let (syl, frames) = self.pending.take().unwrap_or((Syllable::one(Vowel::A), (self.sr * 1.0) as u64));
+        let (syl, frames, lead) = self.pending.take().unwrap_or((Syllable::one(Vowel::A), (self.sr * 1.0) as u64, 0));
         self.syl = syl;
         self.note_frames = frames;
+        self.lead_frames = lead;
+        self.landed = lead == 0;
         if !self.active {
-            self.formants = male(syl.vowels[0]).map(|f| f * self.part().formants * self.params.formant_shift);
+            let start = murmur(syl.onset).unwrap_or_else(|| male(syl.vowels[0]));
+            self.formants = start.map(|f| f * self.part().formants * self.params.formant_shift);
         }
         self.at = 0;
         self.rng = Rng(0x9E37_79B9_7F4A_7C15 ^ (u64::from(note.key) << 32) ^ self.notes);
@@ -506,6 +729,70 @@ impl Voice<f32> for SingerVoice {
     }
 }
 
+/// 有声辅音（m n l r）本身的共振峰（男声尺度）；没有时为 None。
+fn murmur(o: Onset) -> Option<[f64; 5]> {
+    match (o.manner, o.place) {
+        (Manner::Nasal, Place::Labial) => Some([250.0, 1100.0, 2200.0, 3300.0, 4300.0]),
+        (Manner::Nasal, _) => Some([250.0, 1600.0, 2600.0, 3400.0, 4400.0]),
+        (Manner::Lateral, _) => Some([350.0, 1150.0, 2800.0, 3500.0, 4500.0]),
+        (Manner::Rhotic, _) => Some([400.0, 1350.0, 1700.0, 3200.0, 4300.0]),
+        _ => None,
+    }
+}
+
+/// 鼻韵尾的共振峰：-n 舌尖抵住上齿龈，-ng 舌根抵住软腭（F2 更低）。
+fn nasal_coda(c: Coda) -> Option<[f64; 5]> {
+    match c {
+        Coda::None => None,
+        Coda::N => Some([250.0, 1550.0, 2550.0, 3400.0, 4400.0]),
+        Coda::Ng => Some([280.0, 1050.0, 2300.0, 3300.0, 4300.0]),
+    }
+}
+
+/// 韵尾占这个音的最后多少帧：至多 0.15 秒、至多三成。
+fn coda_frames(note: u64, sr: f64) -> u64 {
+    ((0.15 * sr) as u64).min(note * 3 / 10)
+}
+
+/// 元音开头的共振峰：从辅音部位的"锁点"与元音之间的一半起（Klatt），往元音滑。
+fn locus_start(o: Onset, vowel: [f64; 5]) -> [f64; 5] {
+    let (f1, f2, f3) = match o.place {
+        Place::Labial => (250.0, 900.0, 2200.0),
+        Place::Dental => (300.0, 1700.0, 2600.0),
+        Place::Alveolar => (300.0, 1800.0, 2700.0),
+        Place::Retroflex => (320.0, 1700.0, 1800.0),
+        Place::Palatal => (280.0, 2300.0, 3000.0),
+        // 舌根："软腭夹"，F2 与 F3 靠在一起。
+        Place::Velar => (300.0, (vowel[1] + 250.0).min(2300.0), (vowel[1] + 600.0).min(2700.0)),
+    };
+    let mix = |l: f64, v: f64| l + 0.5 * (v - l);
+    [mix(f1, vowel[0]), mix(f2, vowel[1]), mix(f3, vowel[2]), vowel[3], vowel[4]]
+}
+
+/// 摩擦噪声的中心频率、带宽（Hz）与强度。
+fn frication(o: Onset, f2: f64) -> (f64, f64, f64) {
+    match o.place {
+        Place::Dental => (7_000.0, 3_000.0, 0.28),
+        Place::Retroflex => (3_200.0, 1_800.0, 0.5),
+        Place::Palatal => (4_800.0, 2_600.0, 0.35),
+        Place::Labial => (5_000.0, 6_000.0, 0.3),
+        Place::Velar => ((f2 * 1.1).max(1_000.0), 2_000.0, 0.9),
+        Place::Alveolar => (5_500.0, 3_000.0, 0.4),
+    }
+}
+
+/// 爆破的中心频率与带宽：双唇低而散，舌尖高，舌根集中在后面元音的 F2 附近。
+fn burst_band(o: Onset, f2: f64) -> (f64, f64) {
+    match o.place {
+        Place::Labial => (1_200.0, 3_000.0),
+        Place::Alveolar => (4_000.0, 2_500.0),
+        Place::Velar => ((f2 * 1.1).clamp(1_200.0, 3_000.0), 900.0),
+        Place::Dental => (6_000.0, 3_000.0),
+        Place::Retroflex => (3_000.0, 1_800.0),
+        Place::Palatal => (4_200.0, 2_400.0),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,10 +813,38 @@ mod tests {
         assert_eq!(syllable("wo").vowels[..2], [Vowel::U, Vowel::O]);
     }
 
+    #[test]
+    fn initials_and_codas() {
+        let s = syllable("ba");
+        assert_eq!(s.onset, Onset { place: Place::Labial, manner: Manner::Stop { aspirated: false } });
+        assert_eq!(syllable("qing").coda, Coda::Ng);
+        assert_eq!(syllable("chuang").onset.manner, Manner::Affricate { aspirated: true });
+        assert_eq!(syllable("chuang").vowels[..2], [Vowel::U, Vowel::A]);
+        assert_eq!(syllable("men").coda, Coda::N);
+        assert_eq!(syllable("er").coda, Coda::None);
+        assert_eq!(syllable("yue").onset, Onset::NONE);
+        // 送气的比不送气的提前得多；擦音最长。
+        assert!(lead_seconds("pa") > lead_seconds("ba") && lead_seconds("sa") > lead_seconds("ba") && lead_seconds("a") == 0.0);
+    }
+
+    #[test]
+    fn consonants_sound_before_the_vowel() {
+        // sa：元音之前是一段高频的摩擦；ba：元音之前有一段闭着的无声。
+        let lead = |t: &str| (lead_seconds(t) * 48_000.0) as usize;
+        let sa = sing("sa", 57, 0.6);
+        let fric = &sa[lead("sa") / 3..lead("sa") * 2 / 3];
+        assert!(share(&[fric, fric, fric, fric, fric, fric, fric, fric, fric, fric, fric, fric, fric, fric, fric, fric].concat(), 4_000.0, 12_000.0) > 0.5);
+        let ba = sing("ba", 57, 0.6);
+        let closure = &ba[200..1_200];
+        assert!(closure.iter().all(|s| s.abs() < 1e-6), "the lips are closed before the burst");
+        assert!(ba[lead("ba") + 4_800..].iter().any(|s| s.abs() > 0.01), "then the vowel");
+    }
+
     fn sing(text: &str, key: u8, seconds: f64) -> Vec<f32> {
         let mut v = SingerVoice::new(SingerParams::preset(1));
         v.prepare(&ProcessSpec { sample_rate: 48_000.0, max_block_size: 512, num_channels: 1 });
-        v.lyric(text, (seconds * 48_000.0) as u64);
+        let lead = (lead_seconds(text) * 48_000.0) as u64;
+        v.lyric(text, (seconds * 48_000.0) as u64, lead);
         v.note_on(NoteRef::new(0, key), 0.8);
         let mut out = Vec::new();
         let mut buf = AudioBuffer::new(1, 512);
