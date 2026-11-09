@@ -305,6 +305,14 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
+            if singer && note.slide_out {
+                // 滑出：在下一个字（的元音）开始前、这个字的最后一段里滑到下一个音的音高（至多 0.35 秒、这个音的四成）。
+                if let Some(next) = notes.iter().filter(|m| m.start.0 > note.start.0 + 1e-9).min_by(|a, b| a.start.0.total_cmp(&b.start.0)) {
+                    let arrive = (clip_start + rel(next.start.0) * sr) as usize;
+                    let frames = ((0.35 * sr) as usize).min(arrive.saturating_sub(on) * 2 / 5).max(1);
+                    acts.push((arrive.saturating_sub(frames), Act::Slide { key: next.pitch, frames: frames as u32 }));
+                }
+            }
             if singer && note.slide {
                 // 滑进这个音：从上一个字的音高起，在这个字的开头（至多 0.4 秒、这个音的一半）里滑到自己的音高。
                 let frames = ((0.4 * sr) as usize).min(off.saturating_sub(on) / 2).max(1);

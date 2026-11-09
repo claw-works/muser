@@ -8,7 +8,7 @@
 //! - **二胡**：拉弦模型。两根弦（D4、A4），蟒皮琴筒：没有木头箱体的密集共鸣，几个蟒皮与琴筒的共鸣让它带鼻音、
 //!   发亮；弓毛夹在两弦之间，擦弦声多。揉弦宽而慢起，连奏（clip 的 `legato`）的音之间手指滑过去（单音，滑音）。
 //! - **琵琶**：拨弦模型。梨形木头琴身，义甲弹得脆、颗粒感强，余音比古筝短（品位高，手指按弦就止住一些）。轮指是音符的 `tremolo`。
-//! - **古琴**：拨弦模型。七根丝弦，很低、很暗，指肉弹，长琴身的低频共鸣，余音长而柔；吟猱（揉弦）慢而深。
+//! - **古琴**：拨弦模型。起音有指甲触弦的棱角，高频先退、低频留下柔和余韵；吟猱（揉弦）慢而深。
 //! - **扬琴**：拨弦模型当作击弦（竹槌敲）：亮、金属味；每个音是两根同音的弦（略微走音，声音"活"），见 [`Courses`]。轮音是 `tremolo`。
 //! - **笛子**：吹管（长笛）模型 + 笛膜：膜在高频上"嗡"出一片沙沙的泛音，越响越明显（[`Dizi`]）。单音，连着的音滑过去。
 //! - **箫**：吹管模型，竖吹：低、暗、气声多，起音慢。单音。
@@ -118,20 +118,23 @@ impl GuzhengParams {
         Self { string: s, vibrato: 15.0, vibrato_rate: 5.0, vibrato_delay: 0.35, tremolo_rate: 12.0, high_pass: 460.0 }
     }
 
-    /// 古琴：丝弦、指肉弹，很暗；长琴身的低频共鸣，余音长而柔；吟猱慢而深。
+    /// 古琴：清楚的拨弦起音接暗的余韵，不能只把整条弦低通成柔软的吉他音。
+    /// 参考独奏录音中的起音与衰减趋势；琴体共鸣是模型近似，不是对某张琴的实测复原。
     pub fn guqin() -> Self {
-        let mut s = strings([BodyMode::new(70.0, 5.0, 0.8), BodyMode::new(140.0, 6.0, 0.7), BodyMode::new(240.0, 6.0, 0.5), BodyMode::new(400.0, 5.0, 0.35)]);
-        s.decay = 9.0;
-        s.decay_per_octave = 1.3;
-        s.high_decay = 0.12;
-        s.release = 2.0;
-        s.pluck_position = 0.12;
-        s.pluck_brightness = 2_500.0;
+        let mut s = strings([BodyMode::new(70.0, 4.0, 0.45), BodyMode::new(140.0, 5.0, 0.55), BodyMode::new(240.0, 5.0, 0.35), BodyMode::new(400.0, 4.0, 0.25)]);
+        s.decay = 6.5;
+        s.decay_per_octave = 1.15;
+        s.high_decay = 0.045;
+        // 松键不是立即按住弦：允许短音后仍留下余韵。
+        s.release = 3.0;
+        s.pluck_position = 0.09;
+        s.pluck_brightness = 4_800.0;
+        s.velocity_darkening = 2.0;
         s.stiffness = 0.03;
-        s.strike = 0.2;
-        s.pluck_noise = 0.15;
-        s.body_mix = 0.6;
-        s.tone = 5_000.0;
+        s.strike = 0.55;
+        s.pluck_noise = 0.22;
+        s.body_mix = 0.45;
+        s.tone = 7_000.0;
         Self { string: s, vibrato: 18.0, vibrato_rate: 3.5, vibrato_delay: 0.5, tremolo_rate: 8.0, high_pass: 0.0 }
     }
 

@@ -259,7 +259,7 @@ pub(crate) static ELECTRIC: &[ParamDef<crate::electric::ElectricParams>] = &[
     num!("pluck_position", 0.02, 0.5, "", "Where the pick hits (fraction of the way from the bridge): 0.06 near the bridge, thin and twangy; 0.3 over the neck, round", |p| p.string.pluck_position),
 ];
 
-pub(crate) const NEXT_GUZHENG: &[&str] = &["decay", "release", "pluck_brightness", "pluck_position", "vibrato", "vibrato_rate", "vibrato_delay"];
+pub(crate) const NEXT_GUZHENG: &[&str] = &["decay", "release", "high_decay", "strike", "pluck_noise", "pluck_brightness", "pluck_position", "vibrato", "vibrato_rate", "vibrato_delay"];
 
 pub(crate) static GUZHENG: &[ParamDef<crate::chinese::GuzhengParams>] = &[
     num!("vibrato", 0.0, 100.0, "cents", "Left-hand vibrato (揉弦) on held notes, the swing either way: 0 none; 15-25 the usual; 40+ a deep, sighing vibrato. Notes that have their own `bend` (presses, slides) get none", |p| p.vibrato),
@@ -277,6 +277,11 @@ pub(crate) static GUZHENG: &[ParamDef<crate::chinese::GuzhengParams>] = &[
     num!("release", 0.01, 10.0, "s", "How long a string rings on after its note ends: guzheng strings are rarely damped, so this is long; 0.2 for damped, clipped notes", |p| p.string.release),
     num!("pluck_brightness", 100.0, 20000.0, "Hz", "Pick (义甲) brightness: 9000 the bright, ringing tone; 3000 a soft, round touch", |p| p.string.pluck_brightness),
     num!("pluck_position", 0.02, 0.5, "", "Where the pick plucks (fraction from the bridge): 0.06 near the bridge, thin and metallic; 0.25 towards the middle, round and warm", |p| p.string.pluck_position),
+    num!("high_decay", 0.01, 1.0, "", "Decay at 3 kHz as a fraction of the fundamental's: 0.04 a crisp attack that quickly darkens; 0.3 a lasting bright ring", |p| p.string.high_decay),
+    num!("strike", 0.0, 1.0, "", "Attack shape: 0 a soft pulled string; 0.5 a firmer nail attack; 1 a struck string. Changes the next pluck", |p| p.string.strike),
+    num!("pluck_noise", 0.0, 1.0, "", "Grain of the nail or pick at the pluck: 0 clean; 0.2 a little contact noise; 1 rough. Changes the next pluck", |p| p.string.pluck_noise),
+    num!("body_mix", 0.0, 1.0, "", "Body resonance added to the string: 0 dry string; 0.5 a warm wooden body", |p| p.string.body_mix),
+    num!("tone", 200.0, 20000.0, "Hz", "Final low-pass: lower for a darker tone; higher to retain the pluck's edge", |p| p.string.tone),
 ];
 
 pub(crate) static DIZI: &[ParamDef<crate::chinese::DiziParams>] = &[

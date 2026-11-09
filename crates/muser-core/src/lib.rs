@@ -644,6 +644,10 @@ pub struct Note {
     /// 在这个字的开头滑）。ABC 里写 `!slide!`（标准 ABC 的"滑进这个音"）。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub slide: bool,
+    /// 滑出（可省略，默认 false）：这个字唱完前，在它的最后一段滑到下一个字的音高上（`yinse.voice.*`），
+    /// 下一个字从那里接着唱。ABC 里写 `!slideout!`。其它乐器忽略。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub slide_out: bool,
     /// 换气（可省略，默认 false）：这个音之前留一口气（`yinse.voice.*`）：前一个音提早收住，空出来的地方唱一声吸气；
     /// 连奏的音不会连进这个音。ABC 里写 `!breath!`。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
@@ -686,6 +690,7 @@ impl Note {
             mute: false,
             tremolo: false,
             slide: false,
+            slide_out: false,
             breath: false,
             bend: Vec::new(),
             lyric: None,

@@ -398,7 +398,8 @@ FAMILY_PAGES = {
         "Each syllable is sung whole: the initial consonant (b p m f d t n l g k h j q x zh ch sh r z c s) starts a little before the note so the vowel lands on the beat, the final glides through its vowels (ai, iao, uai …) and closes on -n / -ng at the end of the note.",
         "**Work in progress**: words are getting clearer but not yet natural; English spellings are approximate.",
         "One note at a time: a note that overlaps the next is sung legato and glides (`glide`); a gap starts a fresh note. Vibrato comes in after `vibrato_delay`.",
-        "**Slides (滑音)**: `\"slide\": true` on a note (ABC: `!slide!` before it) starts the word at the previous note's pitch and slides into its own over the word's start (up to 0.4 s, at most half the note): `c6 !slide!e2` with `w: zhao liang` sings 'liang' sliding up from 'zhao'.",
+        "**Slides (滑音)**: `\"slide\": true` on a note (ABC: `!slide!` before it) starts the word at the previous note's pitch and slides into its own over the word's start (up to 0.4 s, at most half the note): `c6 !slide!e2` with `w: zhao liang` sings 'liang' sliding up from 'zhao'. "
+        "`\"slide_out\": true` (ABC `!slideout!`) is the other way: the word holds its pitch and its last part (up to 0.35 s, at most 40%) slides to the next note's pitch, where the next word starts: `!slideout!A4 E4` with `w: lai le` sings 'lai' and falls into 'le'.",
         "**Breaths (气口)**: `\"breath\": true` on a note (ABC: `!breath!`) takes a breath before it: the previous note stops about 0.22 s early and a soft inhale fills the gap, and legato does not join across it. Mark the start of each phrase (every one or two bars); a voice that never breathes sounds like a machine.",
         "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
     ]),
@@ -409,7 +410,10 @@ FAMILY_PAGES = {
         "**Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). "
         "A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
         "**Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. "
-        "**Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes.",
+        "**Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes. "
+        "The default has a clear nail attack and a quickly darkening tail. For a softer touch try `{\"strike\": 0.25, \"pluck_brightness\": 2800, \"pluck_noise\": 0.1, \"high_decay\": 0.08}`; "
+        "`high_decay` controls how quickly brightness fades, while `tone` and `body_mix` change the overall colour. "
+        "This is a plucked-string approximation; it does not yet model separate open, stopped and harmonic techniques.",
         "**Yangqin**: struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo.",
         "**Dizi**: high (G4-C7) and lively; a note that overlaps the next slides into it, grace notes (打音、倚音) are 1/8-beat notes just before, a trill (颤音) alternates two notes in 1/8 beats; `membrane` sets the buzz. "
         "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",

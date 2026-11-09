@@ -8,7 +8,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 |---|---|---|---|
 | `yinse.pluck.guzheng` | 38–88 | 21 | Guzheng (古筝): bright picked strings over a big paulownia soundboard, long ringing notes, left-hand vibrato on held notes; Chinese traditional, film, new-age |
 | `yinse.pluck.pipa` | 45–88 | 12 | Pipa (琵琶): pear-shaped lute plucked with picks, crisp and grainy, shorter ring; tremolo (轮指) with the note's `tremolo`, bends (推拉) with `bend` |
-| `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): seven silk strings plucked with the fingertips, low, dark and intimate, long soft ring, slow deep vibrato (吟猱); slides (走手音) with `bend` |
+| `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): a clear nail attack that quickly darkens into a soft wooden ring, slow vibrato (吟猱); slides (走手音) with `bend`. Adjust `strike` and `high_decay` for a softer or firmer touch |
 | `yinse.strike.yangqin` | 43–93 | 24 | Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo` |
 | `yinse.blow.dizi` | 67–96 | 1 | Dizi (笛子): bamboo transverse flute with a buzzing membrane (笛膜), bright and lively; one note at a time, overlapping notes slide |
 | `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide |
@@ -28,17 +28,22 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `release` | 0.01 – 10 s | next note | How long a string rings on after its note ends: guzheng strings are rarely damped, so this is long; 0.2 for damped, clipped notes |
 | `pluck_brightness` | 100 – 20000 Hz | next note | Pick (义甲) brightness: 9000 the bright, ringing tone; 3000 a soft, round touch |
 | `pluck_position` | 0.02 – 0.5 | next note | Where the pick plucks (fraction from the bridge): 0.06 near the bridge, thin and metallic; 0.25 towards the middle, round and warm |
+| `high_decay` | 0.01 – 1 | next note | Decay at 3 kHz as a fraction of the fundamental's: 0.04 a crisp attack that quickly darkens; 0.3 a lasting bright ring |
+| `strike` | 0 – 1 | next note | Attack shape: 0 a soft pulled string; 0.5 a firmer nail attack; 1 a struck string. Changes the next pluck |
+| `pluck_noise` | 0 – 1 | next note | Grain of the nail or pick at the pluck: 0 clean; 0.2 a little contact noise; 1 rough. Changes the next pluck |
+| `body_mix` | 0 – 1 | ✓ | Body resonance added to the string: 0 dry string; 0.5 a warm wooden body |
+| `tone` | 200 – 20000 Hz | ✓ | Final low-pass: lower for a darker tone; higher to retain the pluck's edge |
 
 Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../automation.md).
 
 Preset values of each instrument:
 
-| instrument | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `pluck_brightness` | `pluck_position` |
-|---|---|---|---|---|---|---|---|---|
-| `yinse.pluck.guzheng` | 25 | 5.5 | 0.3 | 10 | 12 | 2.5 | 9000 | 0.12 |
-| `yinse.pluck.pipa` | 15 | 5 | 0.35 | 12 | 1.5 | 0.12 | 4500 | 0.14 |
-| `yinse.pluck.guqin` | 18 | 3.5 | 0.5 | 8 | 9 | 2 | 2500 | 0.12 |
-| `yinse.strike.yangqin` | 0 | 5 | 0.3 | 14 | 6 | 0.6 | 10000 | 0.12 |
+| instrument | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `pluck_brightness` | `pluck_position` | `high_decay` | `strike` | `pluck_noise` | `body_mix` | `tone` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `yinse.pluck.guzheng` | 25 | 5.5 | 0.3 | 10 | 12 | 2.5 | 9000 | 0.12 | 0.12 | 0.6 | 0.3 | 0.5 | 12000 |
+| `yinse.pluck.pipa` | 15 | 5 | 0.35 | 12 | 1.5 | 0.12 | 4500 | 0.14 | 0.35 | 0.6 | 0.25 | 0.6 | 9000 |
+| `yinse.pluck.guqin` | 18 | 3.5 | 0.5 | 8 | 6.5 | 3 | 4800 | 0.09 | 0.045 | 0.55 | 0.22 | 0.45 | 7000 |
+| `yinse.strike.yangqin` | 0 | 5 | 0.3 | 14 | 6 | 0.6 | 10000 | 0.12 | 0.35 | 1 | 0.15 | 0.45 | 11000 |
 
 ## Adjustable parameters of `yinse.blow.dizi`
 
@@ -149,7 +154,7 @@ Preset values of each instrument:
 - **Tremolo** (琵琶轮指, 扬琴轮音, 古筝摇指): `"tremolo": true` on a note plucks or strikes it again and again for its whole length (`tremolo_rate` per second); write it on long melody notes, the way players sustain on these instruments.
 - Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.
 - **Guzheng**: strings ring long and are rarely damped, so arpeggios overlap into a wash; held notes get the left-hand vibrato (揉弦) by themselves (`vibrato`, set 0 to turn it off). A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).
-- **Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. **Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes.
+- **Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. **Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes. The default has a clear nail attack and a quickly darkening tail. For a softer touch try `{"strike": 0.25, "pluck_brightness": 2800, "pluck_noise": 0.1, "high_decay": 0.08}`; `high_decay` controls how quickly brightness fades, while `tone` and `body_mix` change the overall colour. This is a plucked-string approximation; it does not yet model separate open, stopped and harmonic techniques.
 - **Yangqin**: struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo.
 - **Dizi**: high (G4-C7) and lively; a note that overlaps the next slides into it, grace notes (打音、倚音) are 1/8-beat notes just before, a trill (颤音) alternates two notes in 1/8 beats; `membrane` sets the buzz. **Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.
 - **Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `"legato": true` slurs everything, which sounds like a violin. Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.

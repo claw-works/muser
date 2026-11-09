@@ -1,0 +1,204 @@
+{
+  "name": "instruments/guqin-touch-study",
+  "tempo": 76,
+  "tracks": [
+    {
+      "name": "clear-touch",
+      "instrument": "yinse.pluck.guqin",
+      "gain_db": 0,
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 0.2
+        }
+      ],
+      "clips": [
+        {
+          "start": 0,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 50,
+              "start": 0.0,
+              "length": 2.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 45,
+              "start": 2.0,
+              "length": 1.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 50,
+              "start": 3.0,
+              "length": 1.0,
+              "velocity": 0.85,
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0.5,
+                  0
+                ],
+                [
+                  0.9,
+                  2
+                ]
+              ]
+            },
+            {
+              "pitch": 54,
+              "start": 4.0,
+              "length": 2.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 52,
+              "start": 6.0,
+              "length": 1.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 50,
+              "start": 7.0,
+              "length": 1.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 57,
+              "start": 8.0,
+              "length": 3.0,
+              "velocity": 0.85,
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  1.5,
+                  0
+                ],
+                [
+                  2.4,
+                  -2
+                ]
+              ]
+            },
+            {
+              "pitch": 50,
+              "start": 12.0,
+              "length": 4.0,
+              "velocity": 0.85
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "soft-touch",
+      "instrument": "yinse.pluck.guqin",
+      "gain_db": 0,
+      "effects": [
+        {
+          "type": "reverb",
+          "mix": 0.2
+        }
+      ],
+      "clips": [
+        {
+          "start": 16,
+          "length": 16,
+          "notes": [
+            {
+              "pitch": 50,
+              "start": 0.0,
+              "length": 2.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 45,
+              "start": 2.0,
+              "length": 1.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 50,
+              "start": 3.0,
+              "length": 1.0,
+              "velocity": 0.85,
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0.5,
+                  0
+                ],
+                [
+                  0.9,
+                  2
+                ]
+              ]
+            },
+            {
+              "pitch": 54,
+              "start": 4.0,
+              "length": 2.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 52,
+              "start": 6.0,
+              "length": 1.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 50,
+              "start": 7.0,
+              "length": 1.0,
+              "velocity": 0.85
+            },
+            {
+              "pitch": 57,
+              "start": 8.0,
+              "length": 3.0,
+              "velocity": 0.85,
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  1.5,
+                  0
+                ],
+                [
+                  2.4,
+                  -2
+                ]
+              ]
+            },
+            {
+              "pitch": 50,
+              "start": 12.0,
+              "length": 4.0,
+              "velocity": 0.85
+            }
+          ]
+        }
+      ],
+      "instrument_params": {
+        "strike": 0.25,
+        "pluck_brightness": 2800,
+        "pluck_noise": 0.1,
+        "high_decay": 0.08,
+        "tone": 5000
+      }
+    }
+  ],
+  "description": "The same slow phrase twice: the guqin default with a clear nail attack, then a softer touch. Notes include delayed slides (\u8d70\u624b\u97f3). A timbre study, not a transcription of a traditional piece."
+}
