@@ -4,7 +4,7 @@
 
 use core::f64::consts::{PI, TAU};
 
-use manguebyte::dsp::{Tuning, instruments::StringParams};
+use manguebyte::dsp::{Tuning, instruments::{BodyMode, StringParams}};
 use manguebyte::midi::MidiMessage;
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Processor, Synth, Voice};
 
@@ -40,6 +40,14 @@ impl Default for GuqinParams {
         pluck.string.strike = 0.35;
         pluck.string.pluck_noise = 0.15;
         pluck.string.tone = 7_000.0;
+        // 参考录音中低弦的中段分音常比基音强，不能以低频弦位移作为最终声压。
+        // 这是对录音频谱的近似着色，不是已测得的某张琴的传递函数。
+        pluck.string.body = [
+            BodyMode::new(260.0, 1.4, 0.6),
+            BodyMode::new(540.0, 2.4, 5.5),
+            BodyMode::new(1_100.0, 2.0, 1.4),
+            BodyMode::new(1_850.0, 1.5, 0.5),
+        ];
         Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18 }
     }
 }
@@ -360,6 +368,8 @@ impl Voice<f32> for GuqinVoice {
 #[derive(Clone, Copy, Default)]
 struct Resonance {
     b0: f64,
+    b1: f64,
+    b2: f64,
     a1: f64,
     a2: f64,
     x1: f64,
@@ -374,11 +384,23 @@ impl Resonance {
         let alpha = w.sin() * bw / (2.0 * hz.max(1.0));
         let a0 = 1.0 + alpha;
         self.b0 = alpha / a0;
+        self.b1 = 0.0;
+        self.b2 = -self.b0;
+        self.a1 = -2.0 * w.cos() / a0;
+        self.a2 = (1.0 - alpha) / a0;
+    }
+    fn highpass(&mut self, hz: f64, sr: f64) {
+        let w = TAU * hz.min(0.45 * sr) / sr;
+        let alpha = w.sin() / 2f64.sqrt();
+        let a0 = 1.0 + alpha;
+        self.b0 = (1.0 + w.cos()) / (2.0 * a0);
+        self.b1 = -2.0 * self.b0;
+        self.b2 = self.b0;
         self.a1 = -2.0 * w.cos() / a0;
         self.a2 = (1.0 - alpha) / a0;
     }
     fn tick(&mut self, x: f64) -> f64 {
-        let y = self.b0 * (x - self.x2) - self.a1 * self.y1 - self.a2 * self.y2;
+        let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2;
         self.x2 = self.x1;
         self.x1 = x;
         self.y2 = self.y1;
@@ -393,6 +415,7 @@ pub(crate) struct Guqin {
     sr: f64,
     tuning: Tuning,
     body: [Resonance; 4],
+    radiation: Resonance,
     sympathetic: [Resonance; 21],
     tilt: f64,
     dc: f64,
@@ -403,9 +426,10 @@ impl Guqin {
     pub(crate) fn new(params: GuqinParams) -> Self {
         let mut synth = Synth::with_voices(12, move || GuqinVoice::new(params));
         synth.set_pitch_bend_range(BEND_RANGE);
-        Self { synth, params, sr: 48_000.0, tuning: Tuning::default(), body: [Resonance::default(); 4], sympathetic: [Resonance::default(); 21], tilt: 0.0, dc: 0.0, pending: Vec::with_capacity(16) }
+        Self { synth, params, sr: 48_000.0, tuning: Tuning::default(), body: [Resonance::default(); 4], radiation: Resonance::default(), sympathetic: [Resonance::default(); 21], tilt: 0.0, dc: 0.0, pending: Vec::with_capacity(16) }
     }
     fn configure(&mut self) {
+        self.radiation.highpass(220.0, self.sr);
         for (r, mode) in self.body.iter_mut().zip(self.params.pluck.string.body) {
             r.set(mode.frequency, mode.frequency / mode.q, self.sr);
         }
@@ -419,6 +443,7 @@ impl Guqin {
     pub(crate) fn prepare(&mut self, spec: &ProcessSpec) {
         self.sr = spec.sample_rate;
         self.body = [Resonance::default(); 4];
+        self.radiation = Resonance::default();
         self.sympathetic = [Resonance::default(); 21];
         self.tilt = 0.0;
         self.dc = 0.0;
@@ -463,6 +488,10 @@ impl Guqin {
         let kd = 1.0 - (-TAU * 20.0 / self.sr).exp();
         for i in 0..buffer.num_frames() {
             let source = f64::from(buffer.channel(0)[i]);
+            // body_mix=0 可听原始弦模型；默认以辐射后的频谱作为直接声，
+            // 而不是在强基音上轻轻叠几个共鸣峰。走手时共鸣位置固定于琴体。
+            let radiated = self.radiation.tick(source);
+            let source = source + (radiated - source) * (s.body_mix / 0.45).clamp(0.0, 1.0);
             let mut x = source;
             for (r, mode) in self.body.iter_mut().zip(s.body) {
                 x += r.tick(source) * mode.gain * s.body_mix;
@@ -587,6 +616,32 @@ mod tests {
         assert!(tones.contains(&(48.0, Technique::Open)));
         assert!(tones.contains(&(62.0, Technique::Harmonic)));
         assert!(q.pending.is_empty());
+    }
+
+    #[test]
+    fn body_radiation_changes_low_string_spectrum_without_moving_its_pitch() {
+        let render = |body_mix| {
+            let mut p = GuqinParams { technique: 1.0, ..Default::default() };
+            p.pluck.string.body_mix = body_mix;
+            let mut q = Guqin::new(p);
+            q.prepare(&ProcessSpec { sample_rate: 48_000.0, num_channels: 1, max_block_size: 128 });
+            q.note_on(NoteRef::new(0, 36), 0.8, false);
+            let mut buf = AudioBuffer::new(1, 128);
+            let mut x = Vec::new();
+            for _ in 0..400 {
+                buf.clear();
+                q.process(&mut buf);
+                x.extend(buf.channel(0).iter().map(|&v| f64::from(v)));
+            }
+            x
+        };
+        let dry = render(0.0);
+        let body = render(0.45);
+        let f0 = Tuning::default().key_frequency(36);
+        let upper = |x: &[f64]| (4..=8).map(|n| energy_at(&x[4_800..], f0 * f64::from(n))).sum::<f64>();
+        let ratio = |x: &[f64]| upper(x) / energy_at(&x[4_800..], f0);
+        assert!(ratio(&body) > ratio(&dry) * 20.0, "radiation must not leave the bass fundamental dominant");
+        assert!(energy_at(&body[4_800..], f0) > energy_at(&body[4_800..], f0 * 1.05) * 100.0);
     }
 
     #[test]

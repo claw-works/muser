@@ -323,7 +323,7 @@ pub(crate) static GUQIN: &[ParamDef<crate::guqin::GuqinParams>] = &[
     num!("pluck_position", 0.02, 0.5, "", "Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length", |p| p.pluck.string.pluck_position),
     num!("strike", 0.0, 1.0, "", "Excitation shape: 0 a soft pulled string, 0.35 a light nail touch, 1 a struck string", |p| p.pluck.string.strike),
     num!("pluck_noise", 0.0, 1.0, "", "Brief nail contact noise at the pluck; distinct from sustained hand-motion noise", |p| p.pluck.string.pluck_noise),
-    num!("body_mix", 0.0, 1.0, "", "Shared wooden-body resonance, left ringing across successive notes", |p| p.pluck.string.body_mix),
+    num!("body_mix", 0.0, 1.0, "", "Body radiation and shared wooden resonances: 0 raw string; 0.45 full radiation colour, with resonances ringing across notes", |p| p.pluck.string.body_mix),
     num!("tone", 200.0, 20000.0, "Hz", "Final overall low-pass colour, independent of technique-specific mode damping", |p| p.pluck.string.tone),
 ];
 

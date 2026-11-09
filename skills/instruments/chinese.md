@@ -67,7 +67,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `pluck_position` | 0.02 – 0.5 | next note | Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length |
 | `strike` | 0 – 1 | next note | Excitation shape: 0 a soft pulled string, 0.35 a light nail touch, 1 a struck string |
 | `pluck_noise` | 0 – 1 | next note | Brief nail contact noise at the pluck; distinct from sustained hand-motion noise |
-| `body_mix` | 0 – 1 | ✓ | Shared wooden-body resonance, left ringing across successive notes |
+| `body_mix` | 0 – 1 | ✓ | Body radiation and shared wooden resonances: 0 raw string; 0.45 full radiation colour, with resonances ringing across notes |
 | `tone` | 200 – 20000 Hz | ✓ | Final overall low-pass colour, independent of technique-specific mode damping |
 
 Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../automation.md).
