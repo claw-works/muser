@@ -490,6 +490,8 @@ pub(crate) struct SingerVoice {
     burst: [Resonator; 2],
     /// 这个字开始时上一个字还在响（连着唱）：辅音前要把它收掉。
     carried: bool,
+    /// 正在滑音：滑的时间常数（帧），下一个音开始时清掉。
+    slide_tau: Option<f64>,
     // 鼻腔：一个共振 + 一个零点（见 NASAL_POLE）。
     nasal_pole: Resonator,
     nasal_zero: Antiresonator,
@@ -530,6 +532,7 @@ impl SingerVoice {
             fric: [Resonator::default(); 2],
             burst: [Resonator::default(); 2],
             carried: false,
+            slide_tau: None,
             nasal_pole: Resonator::default(),
             nasal_zero: Antiresonator::default(),
             zero_hz: NASAL_POLE,
@@ -545,6 +548,13 @@ impl SingerVoice {
 
     pub(crate) fn set_params(&mut self, p: SingerParams) {
         self.params = p;
+    }
+
+    /// 滑音：在 `frames` 帧里滑到 `key` 的音高（下一个音接着从那里唱）。
+    pub(crate) fn slide(&mut self, key: u8, frames: u64) {
+        self.target_pitch = self.tuning.key_pitch(key);
+        // 指数地滑：`frames` 帧里走完约 95%。
+        self.slide_tau = Some(frames as f64 / 3.0);
     }
 
     /// 下一个音唱的字、这个音（元音部分）有多长、辅音提前了多少（帧）。
@@ -602,7 +612,7 @@ impl SingerVoice {
         let part = self.part();
         let sr = self.sr;
         // 音高：滑音、颤音（开头一段之后才揉）。
-        let glide = (-1.0 / (p.glide.max(0.005) * sr)).exp();
+        let glide = (-1.0 / self.slide_tau.unwrap_or(p.glide.max(0.005) * sr).max(1.0)).exp();
         self.pitch = self.target_pitch + (self.pitch - self.target_pitch) * glide;
         let t = self.at as f64 / sr;
         let vib_amt = ((t - p.vibrato_delay) / 0.3).clamp(0.0, 1.0) * p.vibrato_depth / 100.0;
@@ -738,6 +748,8 @@ impl Voice<f32> for SingerVoice {
         self.velocity = f64::from(velocity);
         self.target_pitch = self.tuning.key_pitch(note.key);
         self.carried = self.active;
+        // 上一个字滑过来的话，这个字从滑到的地方（同一个音高）接着唱，之后照常。
+        self.slide_tau = None;
         if !self.active {
             self.pitch = self.target_pitch;
             self.phase = 0.0;

@@ -105,7 +105,7 @@
       "parts": {
         "a": {
           "legato": true,
-          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang"
+          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | !slide!A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang"
         },
         "a#2": {
           "legato": true,
@@ -113,7 +113,7 @@
         },
         "a#3": {
           "legato": true,
-          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: zhu lin jing jing | shui le | he shui qing qing | chang"
+          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | !slide!A4 E4 | G2 A2 B2 d2 | B8 |\nw: zhu lin jing jing | shui le | he shui qing qing | chang"
         },
         "a#4": {
           "legato": true,
@@ -121,7 +121,7 @@
         },
         "a#5": {
           "legato": true,
-          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang"
+          "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | !slide!A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang"
         },
         "b": {
           "legato": true,

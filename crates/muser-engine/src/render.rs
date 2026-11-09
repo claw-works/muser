@@ -77,6 +77,8 @@ pub(crate) enum Act {
     Bend { value: i16, ch: Option<u8> },
     /// 下一个音唱的字（`yinse.voice.*`）：在起音的同一帧、起音之前发，`len` 是这个音有多长（帧）。
     Lyric { text: crate::lyric::Text, len: u32, lead: u32 },
+    /// 滑音（`yinse.voice.*`）：从这一帧起，用 `frames` 帧滑到 `key` 的音高。
+    Slide { key: u8, frames: u32 },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -274,6 +276,14 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                     acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: (off - on) as u32, lead: lead as u32 }));
                 }
             }
+            if singer && note.slide {
+                // 滑到下一个音：在下一个音（的元音）开始前、这个音的最后一段里滑过去（至多 0.35 秒、这个音的四成）。
+                if let Some(next) = notes.iter().filter(|m| m.start.0 > note.start.0 + 1e-9).min_by(|a, b| a.start.0.total_cmp(&b.start.0)) {
+                    let arrive = (clip_start + rel(next.start.0) * sr) as usize;
+                    let frames = ((0.35 * sr) as usize).min((arrive.saturating_sub(on)) * 2 / 5).max(1);
+                    acts.push((arrive.saturating_sub(frames), Act::Slide { key: next.pitch, frames: frames as u32 }));
+                }
+            }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
             acts.push((off, Act::Off { key: note.pitch, ch }));
         }
@@ -297,7 +307,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
             Act::Bend { .. } | Act::Tuning(_) => 3,
-            Act::Sing { .. } | Act::Lyric { .. } => 4,
+            Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } => 4,
             Act::On { .. } => 5,
         };
         (frame, order)
@@ -341,7 +351,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
                 wheels.push(act);
             }
             Act::Tuning(_) => tuning = Some(act),
-            Act::Sing { .. } | Act::Lyric { .. } => {}
+            Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } => {}
         }
     }
     let mut rest: Vec<(usize, Act)> = acts[split..].to_vec();
@@ -494,6 +504,7 @@ impl LiveInstrument {
                         }
                     }
                     Act::Lyric { text, len, lead } => self.inst.lyric(text.as_str(), u64::from(len), u64::from(lead)),
+                    Act::Slide { key, frames } => self.inst.slide(key, u64::from(frames)),
                     Act::Sing { syl, lead, len, velocity, .. } => {
                         let (lead, len) = (lead as usize, len as usize);
                         if let Some(c) = self.consonants.as_mut() {

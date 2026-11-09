@@ -8,7 +8,8 @@
 //! - 时值：`A2`、`A/2`、`A/`、`A3/2`、`A//`；休止 `z` / `x`，整小节休止 `Z`（`Z4` 四小节）。
 //! - 和弦 `[CEG]2`，连音线 `A2-A`（和弦里单个音 `[C-EG]`），附点节奏 `A>B` / `A<B`，连音 `(3abc`（`(2`–`(9`）。
 //! - 反复 `|: … :|`，一二房 `[1 … :|[2 …`（或 `|1` / `:|2`）。
-//! - 力度 `!ppp!` … `!fff!`（之后的音都用这个力度），重音 `!>!` / `!accent!`，断奏 `.`（时值减半）。
+//! - 力度 `!ppp!` … `!fff!`（之后的音都用这个力度），重音 `!>!` / `!accent!`，断奏 `.`（时值减半），
+//!   滑音 `!slide!`（这个音滑到下一个音上，`yinse.voice.*` 唱）。
 //! - 和弦标记 `"Am"`、装饰音 `{…}`、其它装饰 `!…!` `+…+`、`~` `H` `L` `M` `O` `P` `S` `T` `u` `v`、注释 `%` 忽略。
 
 use crate::{Beats, Note};
@@ -237,6 +238,7 @@ impl<'a> Parser<'a> {
         let mut accidentals: [Option<i32>; 128] = [None; 128];
         let mut velocity = 0.8f32;
         let mut accent = false;
+        let mut slide = false;
         let mut staccato = false;
         let mut tuplet: Option<(f64, usize)> = None;
         let mut broken: Option<f64> = None;
@@ -261,6 +263,7 @@ impl<'a> Parser<'a> {
                 }
                 Tok::Dynamic(v) => velocity = *v,
                 Tok::Accent => accent = true,
+                Tok::Slide => slide = true,
                 Tok::Staccato => staccato = true,
                 Tok::Tuplet(p) => {
                     let q = match p {
@@ -306,7 +309,7 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                         let length = if staccato { l * 0.5 } else { l };
-                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, mute: false, tremolo: false, bend: Vec::new(), lyric: None });
+                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, mute: false, tremolo: false, slide, bend: Vec::new(), lyric: None });
                         if tie {
                             next_tied.push(notes.len() - 1);
                         }
@@ -314,6 +317,7 @@ impl<'a> Parser<'a> {
                     tied = next_tied;
                     t += l;
                     accent = false;
+                    slide = false;
                     staccato = false;
                 }
             }
@@ -379,6 +383,8 @@ impl<'a> Parser<'a> {
                             out.push((line, Tok::Dynamic(v)));
                         } else if matches!(name, ">" | "accent" | "emphasis") {
                             out.push((line, Tok::Accent));
+                        } else if name == "slide" {
+                            out.push((line, Tok::Slide));
                         }
                         i += end + 2;
                     }
@@ -612,6 +618,8 @@ enum Tok {
     Dynamic(f32),
     Accent,
     Staccato,
+    /// `!slide!`：下一个音滑到它后面那个音上。
+    Slide,
 }
 
 impl std::fmt::Debug for Pending {
@@ -750,6 +758,12 @@ mod tests {
         assert_eq!(pitches("L:1/4\nK:C\n|: C D :| E"), [60, 62, 60, 62, 64]);
         assert_eq!(pitches("L:1/4\nK:C\n|: C [1 D :|[2 E |"), [60, 62, 60, 64]);
         assert_eq!(pitches("L:1/4\nK:C\n|: C |1 D :|2 E |"), [60, 62, 60, 64]);
+    }
+
+    #[test]
+    fn slide_marks_the_next_note() {
+        let n = parse("L:1/4\nK:C\n!slide!A E G").unwrap();
+        assert!(n[0].slide && !n[1].slide && !n[2].slide);
     }
 
     #[test]

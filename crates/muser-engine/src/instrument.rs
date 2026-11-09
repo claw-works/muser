@@ -45,6 +45,8 @@ trait Playable {
     fn set_param(&mut self, _name: &str, _value: f64) {}
     /// 下一个音唱的字与这个音的长度（帧）：`yinse.voice.*` 用，其它乐器忽略。
     fn lyric(&mut self, _text: &str, _frames: u64, _lead: u64) {}
+    /// 滑到 `key` 的音高（`frames` 帧里）：`yinse.voice.*` 用，其它乐器忽略。
+    fn slide(&mut self, _key: u8, _frames: u64) {}
     /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
     fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
     /// 上一块送到总线的各路直接输出（插件的 `@outputs` 写了 `bus` 的项，按顺序）。默认没有。
@@ -99,6 +101,9 @@ impl TrackInstrument {
         self.inner.note_on(note, velocity, accent);
     }
     /// 下一个音唱的字（`yinse.voice.*`）。
+    pub fn slide(&mut self, key: u8, frames: u64) {
+        self.inner.slide(key, frames);
+    }
     pub fn lyric(&mut self, text: &str, frames: u64, lead: u64) {
         self.inner.lyric(text, frames, lead);
     }
@@ -317,6 +322,9 @@ impl Playable for Singer {
         if let MidiMessage::PitchBend { value, .. } = message {
             manguebyte::prelude::Voice::pitch_bend(&mut self.voice, f64::from(value) / 8192.0 * 2.0);
         }
+    }
+    fn slide(&mut self, key: u8, frames: u64) {
+        self.voice.slide(key, frames);
     }
     fn lyric(&mut self, text: &str, frames: u64, lead: u64) {
         self.voice.lyric(text, frames, lead);
