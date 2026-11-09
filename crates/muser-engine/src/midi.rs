@@ -116,7 +116,7 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
                     track.push_meta(tick + u64::from(lead), MetaEvent::Lyric(text.as_str().to_string()));
                     continue;
                 }
-                Act::Slide { .. } => continue,
+                Act::Slide { .. } | Act::Inhale { .. } => continue,
                 Act::Lyric { text, .. } => {
                     track.push_meta(tick, MetaEvent::Lyric(text.as_str().to_string()));
                     continue;

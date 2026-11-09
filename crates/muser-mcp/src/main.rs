@@ -136,6 +136,9 @@ struct NoteSpec {
     /// Slide (optional, yinse.voice.*): the end of this note slides to the next note's pitch, where the next word starts.
     #[serde(default)]
     slide: Option<bool>,
+    /// Breath (optional, yinse.voice.*): take a breath before this note (the previous note ends early, an inhale fills the gap).
+    #[serde(default)]
+    breath: Option<bool>,
     /// Pitch bend (guitar bends etc., optional): `[[beat, semitones], ...]`, beats relative to the note start and increasing, semitones within ±2. A bend up: `[[0, 0], [0.25, 2]]`.
     #[serde(default)]
     bend: Vec<(f64, f64)>,
@@ -798,6 +801,7 @@ impl Muser {
                 note.mute = n.mute.unwrap_or(false);
                 note.tremolo = n.tremolo.unwrap_or(false);
                 note.slide = n.slide.unwrap_or(false);
+                note.breath = n.breath.unwrap_or(false);
                 note.bend = n.bend;
                 clip.notes.push(note);
             }

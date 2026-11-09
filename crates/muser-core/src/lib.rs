@@ -644,6 +644,10 @@ pub struct Note {
     /// 下一个字在滑到的地方接上。ABC 里写 `!slide!`。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub slide: bool,
+    /// 换气（可省略，默认 false）：这个音之前留一口气（`yinse.voice.*`）：前一个音提早收住，空出来的地方唱一声吸气；
+    /// 连奏的音不会连进这个音。ABC 里写 `!breath!`。其它乐器忽略。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub breath: bool,
     /// 弯音（吉他推弦、滑进音、尾音下滑）：`[拍, 半音]` 折线，拍相对音符起点、递增，半音在 ±2 之内
     /// （MIDI 弯音轮的标准范围）。第一个点之前取第一个点的值，点与点之间直线过渡。
     /// 推弦：`[[0, 0], [0.25, 2]]`；预推再放：`[[0, 2], [0.5, 2], [1, 0]]`。
@@ -682,6 +686,7 @@ impl Note {
             mute: false,
             tremolo: false,
             slide: false,
+            breath: false,
             bend: Vec::new(),
             lyric: None,
         }

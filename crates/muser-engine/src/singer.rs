@@ -492,6 +492,10 @@ pub(crate) struct SingerVoice {
     carried: bool,
     /// 正在滑音：滑的时间常数（帧），下一个音开始时清掉。
     slide_tau: Option<f64>,
+    /// 吸气：总长、已经过了几帧（`inhale_at >= inhale_len` 时没有）；吸气声的两个带通。
+    inhale_len: u64,
+    inhale_at: u64,
+    inhale_band: [Resonator; 2],
     // 鼻腔：一个共振 + 一个零点（见 NASAL_POLE）。
     nasal_pole: Resonator,
     nasal_zero: Antiresonator,
@@ -533,6 +537,9 @@ impl SingerVoice {
             burst: [Resonator::default(); 2],
             carried: false,
             slide_tau: None,
+            inhale_len: 0,
+            inhale_at: 0,
+            inhale_band: [Resonator::default(); 2],
             nasal_pole: Resonator::default(),
             nasal_zero: Antiresonator::default(),
             zero_hz: NASAL_POLE,
@@ -548,6 +555,15 @@ impl SingerVoice {
 
     pub(crate) fn set_params(&mut self, p: SingerParams) {
         self.params = p;
+    }
+
+    /// 一声吸气：`frames` 帧里，轻的气流声起来又落下（嘴半张，带一点"h"的颜色）。
+    pub(crate) fn inhale(&mut self, frames: u64) {
+        self.inhale_len = frames.max(1);
+        self.inhale_at = 0;
+        for (r, (hz, bw)) in self.inhale_band.iter_mut().zip([(900.0, 900.0), (2_400.0, 1_600.0)]) {
+            r.set(hz, bw, self.sr);
+        }
     }
 
     /// 滑音：在 `frames` 帧里滑到 `key` 的音高（下一个音接着从那里唱）。
@@ -797,7 +813,8 @@ impl Voice<f32> for SingerVoice {
     }
 
     fn render(&mut self, buffer: &mut AudioBuffer<f32>) {
-        if !self.active {
+        let inhaling = self.inhale_at < self.inhale_len;
+        if !self.active && !inhaling {
             return;
         }
         let p = self.params;
@@ -806,19 +823,32 @@ impl Voice<f32> for SingerVoice {
         let rel = 1.0 / (p.release.max(0.01) * self.sr);
         let gain = p.level * (0.35 + 0.65 * self.velocity);
         for i in 0..n {
-            if self.held {
-                self.env = (self.env + atk).min(1.0);
-            } else {
-                self.env -= rel;
-                if self.env <= 0.0 {
-                    self.active = false;
-                    return;
+            let mut y = 0.0;
+            if self.active {
+                if self.held {
+                    self.env = (self.env + atk).min(1.0);
+                } else {
+                    self.env -= rel;
+                    if self.env <= 0.0 {
+                        self.active = false;
+                    }
+                }
+                if self.active {
+                    y = self.sample() * gain * self.env;
+                    self.at += 1;
                 }
             }
-            let y = (self.sample() * gain * self.env) as f32;
-            self.at += 1;
+            // 吸气：轻的气流声，正弦形地起来又落下（比唱的声音低 25 dB 上下）。
+            if self.inhale_at < self.inhale_len {
+                let x = self.inhale_at as f64 / self.inhale_len as f64;
+                let shape = (PI * x).sin().powi(2);
+                let noise = self.rng.signed();
+                let [a, b] = &mut self.inhale_band;
+                y += (a.tick(noise) + 0.6 * b.tick(noise)) * shape * p.level * 0.5;
+                self.inhale_at += 1;
+            }
             for c in 0..buffer.num_channels() {
-                buffer.channel_mut(c)[i] += y;
+                buffer.channel_mut(c)[i] += y as f32;
             }
         }
     }

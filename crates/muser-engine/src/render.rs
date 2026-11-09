@@ -79,6 +79,8 @@ pub(crate) enum Act {
     Lyric { text: crate::lyric::Text, len: u32, lead: u32 },
     /// 滑音（`yinse.voice.*`）：从这一帧起，用 `frames` 帧滑到 `key` 的音高。
     Slide { key: u8, frames: u32 },
+    /// 换气（`yinse.voice.*`）：从这一帧起，`frames` 帧的一声吸气。
+    Inhale { frames: u32 },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -168,6 +170,28 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 all = crate::chinese::expand_tremolo(&all, rate, tm.bpm_at(clip.start.0) / 60.0);
             }
         }
+        // 换气（`yinse.voice.*` 的 `breath`）：前一个音提早收住，空出一口气的时间（约 0.22 秒，在这个字的辅音之前）。
+        let mut inhales: Vec<(f64, f64)> = Vec::new();
+        if singer && all.iter().any(|n| n.breath) {
+            let bps = tm.bpm_at(clip.start.0) / 60.0;
+            let starts: Vec<(f64, f64)> = all
+                .iter()
+                .filter(|n| n.breath)
+                .map(|n| (n.start.0, n.lyric.as_deref().map_or(0.0, crate::singer::lead_seconds) * bps))
+                .collect();
+            for (at, lead) in starts {
+                let gap = 0.22 * bps;
+                let mut end = None;
+                for m in all.iter_mut().filter(|m| m.start.0 < at - 1e-9 && m.start.0 + m.length.0 > at - gap - lead) {
+                    let room = at - lead - m.start.0;
+                    let keep = (room - gap).max(room * 0.6).max(0.05);
+                    m.length = muser_core::Beats(keep);
+                    end = Some(end.map_or(m.start.0 + keep, |e: f64| e.max(m.start.0 + keep)));
+                }
+                // 吸气在空出来的地方；这个字是片段的第一个音时（前一个音在上一个片段里），就在它前面一口气的长度里。
+                inhales.push((end.unwrap_or(at - lead - gap), at - lead));
+            }
+        }
         let notes: &[muser_core::Note] = &all;
         let c0 = clip.start.0;
         // 片段里第 `b` 拍（相对片段开头）离片段开头几秒。
@@ -181,6 +205,10 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             let end = n.start.0 + n.length.0;
             let next = notes.iter().filter(|m| m.start.0 > n.start.0 + 1e-9).map(|m| m.start.0).fold(f64::INFINITY, f64::min);
             if !next.is_finite() || next - end > 0.25 {
+                return None;
+            }
+            // 换气之前不连。
+            if notes.iter().any(|m| m.breath && (m.start.0 - next).abs() < 1e-9) {
                 return None;
             }
             let at_next: Vec<&muser_core::Note> = notes.iter().filter(|m| (m.start.0 - next).abs() < 1e-9).collect();
@@ -287,6 +315,12 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
             acts.push((off, Act::Off { key: note.pitch, ch }));
         }
+        for &(a, b) in &inhales {
+            let (from, to) = ((clip_start + rel(a) * sr) as usize, (clip_start + rel(b) * sr) as usize);
+            if to > from {
+                acts.push((from, Act::Inhale { frames: (to - from) as u32 }));
+            }
+        }
         for &(a, b) in &clip.pedal {
             let down = (clip_start + rel(a) * sr) as usize;
             let up = ((clip_start + rel(b) * sr) as usize).min(clip_end_frame);
@@ -307,7 +341,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
             Act::Bend { .. } | Act::Tuning(_) => 3,
-            Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } => 4,
+            Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } | Act::Inhale { .. } => 4,
             Act::On { .. } => 5,
         };
         (frame, order)
@@ -351,7 +385,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
                 wheels.push(act);
             }
             Act::Tuning(_) => tuning = Some(act),
-            Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } => {}
+            Act::Sing { .. } | Act::Lyric { .. } | Act::Slide { .. } | Act::Inhale { .. } => {}
         }
     }
     let mut rest: Vec<(usize, Act)> = acts[split..].to_vec();
@@ -505,6 +539,7 @@ impl LiveInstrument {
                     }
                     Act::Lyric { text, len, lead } => self.inst.lyric(text.as_str(), u64::from(len), u64::from(lead)),
                     Act::Slide { key, frames } => self.inst.slide(key, u64::from(frames)),
+                    Act::Inhale { frames } => self.inst.inhale(u64::from(frames)),
                     Act::Sing { syl, lead, len, velocity, .. } => {
                         let (lead, len) = (lead as usize, len as usize);
                         if let Some(c) = self.consonants.as_mut() {

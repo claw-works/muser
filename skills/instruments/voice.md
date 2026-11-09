@@ -64,4 +64,5 @@ Preset values of each instrument:
 - **Work in progress**: words are getting clearer but not yet natural; English spellings are approximate.
 - One note at a time: a note that overlaps the next is sung legato and glides (`glide`); a gap starts a fresh note. Vibrato comes in after `vibrato_delay`.
 - **Slides (滑音)**: `"slide": true` on a note (ABC: `!slide!` before it) slides the end of the note to the next note's pitch, where the next word starts (up to 0.35 s, at most 40% of the note): `!slide!A4 E4` with `w: lai le` sings 'lai' and falls into 'le'.
+- **Breaths (气口)**: `"breath": true` on a note (ABC: `!breath!`) takes a breath before it: the previous note stops about 0.22 s early and a soft inhale fills the gap, and legato does not join across it. Mark the start of each phrase (every one or two bars); a voice that never breathes sounds like a machine.
 - Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.
