@@ -413,6 +413,8 @@ pub(crate) struct SingerVoice {
     burst: [Resonator; 2],
     /// 元音开头是否已经把共振峰放到"锁点"上。
     landed: bool,
+    /// 这个字开始时上一个字还在响（连着唱）：辅音前要把它收掉。
+    carried: bool,
     // 包络
     env: f64,
     held: bool,
@@ -448,6 +450,7 @@ impl SingerVoice {
             fric: [Resonator::default(); 2],
             burst: [Resonator::default(); 2],
             landed: true,
+            carried: false,
             env: 0.0,
             held: false,
             active: false,
@@ -542,7 +545,7 @@ impl SingerVoice {
             // 噪声的起落：摩擦 20 ms 进来、15 ms 出去，不是一下子开关（一下子开关听起来是另外一个"斯"）。
             let fade = |a: f64, b: f64| (((t - a) / 0.02).min((b - t) / 0.015)).clamp(0.0, 1.0);
             // 无声的辅音：上一个字的声音在 12 ms 里收掉，不是一下切断（一下切断是"搭"的一声）。
-            av = if self.syl.onset.voiced() { 1.0 } else { (1.0 - t / 0.012).max(0.0) };
+            av = if self.syl.onset.voiced() { 1.0 } else if self.carried { (1.0 - t / 0.012).max(0.0) } else { 0.0 };
             if t >= closure && t < burst_end {
                 // 爆破：1 ms 冲上去、很快衰减（真的爆破很短也不响）。
                 let x = t - closure;
@@ -665,6 +668,7 @@ impl Voice<f32> for SingerVoice {
         self.key = note.key;
         self.velocity = f64::from(velocity);
         self.target_pitch = self.tuning.key_pitch(note.key);
+        self.carried = self.active;
         if !self.active {
             self.pitch = self.target_pitch;
             self.phase = 0.0;
