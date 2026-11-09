@@ -281,39 +281,47 @@ impl Playable for crate::chinese::Erhu {
     }
 }
 
-/// 歌声：一个单音的声部（连着的音连唱），歌词交给它。
+/// 歌声：一个单音的声部，歌词交给它。不经过 Synth：Synth 每个新音前会把还在收尾的声音一下切掉（choke），
+/// 人声上听得出"破音"；这里新音直接接着上一个音（声门、声道都不断），像歌手换字。
 struct Singer {
-    synth: Synth<crate::singer::SingerVoice, f32>,
+    voice: crate::singer::SingerVoice,
     params: crate::singer::SingerParams,
+    key: Option<u8>,
 }
 
 impl Playable for Singer {
     fn prepare(&mut self, spec: &ProcessSpec) {
-        Processor::prepare(&mut self.synth, spec);
+        manguebyte::prelude::Voice::prepare(&mut self.voice, spec);
     }
-    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
-        self.synth.note_on_accented(note, velocity, accent);
+    fn note_on(&mut self, note: NoteRef, velocity: f32, _accent: bool) {
+        manguebyte::prelude::Voice::note_on(&mut self.voice, note, velocity);
+        self.key = Some(note.key);
     }
     fn note_off(&mut self, note: NoteRef, velocity: f32) {
-        self.synth.note_off(note, velocity);
+        if self.key == Some(note.key) {
+            manguebyte::prelude::Voice::note_off(&mut self.voice, velocity);
+            self.key = None;
+        }
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        Processor::process(&mut self.synth, buffer);
+        buffer.clear();
+        manguebyte::prelude::Voice::render(&mut self.voice, buffer);
     }
     fn midi(&mut self, message: MidiMessage) {
-        self.synth.handle_event(&midi_event(message));
+        if let MidiMessage::PitchBend { value, .. } = message {
+            manguebyte::prelude::Voice::pitch_bend(&mut self.voice, f64::from(value) / 8192.0 * 2.0);
+        }
     }
     fn lyric(&mut self, text: &str, frames: u64) {
-        self.synth.voices_mut().for_each(|v| v.lyric(text, frames));
+        self.voice.lyric(text, frames);
     }
     fn set_param(&mut self, name: &str, value: f64) {
         if params::set_number(params::SINGER, &mut self.params, name, value) {
-            let p = self.params;
-            self.synth.voices_mut().for_each(|v| v.set_params(p));
+            self.voice.set_params(self.params);
         }
     }
     fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
-        self.synth.set_tuning(tuning);
+        manguebyte::prelude::Voice::set_tuning(&mut self.voice, tuning);
     }
 }
 
@@ -566,11 +574,7 @@ impl Patch {
             Patch::Yangqin(p) => TrackInstrument::new(crate::chinese::Courses::new(p, 24), 0),
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
             Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
-            Patch::Singer(p) => {
-                let mut synth = Synth::with_voices(1, move || crate::singer::SingerVoice::new(p));
-                synth.set_legato(true);
-                TrackInstrument::new(Singer { synth, params: p }, 0)
-            }
+            Patch::Singer(p) => TrackInstrument::new(Singer { voice: crate::singer::SingerVoice::new(p), params: p, key: None }, 0),
             Patch::Guzheng(p) => {
                 let t = tunable(Synth::with_voices(21, move || PluckedString::new(p.string)), p, params::GUZHENG, |v, p| v.set_params(p.string));
                 match p.high_pass {
