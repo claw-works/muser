@@ -383,6 +383,43 @@ impl Resonator {
     }
 }
 
+/// 一个二阶的"反共振"（零点，Klatt 的 antiresonator）：把它所在频率附近的声音吸掉。
+#[derive(Clone, Copy, Default)]
+struct Antiresonator {
+    a: f64,
+    b: f64,
+    c: f64,
+    x1: f64,
+    x2: f64,
+}
+impl Antiresonator {
+    fn set(&mut self, hz: f64, bw: f64, sr: f64) {
+        let mut r = Resonator::default();
+        r.set(hz, bw, sr);
+        self.a = 1.0 / r.a;
+        self.b = -r.b / r.a;
+        self.c = -r.c / r.a;
+    }
+    fn tick(&mut self, x: f64) -> f64 {
+        let y = self.a * x + self.b * self.x1 + self.c * self.x2;
+        self.x2 = self.x1;
+        self.x1 = x;
+        y
+    }
+}
+
+/// 鼻腔：软腭放下时，声音分出一路从鼻子出来，在频谱上加一个低的共振（约 270 Hz）和一个"零点"
+/// （吸掉一段频率，位置随口腔里堵住的地方：双唇约 1 kHz、舌尖约 1.7 kHz、舌根约 3 kHz）。
+/// 软腭抬起（普通元音）时零点与共振重合、互相抵消，等于没有。
+const NASAL_POLE: f64 = 270.0;
+fn nasal_zero(place: Place) -> f64 {
+    match place {
+        Place::Labial => 1_000.0,
+        Place::Velar => 3_000.0,
+        _ => 1_700.0,
+    }
+}
+
 /// 一个歌声。
 pub(crate) struct SingerVoice {
     params: SingerParams,
@@ -415,6 +452,11 @@ pub(crate) struct SingerVoice {
     landed: bool,
     /// 这个字开始时上一个字还在响（连着唱）：辅音前要把它收掉。
     carried: bool,
+    // 鼻腔：一个共振 + 一个零点（见 NASAL_POLE）。
+    nasal_pole: Resonator,
+    nasal_zero: Antiresonator,
+    /// 零点现在的位置（Hz，平滑地动）。
+    zero_hz: f64,
     // 包络
     env: f64,
     held: bool,
@@ -451,6 +493,9 @@ impl SingerVoice {
             burst: [Resonator::default(); 2],
             landed: true,
             carried: false,
+            nasal_pole: Resonator::default(),
+            nasal_zero: Antiresonator::default(),
+            zero_hz: NASAL_POLE,
             env: 0.0,
             held: false,
             active: false,
@@ -595,14 +640,30 @@ impl SingerVoice {
             let after = (self.at.saturating_sub(self.lead_frames)) as f64 / sr;
             let tau = if !in_lead && after < 0.06 && self.syl.onset.manner != Manner::None { 0.022 } else { 0.012 };
             let k = 1.0 - (-32.0 / (tau * sr)).exp();
-            let nasal = murmur_gain < 0.99;
             for i in 0..5 {
                 self.formants[i] += (tgt[i] - self.formants[i]) * k;
-                // 鼻音：声音从鼻腔出，F1 以上的共振都被吸掉（带宽很宽），只剩低沉的"嗯"。
-                let wide = if nasal && i > 0 { 4.0 } else { 1.0 };
-                let bw = BANDWIDTHS[i] * (1.0 + 0.5 * (part.formants - 1.0)) * wide;
+                let bw = BANDWIDTHS[i] * (1.0 + 0.5 * (part.formants - 1.0));
                 self.tract[i].set(self.formants[i], bw, sr);
             }
+            // 鼻腔：鼻音（声母的 m n、韵尾的 n ng）时零点挪到堵住的地方；鼻音前后的元音也带一点鼻化
+            // （零点挪到约 600 Hz）。放开鼻音的那一下零点很快回去（这一下"放开"是听出 m n 的关键）。
+            let v = self.at.saturating_sub(self.lead_frames);
+            let coda_start = self.note_frames.saturating_sub(coda_frames(self.note_frames, sr));
+            let (zero, fast) = if in_lead && self.syl.onset.manner == Manner::Nasal {
+                (nasal_zero(self.syl.onset.place), true)
+            } else if !in_lead && self.syl.coda != Coda::None && v >= coda_start {
+                (nasal_zero(if self.syl.coda == Coda::Ng { Place::Velar } else { Place::Alveolar }), false)
+            } else if !in_lead && self.syl.coda != Coda::None && v + (0.12 * sr) as u64 >= coda_start {
+                (600.0, false)
+            } else if !in_lead && self.syl.onset.manner == Manner::Nasal && v < (0.06 * sr) as u64 {
+                (NASAL_POLE + (600.0 - NASAL_POLE) * (1.0 - v as f64 / (0.06 * sr)), true)
+            } else {
+                (NASAL_POLE, true)
+            };
+            let kz = 1.0 - (-32.0 / ((if fast { 0.004 } else { 0.02 }) * sr)).exp();
+            self.zero_hz += (zero - self.zero_hz) * kz;
+            self.nasal_pole.set(NASAL_POLE * part.formants.sqrt(), 100.0, sr);
+            self.nasal_zero.set(self.zero_hz * part.formants.sqrt(), 100.0, sr);
             let (fc, fbw, _) = frication(self.syl.onset, self.formants[1]);
             for r in self.fric.iter_mut() {
                 r.set(fc * scale.sqrt(), fbw, sr);
@@ -639,6 +700,7 @@ impl SingerVoice {
         let breath = self.rng.signed() * part.breath * p.breath * if ph < open { 1.0 } else { 0.3 } * av;
         let aspiration = self.rng.signed() * 0.18 * asp;
         let mut x = self.tilt * av + breath + aspiration;
+        x = self.nasal_zero.tick(self.nasal_pole.tick(x));
         for r in self.tract.iter_mut() {
             x = r.tick(x);
         }
