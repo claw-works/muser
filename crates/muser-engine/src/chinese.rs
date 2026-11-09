@@ -15,7 +15,7 @@
 //!
 //! 揉弦（古筝、琵琶、古琴）与轮音（古筝、琵琶、扬琴）都由渲染器写成弯音 / 重复的音（见 [`vibrato_for`]、[`tremolo_rate`]）。
 
-use manguebyte::dsp::instruments::{BodyMode, BowedParams, PluckedString, StringParams, WindParams, WindVoice};
+use manguebyte::dsp::instruments::{BodyMode, BowedParams, BowedString, PluckedString, StringParams, WindParams, WindVoice};
 use manguebyte::midi::MidiMessage;
 use manguebyte::prelude::{AudioBuffer, Filter, FilterShape, NoteRef, ProcessSpec, Processor, Synth};
 
@@ -421,22 +421,73 @@ pub fn erhu() -> BowedParams {
         fluctuation: 0.12,
         swell: 0.12,
         scratch: 0.6,
-        // 琴筒：琴码立在蟒皮上，蟒皮像鼓面一样把弦的力放出去：低于约 400 Hz 放得很少（二胡没有小提琴那种木头的"厚"），
-        // 600 Hz 到 2.5 kHz 一片宽而强的共鸣——这就是二胡的鼻音、"哭腔"。
+        // 琴筒（对着《赛马》录音量过泛音）：低于约 400 Hz 放得很少（D4 的基音比第二泛音低 25 dB 以上），
+        // 600 Hz 和 1.2–1.8 kHz 两片强共鸣，中间 900 Hz 左右是谷，2 kHz 以上很快就没了——二胡的鼻音、"哭腔"在这里。
         body: [
-            BodyMode::new(450.0, 4.0, 0.5),
-            BodyMode::new(650.0, 2.5, 1.2),
-            BodyMode::new(1_100.0, 3.0, 1.1),
-            BodyMode::new(1_600.0, 3.0, 1.0),
-            BodyMode::new(2_300.0, 3.0, 0.9),
-            BodyMode::new(3_200.0, 3.0, 0.6),
-            BodyMode::new(4_300.0, 3.0, 0.4),
-            BodyMode::new(5_800.0, 2.0, 0.25),
+            BodyMode::new(330.0, 3.0, 0.0),
+            BodyMode::new(600.0, 5.0, 1.6),
+            BodyMode::new(1_250.0, 5.0, 0.7),
+            BodyMode::new(1_800.0, 5.0, 2.4),
+            BodyMode::new(2_200.0, 5.0, 0.0),
+            BodyMode::new(3_000.0, 3.0, 0.08),
+            BodyMode::new(4_800.0, 3.0, 0.6),
+            BodyMode::new(6_000.0, 2.0, 0.01),
         ],
-        wood: 0.3,
+        wood: 0.05,
         body_mix: 1.0,
         tone: 8_000.0,
         ..BowedParams::violin()
+    }
+}
+
+/// 二胡：单音的拉弦，连着的音滑过去；后面接琴筒的"出声口"：蟒皮放不出 400 Hz 以下，2.3 kHz 以上也很快没了
+/// （拉弦模型的共鸣是一组带通，坡不够陡，这两道滤波把坡补上）。
+pub(crate) struct Erhu {
+    synth: Synth<BowedString, f32>,
+    params: BowedParams,
+    eq: [Filter<f32>; 4],
+}
+
+impl Erhu {
+    pub(crate) fn new(params: BowedParams) -> Self {
+        let mut synth = Synth::with_voices(1, move || BowedString::new(params));
+        synth.set_legato(true);
+        Self {
+            synth,
+            params,
+            eq: [
+                Filter::new(FilterShape::Highpass, 420.0, 0.7),
+                Filter::new(FilterShape::Highpass, 420.0, 0.7),
+                Filter::new(FilterShape::Lowpass, 2_600.0, 0.7),
+                Filter::new(FilterShape::Peak { gain_db: -6.0 }, 2_200.0, 2.0),
+            ],
+        }
+    }
+    pub(crate) fn prepare(&mut self, spec: &ProcessSpec) {
+        Processor::prepare(&mut self.synth, spec);
+        self.eq.iter_mut().for_each(|f| f.prepare(spec));
+    }
+    pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        self.synth.note_on_accented(note, velocity, accent);
+    }
+    pub(crate) fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        self.synth.note_off(note, velocity);
+    }
+    pub(crate) fn midi(&mut self, message: MidiMessage) {
+        self.synth.handle_event(&manguebyte::prelude::Event::from_midi(0, message));
+    }
+    pub(crate) fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        Processor::process(&mut self.synth, buffer);
+        self.eq.iter_mut().for_each(|f| f.process(buffer));
+    }
+    pub(crate) fn set_param(&mut self, name: &str, value: f64) {
+        if params::set_number(params::BOWED, &mut self.params, name, value) {
+            let p = self.params;
+            self.synth.voices_mut().for_each(|v| v.set_params(p));
+        }
+    }
+    pub(crate) fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        self.synth.set_tuning(tuning);
     }
 }
 

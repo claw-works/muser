@@ -251,6 +251,30 @@ impl Playable for crate::chinese::Dizi {
     }
 }
 
+impl Playable for crate::chinese::Erhu {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        crate::chinese::Erhu::prepare(self, spec);
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        crate::chinese::Erhu::note_on(self, note, velocity, accent);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        crate::chinese::Erhu::note_off(self, note, velocity);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        crate::chinese::Erhu::process(self, buffer);
+    }
+    fn midi(&mut self, message: MidiMessage) {
+        crate::chinese::Erhu::midi(self, message);
+    }
+    fn set_param(&mut self, name: &str, value: f64) {
+        crate::chinese::Erhu::set_param(self, name, value);
+    }
+    fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        crate::chinese::Erhu::set_tuning(self, tuning);
+    }
+}
+
 /// 鼓组：参数名为 `鼓件.参数`，如 `kick.tune`；改动从下一次击打生效。
 struct DrumsTunable {
     synth: Synth<DrumKitVoice, f32>,
@@ -331,6 +355,7 @@ enum Patch {
     Guzheng(crate::chinese::GuzhengParams),
     Yangqin(crate::chinese::GuzhengParams),
     Dizi(crate::chinese::DiziParams),
+    Erhu(BowedParams),
     Acid(AcidParams),
     Organ(OrganParams),
     Mallet(MalletParams, usize),
@@ -362,6 +387,7 @@ impl Patch {
             Patch::Accordion(p) => params::apply(params::ACCORDION, p, params),
             Patch::Guzheng(p) | Patch::Yangqin(p) => params::apply(params::GUZHENG, p, params),
             Patch::Dizi(p) => params::apply(params::DIZI, p, params),
+            Patch::Erhu(p) => params::apply(params::BOWED, p, params),
             Patch::Acid(p) => params::apply(params::ACID, p, params),
             Patch::Organ(p) => params::apply(params::ORGAN, p, params),
             Patch::Mallet(p, _) => params::apply(params::MALLET, p, params),
@@ -404,6 +430,7 @@ impl Patch {
             ),
             Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
             Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
+            Patch::Erhu(p) => (params::describe(params::BOWED, p, params::NEXT_BOWED), "One note at a time: a note that overlaps the next slides into it under one bow; a small gap is a new bow.".into()),
             Patch::Dizi(p) => (params::describe(params::DIZI, p, params::NEXT_DIZI), "One note at a time: overlapping notes slide into each other (滑音); trills and grace notes (打音、叠音、颤音) are short notes.".into()),
             Patch::Guzheng(p) | Patch::Yangqin(p) => (
                 params::describe(params::GUZHENG, p, params::NEXT_GUZHENG),
@@ -454,6 +481,7 @@ impl Patch {
             Patch::Electric(p, n) => TrackInstrument::new(crate::electric::Electric::new(p, n), 0),
             Patch::Yangqin(p) => TrackInstrument::new(crate::chinese::Courses::new(p, 24), 0),
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
+            Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
             Patch::Guzheng(p) => tunable(Synth::with_voices(21, move || PluckedString::new(p.string)), p, params::GUZHENG, |v, p| v.set_params(p.string)),
             Patch::Accordion(p) => tunable(Synth::with_voices(16, move || crate::accordion::AccordionVoice::new(p)), p, params::ACCORDION, |v, p| v.set_params(p)),
             Patch::Acid(p) => {
@@ -634,7 +662,7 @@ static BUILTINS: &[Builtin] = &[
     b!("yinse.strike.yangqin", [], "chinese", false, (43, 93), 24, "Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo`", || Patch::Yangqin(crate::chinese::GuzhengParams::yangqin())),
     b!("yinse.blow.dizi", [], "chinese", false, (67, 96), 1, "Dizi (笛子): bamboo transverse flute with a buzzing membrane (笛膜), bright and lively; one note at a time, overlapping notes slide", || Patch::Dizi(crate::chinese::DiziParams::dizi())),
     b!("yinse.blow.xiao", [], "chinese", false, (55, 86), 1, "Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide", || Patch::Wind(crate::chinese::xiao(), 1)),
-    b!("yinse.bow.erhu", [], "chinese", false, (62, 96), 1, "Erhu (二胡): two-string fiddle with a python-skin resonator, nasal and singing, wide vibrato; slurred notes (legato clips) slide into each other. One note at a time", || Patch::Bowed(crate::chinese::erhu(), 1)),
+    b!("yinse.bow.erhu", [], "chinese", false, (62, 96), 1, "Erhu (二胡): two-string fiddle with a python-skin resonator, nasal and singing, wide vibrato; slurred notes (legato clips) slide into each other. One note at a time", || Patch::Erhu(crate::chinese::erhu())),
     // —— 手风琴（muser 自己的，yinse）——
     b!("yinse.blow.accordion", [], "accordion", false, (41, 93), 16, "Accordion, musette register: three middle reeds tuned apart, the shimmering French sound; chanson, waltz musette, folk", || Patch::Accordion(crate::accordion::AccordionParams::musette())),
     b!("yinse.blow.accordion_dry", [], "accordion", false, (41, 93), 16, "Accordion, master register with the reeds nearly in tune: full and dry; tango, folk, polka, accompaniment", || Patch::Accordion(crate::accordion::AccordionParams::dry())),
@@ -877,6 +905,7 @@ pub(crate) fn automation_param(
         Patch::Accordion(p) => find(params::ACCORDION, p, param, params::NEXT_ACCORDION),
         Patch::Guzheng(p) | Patch::Yangqin(p) => find(params::GUZHENG, p, param, params::NEXT_GUZHENG),
         Patch::Dizi(p) => find(params::DIZI, p, param, params::NEXT_DIZI),
+        Patch::Erhu(p) => find(params::BOWED, p, param, params::NEXT_BOWED),
         Patch::Acid(p) => find(params::ACID, p, param, &[]),
         Patch::Organ(p) => find(params::ORGAN, p, param, &[]),
         Patch::Mallet(p, _) => find(params::MALLET, p, param, params::NEXT_MALLET),
