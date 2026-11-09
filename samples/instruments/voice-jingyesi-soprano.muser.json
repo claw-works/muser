@@ -1,0 +1,251 @@
+{
+ "name": "instruments/voice-jingyesi-soprano",
+ "tempo": 72,
+ "tracks": [
+  {
+   "name": "voice",
+   "instrument": "yinse.voice.soprano",
+   "gain_db": 0,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.22
+    }
+   ],
+   "clips": [
+    {
+     "start": 0,
+     "length": 34.0,
+     "notes": [
+      {
+       "pitch": 69,
+       "start": 0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "chuang"
+      },
+      {
+       "pitch": 71,
+       "start": 1,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "qian"
+      },
+      {
+       "pitch": 74,
+       "start": 2,
+       "length": 1.425,
+       "velocity": 0.8,
+       "lyric": "ming"
+      },
+      {
+       "pitch": 71,
+       "start": 3.5,
+       "length": 0.475,
+       "velocity": 0.8,
+       "lyric": "yue"
+      },
+      {
+       "pitch": 69,
+       "start": 4.0,
+       "length": 1.9,
+       "velocity": 0.8,
+       "lyric": "guang"
+      },
+      {
+       "pitch": 66,
+       "start": 8.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "yi"
+      },
+      {
+       "pitch": 69,
+       "start": 9.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "shi"
+      },
+      {
+       "pitch": 64,
+       "start": 10.0,
+       "length": 1.425,
+       "velocity": 0.8,
+       "lyric": "di"
+      },
+      {
+       "pitch": 62,
+       "start": 11.5,
+       "length": 0.475,
+       "velocity": 0.8,
+       "lyric": "shang"
+      },
+      {
+       "pitch": 64,
+       "start": 12.0,
+       "length": 1.9,
+       "velocity": 0.8,
+       "lyric": "shuang"
+      },
+      {
+       "pitch": 69,
+       "start": 16.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "ju"
+      },
+      {
+       "pitch": 74,
+       "start": 17.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "tou"
+      },
+      {
+       "pitch": 76,
+       "start": 18.0,
+       "length": 1.425,
+       "velocity": 0.8,
+       "lyric": "wang"
+      },
+      {
+       "pitch": 74,
+       "start": 19.5,
+       "length": 0.475,
+       "velocity": 0.8,
+       "lyric": "ming"
+      },
+      {
+       "pitch": 71,
+       "start": 20.0,
+       "length": 1.9,
+       "velocity": 0.8,
+       "lyric": "yue"
+      },
+      {
+       "pitch": 69,
+       "start": 24.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "di"
+      },
+      {
+       "pitch": 66,
+       "start": 25.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "tou"
+      },
+      {
+       "pitch": 64,
+       "start": 26.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "si"
+      },
+      {
+       "pitch": 66,
+       "start": 27.0,
+       "length": 0.95,
+       "velocity": 0.8,
+       "lyric": "gu"
+      },
+      {
+       "pitch": 62,
+       "start": 28.0,
+       "length": 3.8,
+       "velocity": 0.8,
+       "lyric": "xiang"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "pad",
+   "instrument": "poly.warm_analog_pad",
+   "gain_db": -14,
+   "clips": [
+    {
+     "start": 0,
+     "length": 34.0,
+     "notes": [
+      {
+       "pitch": 50,
+       "start": 0,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 0,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 62,
+       "start": 0,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 47,
+       "start": 10,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 54,
+       "start": 10,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 59,
+       "start": 10,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 43,
+       "start": 20,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 50,
+       "start": 20,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 20,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 45,
+       "start": 30,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 30,
+       "length": 10,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 30,
+       "length": 10,
+       "velocity": 0.45
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "description": "yinse.voice.soprano sings Li Bai's Quiet Night Thought (静夜思, public domain) in pinyin, one syllable per note, over a soft pad; original pentatonic melody in D. A test piece for the singer's words."
+}
