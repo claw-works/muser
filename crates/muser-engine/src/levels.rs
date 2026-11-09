@@ -75,6 +75,7 @@ pub static MEASURED: &[(&str, f32)] = &[
     ("yinse.pluck.guzheng", -26.4),
     ("yinse.pluck.pipa", -35.3),
     ("yinse.pluck.guqin", -31.5),
+    ("yinse.pluck.guzheng_modal", -33.1),
     ("yinse.strike.yangqin", -29.2),
     ("yinse.blow.dizi", -19.9),
     ("yinse.blow.xiao", -24.4),

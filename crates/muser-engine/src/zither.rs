@@ -1,6 +1,7 @@
-//! 古琴的模态弦模型：散音、按音、泛音分别决定激发、接触损耗和保留的振动模式。
+//! 古琴、古筝共用的模态弦模型：散音、按音、泛音分别决定激发、接触损耗和保留的振动模式。
 //! 模式的相位连续累积，走手只改变频率与损耗，不重新拨弦，也不移动整数延迟读点。
-//! 这仍是可调的合成模型，不是对某张琴、某种弦材的精确复原。
+//! 两件乐器的差别在 [`Profile`]：空弦、按音的做法（古琴按在徽位上弦段变短、有走手摩擦；
+//! 古筝在雁柱左边按、只加张力）、琴体辐射。这仍是可调的合成模型，不是对某张琴、某种弦材的精确复原。
 
 use core::f64::consts::{PI, TAU};
 
@@ -12,12 +13,64 @@ use crate::{chinese::GuzhengParams, params};
 
 const MODES: usize = 48;
 const CONTROL: u64 = 16;
-const OPEN_KEYS: [u8; 7] = [36, 38, 41, 43, 45, 48, 50];
+
+/// 一件弦乐器的结构。
+#[derive(Debug, PartialEq)]
+pub(crate) struct Profile {
+    /// 空弦的音（auto 奏法：这些音弹散音，别的音按出来；其余弦的共鸣也在这些音上）。
+    open_keys: &'static [u8],
+    /// 按音时发声弦段变短（古琴按在徽位上）；否则弦长不变、只加张力（古筝在雁柱左边按）。
+    pressed_shortens: bool,
+    /// 按弦的接触损耗（乘 `pressure`）、走手摩擦（损耗与噪声）、按音松手后余音的比例、按音的弦刚度。
+    contact: f64,
+    friction: f64,
+    pressed_release: f64,
+    pressed_stiffness: f64,
+    /// 散音也跟着弯音、揉弦（古筝左手按在弹着的弦上）；否则只有按音。
+    open_bends: bool,
+    /// 琴体辐射的高通：这以下的弦振动放不出来。
+    radiation_hz: f64,
+    voices: usize,
+}
+
+pub(crate) static GUQIN: Profile = Profile {
+    open_keys: &[36, 38, 41, 43, 45, 48, 50],
+    pressed_shortens: true,
+    contact: 0.55,
+    friction: 1.0,
+    pressed_release: 0.35,
+    pressed_stiffness: 0.001,
+    open_bends: false,
+    radiation_hz: 220.0,
+    voices: 12,
+};
+
+/// 21 弦筝，D 调五声音阶 D2–D6。
+pub(crate) static GUZHENG: Profile = Profile {
+    open_keys: &[38, 40, 42, 45, 47, 50, 52, 54, 57, 59, 62, 64, 66, 69, 71, 74, 76, 78, 81, 83, 86],
+    pressed_shortens: false,
+    contact: 0.15,
+    friction: 0.0,
+    pressed_release: 1.0,
+    pressed_stiffness: 0.0006,
+    open_bends: true,
+    radiation_hz: 80.0,
+    voices: 24,
+};
+
+/// 用这个模型的乐器各是哪种结构。
+pub(crate) fn profile(instrument: &str) -> Option<&'static Profile> {
+    match instrument.trim().to_lowercase().as_str() {
+        "yinse.pluck.guqin" => Some(&GUQIN),
+        "yinse.pluck.guzheng_modal" => Some(&GUZHENG),
+        _ => None,
+    }
+}
 pub(crate) const TECHNIQUES: &[&str] = &["auto", "open", "pressed", "harmonic"];
 pub(crate) const BEND_RANGE: f64 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct GuqinParams {
+pub(crate) struct ZitherParams {
     pub pluck: GuzhengParams,
     pub technique: f64,
     /// 触弦节点分母：2 是弦长的一半，3 是三分之一。
@@ -26,9 +79,10 @@ pub(crate) struct GuqinParams {
     pub slide_time: f64,
     pub slide_noise: f64,
     pub sympathetic: f64,
+    pub profile: &'static Profile,
 }
 
-impl Default for GuqinParams {
+impl Default for ZitherParams {
     fn default() -> Self {
         let mut pluck = GuzhengParams::guqin();
         pluck.string.decay = 9.0;
@@ -48,7 +102,32 @@ impl Default for GuqinParams {
             BodyMode::new(1_100.0, 2.0, 1.4),
             BodyMode::new(1_850.0, 1.5, 0.5),
         ];
-        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18 }
+        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN }
+    }
+}
+
+impl ZitherParams {
+    pub(crate) fn guzheng() -> Self {
+        let mut pluck = GuzhengParams::guzheng();
+        let s = &mut pluck.string;
+        // 对着三段古筝独奏录音（渔舟唱晚、樱花、出水莲）的长时频谱：起音不比脆长亮，但 1–4 kHz 的分音留得久，
+        // 面板在中高频也有共鸣（"铮"）。近似着色，不是测得的某张筝。
+        s.pluck_brightness = 8_500.0;
+        s.high_decay = 0.4;
+        s.strike = 0.5;
+        s.tone = 12_000.0;
+        s.body = [
+            BodyMode::new(180.0, 2.0, 0.8),
+            BodyMode::new(650.0, 2.0, 1.2),
+            BodyMode::new(1_500.0, 2.0, 1.5),
+            BodyMode::new(3_000.0, 1.5, 1.2),
+        ];
+        Self { pluck, sympathetic: 0.25, profile: &GUZHENG, ..Default::default() }
+    }
+
+    /// 这个音跟着弯音、揉弦吗。
+    fn bends(self, technique: Technique) -> bool {
+        technique == Technique::Pressed || (technique == Technique::Open && self.profile.open_bends)
     }
 }
 
@@ -62,7 +141,7 @@ pub(crate) enum Technique {
 /// 一个音的奏法与泛音节点（见 `muser_core::Note::string_technique`）。
 pub(crate) type NoteTechnique = (muser_core::Technique, Option<u8>);
 
-impl GuqinParams {
+impl ZitherParams {
     fn with_note(mut self, (technique, harmonic): NoteTechnique) -> Self {
         self.technique = match technique {
             muser_core::Technique::Auto => 0.0,
@@ -81,24 +160,25 @@ impl GuqinParams {
             1 => Technique::Open,
             2 => Technique::Pressed,
             3 => Technique::Harmonic,
-            _ if OPEN_KEYS.contains(&key) => Technique::Open,
+            _ if self.profile.open_keys.contains(&key) => Technique::Open,
             _ => Technique::Pressed,
         }
     }
 }
 
-/// 渲染器据此只给按音加吟猱。显式弯音在引擎里同样只作用于按音。
-pub(crate) fn pressed(instrument: &str, params: &muser_core::InstrumentParams, key: u8, note: Option<NoteTechnique>) -> bool {
-    if !muser_core::takes_technique(instrument) {
+/// 渲染器据此只给跟着弯音的音（古琴的按音，古筝的散音、按音）加吟猱、揉弦。显式弯音在引擎里同样只作用于这些音。
+pub(crate) fn bends(instrument: &str, params: &muser_core::InstrumentParams, key: u8, note: Option<NoteTechnique>) -> bool {
+    let Some(profile) = profile(instrument) else {
         return true;
-    }
+    };
     let technique = match params.get("technique") {
         Some(serde_json::Value::String(s)) => TECHNIQUES.iter().position(|&name| name == s).unwrap_or(0) as f64,
         Some(v) => v.as_f64().unwrap_or(0.0),
         None => 0.0,
     };
-    let p = GuqinParams { technique, ..Default::default() };
-    note.map_or(p, |n| p.with_note(n)).technique(key) == Technique::Pressed
+    let p = ZitherParams { technique, profile, ..Default::default() };
+    let p = note.map_or(p, |n| p.with_note(n));
+    p.bends(p.technique(key))
 }
 
 #[derive(Clone, Copy, Default)]
@@ -139,7 +219,7 @@ impl Mode {
 #[derive(Clone, Copy)]
 struct Tone {
     modes: [Mode; MODES],
-    params: GuqinParams,
+    params: ZitherParams,
     technique: Technique,
     key_pitch: f64,
     pitch: f64,
@@ -159,7 +239,7 @@ impl Default for Tone {
     fn default() -> Self {
         Self {
             modes: [Mode::default(); MODES],
-            params: GuqinParams::default(),
+            params: ZitherParams::default(),
             technique: Technique::Open,
             key_pitch: 60.0,
             pitch: 60.0,
@@ -178,11 +258,11 @@ impl Default for Tone {
 }
 
 impl Tone {
-    fn start(p: GuqinParams, tuning: &Tuning, key: u8, bend: f64, velocity: f32, accent: bool, sr: f64) -> Self {
+    fn start(p: ZitherParams, tuning: &Tuning, key: u8, bend: f64, velocity: f32, accent: bool, sr: f64) -> Self {
         let technique = p.technique(key);
         let s = p.pluck.string;
         let key_pitch = tuning.key_pitch(key);
-        let pitch = key_pitch + if technique == Technique::Pressed { bend } else { 0.0 };
+        let pitch = key_pitch + if p.bends(technique) { bend } else { 0.0 };
         let f0 = 440.0 * ((pitch - 69.0) / 12.0).exp2();
         let anchor = if technique == Technique::Harmonic { p.harmonic.round().clamp(2.0, 8.0) as usize } else { 1 };
         let velocity = f64::from(velocity).clamp(0.0, 1.0);
@@ -191,14 +271,16 @@ impl Tone {
         let brightness = s.pluck_brightness * (-s.velocity_darkening * (1.0 - velocity)).exp2()
             * if accent { s.accent_brightness.exp2() } else { 1.0 };
         // 按音中发声弦段变短：同一处右手触弦，相对于该段的位置会向中间移动。
-        let open = OPEN_KEYS.iter().rev().find(|&&k| f64::from(k) <= key_pitch - 2.0).copied().unwrap_or(36);
+        let keys = p.profile.open_keys;
+        let open = keys.iter().rev().find(|&&k| f64::from(k) <= key_pitch - 2.0).copied().unwrap_or(keys[0]);
         let open_hz = tuning.key_frequency(open);
-        let position = if technique == Technique::Pressed { s.pluck_position * f0 / open_hz } else { s.pluck_position }.clamp(0.02, 0.45);
+        let shortened = technique == Technique::Pressed && p.profile.pressed_shortens;
+        let position = if shortened { s.pluck_position * f0 / open_hz } else { s.pluck_position }.clamp(0.02, 0.45);
         let t60 = s.decay / s.decay_per_octave.powf((f0 / 261.625_565).log2());
-        let contact = if technique == Technique::Pressed { 1.0 - 0.55 * p.pressure } else { 1.0 };
+        let contact = if technique == Technique::Pressed { 1.0 - p.profile.contact * p.pressure } else { 1.0 };
         let high_decay = if technique == Technique::Harmonic { s.high_decay.max(0.2) } else { s.high_decay };
         let slope = (1.0 / high_decay - 1.0) / ((3_000.0 / f0).max(2.0).powf(1.5) - 1.0);
-        let stiffness = s.stiffness * if technique == Technique::Pressed { 0.001 } else { 0.0006 };
+        let stiffness = s.stiffness * if technique == Technique::Pressed { p.profile.pressed_stiffness } else { 0.0006 };
         let mut tone = Self {
             params: p, technique, key_pitch, pitch, last_pitch: pitch,
             held: true, active: true, rng: 0x9E37_79B9_7F4A_7C15 ^ (u64::from(key) << 32), strength, ..Default::default()
@@ -242,11 +324,11 @@ impl Tone {
         2.0 * (self.rng >> 11) as f64 / (1u64 << 53) as f64 - 1.0
     }
 
-    fn sample(&mut self, sr: f64, bend: f64, live: GuqinParams) -> f64 {
+    fn sample(&mut self, sr: f64, bend: f64, live: ZitherParams) -> f64 {
         if !self.active {
             return 0.0;
         }
-        let target = self.key_pitch + if self.technique == Technique::Pressed { bend } else { 0.0 };
+        let target = self.key_pitch + if self.params.bends(self.technique) { bend } else { 0.0 };
         let k = 1.0 - (-1.0 / (live.slide_time.max(0.001) * sr)).exp();
         let before = self.pitch;
         self.pitch += (target - self.pitch) * k;
@@ -256,9 +338,9 @@ impl Tone {
         if self.at.is_multiple_of(CONTROL) {
             let f0 = 440.0 * ((self.pitch - 69.0) / 12.0).exp2();
             let sliding = if self.technique == Technique::Pressed { (self.pitch - self.last_pitch).abs() } else { 0.0 };
-            let friction_loss = (-0.09 * live.pressure * sliding).exp();
+            let friction_loss = (-0.09 * live.pressure * sliding * self.params.profile.friction).exp();
             let release = (!self.held).then_some(self.params.pluck.string.release
-                * if self.technique == Technique::Pressed { 0.35 } else { 1.0 });
+                * if self.technique == Technique::Pressed { self.params.profile.pressed_release } else { 1.0 });
             self.energy = 0.0;
             for mode in &mut self.modes {
                 mode.re *= friction_loss;
@@ -286,7 +368,7 @@ impl Tone {
         let kf = 1.0 - (-TAU * 1_200.0 / sr).exp();
         self.friction_lp += (n - self.friction_lp) * kf;
         if self.technique == Technique::Pressed {
-            x += self.friction_lp * self.energy.sqrt() * live.slide_noise * 0.16 * (self.motion / 8.0).sqrt().min(2.0);
+            x += self.friction_lp * self.energy.sqrt() * live.slide_noise * 0.16 * (self.motion / 8.0).sqrt().min(2.0) * self.params.profile.friction;
         }
         let attack = (t / 0.0015).clamp(0.0, 1.0);
         self.at += 1;
@@ -294,8 +376,8 @@ impl Tone {
     }
 }
 
-struct GuqinVoice {
-    params: GuqinParams,
+struct ZitherVoice {
+    params: ZitherParams,
     tuning: Tuning,
     sr: f64,
     bend: f64,
@@ -305,8 +387,8 @@ struct GuqinVoice {
     notes: u64,
 }
 
-impl GuqinVoice {
-    fn new(params: GuqinParams) -> Self {
+impl ZitherVoice {
+    fn new(params: ZitherParams) -> Self {
         Self { params, tuning: Tuning::default(), sr: 48_000.0, bend: 0.0, now: Tone::default(), old: Tone::default(), fade: 0.0, notes: 0 }
     }
 
@@ -319,7 +401,7 @@ impl GuqinVoice {
     }
 }
 
-impl Voice<f32> for GuqinVoice {
+impl Voice<f32> for ZitherVoice {
     fn prepare(&mut self, spec: &ProcessSpec) {
         self.sr = spec.sample_rate;
         self.now = Tone::default();
@@ -412,31 +494,32 @@ impl Resonance {
     }
 }
 
-pub(crate) struct Guqin {
-    synth: Synth<GuqinVoice, f32>,
-    params: GuqinParams,
+pub(crate) struct Zither {
+    synth: Synth<ZitherVoice, f32>,
+    params: ZitherParams,
     sr: f64,
     tuning: Tuning,
     body: [Resonance; 4],
     radiation: Resonance,
-    sympathetic: [Resonance; 21],
+    sympathetic: Vec<Resonance>,
     tilt: f64,
     dc: f64,
     pending: Vec<(NoteRef, NoteTechnique)>,
 }
 
-impl Guqin {
-    pub(crate) fn new(params: GuqinParams) -> Self {
-        let mut synth = Synth::with_voices(12, move || GuqinVoice::new(params));
+impl Zither {
+    pub(crate) fn new(params: ZitherParams) -> Self {
+        let mut synth = Synth::with_voices(params.profile.voices, move || ZitherVoice::new(params));
         synth.set_pitch_bend_range(BEND_RANGE);
-        Self { synth, params, sr: 48_000.0, tuning: Tuning::default(), body: [Resonance::default(); 4], radiation: Resonance::default(), sympathetic: [Resonance::default(); 21], tilt: 0.0, dc: 0.0, pending: Vec::with_capacity(16) }
+        let sympathetic = vec![Resonance::default(); params.profile.open_keys.len() * 3];
+        Self { synth, params, sr: 48_000.0, tuning: Tuning::default(), body: [Resonance::default(); 4], radiation: Resonance::default(), sympathetic, tilt: 0.0, dc: 0.0, pending: Vec::with_capacity(16) }
     }
     fn configure(&mut self) {
-        self.radiation.highpass(220.0, self.sr);
+        self.radiation.highpass(self.params.profile.radiation_hz, self.sr);
         for (r, mode) in self.body.iter_mut().zip(self.params.pluck.string.body) {
             r.set(mode.frequency, mode.frequency / mode.q, self.sr);
         }
-        for (i, &key) in OPEN_KEYS.iter().enumerate() {
+        for (i, &key) in self.params.profile.open_keys.iter().enumerate() {
             for n in 1..=3 {
                 let hz = self.tuning.key_frequency(key) * n as f64;
                 self.sympathetic[i * 3 + n - 1].set(hz, 3.0 * 10f64.ln() / (PI * 3.5), self.sr);
@@ -447,7 +530,7 @@ impl Guqin {
         self.sr = spec.sample_rate;
         self.body = [Resonance::default(); 4];
         self.radiation = Resonance::default();
-        self.sympathetic = [Resonance::default(); 21];
+        self.sympathetic.fill(Resonance::default());
         self.tilt = 0.0;
         self.dc = 0.0;
         self.pending.clear();
@@ -477,7 +560,7 @@ impl Guqin {
         self.configure();
     }
     pub(crate) fn set_param(&mut self, name: &str, value: f64) {
-        if params::set_number(params::GUQIN, &mut self.params, name, value) {
+        if params::set_number(params::ZITHER, &mut self.params, name, value) {
             self.synth.voices_mut().for_each(|v| v.params = self.params);
         }
     }
@@ -518,7 +601,7 @@ impl Guqin {
 mod tests {
     use super::*;
 
-    fn samples(p: GuqinParams, key: u8, seconds: f64) -> Vec<f64> {
+    fn samples(p: ZitherParams, key: u8, seconds: f64) -> Vec<f64> {
         let sr = 48_000.0;
         let mut tone = Tone::start(p, &Tuning::default(), key, 0.0, 0.8, false, sr);
         (0..(seconds * sr) as usize).map(|_| tone.sample(sr, 0.0, p)).collect()
@@ -539,7 +622,7 @@ mod tests {
     #[test]
     fn touching_a_node_removes_the_lower_string_modes() {
         for node in 2..=8 {
-            let p = GuqinParams { technique: 3.0, harmonic: node as f64, ..Default::default() };
+            let p = ZitherParams { technique: 3.0, harmonic: node as f64, ..Default::default() };
             let x = samples(p, 69, 0.5);
             let held = &x[4_800..];
             let fundamental = energy_at(held, 440.0);
@@ -552,9 +635,9 @@ mod tests {
 
     #[test]
     fn open_pressed_and_harmonic_notes_have_different_spectra() {
-        let open = samples(GuqinParams { technique: 1.0, ..Default::default() }, 57, 0.4);
-        let pressed = samples(GuqinParams { technique: 2.0, ..Default::default() }, 57, 0.4);
-        let harmonic = samples(GuqinParams { technique: 3.0, harmonic: 2.0, ..Default::default() }, 57, 0.4);
+        let open = samples(ZitherParams { technique: 1.0, ..Default::default() }, 57, 0.4);
+        let pressed = samples(ZitherParams { technique: 2.0, ..Default::default() }, 57, 0.4);
+        let harmonic = samples(ZitherParams { technique: 3.0, harmonic: 2.0, ..Default::default() }, 57, 0.4);
         let ratio = |x: &[f64]| energy_at(&x[4_800..], 660.0) / energy_at(&x[4_800..], 220.0);
         assert!(ratio(&harmonic) < ratio(&open) * 0.5, "harmonics should have fewer upper partials");
         assert!((ratio(&pressed) - ratio(&open)).abs() > 0.005, "stopping changes the effective pluck position and damping");
@@ -562,7 +645,7 @@ mod tests {
 
     #[test]
     fn an_octave_slide_preserves_phase_and_does_not_repluck() {
-        let p = GuqinParams { technique: 2.0, slide_noise: 0.0, ..Default::default() };
+        let p = ZitherParams { technique: 2.0, slide_noise: 0.0, ..Default::default() };
         let mut tone = Tone::start(p, &Tuning::default(), 57, 0.0, 0.8, false, 48_000.0);
         for _ in 0..9_600 {
             tone.sample(48_000.0, 0.0, p);
@@ -586,7 +669,7 @@ mod tests {
     #[test]
     fn only_pressed_strings_follow_pitch_bend() {
         for technique in [1.0, 3.0] {
-            let p = GuqinParams { technique, ..Default::default() };
+            let p = ZitherParams { technique, ..Default::default() };
             let mut tone = Tone::start(p, &Tuning::default(), 57, 12.0, 0.8, false, 48_000.0);
             for _ in 0..1_000 {
                 tone.sample(48_000.0, -12.0, p);
@@ -596,9 +679,23 @@ mod tests {
     }
 
     #[test]
+    fn guzheng_open_strings_bend_and_auto_presses_off_scale_notes() {
+        let p = ZitherParams::guzheng();
+        assert_eq!(p.technique(62), Technique::Open);
+        assert_eq!(p.technique(63), Technique::Pressed);
+        let mut tone = Tone::start(p, &Tuning::default(), 62, 0.0, 0.8, false, 48_000.0);
+        for _ in 0..4_800 {
+            tone.sample(48_000.0, 2.0, p);
+        }
+        assert!((tone.pitch - 64.0).abs() < 0.01, "pressing behind the bridge raises an open string");
+        assert!(bends("yinse.pluck.guzheng_modal", &Default::default(), 62, None));
+        assert!(!bends("yinse.pluck.guqin", &Default::default(), 50, None), "a guqin open string does not");
+    }
+
+    #[test]
     fn plucking_at_the_touched_node_cannot_explode_the_normalization() {
         for node in 2..=8 {
-            let mut p = GuqinParams { technique: 3.0, harmonic: node as f64, ..Default::default() };
+            let mut p = ZitherParams { technique: 3.0, harmonic: node as f64, ..Default::default() };
             p.pluck.string.pluck_position = 1.0 / node as f64;
             let x = samples(p, 69, 0.2);
             assert!(x.iter().all(|x| x.is_finite() && x.abs() < 0.25), "node {node}");
@@ -607,7 +704,7 @@ mod tests {
 
     #[test]
     fn simultaneous_note_techniques_are_not_overwritten_by_the_last_tag() {
-        let mut q = Guqin::new(GuqinParams::default());
+        let mut q = Zither::new(ZitherParams::default());
         q.prepare(&ProcessSpec { sample_rate: 48_000.0, num_channels: 2, max_block_size: 256 });
         let open = NoteRef::new(0, 48);
         let harmonic = NoteRef::new(0, 62);
@@ -624,9 +721,9 @@ mod tests {
     #[test]
     fn body_radiation_changes_low_string_spectrum_without_moving_its_pitch() {
         let render = |body_mix| {
-            let mut p = GuqinParams { technique: 1.0, ..Default::default() };
+            let mut p = ZitherParams { technique: 1.0, ..Default::default() };
             p.pluck.string.body_mix = body_mix;
-            let mut q = Guqin::new(p);
+            let mut q = Zither::new(p);
             q.prepare(&ProcessSpec { sample_rate: 48_000.0, num_channels: 1, max_block_size: 128 });
             q.note_on(NoteRef::new(0, 36), 0.8, false);
             let mut buf = AudioBuffer::new(1, 128);
@@ -650,7 +747,7 @@ mod tests {
     #[test]
     fn full_instrument_stays_finite_across_sample_rates_and_voice_stealing() {
         for sr in [22_050.0, 48_000.0, 96_000.0] {
-            let mut q = Guqin::new(GuqinParams { technique: 2.0, ..Default::default() });
+            let mut q = Zither::new(ZitherParams { technique: 2.0, ..Default::default() });
             q.prepare(&ProcessSpec { sample_rate: sr, num_channels: 2, max_block_size: 128 });
             let mut buf = AudioBuffer::new(2, 128);
             for i in 0..40 {

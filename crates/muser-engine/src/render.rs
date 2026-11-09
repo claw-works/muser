@@ -82,7 +82,7 @@ pub(crate) enum Act {
     /// 换气（`yinse.voice.*`）：从这一帧起，`frames` 帧的一声吸气。
     Inhale { frames: u32 },
     /// 逐音古琴奏法，在同帧起音之前按键位与通道投递，和弦中的各音互不覆盖。
-    Technique { key: u8, ch: Option<u8>, technique: crate::guqin::NoteTechnique },
+    Technique { key: u8, ch: Option<u8>, technique: crate::zither::NoteTechnique },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -262,7 +262,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             // 弯音曲线按拍：用这个音开头的速度换算（渐变中按当时的速度近似）。
             let bps = tm.bpm_at(c0 + note.start.0) / 60.0;
             // 古筝的揉弦：音符自己没写弯音时，渲染器写一条（见 crate::chinese）。
-            let auto = match (note.bend.is_empty() && crate::guqin::pressed(&track.instrument, &track.instrument_params, note.pitch, note.string_technique()), vibrato) {
+            let auto = match (note.bend.is_empty() && crate::zither::bends(&track.instrument, &track.instrument_params, note.pitch, note.string_technique()), vibrato) {
                 (true, Some(v)) => crate::chinese::vibrato_bend(lengths[ni].0, bps, v),
                 _ => Vec::new(),
             };
@@ -278,7 +278,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 for f in (on..off).step_by(step) {
                     let beats = (f - on) as f64 / sr * bps;
                     let v = if muser_core::takes_technique(&track.instrument) {
-                        bend_value_with_range(bend, beats, crate::guqin::BEND_RANGE)
+                        bend_value_with_range(bend, beats, crate::zither::BEND_RANGE)
                     } else {
                         bend_value(bend, beats)
                     };

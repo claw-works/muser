@@ -162,6 +162,7 @@ fn pluck_preset(instrument: &str) -> Option<GuzhengParams> {
     Some(match instrument.trim().to_lowercase().as_str() {
         "yinse.pluck.guzheng" => GuzhengParams::guzheng(),
         "yinse.pluck.pipa" => GuzhengParams::pipa(),
+        "yinse.pluck.guzheng_modal" => GuzhengParams::guzheng(),
         "yinse.pluck.guqin" => GuzhengParams::guqin(),
         "yinse.strike.yangqin" => GuzhengParams::yangqin(),
         _ => return None,

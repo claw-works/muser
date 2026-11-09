@@ -110,7 +110,7 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
         track.push_midi(0, MidiMessage::ControlChange { channel, controller: 10, value: pan });
         if muser_core::takes_technique(&t.instrument) {
             // 古琴走手的音程可超过普通弯音轮的 ±2；导出时同时声明实际使用的范围。
-            for (controller, value) in [(101, 0), (100, 0), (6, crate::guqin::BEND_RANGE as u8), (38, 0), (101, 127), (100, 127)] {
+            for (controller, value) in [(101, 0), (100, 0), (6, crate::zither::BEND_RANGE as u8), (38, 0), (101, 127), (100, 127)] {
                 track.push_midi(0, MidiMessage::ControlChange { channel, controller, value });
             }
         }

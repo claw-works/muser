@@ -284,16 +284,16 @@ pub(crate) static GUZHENG: &[ParamDef<crate::chinese::GuzhengParams>] = &[
     num!("tone", 200.0, 20000.0, "Hz", "Final low-pass: lower for a darker tone; higher to retain the pluck's edge", |p| p.string.tone),
 ];
 
-pub(crate) const NEXT_GUQIN: &[&str] = &[
+pub(crate) const NEXT_ZITHER: &[&str] = &[
     "decay", "release", "high_decay", "strike", "pluck_noise", "pluck_brightness", "pluck_position",
     "vibrato", "vibrato_rate", "vibrato_delay", "pressure",
 ];
 
-pub(crate) static GUQIN: &[ParamDef<crate::guqin::GuqinParams>] = &[
+pub(crate) static ZITHER: &[ParamDef<crate::zither::ZitherParams>] = &[
     ParamDef {
         spec: InstParamSpec {
             name: "technique",
-            kind: ParamKind::Number { min: 0.0, max: 3.0, unit: "", integer: true, names: crate::guqin::TECHNIQUES },
+            kind: ParamKind::Number { min: 0.0, max: 3.0, unit: "", integer: true, names: crate::zither::TECHNIQUES },
             description: "Playing technique: auto chooses open strings at C2 D2 F2 G2 A2 C3 D3, pressed elsewhere; open rings freely; pressed allows slides; harmonic touches a node. Changes the next pluck",
         },
         get: |p| json!(p.technique),

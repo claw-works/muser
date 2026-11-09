@@ -9,6 +9,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 | `yinse.pluck.guzheng` | 38–88 | 21 | Guzheng (古筝): bright picked strings over a big paulownia soundboard, long ringing notes, left-hand vibrato on held notes; Chinese traditional, film, new-age |
 | `yinse.pluck.pipa` | 45–88 | 12 | Pipa (琵琶): pear-shaped lute plucked with picks, crisp and grainy, shorter ring; tremolo (轮指) with the note's `tremolo`, bends (推拉) with `bend` |
 | `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend` |
+| `yinse.pluck.guzheng_modal` | 38–88 | 24 | Guzheng (古筝), modal model (being compared with yinse.pluck.guzheng): 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique` |
 | `yinse.strike.yangqin` | 43–93 | 24 | Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo` |
 | `yinse.blow.dizi` | 67–96 | 1 | Dizi (笛子): bamboo transverse flute with a buzzing membrane (笛膜), bright and lively; one note at a time, overlapping notes slide |
 | `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide |
@@ -44,7 +45,7 @@ Preset values of each instrument:
 | `yinse.pluck.pipa` | 15 | 5 | 0.35 | 12 | 1.5 | 0.12 | 4500 | 0.14 | 0.35 | 0.6 | 0.25 | 0.6 | 9000 |
 | `yinse.strike.yangqin` | 0 | 5 | 0.3 | 14 | 6 | 0.6 | 10000 | 0.12 | 0.35 | 1 | 0.15 | 0.45 | 11000 |
 
-## Adjustable parameters of `yinse.pluck.guqin`
+## Adjustable parameters of `yinse.pluck.guqin`, `yinse.pluck.guzheng_modal`
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
@@ -77,6 +78,7 @@ Preset values of each instrument:
 | instrument | `technique` | `harmonic` | `pressure` | `slide_time` | `slide_noise` | `sympathetic` | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `high_decay` | `pluck_brightness` | `pluck_position` | `strike` | `pluck_noise` | `body_mix` | `tone` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `yinse.pluck.guqin` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.18 | 18 | 3.5 | 0.5 | 8 | 9 | 6 | 0.08 | 5000 | 0.12 | 0.35 | 0.15 | 0.45 | 7000 |
+| `yinse.pluck.guzheng_modal` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.25 | 25 | 5.5 | 0.3 | 10 | 12 | 2.5 | 0.4 | 8500 | 0.12 | 0.5 | 0.3 | 0.5 | 12000 |
 
 ## Adjustable parameters of `yinse.blow.dizi`
 

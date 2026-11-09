@@ -338,7 +338,7 @@ impl Project {
                         )));
                     }
                     if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
-                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin accepts per-note string techniques")));
+                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin and yinse.pluck.guzheng_modal accept per-note string techniques")));
                     }
                     if note.harmonic.is_some_and(|h| !(2..=8).contains(&h)) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].harmonic: node denominator must be 2-8")));
@@ -634,9 +634,9 @@ pub enum Technique {
     Harmonic,
 }
 
-/// 接受逐音奏法（`technique` / `harmonic`）、按音可弯 ±24 半音的乐器。
+/// 接受逐音奏法（`technique` / `harmonic`）、可弯 ±24 半音的乐器（模态弦模型）。
 pub fn takes_technique(instrument: &str) -> bool {
-    instrument.trim().eq_ignore_ascii_case("yinse.pluck.guqin")
+    ["yinse.pluck.guqin", "yinse.pluck.guzheng_modal"].iter().any(|n| instrument.trim().eq_ignore_ascii_case(n))
 }
 
 /// 一个音符。

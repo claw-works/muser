@@ -52,7 +52,7 @@ trait Playable {
     /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
     fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
     /// 古琴逐音奏法，在同帧起音前按通道和键位交给对应音符。
-    fn technique(&mut self, _note: NoteRef, _technique: crate::guqin::NoteTechnique) {}
+    fn technique(&mut self, _note: NoteRef, _technique: crate::zither::NoteTechnique) {}
     /// 上一块送到总线的各路直接输出（插件的 `@outputs` 写了 `bus` 的项，按顺序）。默认没有。
     fn taps(&self) -> &[AudioBuffer<f32>] {
         &[]
@@ -144,7 +144,7 @@ impl TrackInstrument {
     pub fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
         self.inner.set_tuning(tuning);
     }
-    pub(crate) fn technique(&mut self, note: NoteRef, technique: crate::guqin::NoteTechnique) {
+    pub(crate) fn technique(&mut self, note: NoteRef, technique: crate::zither::NoteTechnique) {
         self.inner.technique(note, technique);
     }
     /// 上一次 [`process`](Self::process) 送到总线的各路直接输出（立体声，帧数与那一块相同）。
@@ -248,30 +248,30 @@ impl Playable for crate::chinese::Courses {
     }
 }
 
-impl Playable for crate::guqin::Guqin {
-    fn technique(&mut self, note: NoteRef, technique: crate::guqin::NoteTechnique) {
-        crate::guqin::Guqin::playing(self, note, technique);
+impl Playable for crate::zither::Zither {
+    fn technique(&mut self, note: NoteRef, technique: crate::zither::NoteTechnique) {
+        crate::zither::Zither::playing(self, note, technique);
     }
     fn prepare(&mut self, spec: &ProcessSpec) {
-        crate::guqin::Guqin::prepare(self, spec);
+        crate::zither::Zither::prepare(self, spec);
     }
     fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
-        crate::guqin::Guqin::note_on(self, note, velocity, accent);
+        crate::zither::Zither::note_on(self, note, velocity, accent);
     }
     fn note_off(&mut self, note: NoteRef, velocity: f32) {
-        crate::guqin::Guqin::note_off(self, note, velocity);
+        crate::zither::Zither::note_off(self, note, velocity);
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        crate::guqin::Guqin::process(self, buffer);
+        crate::zither::Zither::process(self, buffer);
     }
     fn midi(&mut self, message: MidiMessage) {
-        crate::guqin::Guqin::midi(self, message);
+        crate::zither::Zither::midi(self, message);
     }
     fn set_param(&mut self, name: &str, value: f64) {
-        crate::guqin::Guqin::set_param(self, name, value);
+        crate::zither::Zither::set_param(self, name, value);
     }
     fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
-        crate::guqin::Guqin::set_tuning(self, tuning);
+        crate::zither::Zither::set_tuning(self, tuning);
     }
 }
 
@@ -492,7 +492,7 @@ enum Patch {
     Electric(crate::electric::ElectricParams, usize),
     Accordion(crate::accordion::AccordionParams),
     Guzheng(crate::chinese::GuzhengParams),
-    Guqin(crate::guqin::GuqinParams),
+    Zither(crate::zither::ZitherParams),
     Yangqin(crate::chinese::GuzhengParams),
     Dizi(crate::chinese::DiziParams),
     Erhu(BowedParams),
@@ -527,7 +527,7 @@ impl Patch {
             Patch::Electric(p, _) => params::apply(params::ELECTRIC, p, params),
             Patch::Accordion(p) => params::apply(params::ACCORDION, p, params),
             Patch::Guzheng(p) | Patch::Yangqin(p) => params::apply(params::GUZHENG, p, params),
-            Patch::Guqin(p) => params::apply(params::GUQIN, p, params),
+            Patch::Zither(p) => params::apply(params::ZITHER, p, params),
             Patch::Dizi(p) => params::apply(params::DIZI, p, params),
             Patch::Erhu(p) => params::apply(params::BOWED, p, params),
             Patch::Singer(p) => params::apply(params::SINGER, p, params),
@@ -585,8 +585,14 @@ impl Patch {
                 "Tuned like any pitched instrument (write the notes you want; for the traditional sound keep to the pentatonic scale, e.g. D E F# A B). \
                  Presses and slides (按音、滑音) are the note's `bend`; glissandi (刮奏) are fast runs of pentatonic notes; tremolo (摇指) is fast repeated notes.".into(),
             ),
-            Patch::Guqin(p) => (
-                params::describe(params::GUQIN, p, params::NEXT_GUQIN),
+            Patch::Zither(p) if p.profile == &crate::zither::GUZHENG => (
+                params::describe(params::ZITHER, p, params::NEXT_ZITHER),
+                "Tuned to D pentatonic (D E F# A B); write the notes you want: other pitches are pressed (按音) from the string below. \
+                 Every note follows its `bend` (按音、滑音, up to +/-24 semitones) and the automatic left-hand vibrato (揉弦) with continuous phase. \
+                 Per note, \"technique\": \"harmonic\", \"harmonic\": 2 is a harmonic (泛音); glissandi (刮奏) are fast runs of pentatonic notes; tremolo (摇指) is the note's `tremolo`.".into(),
+            ),
+            Patch::Zither(p) => (
+                params::describe(params::ZITHER, p, params::NEXT_ZITHER),
                 "Choose technique: \"open\" (散音), \"pressed\" (按音), or \"harmonic\" (泛音); \"auto\" uses open notes at C2 D2 F2 G2 A2 C3 D3 and pressed notes elsewhere. \
                  Pitch is always the sounding pitch; harmonic=4 touches at one quarter of the string and preserves every fourth mode. \
                  Only pressed notes follow bend curves (up to +/-24 semitones), with continuous phase and hand-motion noise. \
@@ -636,7 +642,7 @@ impl Patch {
             Patch::String(p, n) => tunable(Synth::with_voices(n, move || PluckedString::new(p)), p, params::STRING, |v, p| v.set_params(p)),
             Patch::Electric(p, n) => TrackInstrument::new(crate::electric::Electric::new(p, n), 0),
             Patch::Yangqin(p) => TrackInstrument::new(crate::chinese::Courses::new(p, 24), 0),
-            Patch::Guqin(p) => TrackInstrument::new(crate::guqin::Guqin::new(p), 0),
+            Patch::Zither(p) => TrackInstrument::new(crate::zither::Zither::new(p), 0),
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
             Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
             Patch::Singer(p) => TrackInstrument::new(Singer { voice: crate::singer::SingerVoice::new(p), params: p, key: None, downs: 0 }, 0),
@@ -831,7 +837,8 @@ static BUILTINS: &[Builtin] = &[
     // —— 中国民族乐器（muser 自己的，yinse）——
     b!("yinse.pluck.guzheng", [], "chinese", false, (38, 88), 21, "Guzheng (古筝): bright picked strings over a big paulownia soundboard, long ringing notes, left-hand vibrato on held notes; Chinese traditional, film, new-age", || Patch::Guzheng(crate::chinese::GuzhengParams::guzheng())),
     b!("yinse.pluck.pipa", [], "chinese", false, (45, 88), 12, "Pipa (琵琶): pear-shaped lute plucked with picks, crisp and grainy, shorter ring; tremolo (轮指) with the note's `tremolo`, bends (推拉) with `bend`", || Patch::Guzheng(crate::chinese::GuzhengParams::pipa())),
-    b!("yinse.pluck.guqin", [], "chinese", false, (36, 84), 12, "Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend`", || Patch::Guqin(crate::guqin::GuqinParams::default())),
+    b!("yinse.pluck.guqin", [], "chinese", false, (36, 84), 12, "Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend`", || Patch::Zither(crate::zither::ZitherParams::default())),
+    b!("yinse.pluck.guzheng_modal", [], "chinese", false, (38, 88), 24, "Guzheng (古筝), modal model (being compared with yinse.pluck.guzheng): 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique`", || Patch::Zither(crate::zither::ZitherParams::guzheng())),
     b!("yinse.strike.yangqin", [], "chinese", false, (43, 93), 24, "Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo`", || Patch::Yangqin(crate::chinese::GuzhengParams::yangqin())),
     b!("yinse.blow.dizi", [], "chinese", false, (67, 96), 1, "Dizi (笛子): bamboo transverse flute with a buzzing membrane (笛膜), bright and lively; one note at a time, overlapping notes slide", || Patch::Dizi(crate::chinese::DiziParams::dizi())),
     b!("yinse.blow.xiao", [], "chinese", false, (55, 86), 1, "Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide", || Patch::Wind(crate::chinese::xiao(), 1)),
@@ -1077,7 +1084,7 @@ pub(crate) fn automation_param(
         Patch::Electric(p, _) => find(params::ELECTRIC, p, param, params::NEXT_ELECTRIC),
         Patch::Accordion(p) => find(params::ACCORDION, p, param, params::NEXT_ACCORDION),
         Patch::Guzheng(p) | Patch::Yangqin(p) => find(params::GUZHENG, p, param, params::NEXT_GUZHENG),
-        Patch::Guqin(p) => find(params::GUQIN, p, param, params::NEXT_GUQIN),
+        Patch::Zither(p) => find(params::ZITHER, p, param, params::NEXT_ZITHER),
         Patch::Dizi(p) => find(params::DIZI, p, param, params::NEXT_DIZI),
         Patch::Erhu(p) => find(params::BOWED, p, param, params::NEXT_BOWED),
         Patch::Singer(p) => find(params::SINGER, p, param, params::NEXT_SINGER),
