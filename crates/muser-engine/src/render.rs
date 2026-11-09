@@ -75,6 +75,8 @@ pub(crate) enum Act {
     Pedal { down: bool },
     /// 弯音轮，-8192 – 8191（±2 半音）。
     Bend { value: i16, ch: Option<u8> },
+    /// 下一个音唱的字（`yinse.voice.*`）：在起音的同一帧、起音之前发，`len` 是这个音有多长（帧）。
+    Lyric { text: crate::lyric::Text, len: u32 },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -152,6 +154,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
     let mut acts: Vec<(usize, Act)> = Vec::new();
     let mut bent = 0usize;
     let sings = track.instrument.trim().to_lowercase().starts_with("choir.");
+    let singer = track.instrument.trim().to_lowercase().starts_with("yinse.voice.");
     // 0.4 只唱元音（哼唱）：辅音的模拟听起来像另一个声音，默认关；`"@consonants"` 给正数时打开（实验）。
     let consonants = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(0.0) > 0.0;
     for (ci, clip) in track.clips.iter().enumerate() {
@@ -262,6 +265,11 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
                 acts.push((on - lead, Act::Sing { syl, text: crate::lyric::Text::new(text), lead: lead as u32, len: (off - on) as u32, velocity }));
             }
+            if singer {
+                if let Some(text) = note.lyric.as_deref() {
+                    acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: (off - on) as u32 }));
+                }
+            }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
             acts.push((off, Act::Off { key: note.pitch, ch }));
         }
@@ -285,7 +293,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
             Act::Bend { .. } | Act::Tuning(_) => 3,
-            Act::Sing { .. } => 4,
+            Act::Sing { .. } | Act::Lyric { .. } => 4,
             Act::On { .. } => 5,
         };
         (frame, order)
@@ -329,7 +337,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
                 wheels.push(act);
             }
             Act::Tuning(_) => tuning = Some(act),
-            Act::Sing { .. } => {}
+            Act::Sing { .. } | Act::Lyric { .. } => {}
         }
     }
     let mut rest: Vec<(usize, Act)> = acts[split..].to_vec();
@@ -481,6 +489,7 @@ impl LiveInstrument {
                             self.inst.set_tuning(t);
                         }
                     }
+                    Act::Lyric { text, len } => self.inst.lyric(text.as_str(), u64::from(len)),
                     Act::Sing { syl, lead, len, velocity, .. } => {
                         let (lead, len) = (lead as usize, len as usize);
                         if let Some(c) = self.consonants.as_mut() {

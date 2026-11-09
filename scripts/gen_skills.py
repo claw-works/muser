@@ -393,6 +393,12 @@ FAMILY_PAGES = {
         "**Palm mute per note**: `\"mute\": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.",
         "Two rhythm tracks of the same riff panned left and right (one with `\"pickup\": \"middle\"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `\"pickup\": \"neck\"` is rounder; bends use the note's `bend`.",
     ]),
+    "voice": ("Singing voices (yinse)", "voice.md", [
+        "muser's own formant singing voice: `yinse.voice.soprano` / `alto` / `tenor` / `bass` / `child`. Each note sings its `lyric` (pinyin: `\"ming\"`, `\"yue\"`, `\"guang\"`); notes without a lyric sing \"a\".",
+        "**Work in progress**: this version sings the vowels (finals), with diphthongs and triphthongs gliding inside the note (ai, ao, ia, iao, uai …); consonants (initials) and nasal endings (-n, -ng) come next, so words are not yet clear.",
+        "One note at a time: a note that overlaps the next is sung legato and glides (`glide`); a gap starts a fresh note. Vibrato comes in after `vibrato_delay`.",
+        "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
+    ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
         "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子), `yinse.blow.xiao` (箫).",
         "**Tremolo** (琵琶轮指, 扬琴轮音, 古筝摇指): `\"tremolo\": true` on a note plucks or strikes it again and again for its whole length (`tremolo_rate` per second); write it on long melody notes, the way players sustain on these instruments.",
@@ -504,6 +510,8 @@ PARAM_EXAMPLES = {
                ("Muted (palm mute feel) on an acoustic", "guitar.steel", {"decay": 0.3, "release": 0.05}),
                ("Electric: a warm neck-pickup humbucker lead with a slow strum", "yinse.pluck.electric_guitar", {"pickup": "neck", "strum": 15}),
                ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "yinse.pluck.electric_guitar_clean", {"pickup": "bridge", "mute": 0.4})],
+    "voice": [("A breathy, soft alto with little vibrato", "yinse.voice.alto", {"breath": 3, "brightness": 0.35, "vibrato_depth": 10}),
+              ("An operatic soprano", "yinse.voice.soprano", {"vibrato_depth": 70, "brightness": 0.8})],
     "chinese": [("Guzheng without vibrato, softer picks", "yinse.pluck.guzheng", {"vibrato": 0, "pluck_brightness": 4000}),
                 ("Guzheng with a deep, slow vibrato on held notes", "yinse.pluck.guzheng", {"vibrato": 45, "vibrato_rate": 4}),
                 ("A plainer, softer erhu", "yinse.bow.erhu", {"vibrato_depth": 15, "pressure": 0.4}),

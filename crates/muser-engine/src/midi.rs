@@ -116,6 +116,10 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
                     track.push_meta(tick + u64::from(lead), MetaEvent::Lyric(text.as_str().to_string()));
                     continue;
                 }
+                Act::Lyric { text, .. } => {
+                    track.push_meta(tick, MetaEvent::Lyric(text.as_str().to_string()));
+                    continue;
+                }
                 Act::On { key, velocity, .. } => {
                     MidiMessage::NoteOn { channel, note: key, velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8 }
                 }

@@ -43,6 +43,8 @@ trait Playable {
     fn midi(&mut self, _message: MidiMessage) {}
     /// 自动化：运行中改一个参数（名称与 `instrument_params` 相同，鼓组为 `鼓件.参数`）。
     fn set_param(&mut self, _name: &str, _value: f64) {}
+    /// 下一个音唱的字与这个音的长度（帧）：`yinse.voice.*` 用，其它乐器忽略。
+    fn lyric(&mut self, _text: &str, _frames: u64) {}
     /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
     fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
     /// 上一块送到总线的各路直接输出（插件的 `@outputs` 写了 `bus` 的项，按顺序）。默认没有。
@@ -95,6 +97,10 @@ impl TrackInstrument {
     }
     pub fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
         self.inner.note_on(note, velocity, accent);
+    }
+    /// 下一个音唱的字（`yinse.voice.*`）。
+    pub fn lyric(&mut self, text: &str, frames: u64) {
+        self.inner.lyric(text, frames);
     }
     /// 起音，带音符的掌闷标记（电吉他用，其它乐器忽略）。
     pub fn note_on_muted(&mut self, note: NoteRef, velocity: f32, accent: bool, mute: bool) {
@@ -275,6 +281,42 @@ impl Playable for crate::chinese::Erhu {
     }
 }
 
+/// 歌声：一个单音的声部（连着的音连唱），歌词交给它。
+struct Singer {
+    synth: Synth<crate::singer::SingerVoice, f32>,
+    params: crate::singer::SingerParams,
+}
+
+impl Playable for Singer {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        Processor::prepare(&mut self.synth, spec);
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        self.synth.note_on_accented(note, velocity, accent);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        self.synth.note_off(note, velocity);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        Processor::process(&mut self.synth, buffer);
+    }
+    fn midi(&mut self, message: MidiMessage) {
+        self.synth.handle_event(&midi_event(message));
+    }
+    fn lyric(&mut self, text: &str, frames: u64) {
+        self.synth.voices_mut().for_each(|v| v.lyric(text, frames));
+    }
+    fn set_param(&mut self, name: &str, value: f64) {
+        if params::set_number(params::SINGER, &mut self.params, name, value) {
+            let p = self.params;
+            self.synth.voices_mut().for_each(|v| v.set_params(p));
+        }
+    }
+    fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        self.synth.set_tuning(tuning);
+    }
+}
+
 /// 一件乐器后面接一串固定的滤波（照录音补乐器的出声：小琴身放不出低频之类）。
 struct WithEq {
     inner: Box<dyn Playable>,
@@ -391,6 +433,7 @@ enum Patch {
     Yangqin(crate::chinese::GuzhengParams),
     Dizi(crate::chinese::DiziParams),
     Erhu(BowedParams),
+    Singer(crate::singer::SingerParams),
     Acid(AcidParams),
     Organ(OrganParams),
     Mallet(MalletParams, usize),
@@ -423,6 +466,7 @@ impl Patch {
             Patch::Guzheng(p) | Patch::Yangqin(p) => params::apply(params::GUZHENG, p, params),
             Patch::Dizi(p) => params::apply(params::DIZI, p, params),
             Patch::Erhu(p) => params::apply(params::BOWED, p, params),
+            Patch::Singer(p) => params::apply(params::SINGER, p, params),
             Patch::Acid(p) => params::apply(params::ACID, p, params),
             Patch::Organ(p) => params::apply(params::ORGAN, p, params),
             Patch::Mallet(p, _) => params::apply(params::MALLET, p, params),
@@ -465,6 +509,11 @@ impl Patch {
             ),
             Patch::Fm(p) => (params::describe(params::FM, p, params::NEXT_FM), String::new()),
             Patch::String(p, _) => (params::describe(params::STRING, p, params::NEXT_STRING), String::new()),
+            Patch::Singer(p) => (
+                params::describe(params::SINGER, p, params::NEXT_SINGER),
+                "Sings the note's `lyric` (pinyin, e.g. \"ming\", \"yue\"; English spellings approximately). One note at a time: overlapping notes are sung legato and glide. \
+                 This version sings the vowels (finals, with diphthongs gliding inside the note); consonants come next.".into(),
+            ),
             Patch::Erhu(p) => (params::describe(params::BOWED, p, params::NEXT_BOWED), "One note at a time: a note that overlaps the next slides into it under one bow; a small gap is a new bow.".into()),
             Patch::Dizi(p) => (params::describe(params::DIZI, p, params::NEXT_DIZI), "One note at a time: overlapping notes slide into each other (滑音); trills and grace notes (打音、叠音、颤音) are short notes.".into()),
             Patch::Guzheng(p) | Patch::Yangqin(p) => (
@@ -517,6 +566,11 @@ impl Patch {
             Patch::Yangqin(p) => TrackInstrument::new(crate::chinese::Courses::new(p, 24), 0),
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
             Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
+            Patch::Singer(p) => {
+                let mut synth = Synth::with_voices(1, move || crate::singer::SingerVoice::new(p));
+                synth.set_legato(true);
+                TrackInstrument::new(Singer { synth, params: p }, 0)
+            }
             Patch::Guzheng(p) => {
                 let t = tunable(Synth::with_voices(21, move || PluckedString::new(p.string)), p, params::GUZHENG, |v, p| v.set_params(p.string));
                 match p.high_pass {
@@ -699,6 +753,12 @@ static BUILTINS: &[Builtin] = &[
     b!("bass.acid", ["acid"], "bass", false, (24, 60), 1, "TB-303 style acid bass (monophonic, overlapping notes glide); acid house / techno", || Patch::Acid(AcidParams::classic())),
     b!("bass.acid_squelch", [], "bass", false, (24, 60), 1, "acid bass with higher resonance and envelope, a stronger squelch", || Patch::Acid(AcidParams::squelch())),
     b!("bass.acid_square", [], "bass", false, (24, 60), 1, "acid bass, square-wave version, more hollow", || Patch::Acid(AcidParams::square())),
+    // —— 歌声（muser 自己的，yinse）——
+    b!("yinse.voice.soprano", [], "voice", false, (60, 84), 1, "Singing voice, soprano: sings each note's lyric (pinyin) with a formant voice; legato glides, vibrato. Vowels for now, consonants next", || Patch::Singer(crate::singer::SingerParams::preset(0))),
+    b!("yinse.voice.alto", [], "voice", false, (55, 79), 1, "Singing voice, alto: warmer and lower than the soprano", || Patch::Singer(crate::singer::SingerParams::preset(1))),
+    b!("yinse.voice.tenor", [], "voice", false, (48, 72), 1, "Singing voice, tenor", || Patch::Singer(crate::singer::SingerParams::preset(2))),
+    b!("yinse.voice.bass", [], "voice", false, (40, 64), 1, "Singing voice, bass: deep and dark", || Patch::Singer(crate::singer::SingerParams::preset(3))),
+    b!("yinse.voice.child", [], "voice", false, (60, 81), 1, "Singing voice, child: small and bright", || Patch::Singer(crate::singer::SingerParams::preset(4))),
     // —— 中国民族乐器（muser 自己的，yinse）——
     b!("yinse.pluck.guzheng", [], "chinese", false, (38, 88), 21, "Guzheng (古筝): bright picked strings over a big paulownia soundboard, long ringing notes, left-hand vibrato on held notes; Chinese traditional, film, new-age", || Patch::Guzheng(crate::chinese::GuzhengParams::guzheng())),
     b!("yinse.pluck.pipa", [], "chinese", false, (45, 88), 12, "Pipa (琵琶): pear-shaped lute plucked with picks, crisp and grainy, shorter ring; tremolo (轮指) with the note's `tremolo`, bends (推拉) with `bend`", || Patch::Guzheng(crate::chinese::GuzhengParams::pipa())),
@@ -950,6 +1010,7 @@ pub(crate) fn automation_param(
         Patch::Guzheng(p) | Patch::Yangqin(p) => find(params::GUZHENG, p, param, params::NEXT_GUZHENG),
         Patch::Dizi(p) => find(params::DIZI, p, param, params::NEXT_DIZI),
         Patch::Erhu(p) => find(params::BOWED, p, param, params::NEXT_BOWED),
+        Patch::Singer(p) => find(params::SINGER, p, param, params::NEXT_SINGER),
         Patch::Acid(p) => find(params::ACID, p, param, &[]),
         Patch::Organ(p) => find(params::ORGAN, p, param, &[]),
         Patch::Mallet(p, _) => find(params::MALLET, p, param, params::NEXT_MALLET),

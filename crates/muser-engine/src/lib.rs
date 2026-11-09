@@ -157,6 +157,7 @@ pub mod presets;
 mod electric;
 mod accordion;
 mod chinese;
+mod singer;
 pub mod xfer;
 pub mod sounds;
 
@@ -289,15 +290,16 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
             }
         }
     }
-    // 歌词只有 choir.* 会唱。
+    // 歌词只有 choir.* 与 yinse.voice.* 会唱。
     if let Ok(arranged) = arrange::arranged(project) {
         for (ti, t) in arranged.tracks.iter().enumerate() {
-            if t.instrument.trim().to_lowercase().starts_with("choir.") {
+            let inst = t.instrument.trim().to_lowercase();
+            if inst.starts_with("choir.") || inst.starts_with("yinse.voice.") {
                 continue;
             }
             let sung = (0..t.clips.len()).any(|ci| clip_notes(&arranged, ti, ci).unwrap_or_default().iter().any(|n| n.lyric.is_some()));
             if sung {
-                out.push(format!("tracks[{ti}] '{}': has lyrics (lyric / ABC w: lines), but only choir.* (e.g. choir.solo) sings; {} ignores them", t.name, t.instrument));
+                out.push(format!("tracks[{ti}] '{}': has lyrics (lyric / ABC w: lines), but only choir.* and yinse.voice.* sing; {} ignores them", t.name, t.instrument));
             }
         }
     }

@@ -292,6 +292,33 @@ pub(crate) static DIZI: &[ParamDef<crate::chinese::DiziParams>] = &[
 
 pub(crate) const NEXT_DIZI: &[&str] = &["attack", "release", "vibrato_rate", "vibrato_depth", "vibrato_delay"];
 
+pub(crate) const NEXT_SINGER: &[&str] = &["attack", "vibrato_delay"];
+
+pub(crate) static SINGER: &[ParamDef<crate::singer::SingerParams>] = &[
+    ParamDef {
+        spec: InstParamSpec {
+            name: "part",
+            kind: ParamKind::Number { min: 0.0, max: 4.0, unit: "", integer: true, names: crate::singer::PART_NAMES },
+            description: "Voice part (vocal tract size and colour): \"soprano\", \"alto\", \"tenor\", \"bass\", \"child\"",
+        },
+        get: |p| json!(p.part),
+        set: Setter::Num(|p, v| {
+            p.part = v;
+            Ok(())
+        }),
+    },
+    num!("formant_shift", 0.7, 1.4, "", "Vocal tract size: 1 natural; 0.9 a bigger, darker voice; 1.1 smaller and brighter (gender and age)", |p| p.formant_shift),
+    num!("breath", 0.0, 6.0, "", "Breathiness (times the part's own): 0 pure; 1 natural; 3+ an airy, whispery voice", |p| p.breath),
+    num!("brightness", 0.0, 1.0, "", "Vocal brightness (glottal spectrum): 0.3 soft and round; 0.55 natural; 0.9 bright, pressed, belting", |p| p.brightness),
+    num!("vibrato_depth", 0.0, 120.0, "cents", "Vibrato depth either way: 0 straight (pop, early music); 30-40 natural; 60+ operatic", |p| p.vibrato_depth),
+    num!("vibrato_rate", 0.5, 9.0, "Hz", "Vibrato rate (5-6)", |p| p.vibrato_rate),
+    num!("vibrato_delay", 0.0, 3.0, "s", "How long a held note stays straight before the vibrato comes in", |p| p.vibrato_delay),
+    num!("glide", 0.005, 0.5, "s", "Legato glide: how fast the voice slides to the next (overlapping) note", |p| p.glide),
+    num!("jitter", 0.0, 1.0, "", "Cycle-to-cycle unsteadiness of pitch and level: 0 machine-perfect; 0.4 natural; 1 rough", |p| p.jitter),
+    num!("attack", 0.005, 1.0, "s", "How fast a note starts after a break", |p| p.attack),
+    num!("release", 0.01, 2.0, "s", "How fast a note ends", |p| p.release),
+];
+
 pub(crate) const NEXT_ACCORDION: &[&str] = &["musette", "attack"];
 
 pub(crate) static ACCORDION: &[ParamDef<crate::accordion::AccordionParams>] = &[
