@@ -1,0 +1,333 @@
+{
+  "name": "instruments/guqin-techniques",
+  "description": "A single guqin: open strings (0-12 s), node-touched harmonics (16-28 s), continuous stopped-string slides (32-46 s), and mixed techniques including a chord (50-62 s). A synthesis demonstration, not a transcription. Pitch is the sounding pitch.",
+  "tempo": 60,
+  "tracks": [
+    {
+      "name": "guqin",
+      "instrument": "yinse.pluck.guqin",
+      "instrument_params": {
+        "vibrato": 0
+      },
+      "clips": [
+        {
+          "start": 0,
+          "length": 12,
+          "notes": [
+            {
+              "pitch": 36,
+              "start": 0.0,
+              "length": 2.2,
+              "velocity": 0.72,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 38,
+              "start": 1.5,
+              "length": 2.2,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 41,
+              "start": 3.0,
+              "length": 2.2,
+              "velocity": 0.8,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 43,
+              "start": 4.5,
+              "length": 2.2,
+              "velocity": 0.76,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 45,
+              "start": 6.0,
+              "length": 2.2,
+              "velocity": 0.72,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 48,
+              "start": 7.5,
+              "length": 2.2,
+              "velocity": 0.68,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 50,
+              "start": 9.0,
+              "length": 2.2,
+              "velocity": 0.65,
+              "guqin": {
+                "technique": "open"
+              }
+            }
+          ]
+        },
+        {
+          "start": 16,
+          "length": 12,
+          "notes": [
+            {
+              "pitch": 60,
+              "start": 0.0,
+              "length": 2.4,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 2
+              }
+            },
+            {
+              "pitch": 62,
+              "start": 1.8,
+              "length": 2.4,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 2
+              }
+            },
+            {
+              "pitch": 67,
+              "start": 3.6,
+              "length": 2.4,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 3
+              }
+            },
+            {
+              "pitch": 72,
+              "start": 5.4,
+              "length": 2.4,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 4
+              }
+            },
+            {
+              "pitch": 69,
+              "start": 7.2,
+              "length": 2.4,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 3
+              }
+            },
+            {
+              "pitch": 62,
+              "start": 9.0,
+              "length": 2.4,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 2
+              }
+            }
+          ]
+        },
+        {
+          "start": 32,
+          "length": 14,
+          "notes": [
+            {
+              "pitch": 50,
+              "start": 0,
+              "length": 7,
+              "velocity": 0.82,
+              "guqin": {
+                "technique": "pressed"
+              },
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0.6,
+                  0
+                ],
+                [
+                  2.2,
+                  12
+                ],
+                [
+                  3,
+                  12
+                ],
+                [
+                  4.8,
+                  7
+                ],
+                [
+                  6.2,
+                  0
+                ],
+                [
+                  7,
+                  0
+                ]
+              ]
+            },
+            {
+              "pitch": 48,
+              "start": 8,
+              "length": 5,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "pressed"
+              },
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0.5,
+                  0
+                ],
+                [
+                  2,
+                  -5
+                ],
+                [
+                  3,
+                  -5
+                ],
+                [
+                  4.2,
+                  0
+                ],
+                [
+                  5,
+                  0
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "start": 50,
+          "length": 12,
+          "notes": [
+            {
+              "pitch": 43,
+              "start": 0,
+              "length": 2.5,
+              "velocity": 0.7,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 57,
+              "start": 1.5,
+              "length": 2.2,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "pressed"
+              },
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0.5,
+                  0
+                ],
+                [
+                  1.2,
+                  2
+                ],
+                [
+                  2,
+                  0
+                ]
+              ]
+            },
+            {
+              "pitch": 62,
+              "start": 3.5,
+              "length": 2.4,
+              "velocity": 0.75,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 2
+              }
+            },
+            {
+              "pitch": 48,
+              "start": 5.5,
+              "length": 4.5,
+              "velocity": 0.65,
+              "guqin": {
+                "technique": "open"
+              }
+            },
+            {
+              "pitch": 72,
+              "start": 5.5,
+              "length": 4.5,
+              "velocity": 0.78,
+              "guqin": {
+                "technique": "harmonic",
+                "harmonic": 4
+              }
+            },
+            {
+              "pitch": 57,
+              "start": 5.5,
+              "length": 4.5,
+              "velocity": 0.7,
+              "guqin": {
+                "technique": "pressed"
+              },
+              "bend": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0.6,
+                  0
+                ],
+                [
+                  2,
+                  5
+                ],
+                [
+                  3,
+                  5
+                ],
+                [
+                  4,
+                  0
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

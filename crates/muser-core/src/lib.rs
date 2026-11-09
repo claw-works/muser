@@ -337,11 +337,20 @@ impl Project {
                             note.velocity
                         )));
                     }
+                    if let Some(g) = note.guqin {
+                        if !track.instrument.trim().eq_ignore_ascii_case("yinse.pluck.guqin") {
+                            return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].guqin: only yinse.pluck.guqin accepts guqin playing techniques")));
+                        }
+                        if g.harmonic.is_some_and(|h| !(2..=8).contains(&h)) {
+                            return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].guqin.harmonic: node denominator must be 2-8")));
+                        }
+                    }
                     let mut last = 0.0;
+                    let bend_range = if track.instrument.trim().eq_ignore_ascii_case("yinse.pluck.guqin") { 24.0 } else { 2.0 };
                     for &(at, semis) in &note.bend {
-                        if !(at >= last && semis.abs() <= 2.0) {
+                        if !(at.is_finite() && at >= last && semis.abs() <= bend_range) {
                             return Err(CoreError::Invalid(format!(
-                                "track[{ti}].clip[{ci}].note[{ni}].bend: point [{at}, {semis}] is invalid: beats must be >= 0 and increasing, semitones within +/-2"
+                                "track[{ti}].clip[{ci}].note[{ni}].bend: point [{at}, {semis}] is invalid: beats must be >= 0 and increasing, semitones within +/-{bend_range}"
                             )));
                         }
                         last = at;
@@ -617,6 +626,23 @@ impl Clip {
     }
 }
 
+/// 古琴逐音奏法。音高仍写听到的音高；泛音节点分母决定保留哪些弦模式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GuqinTechnique {
+    Auto,
+    Open,
+    Pressed,
+    Harmonic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GuqinNote {
+    pub technique: GuqinTechnique,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harmonic: Option<u8>,
+}
+
 /// 一个音符。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Note {
@@ -653,7 +679,7 @@ pub struct Note {
     #[serde(default, skip_serializing_if = "is_false")]
     pub breath: bool,
     /// 弯音（吉他推弦、滑进音、尾音下滑）：`[拍, 半音]` 折线，拍相对音符起点、递增，半音在 ±2 之内
-    /// （MIDI 弯音轮的标准范围）。第一个点之前取第一个点的值，点与点之间直线过渡。
+    /// （MIDI 弯音轮的标准范围）；古琴按音可到 ±24。第一个点之前取第一个点的值，点与点之间直线过渡。
     /// 推弦：`[[0, 0], [0.25, 2]]`；预推再放：`[[0, 2], [0.5, 2], [1, 0]]`。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bend: Vec<(f64, f64)>,
@@ -661,6 +687,9 @@ pub struct Note {
     /// 元音映射到 a e i o u。ABC 里用 `w:` 歌词行按顺序对上音符。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lyric: Option<String>,
+    /// 古琴的逐音奏法覆盖音轨默认值，如 {"technique":"harmonic","harmonic":2}。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guqin: Option<GuqinNote>,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -694,6 +723,7 @@ impl Note {
             breath: false,
             bend: Vec::new(),
             lyric: None,
+            guqin: None,
         }
     }
 }
@@ -760,6 +790,26 @@ impl BarMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guqin_techniques_roundtrip_and_wide_bends_stay_in_scope() {
+        let mut p: Project = serde_json::from_value(serde_json::json!({
+            "name":"guqin","tempo":60,"tracks":[{"name":"q","instrument":"yinse.pluck.guqin",
+            "clips":[{"start":0,"length":4,"notes":[{"pitch":62,"start":0,"length":3,
+            "guqin":{"technique":"pressed"},"bend":[[0,0],[1,12],[2,-12]]}]}]}]
+        })).unwrap();
+        assert!(p.validate().is_ok());
+        assert_eq!(Project::from_json(&p.to_json().unwrap()).unwrap(), p);
+        p.tracks[0].clips[0].notes[0].bend[1].1 = 25.0;
+        assert!(p.validate().is_err());
+        p.tracks[0].clips[0].notes[0].bend[1].1 = 12.0;
+        p.tracks[0].clips[0].notes[0].guqin = None;
+        p.tracks[0].instrument = "guitar.nylon".into();
+        assert!(p.validate().is_err(), "other instruments retain their +/-2 bend range");
+        p.tracks[0].instrument = "yinse.pluck.guqin".into();
+        p.tracks[0].clips[0].notes[0].guqin = Some(GuqinNote { technique: GuqinTechnique::Harmonic, harmonic: Some(1) });
+        assert!(p.validate().is_err(), "touching at the end is not a harmonic node");
+    }
 
     #[test]
     fn bar_map_follows_section_meters() {

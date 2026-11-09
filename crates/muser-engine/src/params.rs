@@ -284,6 +284,49 @@ pub(crate) static GUZHENG: &[ParamDef<crate::chinese::GuzhengParams>] = &[
     num!("tone", 200.0, 20000.0, "Hz", "Final low-pass: lower for a darker tone; higher to retain the pluck's edge", |p| p.string.tone),
 ];
 
+pub(crate) const NEXT_GUQIN: &[&str] = &[
+    "decay", "release", "high_decay", "strike", "pluck_noise", "pluck_brightness", "pluck_position",
+    "vibrato", "vibrato_rate", "vibrato_delay", "pressure",
+];
+
+pub(crate) static GUQIN: &[ParamDef<crate::guqin::GuqinParams>] = &[
+    ParamDef {
+        spec: InstParamSpec {
+            name: "technique",
+            kind: ParamKind::Number { min: 0.0, max: 3.0, unit: "", integer: true, names: crate::guqin::TECHNIQUES },
+            description: "Playing technique: auto chooses open strings at C2 D2 F2 G2 A2 C3 D3, pressed elsewhere; open rings freely; pressed allows slides; harmonic touches a node. Changes the next pluck",
+        },
+        get: |p| json!(p.technique),
+        set: Setter::Num(|p, v| { p.technique = v; Ok(()) }),
+    },
+    ParamDef {
+        spec: InstParamSpec {
+            name: "harmonic",
+            kind: ParamKind::Number { min: 2.0, max: 8.0, unit: "", integer: true, names: &[] },
+            description: "Harmonic node denominator (harmonic technique only): 2 at half the string, 3 at one third, 4 at one quarter. Note pitch is the SOUNDING pitch, not the open-string pitch",
+        },
+        get: |p| json!(p.harmonic),
+        set: Setter::Num(|p, v| { p.harmonic = v; Ok(()) }),
+    },
+    num!("pressure", 0.0, 1.0, "", "Stopped-string finger pressure: more contact shortens and darkens pressed notes; moving the hand adds loss. Initial pressure changes the next pluck", |p| p.pressure),
+    num!("slide_time", 0.001, 0.1, "s", "Smoothing of hand movement: small values follow bend curves closely, larger values soften changes. Phase remains continuous", |p| p.slide_time),
+    num!("slide_noise", 0.0, 1.0, "", "Stopped-string hand-motion noise, proportional to slide speed and remaining string vibration; 0 clean, 0.35 subtle", |p| p.slide_noise),
+    num!("sympathetic", 0.0, 1.0, "", "Unplayed strings resonating with the played string: 0 isolated, 0.18 subtle shared resonance", |p| p.sympathetic),
+    num!("vibrato", 0.0, 100.0, "cents", "Automatic yin/nao on pressed notes only; explicit bend curves override it; 0 no automatic movement", |p| p.pluck.vibrato),
+    num!("vibrato_rate", 0.5, 12.0, "Hz", "How fast pressed-string vibrato moves", |p| p.pluck.vibrato_rate),
+    num!("vibrato_delay", 0.0, 4.0, "s", "Delay after the pluck before pressed-string vibrato begins", |p| p.pluck.vibrato_delay),
+    num!("tremolo_rate", 2.0, 30.0, "Hz", "Repeated plucks per second on notes marked tremolo", |p| p.pluck.tremolo_rate),
+    num!("decay", 0.05, 60.0, "s", "Open-string fundamental decay at middle C to -60 dB; pressed-string contact adds damping", |p| p.pluck.string.decay),
+    num!("release", 0.01, 10.0, "s", "Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping", |p| p.pluck.string.release),
+    num!("high_decay", 0.01, 1.0, "", "Upper-mode decay at 3 kHz relative to the fundamental; harmonics keep a minimum of 0.2 for a clear ring", |p| p.pluck.string.high_decay),
+    num!("pluck_brightness", 100.0, 20000.0, "Hz", "Brightness of the initial excitation; softer velocity also darkens the pluck", |p| p.pluck.string.pluck_brightness),
+    num!("pluck_position", 0.02, 0.5, "", "Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length", |p| p.pluck.string.pluck_position),
+    num!("strike", 0.0, 1.0, "", "Excitation shape: 0 a soft pulled string, 0.35 a light nail touch, 1 a struck string", |p| p.pluck.string.strike),
+    num!("pluck_noise", 0.0, 1.0, "", "Brief nail contact noise at the pluck; distinct from sustained hand-motion noise", |p| p.pluck.string.pluck_noise),
+    num!("body_mix", 0.0, 1.0, "", "Shared wooden-body resonance, left ringing across successive notes", |p| p.pluck.string.body_mix),
+    num!("tone", 200.0, 20000.0, "Hz", "Final overall low-pass colour, independent of technique-specific mode damping", |p| p.pluck.string.tone),
+];
+
 pub(crate) static DIZI: &[ParamDef<crate::chinese::DiziParams>] = &[
     num!("membrane", 0.0, 1.0, "", "The dizi's membrane (笛膜): 0 none, a plain flute; 0.6 the bright, buzzing dizi sound; 1 a loud buzz. Louder notes buzz more", |p| p.membrane),
     num!("attack", 0.002, 1.0, "s", "Breath build-up: short = clear tonguing; long = soft entry", |p| p.wind.attack),

@@ -411,9 +411,16 @@ FAMILY_PAGES = {
         "A pressed note (按音) is a note's `bend` (`[[0, 0], [0.35, 2]]` presses a whole tone up); a glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
         "**Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. "
         "**Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes. "
-        "The default has a clear nail attack and a quickly darkening tail. For a softer touch try `{\"strike\": 0.25, \"pluck_brightness\": 2800, \"pluck_noise\": 0.1, \"high_decay\": 0.08}`; "
-        "`high_decay` controls how quickly brightness fades, while `tone` and `body_mix` change the overall colour. "
-        "This is a plucked-string approximation; it does not yet model separate open, stopped and harmonic techniques.",
+        "The guqin has its own modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
+        "Set the track's `technique`, or override a note with `\"guqin\": {\"technique\": \"harmonic\", \"harmonic\": 2}`. "
+        "`pitch` is always the sounding pitch: C4 with harmonic=2 models a C3 string touched halfway along it. "
+        "Node denominators 2-8 suppress the modes that do not have a node there; this is not just an octave shift or a low-pass preset. "
+        "Pressed notes support `bend` up to ±24 semitones, with continuous mode phase, contact damping and motion noise (`slide_noise`). "
+        "Open and harmonic notes do not take pitch bends or automatic vibrato. Auto chooses open notes at C2 D2 F2 G2 A2 C3 D3 and pressed elsewhere; "
+        "open notes at other pitches extend the model beyond that seven-string tuning. "
+        "For a softer touch try `{\"strike\": 0.25, \"pluck_brightness\": 2800, \"pluck_noise\": 0.1, \"high_decay\": 0.08}`; "
+        "`body_mix` and `sympathetic` control the shared body and unplayed-string resonance. "
+        "This is a synthesis approximation rather than a measured replica of a particular qin. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.",
         "**Yangqin**: struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo.",
         "**Dizi**: high (G4-C7) and lively; a note that overlaps the next slides into it, grace notes (打音、倚音) are 1/8-beat notes just before, a trill (颤音) alternates two notes in 1/8 beats; `membrane` sets the buzz. "
         "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",

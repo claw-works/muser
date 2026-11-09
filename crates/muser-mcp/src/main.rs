@@ -114,6 +114,24 @@ struct SetPedalParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum GuqinTechniqueSpec {
+    Auto,
+    Open,
+    Pressed,
+    Harmonic,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GuqinNoteSpec {
+    /// Open (散音), pressed (按音), harmonic (泛音), or auto.
+    technique: GuqinTechniqueSpec,
+    /// Touched node denominator 2-8; pitch is the sounding pitch, not the open-string pitch.
+    #[serde(default)]
+    harmonic: Option<u8>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct NoteSpec {
     /// MIDI pitch 0-127 (60 = middle C; for drum kits use GM drum keys).
     pitch: u8,
@@ -142,9 +160,12 @@ struct NoteSpec {
     /// Slide out (optional, yinse.voice.*): the end of this word slides to the next note's pitch, where the next word starts.
     #[serde(default)]
     slide_out: Option<bool>,
-    /// Pitch bend (guitar bends etc., optional): `[[beat, semitones], ...]`, beats relative to the note start and increasing, semitones within ±2. A bend up: `[[0, 0], [0.25, 2]]`.
+    /// Pitch bend (optional): [[beat, semitones], ...]; within ±2 normally, ±24 for guqin pressed-string slides.
     #[serde(default)]
     bend: Vec<(f64, f64)>,
+    /// Guqin-only per-note technique, overriding the track default; e.g. {"technique":"harmonic","harmonic":2}.
+    #[serde(default)]
+    guqin: Option<GuqinNoteSpec>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -807,6 +828,15 @@ impl Muser {
                 note.breath = n.breath.unwrap_or(false);
                 note.slide_out = n.slide_out.unwrap_or(false);
                 note.bend = n.bend;
+                note.guqin = n.guqin.map(|g| muser_core::GuqinNote {
+                    technique: match g.technique {
+                        GuqinTechniqueSpec::Auto => muser_core::GuqinTechnique::Auto,
+                        GuqinTechniqueSpec::Open => muser_core::GuqinTechnique::Open,
+                        GuqinTechniqueSpec::Pressed => muser_core::GuqinTechnique::Pressed,
+                        GuqinTechniqueSpec::Harmonic => muser_core::GuqinTechnique::Harmonic,
+                    },
+                    harmonic: g.harmonic,
+                });
                 clip.notes.push(note);
             }
             Ok(ok_text(format!("Added {count} notes")))

@@ -157,6 +157,7 @@ pub mod presets;
 mod electric;
 mod accordion;
 mod chinese;
+mod guqin;
 pub(crate) mod singer;
 pub mod xfer;
 pub mod sounds;

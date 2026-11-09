@@ -104,6 +104,7 @@ section content that fills only a short stretch with no `length` written (so it 
 - `velocity` is 0-1, default 0.8.
 - `accent` is true/false, default false. For drum kits and `bass.acid*` an accent is louder and brighter (acid's 303 character mostly comes from it); other instruments ignore it.
 - `bend` (pitch bend, guitar string bends, etc.) is `[[beat, semitones], ...]`; see "Pitch bend: bend" below.
+- Guqin notes can override their playing technique with `"guqin": {"technique": "open"}`, `"pressed"`, or `"harmonic"` (optionally `"harmonic": 2` for a half-string node). `pitch` is the sounding pitch. See [skills/instruments/chinese.md](skills/instruments/chinese.md).
 
 ## Instrument index (built-in + SFZ sound libraries + external VSTi)
 
@@ -233,7 +234,7 @@ and monophonic synths (plugins with `Polyphony 1` + `Legato On`, acid bass) glid
 
 ## Pitch bend: bend (guitar string bends, slides into notes, falling tails)
 
-A note's `bend` is a `[[beat, semitones], ...]` polyline: beats are relative to the note start and increasing, semitones within ±2 (the standard pitch wheel range);
+A note's `bend` is a `[[beat, semitones], ...]` polyline: beats are relative to the note start and increasing, semitones within ±2 (the standard pitch wheel range), or ±24 for pressed notes on `yinse.pluck.guqin`;
 before the first point the first point's value applies, and between points it moves in straight lines. Each note with `bend` bends only itself; other notes sounding at the same time are unaffected.
 
 ```json
