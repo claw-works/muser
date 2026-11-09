@@ -133,8 +133,9 @@ impl Onset {
             Manner::Stop { aspirated: false } => [0.035, 0.008, 0.0, 0.01, 0.0],
             Manner::Stop { aspirated: true } => [0.03, 0.01, 0.0, 0.07, 0.0],
             Manner::Affricate { aspirated: false } => [0.025, 0.005, 0.032, 0.0, 0.0],
-            Manner::Affricate { aspirated: true } => [0.02, 0.006, 0.07, 0.05, 0.0],
-            Manner::Fricative => [0.0, 0.0, if self.place == Place::Velar { 0.08 } else { 0.12 }, 0.0, 0.0],
+            Manner::Affricate { aspirated: true } => [0.02, 0.006, 0.055, 0.045, 0.0],
+            // 唱歌时辅音比说话短、轻（元音才是唱出来的）。
+            Manner::Fricative => [0.0, 0.0, if self.place == Place::Velar { 0.06 } else { 0.085 }, 0.0, 0.0],
             Manner::Nasal => [0.0, 0.0, 0.0, 0.0, 0.09],
             Manner::Lateral => [0.0, 0.0, 0.0, 0.0, 0.05],
             Manner::Rhotic => [0.0, 0.0, 0.0, 0.0, 0.07],
@@ -700,7 +701,7 @@ impl SingerVoice {
         self.tilt += (g - self.tilt) * k;
         // 气声：跟着声门开合（开相里多）；送气、h 是声道里的噪声（带着后面元音的颜色）。
         let breath = self.rng.signed() * part.breath * p.breath * if ph < open { 1.0 } else { 0.3 } * av;
-        let aspiration = self.rng.signed() * 0.18 * asp;
+        let aspiration = self.rng.signed() * 0.12 * asp;
         let mut x = self.tilt * av + breath + aspiration;
         x = self.nasal_zero.tick(self.nasal_pole.tick(x));
         for r in self.tract.iter_mut() {
@@ -718,7 +719,7 @@ impl SingerVoice {
         for r in self.burst.iter_mut() {
             b = r.tick(b);
         }
-        x + 0.6 * f + 1.5 * b
+        x + 0.25 * f + 0.6 * b
     }
 }
 
