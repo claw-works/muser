@@ -674,6 +674,10 @@ pub struct Note {
     /// 连奏的音不会连进这个音。ABC 里写 `!breath!`。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub breath: bool,
+    /// 止音（可省略，默认 false）：这个音结束时手按住弦，余音很快收掉（古筝、古琴谱上的 `×`）；
+    /// 不写就任弦自己响。`yinse.pluck.guzheng_modal`、`yinse.pluck.guqin`；其它乐器忽略。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub damp: bool,
     /// 弯音（吉他推弦、滑进音、尾音下滑）：`[拍, 半音]` 折线，拍相对音符起点、递增，半音在 ±2 之内
     /// （MIDI 弯音轮的标准范围）；古琴按音可到 ±24。第一个点之前取第一个点的值，点与点之间直线过渡。
     /// 推弦：`[[0, 0], [0.25, 2]]`；预推再放：`[[0, 2], [0.5, 2], [1, 0]]`。
@@ -729,7 +733,7 @@ impl Note {
             tremolo: false,
             slide: false,
             slide_out: false,
-            breath: false,
+            breath: false, damp: false,
             bend: Vec::new(),
             lyric: None,
             technique: None, harmonic: None,

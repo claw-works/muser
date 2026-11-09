@@ -123,7 +123,8 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
                     continue;
                 }
                 Act::Slide { .. } | Act::Inhale { .. } => continue,
-                Act::Technique { key, technique: (technique, harmonic), .. } => {
+                Act::Technique { technique: crate::zither::NoteTag { technique: None, .. }, .. } => continue,
+                Act::Technique { key, technique: crate::zither::NoteTag { technique: Some((technique, harmonic)), .. }, .. } => {
                     track.push_meta(tick, MetaEvent::Text(format!("technique key={key} technique={technique:?} harmonic={harmonic:?}")));
                     continue;
                 }

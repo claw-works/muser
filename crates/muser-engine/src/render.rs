@@ -82,7 +82,7 @@ pub(crate) enum Act {
     /// 换气（`yinse.voice.*`）：从这一帧起，`frames` 帧的一声吸气。
     Inhale { frames: u32 },
     /// 逐音古琴奏法，在同帧起音之前按键位与通道投递，和弦中的各音互不覆盖。
-    Technique { key: u8, ch: Option<u8>, technique: crate::zither::NoteTechnique },
+    Technique { key: u8, ch: Option<u8>, technique: crate::zither::NoteTag },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -316,7 +316,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
-            if let Some(technique) = note.string_technique() {
+            if note.damp || note.string_technique().is_some() {
+                let technique = crate::zither::NoteTag { technique: note.string_technique(), damp: note.damp };
                 acts.push((on_at, Act::Technique { key: note.pitch, ch, technique }));
             }
             if singer && note.slide_out {

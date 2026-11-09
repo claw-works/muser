@@ -148,6 +148,9 @@ struct NoteSpec {
     /// Breath (optional, yinse.voice.*): take a breath before this note (the previous note ends early, an inhale fills the gap).
     #[serde(default)]
     breath: Option<bool>,
+    /// Damp (optional, yinse.pluck.guzheng_modal / guqin): the hand stops the string when this note ends (止音, × in guzheng scores); otherwise it keeps ringing.
+    #[serde(default)]
+    damp: Option<bool>,
     /// Slide out (optional, yinse.voice.*): the end of this word slides to the next note's pitch, where the next word starts.
     #[serde(default)]
     slide_out: Option<bool>,
@@ -820,6 +823,7 @@ impl Muser {
                 note.tremolo = n.tremolo.unwrap_or(false);
                 note.slide = n.slide.unwrap_or(false);
                 note.breath = n.breath.unwrap_or(false);
+                note.damp = n.damp.unwrap_or(false);
                 note.slide_out = n.slide_out.unwrap_or(false);
                 note.bend = n.bend;
                 note.technique = n.technique.map(|t| match t {

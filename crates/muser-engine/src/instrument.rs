@@ -52,7 +52,7 @@ trait Playable {
     /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
     fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
     /// 古琴逐音奏法，在同帧起音前按通道和键位交给对应音符。
-    fn technique(&mut self, _note: NoteRef, _technique: crate::zither::NoteTechnique) {}
+    fn technique(&mut self, _note: NoteRef, _technique: crate::zither::NoteTag) {}
     /// 上一块送到总线的各路直接输出（插件的 `@outputs` 写了 `bus` 的项，按顺序）。默认没有。
     fn taps(&self) -> &[AudioBuffer<f32>] {
         &[]
@@ -144,7 +144,7 @@ impl TrackInstrument {
     pub fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
         self.inner.set_tuning(tuning);
     }
-    pub(crate) fn technique(&mut self, note: NoteRef, technique: crate::zither::NoteTechnique) {
+    pub(crate) fn technique(&mut self, note: NoteRef, technique: crate::zither::NoteTag) {
         self.inner.technique(note, technique);
     }
     /// 上一次 [`process`](Self::process) 送到总线的各路直接输出（立体声，帧数与那一块相同）。
@@ -249,7 +249,7 @@ impl Playable for crate::chinese::Courses {
 }
 
 impl Playable for crate::zither::Zither {
-    fn technique(&mut self, note: NoteRef, technique: crate::zither::NoteTechnique) {
+    fn technique(&mut self, note: NoteRef, technique: crate::zither::NoteTag) {
         crate::zither::Zither::playing(self, note, technique);
     }
     fn prepare(&mut self, spec: &ProcessSpec) {

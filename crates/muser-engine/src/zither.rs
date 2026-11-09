@@ -68,6 +68,8 @@ pub(crate) fn profile(instrument: &str) -> Option<&'static Profile> {
 }
 pub(crate) const TECHNIQUES: &[&str] = &["auto", "open", "pressed", "harmonic"];
 pub(crate) const BEND_RANGE: f64 = 24.0;
+/// 止音：手按住弦后余音到 -60 dB 的时间。
+const DAMP_SECONDS: f64 = 0.06;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ZitherParams {
@@ -80,6 +82,8 @@ pub(crate) struct ZitherParams {
     pub slide_noise: f64,
     pub sympathetic: f64,
     pub profile: &'static Profile,
+    /// 这个音结束时止音（手按住弦，余音很快收掉）：音符的 `damp`。
+    pub damp: bool,
 }
 
 impl Default for ZitherParams {
@@ -102,7 +106,7 @@ impl Default for ZitherParams {
             BodyMode::new(1_100.0, 2.0, 1.4),
             BodyMode::new(1_850.0, 1.5, 0.5),
         ];
-        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN }
+        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false }
     }
 }
 
@@ -141,7 +145,22 @@ pub(crate) enum Technique {
 /// 一个音的奏法与泛音节点（见 `muser_core::Note::string_technique`）。
 pub(crate) type NoteTechnique = (muser_core::Technique, Option<u8>);
 
+/// 渲染器在起音前投递的逐音标记：奏法、止音。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct NoteTag {
+    pub technique: Option<NoteTechnique>,
+    pub damp: bool,
+}
+
 impl ZitherParams {
+    fn with_tag(mut self, tag: NoteTag) -> Self {
+        self.damp = tag.damp;
+        match tag.technique {
+            Some(t) => self.with_note(t),
+            None => self,
+        }
+    }
+
     fn with_note(mut self, (technique, harmonic): NoteTechnique) -> Self {
         self.technique = match technique {
             muser_core::Technique::Auto => 0.0,
@@ -339,8 +358,9 @@ impl Tone {
             let f0 = 440.0 * ((self.pitch - 69.0) / 12.0).exp2();
             let sliding = if self.technique == Technique::Pressed { (self.pitch - self.last_pitch).abs() } else { 0.0 };
             let friction_loss = (-0.09 * live.pressure * sliding * self.params.profile.friction).exp();
-            let release = (!self.held).then_some(self.params.pluck.string.release
-                * if self.technique == Technique::Pressed { self.params.profile.pressed_release } else { 1.0 });
+            let release = (!self.held).then_some(if self.params.damp { DAMP_SECONDS } else {
+                self.params.pluck.string.release * if self.technique == Technique::Pressed { self.params.profile.pressed_release } else { 1.0 }
+            });
             self.energy = 0.0;
             for mode in &mut self.modes {
                 mode.re *= friction_loss;
@@ -504,7 +524,7 @@ pub(crate) struct Zither {
     sympathetic: Vec<Resonance>,
     tilt: f64,
     dc: f64,
-    pending: Vec<(NoteRef, NoteTechnique)>,
+    pending: Vec<(NoteRef, NoteTag)>,
 }
 
 impl Zither {
@@ -539,12 +559,12 @@ impl Zither {
     }
     pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
         let p = self.pending.iter().position(|(n, _)| *n == note)
-            .map_or(self.params, |i| self.params.with_note(self.pending.swap_remove(i).1));
+            .map_or(self.params, |i| self.params.with_tag(self.pending.swap_remove(i).1));
         self.synth.voices_mut().for_each(|v| v.params = p);
         self.synth.note_on_accented(note, velocity, accent);
         self.synth.voices_mut().for_each(|v| v.params = self.params);
     }
-    pub(crate) fn playing(&mut self, note: NoteRef, technique: NoteTechnique) {
+    pub(crate) fn playing(&mut self, note: NoteRef, technique: NoteTag) {
         self.pending.retain(|(n, _)| *n != note);
         self.pending.push((note, technique));
     }
@@ -679,6 +699,19 @@ mod tests {
     }
 
     #[test]
+    fn a_damped_string_stops_within_a_tenth_of_a_second() {
+        let tail = |damp: bool| {
+            let p = ZitherParams { damp, ..ZitherParams::guzheng() };
+            let mut tone = Tone::start(p, &Tuning::default(), 62, 0.0, 0.8, false, 48_000.0);
+            (0..9_600).for_each(|_| { tone.sample(48_000.0, 0.0, p); });
+            tone.held = false;
+            (0..4_800).for_each(|_| { tone.sample(48_000.0, 0.0, p); });
+            (0..480).map(|_| tone.sample(48_000.0, 0.0, p).abs()).fold(0.0, f64::max)
+        };
+        assert!(tail(true) < tail(false) * 0.01, "{} vs {}", tail(true), tail(false));
+    }
+
+    #[test]
     fn guzheng_open_strings_bend_and_auto_presses_off_scale_notes() {
         let p = ZitherParams::guzheng();
         assert_eq!(p.technique(62), Technique::Open);
@@ -708,8 +741,8 @@ mod tests {
         q.prepare(&ProcessSpec { sample_rate: 48_000.0, num_channels: 2, max_block_size: 256 });
         let open = NoteRef::new(0, 48);
         let harmonic = NoteRef::new(0, 62);
-        q.playing(open, (muser_core::Technique::Open, None));
-        q.playing(harmonic, (muser_core::Technique::Harmonic, Some(2)));
+        q.playing(open, NoteTag { technique: Some((muser_core::Technique::Open, None)), damp: false });
+        q.playing(harmonic, NoteTag { technique: Some((muser_core::Technique::Harmonic, Some(2))), damp: false });
         q.note_on(open, 0.8, false);
         q.note_on(harmonic, 0.8, false);
         let tones: Vec<_> = q.synth.voices_mut().filter(|v| v.now.active).map(|v| (v.now.key_pitch, v.now.technique)).collect();
