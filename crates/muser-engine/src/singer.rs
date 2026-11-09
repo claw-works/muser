@@ -131,10 +131,10 @@ impl Onset {
             Manner::None => [0.0; 5],
             Manner::Stop { aspirated: false } => [0.035, 0.008, 0.0, 0.01, 0.0],
             Manner::Stop { aspirated: true } => [0.03, 0.01, 0.0, 0.07, 0.0],
-            Manner::Affricate { aspirated: false } => [0.025, 0.005, 0.05, 0.0, 0.0],
-            Manner::Affricate { aspirated: true } => [0.02, 0.005, 0.06, 0.05, 0.0],
+            Manner::Affricate { aspirated: false } => [0.025, 0.005, 0.032, 0.0, 0.0],
+            Manner::Affricate { aspirated: true } => [0.02, 0.006, 0.07, 0.05, 0.0],
             Manner::Fricative => [0.0, 0.0, if self.place == Place::Velar { 0.08 } else { 0.12 }, 0.0, 0.0],
-            Manner::Nasal => [0.0, 0.0, 0.0, 0.0, 0.07],
+            Manner::Nasal => [0.0, 0.0, 0.0, 0.0, 0.09],
             Manner::Lateral => [0.0, 0.0, 0.0, 0.0, 0.05],
             Manner::Rhotic => [0.0, 0.0, 0.0, 0.0, 0.07],
         }
@@ -265,6 +265,8 @@ fn finals(text: &str) -> Syllable {
         "ei" => Syllable::two(Eh, I, false),
         "ao" => Syllable::two(A, U, false),
         "ou" => Syllable::two(O, U, false),
+        // ian（"烟"）是 [iɛn]：a 读得接近 ê。
+        "ia" if fin == "ian" => Syllable::two(I, Eh, true),
         "ia" => Syllable::two(I, A, true),
         "ie" => Syllable::two(I, Eh, true),
         "ua" => Syllable::two(U, A, true),
@@ -558,13 +560,13 @@ impl SingerVoice {
         // 鼻音（声母的哼声、鼻韵尾）：嘴闭着，声音小、闷。
         let mut murmur_gain = 1.0;
         if in_lead && murmur(self.syl.onset).is_some() && self.syl.onset.manner == Manner::Nasal {
-            murmur_gain = 0.35;
+            murmur_gain = 0.6;
         }
         if !in_lead && self.syl.coda != Coda::None {
             let v = self.at - self.lead_frames;
             let n = coda_frames(self.note_frames, sr);
             if v + n >= self.note_frames {
-                murmur_gain = 1.0 - 0.6 * ((v + n - self.note_frames) as f64 / (0.04 * sr)).min(1.0);
+                murmur_gain = 1.0 - 0.45 * ((v + n - self.note_frames) as f64 / (0.04 * sr)).min(1.0);
             }
         }
 
@@ -582,7 +584,9 @@ impl SingerVoice {
             let nasal = murmur_gain < 0.99;
             for i in 0..5 {
                 self.formants[i] += (tgt[i] - self.formants[i]) * k;
-                let bw = BANDWIDTHS[i] * (1.0 + 0.5 * (part.formants - 1.0)) * if nasal { 2.0 } else { 1.0 };
+                // 鼻音：声音从鼻腔出，F1 以上的共振都被吸掉（带宽很宽），只剩低沉的"嗯"。
+                let wide = if nasal && i > 0 { 4.0 } else { 1.0 };
+                let bw = BANDWIDTHS[i] * (1.0 + 0.5 * (part.formants - 1.0)) * wide;
                 self.tract[i].set(self.formants[i], bw, sr);
             }
             let (fc, fbw, _) = frication(self.syl.onset, self.formants[1]);
@@ -636,7 +640,7 @@ impl SingerVoice {
         for r in self.burst.iter_mut() {
             b = r.tick(b);
         }
-        x + 1.2 * f + 6.0 * b
+        x + 1.2 * f + 4.0 * b
     }
 }
 
@@ -744,14 +748,14 @@ fn murmur(o: Onset) -> Option<[f64; 5]> {
 fn nasal_coda(c: Coda) -> Option<[f64; 5]> {
     match c {
         Coda::None => None,
-        Coda::N => Some([250.0, 1550.0, 2550.0, 3400.0, 4400.0]),
+        Coda::N => Some([250.0, 1750.0, 2600.0, 3400.0, 4400.0]),
         Coda::Ng => Some([280.0, 1050.0, 2300.0, 3300.0, 4300.0]),
     }
 }
 
-/// 韵尾占这个音的最后多少帧：至多 0.15 秒、至多三成。
+/// 韵尾占这个音的最后多少帧：至多 0.2 秒、至多三成半。
 fn coda_frames(note: u64, sr: f64) -> u64 {
-    ((0.15 * sr) as u64).min(note * 3 / 10)
+    ((0.2 * sr) as u64).min(note * 7 / 20)
 }
 
 /// 元音开头的共振峰：从辅音部位的"锁点"与元音之间的一半起（Klatt），往元音滑。

@@ -268,8 +268,9 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             if singer {
                 if let Some(text) = note.lyric.as_deref() {
                     // 辅音提前：元音落在拍上，辅音（成阻、爆破、摩擦、送气）在它之前。
-                    let lead = ((crate::singer::lead_seconds(text) * sr) as usize).min(on_at);
-                    on_at -= lead;
+                    // 开头来不及提前时，辅音照样唱完（元音晚一点）。
+                    let lead = (crate::singer::lead_seconds(text) * sr) as usize;
+                    on_at = on_at.saturating_sub(lead);
                     acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: (off - on) as u32, lead: lead as u32 }));
                 }
             }
