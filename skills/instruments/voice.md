@@ -36,11 +36,11 @@ Preset values of each instrument:
 
 | instrument | `part` | `formant_shift` | `breath` | `brightness` | `vibrato_depth` | `vibrato_rate` | `vibrato_delay` | `glide` | `jitter` | `attack` | `release` |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.voice.soprano` | 0 | 1 | 1 | 0.55 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
-| `yinse.voice.alto` | 1 | 1 | 1 | 0.55 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
+| `yinse.voice.soprano` | 0 | 1 | 1 | 0.62 | 42 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
+| `yinse.voice.alto` | 1 | 1 | 1 | 0.45 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
 | `yinse.voice.tenor` | 2 | 1 | 1 | 0.55 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
-| `yinse.voice.bass` | 3 | 1 | 1 | 0.55 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
-| `yinse.voice.child` | 4 | 1 | 1 | 0.55 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
+| `yinse.voice.bass` | 3 | 1 | 1 | 0.45 | 30 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
+| `yinse.voice.child` | 4 | 1 | 1 | 0.6 | 25 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
 
 ### Tuning examples
 

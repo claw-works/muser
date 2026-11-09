@@ -71,7 +71,8 @@ struct Part {
 const PARTS: [Part; 5] = [
     // 女高、女中、男高、男低、童声
     Part { formants: 1.17, open: 0.6, breath: 0.06 },
-    Part { formants: 1.1, open: 0.55, breath: 0.05 },
+    // 女中：声道比女高长一些（共振峰更低），声音更暗、更厚。
+    Part { formants: 1.05, open: 0.52, breath: 0.05 },
     Part { formants: 1.0, open: 0.5, breath: 0.04 },
     Part { formants: 0.93, open: 0.45, breath: 0.04 },
     Part { formants: 1.28, open: 0.62, breath: 0.07 },
@@ -328,8 +329,9 @@ impl SingerParams {
             part: part as f64,
             formant_shift: 1.0,
             breath: 1.0,
-            brightness: 0.55,
-            vibrato_depth: 35.0,
+            // 各声部的默认亮度与颤音：女高亮、揉得宽一点，女中、男低暗一些。
+            brightness: [0.62, 0.45, 0.55, 0.45, 0.6][part.min(4)],
+            vibrato_depth: [42.0, 35.0, 35.0, 30.0, 25.0][part.min(4)],
             vibrato_rate: 5.5,
             vibrato_delay: 0.35,
             glide: 0.09,
