@@ -132,6 +132,10 @@ impl Onset {
             Manner::None => [0.0; 5],
             Manner::Stop { aspirated: false } => [0.035, 0.008, 0.0, 0.01, 0.0],
             Manner::Stop { aspirated: true } => [0.03, 0.01, 0.0, 0.07, 0.0],
+            // 舌面的 j q（[tɕ tɕʰ]）：爆破很轻，后面一段清楚的"嘶"（舌面摩擦）才是它们，太短就听成 g k。
+            // 前面还要一段清楚的闭住（无声）：不然听成 x。
+            Manner::Affricate { aspirated: false } if self.place == Place::Palatal => [0.04, 0.006, 0.045, 0.0, 0.0],
+            Manner::Affricate { aspirated: true } if self.place == Place::Palatal => [0.04, 0.006, 0.07, 0.04, 0.0],
             Manner::Affricate { aspirated: false } => [0.025, 0.005, 0.032, 0.0, 0.0],
             Manner::Affricate { aspirated: true } => [0.02, 0.006, 0.055, 0.045, 0.0],
             // 唱歌时辅音比说话短、轻（元音才是唱出来的）。
@@ -164,7 +168,9 @@ impl Onset {
         };
         let fric = if s[2] > 0.0 {
             let end = if s[3] > 0.0 { fric_end + 0.01 } else { lead + 0.015 };
-            noise_gate(t, burst_end, end, 0.02, 0.025)
+            // 塞擦音的摩擦紧接着爆破、一下子起来（这一下"起"是它和擦音的区别：q 不是 x）；擦音慢慢进来。
+            let attack = if matches!(self.manner, Manner::Affricate { .. }) { 0.003 } else { 0.02 };
+            noise_gate(t, burst_end, end, attack, 0.025)
         } else if self.manner == Manner::Rhotic {
             0.06 * noise_gate(t, 0.0, lead + 0.015, 0.02, 0.025)
         } else {
@@ -749,7 +755,9 @@ impl SingerVoice {
         for r in self.burst.iter_mut() {
             b = r.tick(b);
         }
-        x + 0.25 * f + 0.6 * b
+        // 舌面的 j q 爆破更明显一点（和 x 分开）。
+        let burst_gain = if self.syl.onset.place == Place::Palatal { 1.2 } else { 0.6 };
+        x + 0.25 * f + burst_gain * b
     }
 }
 
@@ -907,7 +915,7 @@ fn frication(o: Onset, f2: f64) -> (f64, f64, f64) {
     match o.place {
         Place::Dental => (7_000.0, 3_000.0, 0.28),
         Place::Retroflex => (3_200.0, 1_800.0, 0.5),
-        Place::Palatal => (4_800.0, 2_600.0, 0.35),
+        Place::Palatal => (4_800.0, 2_600.0, 0.7),
         Place::Labial => (5_000.0, 6_000.0, 0.3),
         Place::Velar => ((f2 * 1.1).max(1_000.0), 2_000.0, 0.9),
         Place::Alveolar => (5_500.0, 3_000.0, 0.4),
