@@ -35,7 +35,7 @@ Preset values of each instrument:
 
 | instrument | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `pluck_brightness` | `pluck_position` |
 |---|---|---|---|---|---|---|---|---|
-| `yinse.pluck.guzheng` | 25 | 5.5 | 0.3 | 10 | 8 | 1.6 | 4000 | 0.2 |
+| `yinse.pluck.guzheng` | 25 | 5.5 | 0.3 | 10 | 12 | 2.5 | 9000 | 0.12 |
 | `yinse.pluck.pipa` | 15 | 5 | 0.35 | 12 | 1.5 | 0.12 | 4500 | 0.14 |
 | `yinse.pluck.guqin` | 18 | 3.5 | 0.5 | 8 | 9 | 2 | 2500 | 0.12 |
 | `yinse.strike.yangqin` | 0 | 5 | 0.3 | 14 | 6 | 0.6 | 10000 | 0.12 |

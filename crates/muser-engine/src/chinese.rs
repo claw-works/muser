@@ -67,18 +67,19 @@ impl GuzhengParams {
     pub fn guzheng() -> Self {
         Self {
             string: StringParams {
-                decay: 8.0,
+                decay: 12.0,
                 decay_per_octave: 1.4,
-                high_decay: 0.4,
-                release: 1.6,
-                pluck_position: 0.2,
-                pluck_brightness: 4_000.0,
+                high_decay: 0.12,
+                release: 2.5,
+                pluck_position: 0.12,
+                pluck_brightness: 9_000.0,
                 velocity_darkening: 1.8,
                 velocity_range_db: 22.0,
                 stiffness: 0.18,
-                strike: 0.35,
-                pluck_noise: 0.15,
-                // 1.6 米长的桐木面板：低而宽的几个共鸣。拨弦的亮度、位置、噪声照一段古筝独奏录音量过（同样的音，频谱与起音的亮度对上）。
+                strike: 0.6,
+                pluck_noise: 0.3,
+                // 1.6 米长的桐木面板：低而宽的几个共鸣。"脆"：义甲拨下去那一下很亮、带拨片声，高频很快就没了（high_decay 小），
+                // 剩下干净、以基音为主的长余音（对着一段古筝录音听过、量过，用户选的）。
                 body: [BodyMode::new(75.0, 4.0, 1.0), BodyMode::new(150.0, 5.0, 1.0), BodyMode::new(260.0, 5.0, 0.6), BodyMode::new(430.0, 5.0, 0.45)],
                 body_mix: 0.5,
                 pickup_position: 0.0,
