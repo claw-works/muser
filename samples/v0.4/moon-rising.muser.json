@@ -87,14 +87,15 @@
   "tracks": [
     {
       "name": "voice",
-      "instrument": "choir.solo",
+      "instrument": "yinse.voice.soprano",
       "gain_db": 1,
       "sends": {
         "hall": -9
       },
       "instrument_params": {
-        "vibrato_depth": 22,
-        "breathiness": 0.22
+        "vibrato_depth": 25,
+        "breath": 1.5,
+        "brightness": 0.5
       },
       "humanize": {
         "timing_ms": 12,
