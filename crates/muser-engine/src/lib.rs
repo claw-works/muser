@@ -178,10 +178,27 @@ pub use render::{render, render_cached, render_loudness, render_metered, Level, 
 /// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。
 /// 一个 clip 的全部音符（相对 clip 起点）：`notes` 加上 `abc`、`grid`、`drummer` 展开的音符。
 /// `drummer` 没写种子时由工程 seed 与音轨、clip 位置推导。
+/// 只写了 `"from": "loop:<名字>"`、没有任何内容的 clip：loop 的名字。
+pub(crate) fn bare_loop(clip: &muser_core::Clip) -> Option<&str> {
+    let empty = clip.notes.is_empty() && clip.grid.is_none() && clip.abc.is_none() && clip.drummer.is_none() && clip.audio.is_none();
+    clip.from.as_deref().and_then(|f| f.strip_prefix("loop:")).filter(|_| empty)
+}
+
 pub fn clip_notes(project: &muser_core::Project, ti: usize, ci: usize) -> Result<Vec<muser_core::Note>, String> {
     let track = &project.tracks[ti];
     let clip = &track.clips[ci];
     let mut notes = clip.all_notes()?.into_owned();
+    if let Some(name) = bare_loop(clip) {
+        // 只写了 `"from": "loop:<名字>"`：从 loop 库取它的节奏型 / 音符，在 clip 长度里循环。
+        let l = loop_library::load_for(name, project.base_dir.as_deref()).map_err(|e| format!("from: {e}"))?;
+        if !l.grid.rows.is_empty() {
+            notes.extend(l.grid.expand(clip.length.0)?);
+        }
+        let beats = l.beats();
+        for k in 0..((clip.length.0 / beats).ceil() as usize) {
+            notes.extend(l.notes.iter().map(|n| muser_core::Note { start: muser_core::Beats(n.start.0 + k as f64 * beats), ..n.clone() }).filter(|n| n.start.0 < clip.length.0));
+        }
+    }
     if let Some(d) = &clip.drummer {
         let seed = d.seed.unwrap_or_else(|| muser_core::automation::derive_seed(project.seed, Some(ti), 0x4452_0000 + ci));
         notes.extend(drummer::expand(d, clip.length.0, seed, project.base_dir.as_deref())?);
@@ -210,7 +227,7 @@ pub fn validate_score(project: &muser_core::Project) -> Result<(), EngineError> 
     let project = &*arrange::arranged(project).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(e)))?;
     for (ti, track) in project.tracks.iter().enumerate() {
         for (ci, clip) in track.clips.iter().enumerate() {
-            if clip.drummer.is_some() {
+            if clip.drummer.is_some() || bare_loop(clip).is_some() {
                 clip_notes(project, ti, ci).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(format!("tracks[{ti}].clips[{ci}].{e}"))))?;
             }
         }
@@ -1229,6 +1246,15 @@ mod tests {
     }
 
     /// 不阻止渲染的提示：远超音域、part 只占一小段、ABC 小节和拍号对不上；写对了就没有。
+    #[test]
+    fn a_clip_with_only_from_plays_the_loop() {
+        let p = muser_core::Project::from_json(r#"{"name":"l","tempo":120,"tracks":[{"name":"d","instrument":"drums.808",
+            "clips":[{"start":0,"length":8,"from":"loop:rock_basic"},{"start":8,"length":4,"from":"loop:nope"}]}]}"#).unwrap();
+        let notes = clip_notes(&p, 0, 0).unwrap();
+        assert!(!notes.is_empty() && notes.iter().any(|n| n.start.0 >= 4.0), "the loop repeats over the clip");
+        assert!(clip_notes(&p, 0, 1).unwrap_err().contains("nope"));
+    }
+
     #[test]
     fn warnings_point_at_likely_mistakes() {
         let p = |v: serde_json::Value| proj(v);

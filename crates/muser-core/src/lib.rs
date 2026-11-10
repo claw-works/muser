@@ -578,7 +578,8 @@ pub struct Clip {
     /// 生成式鼓手（以 loop 为底加变化与过门），由引擎展开（`muser_engine::clip_notes`）。见 [`grid::Drummer`]。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drummer: Option<grid::Drummer>,
-    /// 来源标注（如 `loop:house_basic`），只作记录，渲染不看。
+    /// 来源（如 `loop:house_basic`）。clip 有内容时只作记录；只写了 `from`、没有 notes / grid / abc / drummer 时，
+    /// 引擎从 loop 库取这个 loop 的内容和律动（humanize），在 clip 长度里循环。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
     /// 音频文件（只在 `"instrument": "audio"` 的音轨上）。见 [`audio`]。

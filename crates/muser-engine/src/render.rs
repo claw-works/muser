@@ -228,8 +228,9 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             (0..notes.len()).map(|ni| if clip.legato { legato_len(ni).map_or(notes[ni].length, Beats) } else { notes[ni].length }).collect();
         // 人性化：clip 的覆盖音轨的；种子默认由工程 seed 与音轨、clip 位置推导。
         // drummer 的 clip 没写 humanize 时用底子 loop 的律动。
-        let loop_feel = match (&clip.humanize, &clip.drummer) {
-            (None, Some(d)) => crate::loop_library::load_for(&d.base, project.base_dir.as_deref()).ok().and_then(|l| l.humanize),
+        let loop_feel = match (&clip.humanize, &clip.drummer, crate::bare_loop(clip)) {
+            (None, Some(d), _) => crate::loop_library::load_for(&d.base, project.base_dir.as_deref()).ok().and_then(|l| l.humanize),
+            (None, None, Some(name)) => crate::loop_library::load_for(name, project.base_dir.as_deref()).ok().and_then(|l| l.humanize),
             _ => None,
         };
         let clip_feel = clip.humanize.as_ref().or(loop_feel.as_ref());
