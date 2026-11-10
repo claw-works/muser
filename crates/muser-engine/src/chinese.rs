@@ -342,6 +342,8 @@ pub struct DiziParams {
     /// 音色的固定着色：900 Hz 以下的低搁架（dB，0 不动）、2.2 kHz 一带的"鼻音"峰（dB，0 不动）。唢呐用。
     pub low_shelf: f64,
     pub presence: f64,
+    /// 沙哑（0 … 1）：跟着每个周期的波形起落的噪声（簧片拍打得不规则），唢呐的毛、"破"。
+    pub rasp: f64,
     /// 宽度（0 … 1）：几个很近、左右不同的反射，让声音有左右的宽度（不是混响）。
     pub width: f64,
     /// 气息强弱（乘在吹气的力度上，0.3 … 1.5）：1 照常，小了虚、暗、气多，大了实、亮。可写自动化。
@@ -367,7 +369,7 @@ impl DiziParams {
         w.accent_push = 1.0;
         // 连奏（音重叠）时手指一换音就到，不滑；滑音只在音符写了 `slide` 时（见 [`Dizi::note_on`]）。
         w.portamento = false;
-        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0 }
+        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, rasp: 0.0 }
     }
 
     /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
@@ -412,7 +414,7 @@ pub fn xiao() -> DiziParams {
     w.tone = 7_000.0;
     w.portamento = false;
     // 没有笛膜：和笛子共用同一套处理（花舌、剁音、滑音、气息），膜为 0 时声音就是吹管本身。
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, rasp: 0.0 }
 }
 
 /// 葫芦丝：自由簧（铜簧片）装在葫芦做的气室里，下面一根主管、两边附管。和单簧管一样以奇次谐波为主，
@@ -434,7 +436,7 @@ pub fn hulusi() -> DiziParams {
     w.attack = 0.03;
     w.portamento = false;
     w.legato_time = 0.08;
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, rasp: 0.0 }
 }
 
 /// 唢呐：双簧片、锥形木管、铜碗（喇叭口）——响、亮、带沙。对着七段独奏录音（百鸟朝凤、正月十五闹花灯、小放牛、喜事儿等）：
@@ -462,7 +464,8 @@ pub fn suona() -> DiziParams {
     w.portamento = false;
     w.legato_time = 0.06;
     // 录音的长时频谱：最响的是 1.3 … 3 kHz 一带（鼻音、"亮"），900 Hz 以下比我们的管子弱得多。
-    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 6.0 }
+    // 谐波之间的毛（噪声）录音里约 -49 dB（相对最强的谐波），管子本身只有约 -59：加沙哑补上。
+    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 6.0, rasp: 0.35 }
 }
 
 /// 笛子：一支单音的吹管，后面接笛膜（越响越"沙"的高频泛音）。
@@ -492,6 +495,7 @@ pub(crate) struct Dizi {
     breath_gain: f32,
     /// [`DiziParams::low_shelf`]、[`DiziParams::presence`] 的滤波。
     color: Vec<Filter<f32>>,
+    rasp_lp: [f32; 2],
     room_buf: [Vec<f32>; 2],
     room_lp: [f32; 2],
     room_at: usize,
@@ -512,7 +516,7 @@ impl Dizi {
         let drone = Synth::with_voices(1, move || WindVoice::new(w));
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
         Self { synth, drone, held: 0, drone_key: None, drone_buf: AudioBuffer::new(1, 0), params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
-            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], room_buf: [Vec::new(), Vec::new()], room_lp: [0.0; 2], room_at: 0, color: Vec::new(), sr: 48_000.0, rng: 0x1234_5678 }
+            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], room_buf: [Vec::new(), Vec::new()], room_lp: [0.0; 2], room_at: 0, color: Vec::new(), rasp_lp: [0.0; 2], sr: 48_000.0, rng: 0x1234_5678 }
     }
 
     pub(crate) fn flutter_next(&mut self, on: bool) {
@@ -645,6 +649,9 @@ impl Dizi {
         if m > 0.0 {
             self.buzz(buffer, m);
         }
+        if self.params.rasp > 0.0 {
+            self.rasp(buffer);
+        }
         if !self.color.is_empty() {
             self.color.iter_mut().for_each(|f| f.process(buffer));
         }
@@ -677,6 +684,24 @@ impl Dizi {
             hi.process(&mut self.wet2);
             for ((y, a), b) in buffer.channel_mut(c).iter_mut().zip(self.wet.channel(0)).zip(self.wet2.channel(0)) {
                 *y += m * 1.2 * (*a + 0.7 * *b);
+            }
+        }
+    }
+
+    /// 沙哑：白噪声乘上波形的绝对值（每个周期波峰处一阵噪声），去掉 800 Hz 以下，加回去。
+    fn rasp(&mut self, buffer: &mut AudioBuffer<f32>) {
+        let k = self.params.rasp.clamp(0.0, 1.0) as f32 * 0.5;
+        let a = (1.0 - (-core::f64::consts::TAU * 800.0 / self.sr).exp()) as f32;
+        for i in 0..buffer.num_frames() {
+            self.rng ^= self.rng << 13;
+            self.rng ^= self.rng >> 17;
+            self.rng ^= self.rng << 5;
+            let noise = (self.rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+            for c in 0..buffer.num_channels().min(2) {
+                let x = buffer.channel(c)[i];
+                let r = noise * x.abs();
+                self.rasp_lp[c] += a * (r - self.rasp_lp[c]);
+                buffer.channel_mut(c)[i] = x + k * (r - self.rasp_lp[c]);
             }
         }
     }

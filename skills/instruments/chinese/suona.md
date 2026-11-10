@@ -24,6 +24,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `breath` | 0.3 – 1.5 | ✓ | Breath strength (气息): scales how hard the player blows; 1 as preset, 0.6 a soft, airy, darker breath, 1.3 a full, bright one. Automate it to shape a phrase |
 | `embouchure` | 0.05 – 1 | ✓ | Embouchure (口型): how far the lips let the air through; smaller is darker and softer, larger is fuller and brighter |
 | `articulation` | 0 – 1 | next note | Tonguing (舌法): how hard the tongue starts a note, 0 soft (legato-like), 1 a hard, clear attack with more chiff (staccato) |
+| `rasp` | 0 – 1 | ✓ | Rasp (沙哑): noise that rides on every cycle of the wave, the irregular beating of a reed; 0 clean, 0.35 the suona's grain, 0.8 a hoarse, cracking tone (automate it for a 破音 effect) |
 | `width` | 0 – 1 | ✓ | Width: a few very close reflections, different left and right, as if played in a room; the sound gets breadth without a reverb's tail. 0 a dry, centred source |
 | `drone` | 0 – 1 | ✓ | Drone pipe (附管, the hulusi's side pipes): how loud the held note under the melody is, sounding while the player blows; 0 off (stopped), 0.3 a soft drone |
 | `drone_note` | 24 – 108 (integer) | — | The drone pipe's note (MIDI): usually the key's tonic or fifth (72 = C5 on a C hulusi) |
@@ -34,9 +35,9 @@ Automation column: ✓ = notes already sounding follow immediately; next note = 
 
 Preset values of each instrument:
 
-| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `width` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.suona` | 1 | 0.03 | 0.06 | 5.5 | 30 | 0.25 | 0.6 | 1 | 0.6 | 0.5 | 0 | 0 | 72 | 0.3 | 14000 |
+| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `rasp` | `width` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `yinse.blow.suona` | 1 | 0.03 | 0.06 | 5.5 | 30 | 0.25 | 0.6 | 1 | 0.6 | 0.5 | 0.35 | 0 | 0 | 72 | 0.3 | 14000 |
 
 ## Tips and common mistakes
 
@@ -46,4 +47,4 @@ Preset values of each instrument:
 - **Ornaments, very many**: in solo recordings half the notes are shorter than 70 ms. 叠音 (an upper flick just before a note), 打音 (a lower flick inside a held note), 历音 (a quick run up into a note), 颤音 `"trill": true`, written as on the dizi (see [dizi.md](dizi.md) for timings).
 - **Tongue**: 吐音 single, double and triple tonguing as quick short notes with small gaps; `"flutter": true` is 花舌, common in lively pieces; `accent` is a hard tongued attack.
 - **Bird calls (百鸟朝凤)**: fast upward chirps: very short notes with a `bend` rising one or two semitones, in quick groups, and trills high up.
-- `breath` (气息) and `embouchure` shape the tone as on the flutes; `membrane` (here the reed's and bell's rasp) at 0.5 is a smoother suona, 1 the default.
+- **Grain**: `rasp` (0.35 by default) is the noise riding on each cycle of the reed, the suona's grain; 0.15 a smoother, sweeter suona, 0.7-0.9 hoarse and cracking (破音), worth automating up on a climax or a shouted note. `membrane` (the bell's bright buzz) and `breath` (气息), `embouchure` (口型) shape the tone as on the flutes.

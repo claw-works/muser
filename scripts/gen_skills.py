@@ -553,7 +553,8 @@ CHINESE_PAGES = [
         "**Ornaments, very many**: in solo recordings half the notes are shorter than 70 ms. 叠音 (an upper flick just before a note), 打音 (a lower flick inside a held note), 历音 (a quick run up into a note), 颤音 `\"trill\": true`, written as on the dizi (see [dizi.md](dizi.md) for timings).",
         "**Tongue**: 吐音 single, double and triple tonguing as quick short notes with small gaps; `\"flutter\": true` is 花舌, common in lively pieces; `accent` is a hard tongued attack.",
         "**Bird calls (百鸟朝凤)**: fast upward chirps: very short notes with a `bend` rising one or two semitones, in quick groups, and trills high up.",
-        "`breath` (气息) and `embouchure` shape the tone as on the flutes; `membrane` (here the reed's and bell's rasp) at 0.5 is a smoother suona, 1 the default.",
+        "**Grain**: `rasp` (0.35 by default) is the noise riding on each cycle of the reed, the suona's grain; 0.15 a smoother, sweeter suona, 0.7-0.9 hoarse and cracking (破音), worth automating up on a climax or a shouted note. "
+        "`membrane` (the bell's bright buzz) and `breath` (气息), `embouchure` (口型) shape the tone as on the flutes.",
     ]),
     ("hulusi", "Hulusi (葫芦丝)", ["yinse.blow.hulusi"], [
         "The Dai free-reed gourd pipe of Yunnan: soft, round, a little nasal, like a gentle clarinet (odd harmonics strong, the even ones weaker but present). "
