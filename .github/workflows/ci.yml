@@ -1,8 +1,7 @@
 name: CI
 
+# 推到 main 不再自动跑（本地每次提交前都跑过测试与 clippy）：PR 上跑，要时在 Actions 页手动跑（Run workflow）。
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -51,8 +50,9 @@ jobs:
         run: cargo test -p muser-engine --locked
 
       # 发布里的 -headless 版（不带声卡）：和 release.yml 同样的特性组合，免得只在打 tag 时才发现编不过。
+      # 只查能不能编译，不跑 clippy：stable 每六周加新 lint，-D warnings 会让 CI 无故变红。
       - name: Check headless build
-        run: cargo clippy -p muser-cli -p muser-mcp --no-default-features --features muser-cli/host,muser-mcp/host --locked -- -D warnings
+        run: cargo check -p muser-cli -p muser-mcp --no-default-features --features muser-cli/host,muser-mcp/host --locked
 
       - name: Smoke test CLI
         shell: bash
