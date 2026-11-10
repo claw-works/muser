@@ -199,6 +199,49 @@ pub(crate) fn expand_tremolo(notes: &[muser_core::Note], rate: f64, bps: f64) ->
     out
 }
 
+/// 颤音每秒几个来回（录音里笛子的指颤 7–10 个，取 8）。
+const TRILL_RATE: f64 = 8.0;
+
+/// 颤音（`trill`）拆成主音与上方音的交替，虚颤音（`half_trill`）写成小幅快速的弯音。`bps`：每秒几拍。
+pub(crate) fn expand_trills(notes: &[muser_core::Note], bps: f64) -> Vec<muser_core::Note> {
+    let mut out = Vec::with_capacity(notes.len());
+    for n in notes {
+        let mut n = n.clone();
+        if n.half_trill && n.bend.is_empty() {
+            // ±0.3 半音，每秒 7 下，从音的开头就颤（手指一直在孔上）；每个来回 8 个点。
+            let cycle = bps / 7.0;
+            let points = ((n.length.0 / cycle) * 8.0).ceil() as usize;
+            n.bend = (0..=points).map(|i| {
+                let beat = i as f64 * cycle / 8.0;
+                (beat, 0.3 * (core::f64::consts::TAU * beat / cycle).sin())
+            }).collect();
+        }
+        if n.trill == 0 {
+            out.push(n);
+            continue;
+        }
+        let step = bps / (2.0 * TRILL_RATE);
+        let count = ((n.length.0 / step).round() as usize).max(2);
+        let step = n.length.0 / count as f64;
+        for i in 0..count {
+            let mut m = n.clone();
+            m.trill = 0;
+            m.start = muser_core::Beats(n.start.0 + i as f64 * step);
+            m.length = muser_core::Beats(step * 0.95);
+            if i % 2 == 1 {
+                m.pitch = n.pitch.saturating_add(n.trill).min(127);
+                m.velocity = (n.velocity * 0.9).clamp(0.0, 1.0);
+            }
+            if i > 0 {
+                m.bend.clear();
+                m.flutter = false;
+            }
+            out.push(m);
+        }
+    }
+    out
+}
+
 /// 扬琴的一个音是两根同音的弦（一"组"），各自略微走音：两组拨弦一起弹，声音"活"、有一点拍频。
 pub(crate) struct Courses {
     a: Synth<PluckedString, f32>,
@@ -299,7 +342,29 @@ impl DiziParams {
         // 七段竹笛独奏录音（喜相逢、喜洋洋、北京小曲等）的长音：二次谐波比基音低约 19 dB、三次约 16 dB、四次约 31 dB；
         // 长笛的默认（吹口偏 1.0）偶次谐波太强（二次只低 3 dB），像长笛不像笛子。0.2 时二、三、四次约 -17 / -12 / -25 dB。
         w.jet_offset = 0.2;
+        // 剁音（北派）：重音的舌头打得更狠、更响，收得也快（见 [`Dizi::note_on`]）。
+        w.accent_db = 5.0;
+        w.accent_push = 1.0;
         Self { wind: w, membrane: 0.45 }
+    }
+
+    /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松；揉得稍慢稍深。
+    /// 对着两段较低、较柔的录音（燕归来、月儿弯弯照九州）：二、三、四次谐波约 -11 / -10 / -21 dB，谐波之间的气声比梆笛的曲子多约 5 dB。
+    pub fn qudi() -> Self {
+        let mut d = Self::dizi();
+        let w = &mut d.wind;
+        w.jet_offset = 0.4;
+        w.noise = 0.55;
+        w.attack = 0.04;
+        w.vibrato_rate = 5.0;
+        w.vibrato_depth = 15.0;
+        w.vibrato_delay = 0.25;
+        w.articulation = 0.65;
+        w.legato_time = 0.08;
+        w.accent_db = 3.0;
+        w.accent_push = 0.6;
+        d.membrane = 0.25;
+        d
     }
 }
 
@@ -367,6 +432,12 @@ impl Dizi {
 
     pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
         self.flutter = std::mem::take(&mut self.flutter_next);
+        // 剁音：重音的音松开时一下就收住（舌头截断气流），不按平常的余音。
+        let mut w = self.params.wind;
+        if accent {
+            w.release = w.release.min(0.02);
+        }
+        self.synth.voices_mut().for_each(|v| v.set_params(w));
         self.synth.note_on_accented(note, velocity, accent);
     }
 
@@ -581,6 +652,21 @@ pub(crate) fn vibrato_bend(length_beats: f64, bps: f64, (cents, rate, delay): (f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trills_alternate_and_half_trills_shake_the_pitch() {
+        let n: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 1, "length": 1, "trill": true})).unwrap();
+        assert_eq!(n.trill, 2);
+        // ♩=120：每拍 0.5 秒，8 个来回 / 秒 → 8 个音。
+        let out = expand_trills(&[n], 2.0);
+        assert_eq!(out.len(), 8);
+        assert_eq!(out.iter().map(|m| m.pitch).collect::<Vec<_>>(), [74, 76, 74, 76, 74, 76, 74, 76]);
+        assert!((out[7].start.0 + out[7].length.0 - 2.0).abs() < 0.01 && out.iter().all(|m| m.trill == 0));
+        let h: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 0, "length": 1, "half_trill": true})).unwrap();
+        let shaken = &expand_trills(&[h], 2.0)[0];
+        let peak = shaken.bend.iter().map(|b| b.1.abs()).fold(0.0, f64::max);
+        assert!((peak - 0.3).abs() < 0.02 && shaken.bend.len() > 20, "{peak}");
+    }
 
     #[test]
     fn flutter_tongue_shakes_the_note_about_forty_times_a_second() {

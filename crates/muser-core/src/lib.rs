@@ -341,6 +341,9 @@ impl Project {
                     if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin and yinse.pluck.guzheng accept per-note string techniques")));
                     }
+                    if note.trill > 4 {
+                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].trill: {} semitones is too wide (1-4)", note.trill)));
+                    }
                     if note.harmonic.is_some_and(|h| !(2..=8).contains(&h)) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].harmonic: node denominator must be 2-8")));
                     }
@@ -676,6 +679,14 @@ pub struct Note {
     /// 连奏的音不会连进这个音。ABC 里写 `!breath!`。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub breath: bool,
+    /// 颤音（可省略，默认 0）：这个音和上方 `trill` 个半音的音快速交替（每秒约 8 个来回），整个时值都颤；
+    /// `true` 等于 2（全音），`1` 是半音。笛子南派的指颤，其它乐器也一样展开。
+    #[serde(default, skip_serializing_if = "is_zero_u8", deserialize_with = "trill_semitones")]
+    pub trill: u8,
+    /// 虚颤音（可省略，默认 false）：手指在音孔上半开半合地颤，音高小幅快速起伏（约 ±30 音分，每秒 7 下），比颤音柔。
+    /// 音符自己写了 `bend` 时不加。能弯音的乐器才有。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub half_trill: bool,
     /// 花舌（可省略，默认 false）：吹这个音时舌尖打嘟噜，气流被打成每秒约 40 下的颤动，声音"嘟噜噜"带沙（`yinse.blow.dizi`）。
     /// 其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
@@ -723,6 +734,24 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+fn is_zero_u8(v: &u8) -> bool {
+    *v == 0
+}
+
+/// `"trill": true`（全音）、`false`、或半音数。
+fn trill_semitones<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum T {
+        B(bool),
+        N(u8),
+    }
+    Ok(match T::deserialize(d)? {
+        T::B(b) => if b { 2 } else { 0 },
+        T::N(n) => n,
+    })
+}
+
 fn default_velocity() -> f32 {
     0.8
 }
@@ -739,7 +768,7 @@ impl Note {
             tremolo: false,
             slide: false,
             slide_out: false,
-            breath: false, damp: false, flutter: false,
+            breath: false, damp: false, flutter: false, trill: 0, half_trill: false,
             bend: Vec::new(),
             lyric: None,
             technique: None, harmonic: None,

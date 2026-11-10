@@ -335,10 +335,11 @@ pub(crate) static DIZI: &[ParamDef<crate::chinese::DiziParams>] = &[
     num!("vibrato_depth", 0.0, 100.0, "cent", "Vibrato depth: 0 straight; 10-20 normal; 30+ the wide folk vibrato", |p| p.wind.vibrato_depth),
     num!("vibrato_delay", 0.0, 4.0, "s", "Delay after a note starts before the vibrato", |p| p.wind.vibrato_delay),
     num!("breath_noise", 0.0, 1.0, "", "Breath noise: more airflow", |p| p.wind.noise),
+    num!("breath_vibrato", 0.0, 1.0, "", "Breath vibrato (气震音): how much the vibrato also swells the breath, louder and softer at `vibrato_rate`; 0.25 a little, 0.8 the pulsing breath vibrato (with a small `vibrato_depth` it is almost only in the breath)", |p| p.wind.tremolo),
     num!("tone", 500.0, 20000.0, "Hz", "Final low-pass: brightness", |p| p.wind.tone),
 ];
 
-pub(crate) const NEXT_DIZI: &[&str] = &["attack", "release", "vibrato_rate", "vibrato_depth", "vibrato_delay"];
+pub(crate) const NEXT_DIZI: &[&str] = &["attack", "release", "vibrato_rate", "vibrato_depth", "vibrato_delay", "breath_vibrato"];
 
 pub(crate) const NEXT_SINGER: &[&str] = &["attack", "vibrato_delay"];
 

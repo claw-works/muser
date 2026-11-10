@@ -154,6 +154,12 @@ struct NoteSpec {
     /// Flutter tongue (optional, yinse.blow.dizi): 花舌, the tongue rolls about 40 times a second through the note, a rough, buzzing "drrr".
     #[serde(default)]
     flutter: Option<bool>,
+    /// Trill (optional): the note alternates with the note this many semitones above, about 8 times a second, for its whole length (2 = a whole tone, 1 = a half tone; the dizi's 颤音).
+    #[serde(default)]
+    trill: Option<u8>,
+    /// Half-hole trill (optional, 虚颤音): a small, fast pitch shake of about ±30 cents, 7 times a second; skipped when the note has its own bend.
+    #[serde(default)]
+    half_trill: Option<bool>,
     /// Slide out (optional, yinse.voice.*): the end of this word slides to the next note's pitch, where the next word starts.
     #[serde(default)]
     slide_out: Option<bool>,
@@ -828,6 +834,8 @@ impl Muser {
                 note.breath = n.breath.unwrap_or(false);
                 note.damp = n.damp.unwrap_or(false);
                 note.flutter = n.flutter.unwrap_or(false);
+                note.trill = n.trill.unwrap_or(0);
+                note.half_trill = n.half_trill.unwrap_or(false);
                 note.slide_out = n.slide_out.unwrap_or(false);
                 note.bend = n.bend;
                 note.technique = n.technique.map(|t| match t {

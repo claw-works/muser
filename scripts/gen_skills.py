@@ -404,12 +404,13 @@ FAMILY_PAGES = {
         "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
     ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
-        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子, 梆笛), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
         "Playing techniques are note fields, the same on every instrument that has them (others ignore them): "
         "`\"tremolo\": true` (琵琶轮指, 扬琴轮音, 古筝摇指: plucked or struck again and again for the whole note, `tremolo_rate` per second); "
         "`bend` (按音, 推拉, 滑音; ±2 semitones, ±24 on the guqin and guzheng); "
-        "`\"technique\"` / `\"harmonic\"` (散音, 按音, 泛音 on the guqin and guzheng); `\"damp\": true` (止音 on the guqin and guzheng); `\"flutter\": true` (花舌 on the dizi).",
+        "`\"technique\"` / `\"harmonic\"` (散音, 按音, 泛音 on the guqin and guzheng); `\"damp\": true` (止音 on the guqin and guzheng); `\"flutter\": true` (花舌 on the dizi and qudi); "
+        "`\"trill\": true` / `1` (颤音: alternates with the whole / half tone above about 8 times a second, any instrument) and `\"half_trill\": true` (虚颤音: a small pitch shake).",
     ]),
     "accordion": ("Accordion", "accordion.md", [
         "muser's own free-reed instrument (yinse): `yinse.blow.accordion` (musette: three middle reeds tuned apart, the French shimmer), `yinse.blow.accordion_dry` (fuller and nearly in tune: tango, folk, polka), `yinse.blow.bandoneon` (low + middle reeds an octave apart: the tango sound).",
@@ -538,13 +539,23 @@ CHINESE_PAGES = [
         "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet.",
         "`vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
     ]),
-    ("dizi", "Dizi (笛子) and xiao (箫)", ["yinse.blow.dizi", "yinse.blow.xiao"], [
-        "**Dizi**: high (G4-C7) and lively, and most of its character is in the ornaments: in solo recordings about a third of the notes are shorter than 70 ms.",
+    ("dizi", "Dizi (笛子), qudi (曲笛) and xiao (箫)", ["yinse.blow.dizi", "yinse.blow.qudi", "yinse.blow.xiao"], [
+        "**Two schools, two flutes.** Northern style (北派, `yinse.blow.dizi`, the high 梆笛): tongue techniques, 吐音, 剁音, 花舌, 滑音, bright and lively (喜相逢, 陕北好). "
+        "Southern style (南派, `yinse.blow.qudi`, the lower, rounder 曲笛 with a lighter membrane): finger techniques, 颤音, 叠音, 打音, elegant and smooth (Jiangnan tunes, Kunqu). "
+        "Most of a dizi's character is in these ornaments: in solo recordings about a third of the notes are shorter than 70 ms.",
+        "**Fingers (指).** 颤音 (trill): `\"trill\": true` alternates the note with the whole tone above about 8 times a second for its whole length (`\"trill\": 1` a half tone above); "
+        "虚颤音 (half-hole trill): `\"half_trill\": true`, a softer shake of about ±30 cents, 7 times a second. "
         "叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; "
-        "历音 a run of three quick notes from below into the note; 颤音 alternates the note and the one above about ten times a second; "
-        "吐音 (tonguing) is repeated short notes with small gaps; a note that overlaps the next slides into it (滑音).",
-        "`\"flutter\": true` on a note is 花舌, the tongue rolling about 40 times a second (the shake on long notes of lively northern pieces such as 喜相逢).",
-        "Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured); `membrane` sets the buzz.",
+        "历音 a run of three quick notes from below into the note.",
+        "**Tongue (舌).** 吐音 (tonguing) is repeated short notes with small gaps (about 0.1 beat): single tonguing (单吐 tu tu) even; double tonguing (双吐 tu-ku) alternates a strong and a slightly softer note (velocity 0.8 / 0.7); "
+        "triple tonguing (三吐 tu-tu-ku) groups of three, strong-strong-soft, often as a 16th + two 32nds. "
+        "剁音: `\"accent\": true` on a short note: the tongue strikes hard (louder, a sharper attack) and cuts the note off at its end. "
+        "花舌: `\"flutter\": true`, the tongue rolling about 40 times a second through the note (the shake on long notes of lively northern pieces). "
+        "滑音: a note that overlaps the next slides into it; or a `bend`.",
+        "**Breath (气).** Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured; the qudi a little slower and deeper). "
+        "气震音 (breath vibrato): `breath_vibrato` (0.8 with a small `vibrato_depth`) makes the breath pulse louder and softer instead of the pitch. "
+        "Circular breathing (循环换气) needs nothing: the synthesized flute never runs out of air, so write long phrases without gaps; leave gaps only where a player would breathe.",
+        "`membrane` sets the buzz (the dizi 0.45, the qudi 0.25).",
         "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
     ]),
 ]
