@@ -326,9 +326,10 @@ impl Project {
                 }
                 let notes = clip.all_notes().map_err(|e| CoreError::Invalid(format!("tracks[{ti}].clips[{ci}].{e}")))?;
                 for (ni, note) in notes.iter().enumerate() {
-                    if note.pitch > 127 || note.start.0 < 0.0 || note.length.0 <= 0.0 {
+                    // 倚音、弱起、提前的装饰音可以比 clip 起点早一点（至多 1 拍），但不能早于工程开头。
+                    if note.pitch > 127 || note.start.0 < -1.0 || clip.start.0 + note.start.0 < 0.0 || note.length.0 <= 0.0 {
                         return Err(CoreError::Invalid(format!(
-                            "track[{ti}].clip[{ci}].note[{ni}] is invalid: need pitch 0-127, start >= 0, length > 0"
+                            "track[{ti}].clip[{ci}].note[{ni}] is invalid: need pitch 0-127, start >= -1 (at most a beat before the clip, not before beat 0 of the project), length > 0"
                         )));
                     }
                     if !(0.0..=1.0).contains(&note.velocity) {
@@ -645,7 +646,7 @@ pub fn takes_technique(instrument: &str) -> bool {
 pub struct Note {
     /// MIDI 音高，0-127（60 = 中央 C / C4）。
     pub pitch: u8,
-    /// 起点（beats，相对所在 clip 的起点）。
+    /// 起点（beats，相对所在 clip 的起点）。可以是负的，至多 -1 拍（倚音、弱起），但不能早于工程开头。
     pub start: Beats,
     /// 时值（beats）。
     pub length: Beats,
@@ -824,6 +825,15 @@ mod tests {
         p.tracks[0].clips[0].notes[0].technique = Some(Technique::Harmonic);
         p.tracks[0].clips[0].notes[0].harmonic = Some(1);
         assert!(p.validate().is_err(), "touching at the end is not a harmonic node");
+    }
+
+    #[test]
+    fn notes_may_start_up_to_a_beat_before_their_clip() {
+        let p = |clip: f64, note: f64| Project::from_json(&format!(r#"{{"name":"n","tempo":120,"tracks":[{{"name":"d","instrument":"drums.808",
+            "clips":[{{"start":{clip},"length":4,"notes":[{{"pitch":38,"start":{note},"length":0.1}}]}}]}}]}}"#)).unwrap().validate();
+        assert!(p(4.0, -0.1).is_ok());
+        assert!(p(4.0, -1.5).is_err(), "more than a beat early");
+        assert!(p(0.0, -0.1).is_err(), "before the project starts");
     }
 
     #[test]

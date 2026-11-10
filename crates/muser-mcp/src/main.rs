@@ -126,7 +126,7 @@ enum TechniqueSpec {
 struct NoteSpec {
     /// MIDI pitch 0-127 (60 = middle C; for drum kits use GM drum keys).
     pitch: u8,
-    /// Note start (beats, relative to the start of its clip).
+    /// Note start (beats, relative to the start of its clip); may be up to 1 beat negative (flams, pickups), but not before beat 0 of the project.
     start: f64,
     /// Note duration (beats), > 0.
     length: f64,
