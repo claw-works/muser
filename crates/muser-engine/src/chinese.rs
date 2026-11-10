@@ -334,9 +334,13 @@ pub(crate) struct Dizi {
     flutter_next: bool,
     flutter: bool,
     flutter_phase: f64,
+    flutter_lp: f32,
     sr: f64,
     rng: u32,
 }
+
+/// 花舌的气声有多少（相对这一刻的音量）。
+const FLUTTER_HISS: f32 = 0.06;
 
 impl Dizi {
     pub(crate) fn new(params: DiziParams) -> Self {
@@ -345,7 +349,7 @@ impl Dizi {
         synth.set_legato(true);
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
         Self { synth, params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
-            flutter_next: false, flutter: false, flutter_phase: 0.0, sr: 48_000.0, rng: 0x1234_5678 }
+            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, sr: 48_000.0, rng: 0x1234_5678 }
     }
 
     pub(crate) fn flutter_next(&mut self, on: bool) {
@@ -420,12 +424,15 @@ impl Dizi {
             let noise = (self.rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
             let rate = 40.0 * (1.0 + 0.06 * f64::from(noise));
             self.flutter_phase = (self.flutter_phase + rate / self.sr).fract();
-            // 舌头贴上去时短、放开时长：半波整流过的正弦，底不到零（气没断）。
-            let open = (core::f64::consts::TAU * self.flutter_phase).sin().max(0.0) as f32;
-            let gain = 0.65 + 0.35 * open;
+            // 平滑的正弦起伏（只在谐波两边各出一条 40 Hz 的边带，不像整流波那样一路溅到谐波之间），
+            // 气声只加在 3 kHz 以上、跟着舌头放开时出：录音里花舌长音谐波之间的噪声低于 3 kHz 约 -61 dB，3–8 kHz 约 -55 dB。
+            let open = 0.5 + 0.5 * (core::f64::consts::TAU * self.flutter_phase).sin() as f32;
+            let gain = 0.78 + 0.22 * (2.0 * open - 1.0);
+            let hiss = noise - self.flutter_lp;
+            self.flutter_lp += 0.33 * (noise - self.flutter_lp);
             for c in 0..buffer.num_channels() {
                 let x = buffer.channel(c)[i];
-                buffer.channel_mut(c)[i] = x * gain + 0.25 * x.abs() * noise * open;
+                buffer.channel_mut(c)[i] = x * gain + FLUTTER_HISS * x.abs() * hiss * open;
             }
         }
     }
