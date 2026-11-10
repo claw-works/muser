@@ -13,7 +13,7 @@ Use muser's built-in SFZ sampler (manguebyte-sampler) to play `.sfz` sound libra
   a relative path is looked up in the environment variable `MUSER_SFZ_PATH` (the root directories of sound libraries, separated by `:`, or `;` on Windows), and subdirectories up to two levels below a root are searched too,
   so that the same project works on different machines. For shared projects prefer relative paths.
 - A note's `pitch` is a MIDI pitch; the range, velocity layers, loops and release samples are all defined by the .sfz file. Up to 32 voices at once.
-- Large sound libraries whose sample files total more than 1 GB are streamed from disk automatically (memory keeps only the start and loop section of each sample); the sound is the same as reading everything in, but rendering is several times slower; smaller libraries are read entirely into memory.
+- Sound libraries are read entirely into memory until their sample files total 1 GB across the whole project (all libraries counted together; `MUSER_SFZ_MEMORY_MB` changes the budget); the libraries loaded after that are streamed from disk (memory keeps only the start and loop section of each sample): the sound is the same, but rendering is several times slower.
 - `muser validate` checks that the .sfz file exists; missing samples or format errors are reported at render time.
 - Supported expressive opcodes: filters (`fil_type` `cutoff` `resonance` `fil_keytrack` `fil_veltrack`) and filter envelopes (`fileg_*`);
   `<opcode>_onccN` modulated **in real time** by controllers (volume, pan, pitch, cutoff, resonance, each stage of the two envelopes), with controller values taken from the project's

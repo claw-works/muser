@@ -96,8 +96,17 @@ fn parse(path: &Path) -> Result<(Sfz, MuserSource), String> {
     Ok((sfz, source))
 }
 
-/// 采样文件合计超过这个大小（磁盘上）就流式读：整个解码进内存会占到它的几倍。
+/// 整个读进内存的音色库，采样文件（磁盘上）合计不超过这个大小；超出的部分流式读：整个解码进内存会占到它的几倍。
+/// 一个工程里几个几百 MB 的库叠起来也算在一起（先加载的读进内存，后面放不下的流式读）。
+/// `MUSER_SFZ_MEMORY_MB` 可以改（默认 1024）。
 const STREAM_ABOVE_BYTES: u64 = 1 << 30;
+
+fn memory_budget() -> u64 {
+    std::env::var("MUSER_SFZ_MEMORY_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()).map_or(STREAM_ABOVE_BYTES, |mb| mb << 20)
+}
+
+/// 现在整个读进内存、还有人在用的音色库的采样文件合计大小。
+static RESIDENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// 音色用到的采样文件在磁盘上合计多大（每个文件算一次）。
 fn sample_bytes(sfz: &Sfz, root: &Path) -> u64 {
@@ -325,6 +334,14 @@ pub struct Loaded {
     pub warnings: BTreeMap<String, usize>,
     /// 工程里给的控制器值（0–127），采样器开始演奏前设上。
     pub cc: BTreeMap<u8, u8>,
+    /// 整个读进内存的采样文件大小（流式读的为 0），算在 [`RESIDENT`] 里。
+    resident: u64,
+}
+
+impl Drop for Loaded {
+    fn drop(&mut self) {
+        RESIDENT.fetch_sub(self.resident, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// 不支持内容的一行摘要，按次数从多到少，最多列 12 项。
@@ -356,8 +373,10 @@ pub fn load_shared(path: &Path, opts: &Options) -> Result<std::sync::Arc<Loaded>
     if let Some(l) = held.upgrade() {
         return Ok(l);
     }
-    let (instrument, dropped, warnings) = load(path, opts)?;
-    let l = std::sync::Arc::new(Loaded { instrument, dropped, warnings, cc: opts.cc.clone() });
+    let left = memory_budget().saturating_sub(RESIDENT.load(std::sync::atomic::Ordering::Relaxed));
+    let (instrument, dropped, warnings, resident) = load_with(path, opts, left)?;
+    RESIDENT.fetch_add(resident, std::sync::atomic::Ordering::Relaxed);
+    let l = std::sync::Arc::new(Loaded { instrument, dropped, warnings, cc: opts.cc.clone(), resident });
     *held = std::sync::Arc::downgrade(&l);
     Ok(l)
 }
@@ -444,11 +463,11 @@ fn split_by_velocity(regions: &mut Vec<manguebyte::sampler::Region>, handled: &m
 
 /// 按控制器值展开后加载乐器。返回 (乐器, 去掉的区域数, 不支持的内容)。
 pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<String, usize>), String> {
-    load_with(path, opts, STREAM_ABOVE_BYTES)
+    load_with(path, opts, memory_budget()).map(|(i, d, w, _)| (i, d, w))
 }
 
-/// 同 [`load`]；采样文件合计超过 `stream_above` 字节时流式读。
-fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrument, usize, BTreeMap<String, usize>), String> {
+/// 同 [`load`]；采样文件合计超过 `stream_above` 字节时流式读。最后一项是整个读进内存的采样文件大小（流式读时为 0）。
+fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrument, usize, BTreeMap<String, usize>, u64), String> {
     let overrides = &opts.cc;
     let (mut sfz, mut source) = parse(path)?;
     // 键位切换：选定奏法，去掉其它奏法的区域。
@@ -632,16 +651,18 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
         *warnings.entry(k).or_default() += 1;
     }
     // 很大的音色库从磁盘流式读：内存里只留每个采样的开头与循环段，其余边演奏边读，声音与整个读进来一样。
-    // 代价是渲染慢几倍（每个音都要从磁盘解码），所以只在采样文件合计超过 STREAM_ABOVE_BYTES 时用。
+    // 代价是渲染慢几倍（每个音都要从磁盘解码），所以只在放不进内存预算（见 [`memory_budget`]）时用。
     // `*noise` 是 muser 在内存里给的虚拟文件，磁盘上没有：这样的音色整个读进来。
     let root = path.parent().unwrap_or(Path::new(""));
-    let inst = if !sfz.regions.iter().any(|r| &*r.sample == NOISE_FILE) && sample_bytes(&sfz, root) > stream_above {
+    let bytes = sample_bytes(&sfz, root);
+    let stream = !sfz.regions.iter().any(|r| &*r.sample == NOISE_FILE) && bytes > stream_above;
+    let inst = if stream {
         Instrument::load_streaming(&sfz, root, &manguebyte::sampler::StreamOptions::new())
     } else {
         Instrument::load(&sfz, &mut source)
     }
     .map_err(|e| format!("failed to load SFZ '{}': {e}", path.display()))?;
-    Ok((inst, dropped, warnings))
+    Ok((inst, dropped, warnings, if stream { 0 } else { bytes }))
 }
 
 #[cfg(test)]
@@ -721,9 +742,11 @@ mod tests {
             }
             out
         };
-        let (whole, ..) = load_with(&path, &Options::default(), u64::MAX).unwrap();
-        let (streamed, ..) = load_with(&path, &Options::default(), 0).unwrap();
+        let (whole, _, _, resident) = load_with(&path, &Options::default(), u64::MAX).unwrap();
+        let (streamed, _, _, none) = load_with(&path, &Options::default(), 0).unwrap();
         assert!(!whole.is_streaming() && streamed.is_streaming());
+        // 整个读进来的算进内存预算，流式读的不算。
+        assert_eq!((resident, none), (std::fs::metadata(dir.join("n.wav")).unwrap().len(), 0));
         let (a, b) = (play(whole), play(streamed));
         assert!(a.iter().any(|x| x.abs() > 1e-3));
         assert_eq!(a, b);
