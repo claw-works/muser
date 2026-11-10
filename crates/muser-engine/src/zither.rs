@@ -67,7 +67,7 @@ pub(crate) static PIPA: Profile = Profile {
     pressed_release: 0.6,
     pressed_stiffness: 0.001,
     open_bends: false,
-    radiation_hz: 150.0,
+    radiation_hz: 80.0,
     voices: 12,
 };
 
@@ -150,7 +150,7 @@ impl ZitherParams {
 
     /// 琵琶：对着五段独奏录音（十面埋伏、阳春白雪、平湖秋月、金蛇狂舞、步步高）的单音：低频每秒衰减约 20 dB、
     /// 高频约 55 … 70 dB；义甲弹在靠近覆手的地方，起音的频谱重心约 2.5 … 3.4 kHz，150 ms 后约 1.3 … 2.4 kHz；
-    /// 梨形琴身的共鸣在中频，面板上还有一个 3 kHz 左右的亮点（"铮"）。轮指约每秒 16 下。
+    /// 面板上还有一个 3 kHz 左右的亮点（"铮"）。轮指约每秒 16 下。
     pub(crate) fn pipa() -> Self {
         let mut pluck = GuzhengParams::pipa();
         pluck.tremolo_rate = 16.0;
@@ -163,15 +163,16 @@ impl ZitherParams {
         s.pluck_brightness = 20_000.0;
         s.strike = 1.0;
         s.pluck_noise = 0.5;
-        s.body_mix = 0.6;
         s.tone = 10_000.0;
+        // 琴箱的低频共鸣（约 140 Hz 宽、280 Hz）加上其余弦一起响，琴身放得出 80 Hz 以上：用户在几版里选的"琴箱加弦共鸣"，原来的单薄。
+        s.body_mix = 0.85;
         s.body = [
-            BodyMode::new(330.0, 4.0, 1.5),
+            BodyMode::new(140.0, 2.5, 2.0),
+            BodyMode::new(280.0, 3.0, 1.8),
             BodyMode::new(560.0, 4.0, 2.1),
-            BodyMode::new(1_000.0, 3.0, 1.8),
             BodyMode::new(2_800.0, 2.0, 3.0),
         ];
-        Self { pluck, sympathetic: 0.2, profile: &PIPA, ..Default::default() }
+        Self { pluck, sympathetic: 0.6, profile: &PIPA, ..Default::default() }
     }
 
     /// 这个音跟着弯音、揉弦吗。

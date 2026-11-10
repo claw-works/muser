@@ -40,7 +40,7 @@ Preset values of each instrument:
 
 | instrument | `technique` | `harmonic` | `pressure` | `slide_time` | `slide_noise` | `sympathetic` | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `high_decay` | `pluck_brightness` | `pluck_position` | `strike` | `pluck_noise` | `body_mix` | `tone` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.pluck.pipa` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.2 | 15 | 5 | 0.35 | 16 | 4 | 0.8 | 0.25 | 20000 | 0.05 | 1 | 0.5 | 0.6 | 10000 |
+| `yinse.pluck.pipa` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.6 | 15 | 5 | 0.35 | 16 | 4 | 0.8 | 0.25 | 20000 | 0.05 | 1 | 0.5 | 0.85 | 10000 |
 
 ### Tuning examples
 
