@@ -1,5 +1,5 @@
 //! 中国民族乐器（muser 自己的，yinse）：古筝 `yinse.pluck.guzheng`、琵琶 `yinse.pluck.pipa`、古琴 `yinse.pluck.guqin`、
-//! 扬琴 `yinse.strike.yangqin`、二胡 `yinse.bow.erhu`、笛子 `yinse.blow.dizi`、箫 `yinse.blow.xiao`。
+//! 扬琴 `yinse.strike.yangqin`、二胡 `yinse.bow.erhu`、梆笛 `yinse.blow.bangdi`（别名 `yinse.blow.dizi`）、曲笛 `yinse.blow.qudi`、箫 `yinse.blow.xiao`。
 //!
 //! 都在 manguebyte 的物理模型上配参数：
 //! - **古筝**：和古琴共用的模态弦模型（见 [`crate::zither`]）：21 根弦定 D 调五声，桐木面板与其余弦的共鸣；

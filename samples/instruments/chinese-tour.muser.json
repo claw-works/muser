@@ -509,7 +509,7 @@
   },
   {
    "name": "dizi",
-   "instrument": "yinse.blow.dizi",
+   "instrument": "yinse.blow.bangdi",
    "gain_db": -2,
    "effects": [
     {

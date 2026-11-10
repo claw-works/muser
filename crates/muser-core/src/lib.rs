@@ -687,7 +687,7 @@ pub struct Note {
     /// 音符自己写了 `bend` 时不加。能弯音的乐器才有。
     #[serde(default, skip_serializing_if = "is_false")]
     pub half_trill: bool,
-    /// 花舌（可省略，默认 false）：吹这个音时舌尖打嘟噜，气流被打成每秒约 40 下的颤动，声音"嘟噜噜"带沙（`yinse.blow.dizi`）。
+    /// 花舌（可省略，默认 false）：吹这个音时舌尖打嘟噜，气流被打成每秒约 40 下的颤动，声音"嘟噜噜"带沙（`yinse.blow.bangdi`、`yinse.blow.qudi`）。
     /// 其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub flutter: bool,

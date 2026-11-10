@@ -151,7 +151,7 @@ struct NoteSpec {
     /// Damp (optional, yinse.pluck.guzheng / guqin): the hand stops the string when this note ends (止音, × in guzheng scores); otherwise it keeps ringing.
     #[serde(default)]
     damp: Option<bool>,
-    /// Flutter tongue (optional, yinse.blow.dizi): 花舌, the tongue rolls about 40 times a second through the note, a rough, buzzing "drrr".
+    /// Flutter tongue (optional, yinse.blow.bangdi / qudi): 花舌, the tongue rolls about 40 times a second through the note, a rough, buzzing "drrr".
     #[serde(default)]
     flutter: Option<bool>,
     /// Trill (optional): the note alternates with the note this many semitones above, about 8 times a second, for its whole length (2 = a whole tone, 1 = a half tone; the dizi's 颤音).

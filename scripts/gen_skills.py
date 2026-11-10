@@ -404,7 +404,7 @@ FAMILY_PAGES = {
         "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
     ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
-        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子, 梆笛), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
         "Playing techniques are note fields, the same on every instrument that has them (others ignore them): "
         "`\"tremolo\": true` (琵琶轮指, 扬琴轮音, 古筝摇指: plucked or struck again and again for the whole note, `tremolo_rate` per second); "
@@ -539,8 +539,8 @@ CHINESE_PAGES = [
         "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet.",
         "`vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
     ]),
-    ("dizi", "Dizi (笛子), qudi (曲笛) and xiao (箫)", ["yinse.blow.dizi", "yinse.blow.qudi", "yinse.blow.xiao"], [
-        "**Two schools, two flutes.** Northern style (北派, `yinse.blow.dizi`, the high 梆笛): tongue techniques, 吐音, 剁音, 花舌, 滑音, bright and lively (喜相逢, 陕北好). "
+    ("dizi", "Dizi (笛子): bangdi (梆笛), qudi (曲笛) and xiao (箫)", ["yinse.blow.bangdi", "yinse.blow.qudi", "yinse.blow.xiao"], [
+        "**Two schools, two flutes.** Northern style (北派, `yinse.blow.bangdi`, the high 梆笛; `yinse.blow.dizi` is the same flute): tongue techniques, 吐音, 剁音, 花舌, 滑音, bright and lively (喜相逢, 陕北好). "
         "Southern style (南派, `yinse.blow.qudi`, the lower, rounder 曲笛 with a lighter membrane): finger techniques, 颤音, 叠音, 打音, elegant and smooth (Jiangnan tunes, Kunqu). "
         "Most of a dizi's character is in these ornaments: in solo recordings about a third of the notes are shorter than 70 ms.",
         "**Fingers (指).** 颤音 (trill): `\"trill\": true` alternates the note with the whole tone above about 8 times a second for its whole length (`\"trill\": 1` a half tone above); "
@@ -555,8 +555,8 @@ CHINESE_PAGES = [
         "**Breath (气).** Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured; the qudi a little slower and deeper). "
         "气震音 (breath vibrato): `breath_vibrato` (0.8 with a small `vibrato_depth`) makes the breath pulse louder and softer instead of the pitch. "
         "Circular breathing (循环换气) needs nothing: the synthesized flute never runs out of air, so write long phrases without gaps; leave gaps only where a player would breathe.",
-        "`membrane` sets the buzz (the dizi 0.45, the qudi 0.25).",
-        "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
+        "`membrane` sets the buzz (the bangdi 0.45, the qudi 0.25).",
+        "**Xiao** (箫, the end-blown 洞箫; written with the bamboo radical, 萧 is a surname): low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
     ]),
 ]
 
@@ -599,7 +599,7 @@ PARAM_EXAMPLES = {
                 ("Guzheng with a deep, slow vibrato on held notes", "yinse.pluck.guzheng", {"vibrato": 45, "vibrato_rate": 4}),
                 ("A plainer, softer erhu", "yinse.bow.erhu", {"vibrato_depth": 15, "pressure": 0.4}),
                 ("A faster pipa tremolo", "yinse.pluck.pipa", {"tremolo_rate": 16}),
-                ("A dizi with a lighter membrane and a wide folk vibrato", "yinse.blow.dizi", {"membrane": 0.3, "vibrato_depth": 30})],
+                ("A bangdi with a lighter membrane and a wide folk vibrato", "yinse.blow.bangdi", {"membrane": 0.3, "vibrato_depth": 30})],
     "accordion": [("Tango: bandoneon register, a darker chamber and a quick bellows shake", "yinse.blow.accordion_dry", {"register": "bandoneon", "cassotto": 0.7, "shake": 0.4}),
                   ("A dry, plain solo line", "yinse.blow.accordion", {"register": "clarinet", "musette": 0})],
     "bass": [("Duller, shorter fingerstyle bass", "bass.finger", {"tone": 1200, "decay": 1.0}),

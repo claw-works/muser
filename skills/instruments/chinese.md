@@ -10,7 +10,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 | `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend` |
 | `yinse.pluck.guzheng` | 38–88 | 24 | Guzheng (古筝): bright picked strings over a big paulownia soundboard with sympathetic strings; 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique` |
 | `yinse.strike.yangqin` | 43–93 | 24 | Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo` |
-| `yinse.blow.dizi` | 67–96 | 1 | Dizi (笛子): bamboo transverse flute with a buzzing membrane (笛膜), bright and lively; one note at a time, overlapping notes slide |
+| `yinse.blow.bangdi` | 67–96 | 1 | Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slide |
 | `yinse.blow.qudi` | 64–91 | 1 | Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slide |
 | `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide |
 | `yinse.bow.erhu` | 62–96 | 1 | Erhu (二胡): two-string fiddle with a python-skin resonator, nasal and singing, wide vibrato; slurred notes (legato clips) slide into each other. One note at a time |
@@ -22,10 +22,10 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 - [Pipa (琵琶)](chinese/pipa.md): `yinse.pluck.pipa`
 - [Yangqin (扬琴)](chinese/yangqin.md): `yinse.strike.yangqin`
 - [Erhu (二胡)](chinese/erhu.md): `yinse.bow.erhu`
-- [Dizi (笛子), qudi (曲笛) and xiao (箫)](chinese/dizi.md): `yinse.blow.dizi`, `yinse.blow.qudi`, `yinse.blow.xiao`
+- [Dizi (笛子): bangdi (梆笛), qudi (曲笛) and xiao (箫)](chinese/dizi.md): `yinse.blow.bangdi`, `yinse.blow.qudi`, `yinse.blow.xiao`
 
 ## Tips and common mistakes
 
-- muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子, 梆笛), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.
+- muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.
 - Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.
 - Playing techniques are note fields, the same on every instrument that has them (others ignore them): `"tremolo": true` (琵琶轮指, 扬琴轮音, 古筝摇指: plucked or struck again and again for the whole note, `tremolo_rate` per second); `bend` (按音, 推拉, 滑音; ±2 semitones, ±24 on the guqin and guzheng); `"technique"` / `"harmonic"` (散音, 按音, 泛音 on the guqin and guzheng); `"damp": true` (止音 on the guqin and guzheng); `"flutter": true` (花舌 on the dizi and qudi); `"trill": true` / `1` (颤音: alternates with the whole / half tone above about 8 times a second, any instrument) and `"half_trill": true` (虚颤音: a small pitch shake).
