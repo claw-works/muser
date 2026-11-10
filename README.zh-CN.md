@@ -181,7 +181,7 @@ irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 
 muser 依赖 vendored 的 manguebyte 子模块，务必递归克隆：
 
 ```bash
-git clone --recurse-submodules git@github.com:claw-works/muser.git
+git clone --recurse-submodules https://github.com/claw-works/muser.git
 cd muser
 ```
 

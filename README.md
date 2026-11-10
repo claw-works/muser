@@ -179,7 +179,7 @@ To run `muser` from any folder, add the unpacked folder to your `PATH`.
 muser depends on the vendored manguebyte submodule, so clone recursively:
 
 ```bash
-git clone --recurse-submodules git@github.com:claw-works/muser.git
+git clone --recurse-submodules https://github.com/claw-works/muser.git
 cd muser
 ```
 
