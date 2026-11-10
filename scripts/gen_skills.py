@@ -541,14 +541,25 @@ CHINESE_PAGES = [
     ]),
     ("hulusi", "Hulusi (葫芦丝)", ["yinse.blow.hulusi"], [
         "The Dai free-reed gourd pipe of Yunnan: soft, round, a little nasal, like a gentle clarinet (odd harmonics strong, the even ones weaker but present). "
-        "A C hulusi plays about G4-A5 (筒音 5̣ = G4); keep melodies there and in the pentatonic scale, smooth and singing (侗乡之夜, 月光下的凤尾竹 style).",
-        "**Breath vibrato is its voice (气震音, 腹震音)**: long notes pulse in the breath about 3-4 times a second while the pitch hardly moves; it is on by default (`breath_vibrato` 0.5; 0.8 a strong pulse, 0 a plain tone).",
-        "**Finger ornaments**: 打音, a lower neighbour struck very briefly (about 0.05 s) in a held note, often again and again (four or five a second in lively dances); "
-        "叠音, an upper-neighbour grace just before the note; 历音, a quick run into the note; 颤音 `\"trill\": true`; 虚颤音 `\"half_trill\": true`.",
-        "**Slurs and slides**: overlapping notes slur (the note changes at once); `\"slide\": true` on the overlapping note glides into it (上滑音, 下滑音); a gap is a new tongued note (单吐; 双吐 alternates strong and slightly softer short notes). "
+        "A C hulusi plays about G4-A5 (筒音 5̣ = G4); keep melodies there and in the pentatonic scale, smooth and singing, mostly slurred (overlap the notes).",
+        "Its character is in the ornaments, added while arranging: in solo recordings 14-27% of the main notes have a 叠音 before them. They are written as notes, so their speed is their length:\n\n"
+        "  | Technique | What | How to write it | Speed |\n  |---|---|---|---|\n"
+        "  | 叠音 (fast) | a flick of the note above, just before the main note | a short note one scale step above, ending where the main note starts | 0.04-0.05 s as recorded; 0.08-0.12 s a slower, audible one |\n"
+        "  | 打音 (fast) | a flick of the note below, struck inside a held or repeated note | split the note and put a short lower note between the parts | 0.04-0.06 s; in dances again and again, 3-5 a second |\n"
+        "  | 抹音 (slow) | the finger wipes over the hole: the note starts a step above and slides down into itself | `bend` on the main note: `[[0, 2], [0.1 s in beats, 2], [0.25 s in beats, 0]]` (a whole tone above; `bend` reaches ±2) | 0.1-0.3 s |\n"
+        "  | 滑音 (slow) | a glide from the previous note (上滑, 下滑) | `\"slide\": true` on the note that overlaps the previous one | the instrument's glide, about 0.1 s |\n"
+        "  | 历音 | a quick run of three notes from below into the main note | three short notes before the main note | about 0.04 s each |\n"
+        "  | 颤音 (finger) | alternating with the note above | `\"trill\": true` (`1` for a half tone) | about 8 a second |\n\n"
+        "  Use them where a player would: 叠音 on most notes that start a phrase or come after a leap, 打音 on held and repeated notes, 抹音 and 滑音 on slow lyrical notes, 历音 into the high point of a phrase. Not on every note.",
+        "**Breath vibrato (气震音, 腹震音)**: long notes pulse in the breath about 3-4 times a second while the pitch hardly moves; it is on by default (`breath_vibrato` 0.5; 0.8 strong, 0 a plain tone). "
+        "Its speed (`vibrato_rate`) is taken when a note starts, so for a vibrato that speeds up and slows down inside one long note (急缓交错, the 丹田 vibrato) set `breath_vibrato` to 0 for that note "
+        "and automate `breath` yourself: points every 0.04 s swinging about ±0.28 around 1.0, their rate going from 2.5 to 6.5 a second and back.",
+        "**Long notes (长音)**: 音头有力、音体稳定、音尾自然收束. Automate `breath`: about 1.3 for the first 0.4 s, 1.0 through the body, down to 0.5-0.6 over the last second. "
+        "Automation holds its last value and moves straight between points, so put a point back at 1.0 just after the note, or every later note plays softly. Do not use `accent` for the strong start: it makes the whole note louder.",
+        "**Slurs and tonguing**: overlapping notes slur (the note changes at once); a gap is a new tongued note (单吐; 双吐 alternates strong and slightly softer short notes). "
         "Circular breathing (循环换气) needs nothing: write long phrases without gaps.",
         "**Drone pipe (附管)**: `drone` 0.3 makes a side pipe sound a held note under the melody while the player blows (it stops at the breaks); `drone_note` is its pitch, usually the tonic (72 = C5 for a C hulusi) or the fifth. Off by default.",
-        "`breath` and `embouchure` shape the tone over a phrase as on the flutes.",
+        "`embouchure` shapes the tone as on the flutes. `samples/instruments/hulusi-techniques.muser.json` plays these techniques in order: a long note, 叠音, 打音, 抹音, 滑音, 历音, the speeding and slowing breath vibrato, a closing long note.",
     ]),
     ("dizi", "Dizi (笛子): bangdi (梆笛), qudi (曲笛) and xiao (箫)", ["yinse.blow.bangdi", "yinse.blow.qudi", "yinse.blow.xiao"], [
         "**Two schools, two flutes.** Northern style (北派, `yinse.blow.bangdi`, the high 梆笛; `yinse.blow.dizi` is the same flute): tongue techniques, 吐音, 剁音, 花舌, 滑音, bright and lively (喜相逢, 陕北好). "

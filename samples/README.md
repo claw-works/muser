@@ -60,6 +60,7 @@ scripts/render_samples.sh effects    # 只渲染一个分组
   刮奏进出乐句、大撮（八度）、勾托（八度交替）、摇指、按音（E5 推到 F#5），长音自动揉弦。
 - `chinese-tour`：yinse 的中国乐器巡礼（D 宫五声，76 BPM，每件 4 小节）：琵琶（扫弦、轮指、推弦）→ 古琴（低、慢，弹后走手音，吟猱）→
   扬琴（十六分跑动、轮音）→ 笛子（倚音、滑音、颤音，笛膜的嗡声）→ 箫（低、气声、连奏滑音）。
+- `hulusi-techniques`：`yinse.blow.hulusi` 依次演示葫芦丝的手法（C 调，66 BPM）：长音（音头有力、音体稳、音尾渐收，用气息自动化）→ 叠音 → 打音 → 抹音（从上方滑进，bend）→ 滑音 → 历音 → 急缓交错的气颤（气息自动化）→ 长音收尾。
 - `voice-jingyesi-alto` / `-soprano` / `-tenor`：`yinse.voice.*` 唱《静夜思》（李白，公有领域；旋律自己写的五声音阶），音符的 `lyric` 写拼音，一个音一个字，垫一层 pad；女中在 A 调，女高、男高在 D 调。歌声的测试曲。
 - `sfz-piano`：内置 SFZ 采样器播放 freepats 的 PianoFB 钢琴。路径相对音色库，
   需设 `MUSER_SFZ_PATH` 指向你的音色库目录（见 [README.zh-CN.md](../README.zh-CN.md)）。
