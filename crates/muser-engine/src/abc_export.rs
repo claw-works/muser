@@ -299,7 +299,7 @@ fn events(tones: &[Tone], unit: f64, slots: usize, mono: bool, breaks: &[bool]) 
         }
     }
     for cell in &mut grid {
-        cell.sort_by(|x, y| y.0.cmp(&x.0));
+        cell.sort_by_key(|x| std::cmp::Reverse(x.0));
         if mono {
             cell.truncate(1);
         }

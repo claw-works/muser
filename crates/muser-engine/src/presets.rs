@@ -265,8 +265,8 @@ fn nki_meta(path: &Path) -> (String, String, Vec<String>) {
     for align in 0..2 {
         let mut cur = String::new();
         let mut start = align;
-        for (k, pair) in head[align..].chunks_exact(2).enumerate() {
-            match (pair[0], pair[1]) {
+        for (k, &[a, b]) in head[align..].as_chunks::<2>().0.iter().enumerate() {
+            match (a, b) {
                 (c @ 0x20..=0x7e, 0) => {
                     if cur.is_empty() {
                         start = align + 2 * k;

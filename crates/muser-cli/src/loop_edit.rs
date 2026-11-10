@@ -146,7 +146,7 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
             if std::io::Read::read_to_end(&mut std::io::Read::take(req.as_reader(), 64 << 20), &mut body).is_err() || body.len() % 4 != 0 {
                 return err(req, "incomplete recording data".into());
             }
-            let samples: Vec<f32> = body.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
+            let samples: Vec<f32> = body.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect();
             let sr = num("sr", 48_000.0).clamp(8_000.0, 192_000.0) as u32;
             let mut audio = muser_engine::AudioBuffer::<f32>::new(1, samples.len().max(1));
             audio.channel_mut(0)[..samples.len()].copy_from_slice(&samples);

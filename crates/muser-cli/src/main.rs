@@ -1340,7 +1340,7 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
             }
             println!("  params:   {} ({} visible)", info.params_total, info.params_visible);
             let mut groups = info.param_groups.clone();
-            groups.sort_by(|a, b| b.1.cmp(&a.1));
+            groups.sort_by_key(|g| std::cmp::Reverse(g.1));
             let shown: Vec<String> = groups.iter().take(20).map(|(g, n)| format!("{g}({n})")).collect();
             println!("  param groups: {}", shown.join(" "));
             match &info.profile {

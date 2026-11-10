@@ -16,7 +16,7 @@ fn main() {
     }
     let total: std::time::Duration = times.iter().map(|t| t.0).sum();
     println!("{} 块，共 {:?}，音频 {:.1} 秒（实时的 {:.1}%）", times.len(), total, at as f64 / 48_000.0, total.as_secs_f64() / (at as f64 / 48_000.0) * 100.0);
-    times.sort_by(|a, b| b.0.cmp(&a.0));
+    times.sort_by_key(|t| std::cmp::Reverse(t.0));
     for (d, f) in times.iter().take(12) {
         let beat = *f as f64 / 48_000.0 * p.tempo / 60.0;
         println!("{d:>10.2?}  第 {} 小节（{:.1} 秒）", map.bar_at(beat).0 + 1, *f as f64 / 48_000.0);
