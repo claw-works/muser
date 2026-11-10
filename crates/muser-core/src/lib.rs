@@ -683,7 +683,7 @@ pub struct Note {
     /// `true` 等于 2（全音），`1` 是半音。笛子南派的指颤，其它乐器也一样展开。
     #[serde(default, skip_serializing_if = "is_zero_u8", deserialize_with = "trill_semitones")]
     pub trill: u8,
-    /// 虚颤音（可省略，默认 false）：手指在音孔上半开半合地颤，音高小幅快速起伏（约 ±30 音分，每秒 7 下），比颤音柔。
+    /// 虚颤音（可省略，默认 false）：手指在音孔上半开半合地颤，音高小幅快速地往下颤（0 到约 -25 音分，每秒 6 下），比颤音柔。
     /// 音符自己写了 `bend` 时不加。能弯音的乐器才有。
     #[serde(default, skip_serializing_if = "is_false")]
     pub half_trill: bool,

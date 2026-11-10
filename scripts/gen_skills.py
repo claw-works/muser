@@ -544,7 +544,7 @@ CHINESE_PAGES = [
         "Southern style (南派, `yinse.blow.qudi`, the lower, rounder 曲笛 with a lighter membrane): finger techniques, 颤音, 叠音, 打音, elegant and smooth (Jiangnan tunes, Kunqu). "
         "Most of a dizi's character is in these ornaments: in solo recordings about a third of the notes are shorter than 70 ms.",
         "**Fingers (指).** 颤音 (trill): `\"trill\": true` alternates the note with the whole tone above about 8 times a second for its whole length (`\"trill\": 1` a half tone above); "
-        "虚颤音 (half-hole trill): `\"half_trill\": true`, a softer shake of about ±30 cents, 7 times a second. "
+        "虚颤音 (half-hole trill): `\"half_trill\": true`, a softer shake, the pitch dipping 0 to about -25 cents 6 times a second (the half-covered hole only flattens it). "
         "叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; "
         "历音 a run of three quick notes from below into the note.",
         "**Tongue (舌).** 吐音 (tonguing) is repeated short notes with small gaps (about 0.1 beat): single tonguing (单吐 tu tu) even; double tonguing (双吐 tu-ku) alternates a strong and a slightly softer note (velocity 0.8 / 0.7); "

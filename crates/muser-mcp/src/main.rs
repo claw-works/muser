@@ -157,7 +157,7 @@ struct NoteSpec {
     /// Trill (optional): the note alternates with the note this many semitones above, about 8 times a second, for its whole length (2 = a whole tone, 1 = a half tone; the dizi's 颤音).
     #[serde(default)]
     trill: Option<u8>,
-    /// Half-hole trill (optional, 虚颤音): a small, fast pitch shake of about ±30 cents, 7 times a second; skipped when the note has its own bend.
+    /// Half-hole trill (optional, 虚颤音): a small, fast downward pitch shake (0 to about -25 cents, 6 times a second); skipped when the note has its own bend.
     #[serde(default)]
     half_trill: Option<bool>,
     /// Slide out (optional, yinse.voice.*): the end of this word slides to the next note's pitch, where the next word starts.

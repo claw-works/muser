@@ -208,12 +208,13 @@ pub(crate) fn expand_trills(notes: &[muser_core::Note], bps: f64) -> Vec<muser_c
     for n in notes {
         let mut n = n.clone();
         if n.half_trill && n.bend.is_empty() {
-            // ±0.3 半音，每秒 7 下，从音的开头就颤（手指一直在孔上）；每个来回 8 个点。
-            let cycle = bps / 7.0;
+            // 手指在孔上半开半合：只往下（盖住一点就低一点），0 到 -25 音分，每秒 6 下；
+            // 两边对称地摆就成了弦乐的揉弦。每个来回 8 个点。
+            let cycle = bps / 6.0;
             let points = ((n.length.0 / cycle) * 8.0).ceil() as usize;
             n.bend = (0..=points).map(|i| {
                 let beat = i as f64 * cycle / 8.0;
-                (beat, 0.3 * (core::f64::consts::TAU * beat / cycle).sin())
+                (beat, -0.125 * (1.0 - (core::f64::consts::TAU * beat / cycle).cos()))
             }).collect();
         }
         if n.trill == 0 {
@@ -348,17 +349,20 @@ impl DiziParams {
         Self { wind: w, membrane: 0.45 }
     }
 
-    /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松；揉得稍慢稍深。
-    /// 对着两段较低、较柔的录音（燕归来、月儿弯弯照九州）：二、三、四次谐波约 -11 / -10 / -21 dB，谐波之间的气声比梆笛的曲子多约 5 dB。
+    /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
+    /// 对着两段较低、较柔的录音（燕归来、月儿弯弯照九州）：二、三、四次谐波约 -11 / -10 / -21 dB，谐波之间的气声约 -52 … -57 dB；
+    /// 长音的揉音很浅（约 ±7 … 14 音分，每秒 4.4 … 5.8 下）——揉深了、气声少了，长音就像拉弦。
     pub fn qudi() -> Self {
         let mut d = Self::dizi();
         let w = &mut d.wind;
         w.jet_offset = 0.4;
-        w.noise = 0.55;
+        w.noise = 0.75;
+        // 气息不那么稳：吹管的"活"，不是弦乐那种匀的长音。
+        w.fluctuation = 0.05;
         w.attack = 0.04;
-        w.vibrato_rate = 5.0;
-        w.vibrato_depth = 15.0;
-        w.vibrato_delay = 0.25;
+        w.vibrato_rate = 4.8;
+        w.vibrato_depth = 9.0;
+        w.vibrato_delay = 0.35;
         w.articulation = 0.65;
         w.legato_time = 0.08;
         w.accent_db = 3.0;
@@ -664,8 +668,8 @@ mod tests {
         assert!((out[7].start.0 + out[7].length.0 - 2.0).abs() < 0.01 && out.iter().all(|m| m.trill == 0));
         let h: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 0, "length": 1, "half_trill": true})).unwrap();
         let shaken = &expand_trills(&[h], 2.0)[0];
-        let peak = shaken.bend.iter().map(|b| b.1.abs()).fold(0.0, f64::max);
-        assert!((peak - 0.3).abs() < 0.02 && shaken.bend.len() > 20, "{peak}");
+        let (lo, hi) = shaken.bend.iter().fold((0.0f64, 0.0f64), |(a, b), p| (a.min(p.1), b.max(p.1)));
+        assert!((lo + 0.25).abs() < 0.02 && hi <= 1e-9 && shaken.bend.len() > 20, "only down to -25 cents: {lo} {hi}");
     }
 
     #[test]

@@ -33,7 +33,7 @@ Preset values of each instrument:
 | instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath_vibrato` | `tone` |
 |---|---|---|---|---|---|---|---|---|---|
 | `yinse.blow.dizi` | 0.45 | 0.03 | 0.08 | 5.5 | 12 | 0.2 | 0.45 | 0.25 | 8000 |
-| `yinse.blow.qudi` | 0.25 | 0.04 | 0.08 | 5 | 15 | 0.25 | 0.55 | 0.25 | 8000 |
+| `yinse.blow.qudi` | 0.25 | 0.04 | 0.08 | 4.8 | 9 | 0.35 | 0.75 | 0.25 | 8000 |
 
 ## Adjustable parameters of `yinse.blow.xiao`
 
@@ -71,7 +71,7 @@ Preset values of each instrument:
 ## Tips and common mistakes
 
 - **Two schools, two flutes.** Northern style (北派, `yinse.blow.dizi`, the high 梆笛): tongue techniques, 吐音, 剁音, 花舌, 滑音, bright and lively (喜相逢, 陕北好). Southern style (南派, `yinse.blow.qudi`, the lower, rounder 曲笛 with a lighter membrane): finger techniques, 颤音, 叠音, 打音, elegant and smooth (Jiangnan tunes, Kunqu). Most of a dizi's character is in these ornaments: in solo recordings about a third of the notes are shorter than 70 ms.
-- **Fingers (指).** 颤音 (trill): `"trill": true` alternates the note with the whole tone above about 8 times a second for its whole length (`"trill": 1` a half tone above); 虚颤音 (half-hole trill): `"half_trill": true`, a softer shake of about ±30 cents, 7 times a second. 叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; 历音 a run of three quick notes from below into the note.
+- **Fingers (指).** 颤音 (trill): `"trill": true` alternates the note with the whole tone above about 8 times a second for its whole length (`"trill": 1` a half tone above); 虚颤音 (half-hole trill): `"half_trill": true`, a softer shake, the pitch dipping 0 to about -25 cents 6 times a second (the half-covered hole only flattens it). 叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; 历音 a run of three quick notes from below into the note.
 - **Tongue (舌).** 吐音 (tonguing) is repeated short notes with small gaps (about 0.1 beat): single tonguing (单吐 tu tu) even; double tonguing (双吐 tu-ku) alternates a strong and a slightly softer note (velocity 0.8 / 0.7); triple tonguing (三吐 tu-tu-ku) groups of three, strong-strong-soft, often as a 16th + two 32nds. 剁音: `"accent": true` on a short note: the tongue strikes hard (louder, a sharper attack) and cuts the note off at its end. 花舌: `"flutter": true`, the tongue rolling about 40 times a second through the note (the shake on long notes of lively northern pieces). 滑音: a note that overlaps the next slides into it; or a `bend`.
 - **Breath (气).** Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured; the qudi a little slower and deeper). 气震音 (breath vibrato): `breath_vibrato` (0.8 with a small `vibrato_depth`) makes the breath pulse louder and softer instead of the pitch. Circular breathing (循环换气) needs nothing: the synthesized flute never runs out of air, so write long phrases without gaps; leave gaps only where a player would breathe.
 - `membrane` sets the buzz (the dizi 0.45, the qudi 0.25).
