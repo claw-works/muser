@@ -527,8 +527,14 @@ CHINESE_PAGES = [
         "This is a synthesis approximation rather than a measured replica of a particular qin. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.",
     ]),
     ("pipa", "Pipa (琵琶)", ["yinse.pluck.pipa"], [
-        "Crisp and short-ringing; long notes are tremolo (轮指, `\"tremolo\": true`), bends (推拉) are `bend`.",
-        "A strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart.",
+        "Four strings tuned A2 D3 E3 A3, played with picks near the bridge: a crisp, bright attack (the 3 kHz \"zing\" of the soundboard) and a ring of about a second (in solo recordings the low partials fade about 20 dB a second, the high ones about 60). "
+        "It shares the guqin and guzheng's modal string model: open strings ring freely; other notes are fretted (按音), and only fretted notes bend and get the left-hand vibrato.",
+        "**轮指 (tremolo)**: `\"tremolo\": true` on a long note: the five fingers strike it about 16 times a second (as recorded), each stroke a little louder or softer; it is how the pipa sustains a melody note. `tremolo_rate` changes the speed.",
+        "**弹、挑 (single strokes)**: plain notes; alternate a slightly louder 弹 (outward) and a softer 挑 (inward) on fast runs (velocity 0.8 / 0.7). "
+        "**扫、拂 (strums)**: the four strings A2 D3 E3 A3 (or a chord on them) a few hundredths of a beat apart, upward for 扫, downward for 拂; a strong 扫 is the battle sound of 十面埋伏.",
+        "**推拉吟揉 (left hand)**: 推 / 拉 bend a fretted note up by pushing or pulling the string sideways, a `bend` up to a whole tone or more (`[[0, 0], [0.2, 2]]`); 吟揉 is the vibrato on held fretted notes, by itself (`vibrato`), deeper with a sine `bend`.",
+        "**泛音 (harmonics)**: `\"technique\": \"harmonic\", \"harmonic\": 2` (the octave over an open string) or 3, 4.",
+        "**煞音, 止音**: `\"damp\": true` stops a note when it ends (the left hand lifts or the right hand covers the strings), for staccato chords and the clipped notes of martial pieces.",
     ]),
     ("yangqin", "Yangqin (扬琴)", ["yinse.strike.yangqin"], [
         "Struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo (轮音, `\"tremolo\": true`).",

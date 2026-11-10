@@ -30,8 +30,6 @@ pub struct GuzhengParams {
     pub vibrato_delay: f64,
     /// 轮音（音符的 `tremolo`）每秒弹几下。
     pub tremolo_rate: f64,
-    /// 琴身放不出的低频：这个频率以下滤掉（0 不滤）。
-    pub high_pass: f64,
 }
 
 /// 拨弦的默认值（古筝的弦，各乐器在上面改）。
@@ -95,7 +93,6 @@ impl GuzhengParams {
             vibrato_rate: 5.5,
             vibrato_delay: 0.3,
             tremolo_rate: 10.0,
-            high_pass: 0.0,
         }
     }
 
@@ -114,7 +111,7 @@ impl GuzhengParams {
         s.body_mix = 0.6;
         s.tone = 9_000.0;
         s.buzz = 0.04;
-        Self { string: s, vibrato: 15.0, vibrato_rate: 5.0, vibrato_delay: 0.35, tremolo_rate: 12.0, high_pass: 460.0 }
+        Self { string: s, vibrato: 15.0, vibrato_rate: 5.0, vibrato_delay: 0.35, tremolo_rate: 12.0 }
     }
 
     /// 古琴：清楚的拨弦起音接暗的余韵，不能只把整条弦低通成柔软的吉他音。
@@ -134,7 +131,7 @@ impl GuzhengParams {
         s.pluck_noise = 0.22;
         s.body_mix = 0.45;
         s.tone = 7_000.0;
-        Self { string: s, vibrato: 18.0, vibrato_rate: 3.5, vibrato_delay: 0.5, tremolo_rate: 8.0, high_pass: 0.0 }
+        Self { string: s, vibrato: 18.0, vibrato_rate: 3.5, vibrato_delay: 0.5, tremolo_rate: 8.0 }
     }
 
     /// 扬琴：竹槌敲钢丝弦（击弦：`strike` 1），亮、金属味，梯形琴箱；有制音（松开后不太长）。
@@ -152,14 +149,14 @@ impl GuzhengParams {
         s.pluck_noise = 0.15;
         s.body_mix = 0.45;
         s.tone = 11_000.0;
-        Self { string: s, vibrato: 0.0, vibrato_rate: 5.0, vibrato_delay: 0.3, tremolo_rate: 14.0, high_pass: 0.0 }
+        Self { string: s, vibrato: 0.0, vibrato_rate: 5.0, vibrato_delay: 0.3, tremolo_rate: 14.0 }
     }
 }
 
 /// 按乐器名取拨弦类的预设（揉弦、轮音的默认值从这里来）。
 fn pluck_preset(instrument: &str) -> Option<GuzhengParams> {
     Some(match instrument.trim().to_lowercase().as_str() {
-        "yinse.pluck.pipa" => GuzhengParams::pipa(),
+        "yinse.pluck.pipa" => crate::zither::ZitherParams::pipa().pluck,
         "yinse.pluck.guzheng" => crate::zither::ZitherParams::guzheng().pluck,
         "yinse.pluck.guqin" => GuzhengParams::guqin(),
         "yinse.strike.yangqin" => GuzhengParams::yangqin(),
@@ -952,7 +949,7 @@ mod tests {
         assert_eq!(out.len(), 13);
         assert!(out[1..].iter().all(|m| m.pitch == 62 && !m.tremolo && m.length.0 < 2.0 / 12.0));
         assert!((out[2].start.0 - (1.0 + 2.0 / 12.0)).abs() < 1e-9);
-        assert_eq!(tremolo_rate("yinse.pluck.pipa", &Default::default()), Some(12.0));
+        assert_eq!(tremolo_rate("yinse.pluck.pipa", &Default::default()), Some(16.0));
         assert_eq!(tremolo_rate("yinse.bow.erhu", &Default::default()), None);
     }
 }

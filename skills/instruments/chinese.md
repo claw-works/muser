@@ -6,7 +6,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.pluck.pipa` | 45–88 | 12 | Pipa (琵琶): pear-shaped lute plucked with picks, crisp and grainy, shorter ring; tremolo (轮指) with the note's `tremolo`, bends (推拉) with `bend` |
+| `yinse.pluck.pipa` | 45–88 | 12 | Pipa (琵琶): pear-shaped lute plucked with picks, four strings A2 D3 E3 A3, crisp and bright with about a second of ring; tremolo (轮指, ~16 a second) with the note's `tremolo`, bends (推拉) on fretted notes with `bend`, harmonics with `technique` |
 | `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend` |
 | `yinse.pluck.guzheng` | 38–88 | 24 | Guzheng (古筝): bright picked strings over a big paulownia soundboard with sympathetic strings; 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique` |
 | `yinse.strike.yangqin` | 43–93 | 24 | Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo` |

@@ -58,11 +58,25 @@ pub(crate) static GUZHENG: Profile = Profile {
     voices: 24,
 };
 
+/// 琵琶：四弦 A2 D3 E3 A3，按在品上（弦段变短，品很少吸掉振动），用义甲弹；推拉（弯音）只在按音上。
+pub(crate) static PIPA: Profile = Profile {
+    open_keys: &[45, 50, 52, 57],
+    pressed_shortens: true,
+    contact: 0.08,
+    friction: 0.0,
+    pressed_release: 0.6,
+    pressed_stiffness: 0.001,
+    open_bends: false,
+    radiation_hz: 150.0,
+    voices: 12,
+};
+
 /// 用这个模型的乐器各是哪种结构。
 pub(crate) fn profile(instrument: &str) -> Option<&'static Profile> {
     match instrument.trim().to_lowercase().as_str() {
         "yinse.pluck.guqin" => Some(&GUQIN),
         "yinse.pluck.guzheng" => Some(&GUZHENG),
+        "yinse.pluck.pipa" => Some(&PIPA),
         _ => None,
     }
 }
@@ -132,6 +146,32 @@ impl ZitherParams {
             BodyMode::new(430.0, 5.0, 0.8),
         ];
         Self { pluck, sympathetic: 0.6, profile: &GUZHENG, ..Default::default() }
+    }
+
+    /// 琵琶：对着五段独奏录音（十面埋伏、阳春白雪、平湖秋月、金蛇狂舞、步步高）的单音：低频每秒衰减约 20 dB、
+    /// 高频约 55 … 70 dB；义甲弹在靠近覆手的地方，起音的频谱重心约 2.5 … 3.4 kHz，150 ms 后约 1.3 … 2.4 kHz；
+    /// 梨形琴身的共鸣在中频，面板上还有一个 3 kHz 左右的亮点（"铮"）。轮指约每秒 16 下。
+    pub(crate) fn pipa() -> Self {
+        let mut pluck = GuzhengParams::pipa();
+        pluck.tremolo_rate = 16.0;
+        let s = &mut pluck.string;
+        s.decay = 4.0;
+        s.decay_per_octave = 1.3;
+        s.high_decay = 0.25;
+        s.release = 0.8;
+        s.pluck_position = 0.05;
+        s.pluck_brightness = 20_000.0;
+        s.strike = 1.0;
+        s.pluck_noise = 0.5;
+        s.body_mix = 0.6;
+        s.tone = 10_000.0;
+        s.body = [
+            BodyMode::new(330.0, 4.0, 1.5),
+            BodyMode::new(560.0, 4.0, 2.1),
+            BodyMode::new(1_000.0, 3.0, 1.8),
+            BodyMode::new(2_800.0, 2.0, 3.0),
+        ];
+        Self { pluck, sympathetic: 0.2, profile: &PIPA, ..Default::default() }
     }
 
     /// 这个音跟着弯音、揉弦吗。

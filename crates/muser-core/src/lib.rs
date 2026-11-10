@@ -339,7 +339,7 @@ impl Project {
                         )));
                     }
                     if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
-                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin and yinse.pluck.guzheng accept per-note string techniques")));
+                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin, yinse.pluck.guzheng and yinse.pluck.pipa accept per-note string techniques")));
                     }
                     if note.trill > 4 {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].trill: {} semitones is too wide (1-4)", note.trill)));
@@ -641,7 +641,7 @@ pub enum Technique {
 
 /// 接受逐音奏法（`technique` / `harmonic`）、可弯 ±24 半音的乐器（模态弦模型）。
 pub fn takes_technique(instrument: &str) -> bool {
-    ["yinse.pluck.guqin", "yinse.pluck.guzheng"].iter().any(|n| instrument.trim().eq_ignore_ascii_case(n))
+    ["yinse.pluck.guqin", "yinse.pluck.guzheng", "yinse.pluck.pipa"].iter().any(|n| instrument.trim().eq_ignore_ascii_case(n))
 }
 
 /// 一个音符。

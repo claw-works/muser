@@ -6,7 +6,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. The other Chinese inst
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.pluck.pipa` | 45–88 | 12 | Pipa (琵琶): pear-shaped lute plucked with picks, crisp and grainy, shorter ring; tremolo (轮指) with the note's `tremolo`, bends (推拉) with `bend` |
+| `yinse.pluck.pipa` | 45–88 | 12 | Pipa (琵琶): pear-shaped lute plucked with picks, four strings A2 D3 E3 A3, crisp and bright with about a second of ring; tremolo (轮指, ~16 a second) with the note's `tremolo`, bends (推拉) on fretted notes with `bend`, harmonics with `technique` |
 
 ## Adjustable parameters (instrument_params)
 
@@ -14,27 +14,33 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 
 | Parameter | Range | Automation | Description |
 |---|---|---|---|
-| `vibrato` | 0 – 100 cents | next note | Left-hand vibrato (揉弦) on held notes, the swing either way: 0 none; 15-25 the usual; 40+ a deep, sighing vibrato. Notes that have their own `bend` (presses, slides) get none |
-| `vibrato_rate` | 0.5 – 12 Hz | next note | How fast the vibrato swings (4-6) |
-| `vibrato_delay` | 0 – 4 s | next note | How long after the pluck the vibrato starts (players pluck, then press) |
-| `tremolo_rate` | 2 – 30 Hz (integer) | — | Notes marked `"tremolo": true` (the pipa's 轮指, the yangqin's 轮音, the guzheng's 摇指) are plucked or struck this many times a second for their whole length |
-| `decay` | 0.05 – 60 s | next note | How long a string rings (middle C to -60 dB) |
-| `release` | 0.01 – 10 s | next note | How long a string rings on after its note ends: guzheng strings are rarely damped, so this is long; 0.2 for damped, clipped notes |
-| `pluck_brightness` | 100 – 20000 Hz | next note | Pick (义甲) brightness: 9000 the bright, ringing tone; 3000 a soft, round touch |
-| `pluck_position` | 0.02 – 0.5 | next note | Where the pick plucks (fraction from the bridge): 0.06 near the bridge, thin and metallic; 0.25 towards the middle, round and warm |
-| `high_decay` | 0.01 – 1 | next note | Decay at 3 kHz as a fraction of the fundamental's: 0.04 a crisp attack that quickly darkens; 0.3 a lasting bright ring |
-| `strike` | 0 – 1 | next note | Attack shape: 0 a soft pulled string; 0.5 a firmer nail attack; 1 a struck string. Changes the next pluck |
-| `pluck_noise` | 0 – 1 | next note | Grain of the nail or pick at the pluck: 0 clean; 0.2 a little contact noise; 1 rough. Changes the next pluck |
-| `body_mix` | 0 – 1 | ✓ | Body resonance added to the string: 0 dry string; 0.5 a warm wooden body |
-| `tone` | 200 – 20000 Hz | ✓ | Final low-pass: lower for a darker tone; higher to retain the pluck's edge |
+| `technique` | 0 – 3 (integer), or `"auto"` / `"open"` / `"pressed"` / `"harmonic"` | — | Playing technique: auto chooses open strings at C2 D2 F2 G2 A2 C3 D3, pressed elsewhere; open rings freely; pressed allows slides; harmonic touches a node. Changes the next pluck |
+| `harmonic` | 2 – 8 (integer) | — | Harmonic node denominator (harmonic technique only): 2 at half the string, 3 at one third, 4 at one quarter. Note pitch is the SOUNDING pitch, not the open-string pitch |
+| `pressure` | 0 – 1 | next note | Stopped-string finger pressure: more contact shortens and darkens pressed notes; moving the hand adds loss. Initial pressure changes the next pluck |
+| `slide_time` | 0.001 – 0.1 s | ✓ | Smoothing of hand movement: small values follow bend curves closely, larger values soften changes. Phase remains continuous |
+| `slide_noise` | 0 – 1 | ✓ | Stopped-string hand-motion noise, proportional to slide speed and remaining string vibration; 0 clean, 0.35 subtle |
+| `sympathetic` | 0 – 1 | ✓ | Unplayed strings resonating with the played string: 0 isolated, 0.18 subtle shared resonance |
+| `vibrato` | 0 – 100 cents | next note | Automatic yin/nao on pressed notes only; explicit bend curves override it; 0 no automatic movement |
+| `vibrato_rate` | 0.5 – 12 Hz | next note | How fast pressed-string vibrato moves |
+| `vibrato_delay` | 0 – 4 s | next note | Delay after the pluck before pressed-string vibrato begins |
+| `tremolo_rate` | 2 – 30 Hz | ✓ | Repeated plucks per second on notes marked tremolo |
+| `decay` | 0.05 – 60 s | next note | Open-string fundamental decay at middle C to -60 dB; pressed-string contact adds damping |
+| `release` | 0.01 – 10 s | next note | Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping |
+| `high_decay` | 0.01 – 1 | next note | Upper-mode decay at 3 kHz relative to the fundamental; harmonics keep a minimum of 0.2 for a clear ring |
+| `pluck_brightness` | 100 – 20000 Hz | next note | Brightness of the initial excitation; softer velocity also darkens the pluck |
+| `pluck_position` | 0.02 – 0.5 | next note | Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length |
+| `strike` | 0 – 1 | next note | Excitation shape: 0 a soft pulled string, 0.35 a light nail touch, 1 a struck string |
+| `pluck_noise` | 0 – 1 | next note | Brief nail contact noise at the pluck; distinct from sustained hand-motion noise |
+| `body_mix` | 0 – 1 | ✓ | Body radiation and shared wooden resonances: 0 raw string; 0.45 full radiation colour, with resonances ringing across notes |
+| `tone` | 200 – 20000 Hz | ✓ | Final overall low-pass colour, independent of technique-specific mode damping |
 
 Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../../automation.md).
 
 Preset values of each instrument:
 
-| instrument | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `pluck_brightness` | `pluck_position` | `high_decay` | `strike` | `pluck_noise` | `body_mix` | `tone` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.pluck.pipa` | 15 | 5 | 0.35 | 12 | 1.5 | 0.12 | 4500 | 0.14 | 0.35 | 0.6 | 0.25 | 0.6 | 9000 |
+| instrument | `technique` | `harmonic` | `pressure` | `slide_time` | `slide_noise` | `sympathetic` | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `high_decay` | `pluck_brightness` | `pluck_position` | `strike` | `pluck_noise` | `body_mix` | `tone` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `yinse.pluck.pipa` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.2 | 15 | 5 | 0.35 | 16 | 4 | 0.8 | 0.25 | 20000 | 0.05 | 1 | 0.5 | 0.6 | 10000 |
 
 ### Tuning examples
 
@@ -47,5 +53,9 @@ Preset values of each instrument:
 
 ## Tips and common mistakes
 
-- Crisp and short-ringing; long notes are tremolo (轮指, `"tremolo": true`), bends (推拉) are `bend`.
-- A strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart.
+- Four strings tuned A2 D3 E3 A3, played with picks near the bridge: a crisp, bright attack (the 3 kHz "zing" of the soundboard) and a ring of about a second (in solo recordings the low partials fade about 20 dB a second, the high ones about 60). It shares the guqin and guzheng's modal string model: open strings ring freely; other notes are fretted (按音), and only fretted notes bend and get the left-hand vibrato.
+- **轮指 (tremolo)**: `"tremolo": true` on a long note: the five fingers strike it about 16 times a second (as recorded), each stroke a little louder or softer; it is how the pipa sustains a melody note. `tremolo_rate` changes the speed.
+- **弹、挑 (single strokes)**: plain notes; alternate a slightly louder 弹 (outward) and a softer 挑 (inward) on fast runs (velocity 0.8 / 0.7). **扫、拂 (strums)**: the four strings A2 D3 E3 A3 (or a chord on them) a few hundredths of a beat apart, upward for 扫, downward for 拂; a strong 扫 is the battle sound of 十面埋伏.
+- **推拉吟揉 (left hand)**: 推 / 拉 bend a fretted note up by pushing or pulling the string sideways, a `bend` up to a whole tone or more (`[[0, 0], [0.2, 2]]`); 吟揉 is the vibrato on held fretted notes, by itself (`vibrato`), deeper with a sine `bend`.
+- **泛音 (harmonics)**: `"technique": "harmonic", "harmonic": 2` (the octave over an open string) or 3, 4.
+- **煞音, 止音**: `"damp": true` stops a note when it ends (the left hand lifts or the right hand covers the strings), for staccato chords and the clipped notes of martial pieces.
