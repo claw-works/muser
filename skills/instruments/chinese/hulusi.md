@@ -24,6 +24,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `breath` | 0.3 – 1.5 | ✓ | Breath strength (气息): scales how hard the player blows; 1 as preset, 0.6 a soft, airy, darker breath, 1.3 a full, bright one. Automate it to shape a phrase |
 | `embouchure` | 0.05 – 1 | ✓ | Embouchure (口型): how far the lips let the air through; smaller is darker and softer, larger is fuller and brighter |
 | `articulation` | 0 – 1 | next note | Tonguing (舌法): how hard the tongue starts a note, 0 soft (legato-like), 1 a hard, clear attack with more chiff (staccato) |
+| `width` | 0 – 1 | ✓ | Width: a few very close reflections, different left and right, as if played in a room; the sound gets breadth without a reverb's tail. 0 a dry, centred source |
 | `drone` | 0 – 1 | ✓ | Drone pipe (附管, the hulusi's side pipes): how loud the held note under the melody is, sounding while the player blows; 0 off (stopped), 0.3 a soft drone |
 | `drone_note` | 24 – 108 (integer) | — | The drone pipe's note (MIDI): usually the key's tonic or fifth (72 = C5 on a C hulusi) |
 | `breath_vibrato` | 0 – 1 | next note | Breath vibrato (气震音): how much the vibrato also swells the breath, louder and softer at `vibrato_rate`; 0.25 a little, 0.8 the pulsing breath vibrato (with a small `vibrato_depth` it is almost only in the breath) |
@@ -33,9 +34,9 @@ Automation column: ✓ = notes already sounding follow immediately; next note = 
 
 Preset values of each instrument:
 
-| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.hulusi` | 0 | 0.03 | 0.06 | 4 | 0 | 0.3 | 0.15 | 1 | 0.7 | 0.5 | 0 | 72 | 0.5 | 6000 |
+| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `width` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `yinse.blow.hulusi` | 0 | 0.03 | 0.06 | 4 | 0 | 0.3 | 0.15 | 1 | 0.7 | 0.5 | 0 | 0 | 72 | 0.5 | 6000 |
 
 ## Tips and common mistakes
 

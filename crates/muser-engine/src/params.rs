@@ -338,6 +338,7 @@ pub(crate) static DIZI: &[ParamDef<crate::chinese::DiziParams>] = &[
     num!("breath", 0.3, 1.5, "", "Breath strength (气息): scales how hard the player blows; 1 as preset, 0.6 a soft, airy, darker breath, 1.3 a full, bright one. Automate it to shape a phrase", |p| p.breath),
     num!("embouchure", 0.05, 1.0, "", "Embouchure (口型): how far the lips let the air through; smaller is darker and softer, larger is fuller and brighter", |p| p.wind.opening),
     num!("articulation", 0.0, 1.0, "", "Tonguing (舌法): how hard the tongue starts a note, 0 soft (legato-like), 1 a hard, clear attack with more chiff (staccato)", |p| p.wind.articulation),
+    num!("width", 0.0, 1.0, "", "Width: a few very close reflections, different left and right, as if played in a room; the sound gets breadth without a reverb's tail. 0 a dry, centred source", |p| p.width),
     num!("drone", 0.0, 1.0, "", "Drone pipe (附管, the hulusi's side pipes): how loud the held note under the melody is, sounding while the player blows; 0 off (stopped), 0.3 a soft drone", |p| p.drone),
     ParamDef {
         spec: InstParamSpec { name: "drone_note", kind: integer(24.0, 108.0), description: "The drone pipe's note (MIDI): usually the key's tonic or fifth (72 = C5 on a C hulusi)" },

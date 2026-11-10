@@ -339,6 +339,8 @@ pub struct DiziParams {
     /// 附管（葫芦丝两边的管）：一直响着的持续音的音量（0 关），和它的音高（MIDI）。吹着就响，换气、断奏时一起停。
     pub drone: f64,
     pub drone_note: f64,
+    /// 宽度（0 … 1）：几个很近、左右不同的反射，让声音有左右的宽度（不是混响）。
+    pub width: f64,
     /// 气息强弱（乘在吹气的力度上，0.3 … 1.5）：1 照常，小了虚、暗、气多，大了实、亮。可写自动化。
     pub breath: f64,
 }
@@ -362,7 +364,7 @@ impl DiziParams {
         w.accent_push = 1.0;
         // 连奏（音重叠）时手指一换音就到，不滑；滑音只在音符写了 `slide` 时（见 [`Dizi::note_on`]）。
         w.portamento = false;
-        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0 }
+        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0 }
     }
 
     /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
@@ -407,7 +409,7 @@ pub fn xiao() -> DiziParams {
     w.tone = 7_000.0;
     w.portamento = false;
     // 没有笛膜：和笛子共用同一套处理（花舌、剁音、滑音、气息），膜为 0 时声音就是吹管本身。
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0 }
 }
 
 /// 葫芦丝：自由簧（铜簧片）装在葫芦做的气室里，下面一根主管、两边附管。和单簧管一样以奇次谐波为主，
@@ -429,7 +431,7 @@ pub fn hulusi() -> DiziParams {
     w.attack = 0.03;
     w.portamento = false;
     w.legato_time = 0.08;
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0 }
 }
 
 /// 唢呐：双簧片、锥形木管、铜碗（喇叭口）——响、亮、带沙。对着七段独奏录音（百鸟朝凤、正月十五闹花灯、小放牛、喜事儿等）：
@@ -453,7 +455,7 @@ pub fn suona() -> DiziParams {
     w.tremolo = 0.3;
     w.portamento = false;
     w.legato_time = 0.06;
-    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0 }
+    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0 }
 }
 
 /// 笛子：一支单音的吹管，后面接笛膜（越响越"沙"的高频泛音）。
@@ -481,6 +483,9 @@ pub(crate) struct Dizi {
     slide: bool,
     accent: bool,
     breath_gain: f32,
+    room_buf: [Vec<f32>; 2],
+    room_lp: [f32; 2],
+    room_at: usize,
     even_env: [f32; 2],
     even_dc: [f32; 2],
     sr: f64,
@@ -498,7 +503,7 @@ impl Dizi {
         let drone = Synth::with_voices(1, move || WindVoice::new(w));
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
         Self { synth, drone, held: 0, drone_key: None, drone_buf: AudioBuffer::new(1, 0), params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
-            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], sr: 48_000.0, rng: 0x1234_5678 }
+            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], room_buf: [Vec::new(), Vec::new()], room_lp: [0.0; 2], room_at: 0, sr: 48_000.0, rng: 0x1234_5678 }
     }
 
     pub(crate) fn flutter_next(&mut self, on: bool) {
@@ -526,6 +531,9 @@ impl Dizi {
         Processor::prepare(&mut self.synth, spec);
         Processor::prepare(&mut self.drone, spec);
         self.drone_buf = AudioBuffer::new(spec.num_channels, spec.max_block_size);
+        let room = (0.04 * spec.sample_rate) as usize;
+        self.room_buf = [vec![0.0; room], vec![0.0; room]];
+        self.room_at = 0;
         self.held = 0;
         self.drone_key = None;
         self.sr = spec.sample_rate;
@@ -617,9 +625,16 @@ impl Dizi {
             }
         }
         let m = self.params.membrane.clamp(0.0, 1.0) as f32;
-        if m == 0.0 {
-            return;
+        if m > 0.0 {
+            self.buzz(buffer, m);
         }
+        if self.params.width > 0.0 {
+            self.room(buffer);
+        }
+    }
+
+    /// 笛膜（唢呐：铜碗与簧片的毛刺）：按音量的形状削出高频泛音，经两个共鸣放出来。
+    fn buzz(&mut self, buffer: &mut AudioBuffer<f32>, m: f32) {
         let n = buffer.num_frames();
         if self.wet.num_frames() < n || self.wet2.num_frames() < n {
             self.wet = AudioBuffer::new(1, n);
@@ -643,6 +658,30 @@ impl Dizi {
             for ((y, a), b) in buffer.channel_mut(c).iter_mut().zip(self.wet.channel(0)).zip(self.wet2.channel(0)) {
                 *y += m * 1.2 * (*a + 0.7 * *b);
             }
+        }
+    }
+
+    /// 宽度：几个很近的反射（左右的时刻不同），像在屋里吹，声音有了左右的宽度，又不像混响那样拖尾。
+    fn room(&mut self, buffer: &mut AudioBuffer<f32>) {
+        const TAPS: [[f64; 3]; 2] = [[0.0071, 0.0133, 0.0229], [0.0089, 0.0167, 0.0293]];
+        let len = self.room_buf[0].len();
+        if len == 0 || buffer.num_channels() < 2 {
+            return;
+        }
+        let w = self.params.width.clamp(0.0, 1.0) as f32;
+        for i in 0..buffer.num_frames() {
+            let mono = 0.5 * (buffer.channel(0)[i] + buffer.channel(1)[i]);
+            for c in 0..2 {
+                self.room_lp[c] += 0.35 * (mono - self.room_lp[c]);
+                self.room_buf[c][self.room_at] = self.room_lp[c];
+                let mut wet = 0.0;
+                for (k, t) in TAPS[c].iter().enumerate() {
+                    let d = (t * self.sr) as usize;
+                    wet += self.room_buf[c][(self.room_at + len - d) % len] * [0.5f32, 0.35, 0.25][k];
+                }
+                buffer.channel_mut(c)[i] += w * wet;
+            }
+            self.room_at = (self.room_at + 1) % len;
         }
     }
 
