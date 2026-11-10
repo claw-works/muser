@@ -28,6 +28,10 @@ pub(crate) struct Profile {
     pressed_stiffness: f64,
     /// 散音也跟着弯音、揉弦（古筝左手按在弹着的弦上）；否则只有按音。
     open_bends: bool,
+    /// 弦的两个振动方向：另一个方向分走多少（0 没有）、频率最多差几音分、衰减慢几倍。
+    twin: f64,
+    twin_cents: f64,
+    twin_decay: f64,
     /// 琴体辐射的高通：这以下的弦振动放不出来。
     radiation_hz: f64,
     voices: usize,
@@ -41,6 +45,9 @@ pub(crate) static GUQIN: Profile = Profile {
     pressed_release: 0.35,
     pressed_stiffness: 0.001,
     open_bends: false,
+    twin: 0.0,
+    twin_cents: 0.0,
+    twin_decay: 1.0,
     radiation_hz: 220.0,
     voices: 12,
 };
@@ -54,6 +61,9 @@ pub(crate) static GUZHENG: Profile = Profile {
     pressed_release: 1.0,
     pressed_stiffness: 0.0006,
     open_bends: true,
+    twin: 0.0,
+    twin_cents: 0.0,
+    twin_decay: 1.0,
     radiation_hz: 80.0,
     voices: 24,
 };
@@ -67,6 +77,9 @@ pub(crate) static PIPA: Profile = Profile {
     pressed_release: 0.6,
     pressed_stiffness: 0.001,
     open_bends: false,
+    twin: 0.35,
+    twin_cents: 1.2,
+    twin_decay: 1.6,
     radiation_hz: 80.0,
     voices: 12,
 };
@@ -287,6 +300,9 @@ impl Mode {
 #[derive(Clone, Copy)]
 struct Tone {
     modes: [Mode; MODES],
+    /// 弦的另一个振动方向（[`Profile::twin`] > 0 时）：频率差一点、衰减慢一点，和主方向拍出"活"的起伏。
+    twins: [Mode; MODES],
+    twin_on: bool,
     params: ZitherParams,
     technique: Technique,
     key_pitch: f64,
@@ -307,6 +323,8 @@ impl Default for Tone {
     fn default() -> Self {
         Self {
             modes: [Mode::default(); MODES],
+            twins: [Mode::default(); MODES],
+            twin_on: false,
             params: ZitherParams::default(),
             technique: Technique::Open,
             key_pitch: 60.0,
@@ -382,6 +400,20 @@ impl Tone {
         for mode in &mut tone.modes {
             mode.re *= gain;
         }
+        let pr = p.profile;
+        let w = pr.twin.clamp(0.0, 0.9);
+        let (cents, decay) = (pr.twin_cents, pr.twin_decay);
+        if w > 0.0 {
+            tone.twin_on = true;
+            for (n, (mode, twin)) in tone.modes.iter_mut().zip(tone.twins.iter_mut()).enumerate() {
+                // 每个模式差得不一样（-1 … 1 倍 `cents`，避开 0）：拍的快慢各不相同。
+                let h = ((n as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as f64 / (1u64 << 24) as f64;
+                let c = cents * (0.3 + 0.7 * h) * if n % 2 == 0 { 1.0 } else { -1.0 };
+                *twin = Mode { re: mode.re * w, ratio: mode.ratio * (c / 1200.0).exp2(), t60: mode.t60 * decay, ..Default::default() };
+                twin.tune(f0, sr, None);
+                mode.re *= 1.0 - w;
+            }
+        }
         tone
     }
 
@@ -417,6 +449,14 @@ impl Tone {
                 mode.tune(f0, sr, release);
                 self.energy += mode.energy();
             }
+            if self.twin_on {
+                for mode in &mut self.twins {
+                    mode.re *= friction_loss;
+                    mode.im *= friction_loss;
+                    mode.tune(f0, sr, release);
+                    self.energy += mode.energy();
+                }
+            }
             self.last_pitch = self.pitch;
             if self.energy < 1e-11 && self.at > (0.1 * sr) as u64 {
                 self.active = false;
@@ -426,6 +466,11 @@ impl Tone {
         let mut x = 0.0;
         for mode in &mut self.modes {
             x += mode.tick();
+        }
+        if self.twin_on {
+            for mode in &mut self.twins {
+                x += mode.tick();
+            }
         }
         let t = self.at as f64 / sr;
         let n = self.noise();
