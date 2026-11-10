@@ -410,7 +410,9 @@ pub fn xiao() -> DiziParams {
 pub fn hulusi() -> DiziParams {
     let mut w = WindParams::clarinet();
     w.opening = 0.7;
-    w.reed_frequency = 3_500.0;
+    // 簧片的共鸣要远高于最高音的三倍：3.5 kHz 时 E5 以上就翻到十二度（三次谐波）上去，"劈"了。
+    w.reed_frequency = 6_000.0;
+    w.reed_damping = 0.5;
     w.bell = 4_000.0;
     w.tone = 6_000.0;
     w.vibrato_rate = 4.0;
@@ -782,6 +784,36 @@ pub(crate) fn vibrato_bend(length_beats: f64, bps: f64, (cents, rate, delay): (f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hulusi_does_not_crack_into_its_twelfth() {
+        let sr = 48_000.0;
+        for key in [67u8, 72, 76, 79, 81, 84, 86] {
+            for velocity in [0.4f32, 0.8, 1.0] {
+                let mut d = Dizi::new(hulusi());
+                d.prepare(&ProcessSpec { sample_rate: sr, max_block_size: 480, num_channels: 1 });
+                d.note_on(NoteRef::new(0, key), velocity, velocity >= 1.0);
+                let mut b = AudioBuffer::<f32>::new(1, 480);
+                let mut x = Vec::new();
+                for _ in 0..60 {
+                    b.clear();
+                    d.process(&mut b);
+                    x.extend_from_slice(b.channel(0));
+                }
+                let f0 = 440.0 * 2f64.powf((f64::from(key) - 69.0) / 12.0);
+                let at = |hz: f64| {
+                    let (mut re, mut im) = (0.0f64, 0.0f64);
+                    for (i, &v) in x[14_400..].iter().enumerate() {
+                        let a = core::f64::consts::TAU * hz * i as f64 / sr;
+                        re += f64::from(v) * a.cos();
+                        im += f64::from(v) * a.sin();
+                    }
+                    re.hypot(im)
+                };
+                assert!(at(f0) > 0.7 * at(3.0 * f0), "key {key} velocity {velocity}: the fundamental is gone");
+            }
+        }
+    }
 
     #[test]
     fn the_drone_pipe_sounds_while_the_player_blows() {
