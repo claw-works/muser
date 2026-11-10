@@ -146,7 +146,9 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
             }
         }
         let name = if t.name.is_empty() { format!("tracks[{ti}]") } else { t.name.clone() };
-        let drums = t.instrument.trim().starts_with("drums.");
+        let inst = t.instrument.trim();
+        // 鼓组的键位是鼓件，不是音高：不参与调性、和弦、冲突。
+        let drums = inst.starts_with("drums.") || inst.strip_prefix("sfz:").is_some_and(|p| crate::sfz::is_percussion(&crate::sfz::resolve(p.trim())));
         if !drums && !tones.is_empty() && t.humanize.is_none() && t.clips.iter().all(|c| c.humanize.is_none()) {
             unhumanized.push(name.clone());
         }
@@ -326,7 +328,8 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
     if findings.is_empty() {
         findings.push("No obvious problems found".into());
     }
-    Ok(Report { tempo: p.tempo, bars, key: key.name().to_string(), sections, tells, findings })
+    let key = if pitched.is_empty() { "none (no pitched tracks)".to_string() } else { key.name().to_string() };
+    Ok(Report { tempo: p.tempo, bars, key, sections, tells, findings })
 }
 
 /// "第 i 段撤掉这几条轨"的具体写法：有 form 时给出改 form[i] 的 JSON，没有 form 时说去掉哪几小节的音符。

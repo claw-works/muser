@@ -198,6 +198,13 @@ fn noise_wav() -> Vec<u8> {
     w
 }
 
+/// 打击乐音色：所有 region 都不随键位变调（`pitch_keytrack=0`），或者路径里写着 drumkit / drums / percussion
+/// （单数的 drum 不算：steel drum 是有音高的）。读不了文件时只看路径。
+pub fn is_percussion(path: &Path) -> bool {
+    let named = ["drumkit", "drum kit", "drum_kit", "drums", "percussion"].iter().any(|w| path.to_string_lossy().to_ascii_lowercase().contains(w));
+    named || parse(path).is_ok_and(|(s, _)| !s.regions.is_empty() && s.regions.iter().all(|r| r.pitch_keytrack == 0.0))
+}
+
 /// 读出 .sfz 声明的控制器（给 `muser instruments sfz:…` 显示）。
 pub fn read_controls(path: &Path) -> Result<BTreeMap<u8, (String, u8)>, String> {
     Ok(controls(&parse(path)?.0))
@@ -640,6 +647,20 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn percussion_is_told_by_keytracking_or_by_name() {
+        let dir = std::env::temp_dir().join(format!("muser-sfzperc-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("SteelDrum")).unwrap();
+        let kit = dir.join("kit.sfz");
+        std::fs::write(&kit, "<group> pitch_keytrack=0\n<region> key=36 sample=*sine\n<region> key=38 sample=*noise").unwrap();
+        let steel = dir.join("SteelDrum/steel.sfz");
+        std::fs::write(&steel, "<region> lokey=48 hikey=72 pitch_keycenter=60 sample=*sine").unwrap();
+        assert!(is_percussion(&kit));
+        assert!(!is_percussion(&steel), "a steel drum is pitched");
+        assert!(is_percussion(Path::new("/nowhere/SalamanderDrumkit/kit.sfz")));
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn stray_lines_are_skipped() {
