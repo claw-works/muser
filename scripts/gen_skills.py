@@ -404,7 +404,7 @@ FAMILY_PAGES = {
         "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
     ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
-        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫), `yinse.blow.hulusi` (葫芦丝), `yinse.blow.suona` (唢呐). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫), `yinse.blow.hulusi` (葫芦丝), `yinse.blow.suona` (唢呐) with `yinse.blow.suona_big` (大唢呐) and `yinse.blow.haidi` (海笛). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
         "Playing techniques are note fields, the same on every instrument that has them (others ignore them): "
         "`\"tremolo\": true` (琵琶轮指, 扬琴轮音, 古筝摇指: plucked or struck again and again for the whole note, `tremolo_rate` per second); "
@@ -545,8 +545,10 @@ CHINESE_PAGES = [
         "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet.",
         "`vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
     ]),
-    ("suona", "Suona (唢呐)", ["yinse.blow.suona"], [
-        "The loud double-reed horn with a brass bell: bright, nasal and raspy (its energy sits at 1.6-4 kHz), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. Range about G4-B6; melodies sit mostly in A4-D6 (an octave higher only for climaxes and bird calls).",
+    ("suona", "Suona (唢呐): middle, big and small", ["yinse.blow.suona", "yinse.blow.suona_big", "yinse.blow.haidi"], [
+        "The loud double-reed horn with a brass bell: bright, nasal and raspy (its energy sits at 1.6-4 kHz), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. "
+        "Three sizes: `yinse.blow.suona` (the middle one, G4-B6, melodies mostly A4-D6), `yinse.blow.suona_big` (大唢呐, a fourth or fifth lower, G3-C6: thick, rough, more low-mids, for northern folk bands, weddings, funerals and opera accompaniment) "
+        "and `yinse.blow.haidi` (海笛, the small suona, G5-G7: shrill, thin and the brightest, for bird calls and ornate high lines). All three get sharper and rougher as they climb, as real ones do.",
         "**Slides are its speech**: most held notes scoop up into their pitch or fall off the end. `\"scoop\": 1` (0-2 semitones) starts the note below and slides up in about 0.12 s; `\"fall\": 1.5` drops the last 0.15 s; for wider swoops write a `bend`. "
         "`\"slide\": true` on an overlapping note glides from the previous one.",
         "**Wide vibrato**: about ±30-40 cents at 5-6 Hz on long notes, by itself (`vibrato_depth`); 50+ for the singing, crying style of 豫剧 and northern pieces.",

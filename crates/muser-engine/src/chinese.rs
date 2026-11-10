@@ -339,11 +339,15 @@ pub struct DiziParams {
     /// 附管（葫芦丝两边的管）：一直响着的持续音的音量（0 关），和它的音高（MIDI）。吹着就响，换气、断奏时一起停。
     pub drone: f64,
     pub drone_note: f64,
-    /// 音色的固定着色：900 Hz 以下的低搁架（dB，0 不动）、2.2 kHz 一带的"鼻音"峰（dB，0 不动）。唢呐用。
+    /// 音色的固定着色：900 Hz 以下的低搁架（dB，0 不动）、`presence_hz` 一带的"鼻音"峰（dB，0 不动）。唢呐用。
     pub low_shelf: f64,
     pub presence: f64,
+    pub presence_hz: f64,
     /// 沙哑（0 … 1）：跟着每个周期的波形起落的噪声（簧片拍打得不规则），唢呐的毛、"破"。
     pub rasp: f64,
+    /// 高音更尖更毛：从 `high_from`（MIDI）起，每高一个八度，沙哑与笛膜（毛刺）各乘上 1 + `high`。0 不变。
+    pub high: f64,
+    pub high_from: f64,
     /// 宽度（0 … 1）：几个很近、左右不同的反射，让声音有左右的宽度（不是混响）。
     pub width: f64,
     /// 气息强弱（乘在吹气的力度上，0.3 … 1.5）：1 照常，小了虚、暗、气多，大了实、亮。可写自动化。
@@ -369,7 +373,7 @@ impl DiziParams {
         w.accent_push = 1.0;
         // 连奏（音重叠）时手指一换音就到，不滑；滑音只在音符写了 `slide` 时（见 [`Dizi::note_on`]）。
         w.portamento = false;
-        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, rasp: 0.0 }
+        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
     }
 
     /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
@@ -414,7 +418,7 @@ pub fn xiao() -> DiziParams {
     w.tone = 7_000.0;
     w.portamento = false;
     // 没有笛膜：和笛子共用同一套处理（花舌、剁音、滑音、气息），膜为 0 时声音就是吹管本身。
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, rasp: 0.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
 }
 
 /// 葫芦丝：自由簧（铜簧片）装在葫芦做的气室里，下面一根主管、两边附管。和单簧管一样以奇次谐波为主，
@@ -436,7 +440,7 @@ pub fn hulusi() -> DiziParams {
     w.attack = 0.03;
     w.portamento = false;
     w.legato_time = 0.08;
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, rasp: 0.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
 }
 
 /// 唢呐：双簧片、锥形木管、铜碗（喇叭口）——响、亮、带沙。对着七段独奏录音（百鸟朝凤、正月十五闹花灯、小放牛、喜事儿等）：
@@ -465,7 +469,43 @@ pub fn suona() -> DiziParams {
     w.legato_time = 0.06;
     // 录音的长时频谱：最响的是 1.3 … 3 kHz 一带（鼻音、"亮"），900 Hz 以下比我们的管子弱得多。
     // 谐波之间的毛（噪声）录音里约 -49 dB（相对最强的谐波），管子本身只有约 -59：加沙哑补上。
-    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 6.0, rasp: 0.35 }
+    // 高音越吹越尖、越毛（管子本身越往上越干净）：D6 往上每个八度，沙哑与毛刺多 80%。
+    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 6.0, presence_hz: 2_200.0, rasp: 0.35, high: 0.8, high_from: 86.0 }
+}
+
+/// 大唢呐（大杆）：管长、喇叭口大，低四五度；浑厚、粗、低中频多，喇叭口放得出更多低频，揉得更宽。
+pub fn suona_big() -> DiziParams {
+    let mut d = suona();
+    d.wind.bell = 1_600.0;
+    d.wind.reed_frequency = 4_500.0;
+    d.wind.reed_damping = 1.6;
+    d.wind.opening = 0.6;
+    d.wind.vibrato_depth = 35.0;
+    d.wind.vibrato_rate = 5.0;
+    d.low_shelf = -2.0;
+    d.presence = 3.0;
+    d.presence_hz = 1_600.0;
+    d.membrane = 0.8;
+    d.rasp = 0.45;
+    d.high_from = 79.0;
+    d
+}
+
+/// 海笛（小唢呐）：管短、哨片小，高四度到八度；尖、细、刺，最亮，鸟叫、花腔。
+pub fn haidi() -> DiziParams {
+    let mut d = suona();
+    d.wind.bell = 5_000.0;
+    d.wind.reed_damping = 1.6;
+    d.wind.opening = 0.6;
+    d.wind.vibrato_depth = 22.0;
+    d.wind.vibrato_rate = 6.2;
+    d.low_shelf = -12.0;
+    d.presence = 8.0;
+    d.presence_hz = 4_000.0;
+    d.wind.tone = 18_000.0;
+    d.rasp = 0.3;
+    d.high_from = 93.0;
+    d
 }
 
 /// 笛子：一支单音的吹管，后面接笛膜（越响越"沙"的高频泛音）。
@@ -496,6 +536,8 @@ pub(crate) struct Dizi {
     /// [`DiziParams::low_shelf`]、[`DiziParams::presence`] 的滤波。
     color: Vec<Filter<f32>>,
     rasp_lp: [f32; 2],
+    /// 这个音的 [`DiziParams::high`] 系数。
+    high_gain: f64,
     room_buf: [Vec<f32>; 2],
     room_lp: [f32; 2],
     room_at: usize,
@@ -516,7 +558,7 @@ impl Dizi {
         let drone = Synth::with_voices(1, move || WindVoice::new(w));
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
         Self { synth, drone, held: 0, drone_key: None, drone_buf: AudioBuffer::new(1, 0), params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
-            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], room_buf: [Vec::new(), Vec::new()], room_lp: [0.0; 2], room_at: 0, color: Vec::new(), rasp_lp: [0.0; 2], sr: 48_000.0, rng: 0x1234_5678 }
+            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], room_buf: [Vec::new(), Vec::new()], room_lp: [0.0; 2], room_at: 0, color: Vec::new(), rasp_lp: [0.0; 2], high_gain: 1.0, sr: 48_000.0, rng: 0x1234_5678 }
     }
 
     pub(crate) fn flutter_next(&mut self, on: bool) {
@@ -549,7 +591,7 @@ impl Dizi {
             self.color.push(Filter::new(FilterShape::LowShelf { gain_db: self.params.low_shelf }, 900.0, 0.7));
         }
         if self.params.presence != 0.0 {
-            self.color.push(Filter::new(FilterShape::Peak { gain_db: self.params.presence }, 2_200.0, 0.8));
+            self.color.push(Filter::new(FilterShape::Peak { gain_db: self.params.presence }, self.params.presence_hz, 0.8));
         }
         self.color.iter_mut().for_each(|f| f.prepare(spec));
         let room = (0.04 * spec.sample_rate) as usize;
@@ -567,6 +609,7 @@ impl Dizi {
     pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
         self.flutter = std::mem::take(&mut self.flutter_next);
         self.accent = accent;
+        self.high_gain = 1.0 + self.params.high * ((f64::from(note.key) - self.params.high_from) / 12.0).max(0.0);
         self.slide = std::mem::take(&mut self.slide_next);
         let w = self.voice_params(accent, self.slide);
         self.synth.voices_mut().for_each(|v| v.set_params(w));
@@ -645,7 +688,7 @@ impl Dizi {
                 }
             }
         }
-        let m = self.params.membrane.clamp(0.0, 1.0) as f32;
+        let m = (self.params.membrane * self.high_gain).clamp(0.0, 1.5) as f32;
         if m > 0.0 {
             self.buzz(buffer, m);
         }
@@ -690,7 +733,7 @@ impl Dizi {
 
     /// 沙哑：白噪声乘上波形的绝对值（每个周期波峰处一阵噪声），去掉 800 Hz 以下，加回去。
     fn rasp(&mut self, buffer: &mut AudioBuffer<f32>) {
-        let k = self.params.rasp.clamp(0.0, 1.0) as f32 * 0.5;
+        let k = (self.params.rasp * self.high_gain).clamp(0.0, 1.5) as f32 * 0.5;
         let a = (1.0 - (-core::f64::consts::TAU * 800.0 / self.sr).exp()) as f32;
         for i in 0..buffer.num_frames() {
             self.rng ^= self.rng << 13;
@@ -903,9 +946,10 @@ mod tests {
     #[test]
     fn the_suona_keeps_its_fundamental_and_scoops_and_falls() {
         let sr = 48_000.0;
-        for key in (67u8..=95).step_by(2) {
+        for (preset, lo, hi) in [(suona as fn() -> DiziParams, 67u8, 95u8), (suona_big, 55, 84), (haidi, 79, 103)] {
+        for key in (lo..=hi).step_by(2) {
             for velocity in [0.5f32, 1.0] {
-                let mut d = Dizi::new(suona());
+                let mut d = Dizi::new(preset());
                 d.prepare(&ProcessSpec { sample_rate: sr, max_block_size: 480, num_channels: 1 });
                 d.note_on(NoteRef::new(0, key), velocity, false);
                 let mut b = AudioBuffer::<f32>::new(1, 480);
@@ -928,6 +972,7 @@ mod tests {
                 // 翻到八度上时基音几乎没了（低 40 dB 以上）；低搁架只把它压低几 dB。
                 assert!(at(f0) > 0.1 * at(2.0 * f0), "key {key} velocity {velocity} jumped to its octave: {:.3}", at(f0) / at(2.0 * f0));
             }
+        }
         }
         let n: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 0, "length": 2, "scoop": 1.5, "fall": 2})).unwrap();
         let bend = &expand_trills(&[n], 2.0)[0].bend;
