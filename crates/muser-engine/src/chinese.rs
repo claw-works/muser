@@ -327,6 +327,11 @@ pub struct DiziParams {
     pub wind: WindParams,
     /// 笛膜：0 没有（像长笛），0.6 贴得正好、明显的"沙"，1 很响的嗡。
     pub membrane: f64,
+    /// 偶次谐波（0 没有）：簧片吹管（葫芦丝）在单簧管的奇次谐波上加的偶次谐波，按音量的形状平方出来。
+    pub even: f64,
+    /// 附管（葫芦丝两边的管）：一直响着的持续音的音量（0 关），和它的音高（MIDI）。吹着就响，换气、断奏时一起停。
+    pub drone: f64,
+    pub drone_note: f64,
     /// 气息强弱（乘在吹气的力度上，0.3 … 1.5）：1 照常，小了虚、暗、气多，大了实、亮。可写自动化。
     pub breath: f64,
 }
@@ -350,7 +355,7 @@ impl DiziParams {
         w.accent_push = 1.0;
         // 连奏（音重叠）时手指一换音就到，不滑；滑音只在音符写了 `slide` 时（见 [`Dizi::note_on`]）。
         w.portamento = false;
-        Self { wind: w, membrane: 0.45, breath: 1.0 }
+        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0 }
     }
 
     /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
@@ -395,12 +400,37 @@ pub fn xiao() -> DiziParams {
     w.tone = 7_000.0;
     w.portamento = false;
     // 没有笛膜：和笛子共用同一套处理（花舌、剁音、滑音、气息），膜为 0 时声音就是吹管本身。
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0 }
+}
+
+/// 葫芦丝：自由簧（铜簧片）装在葫芦做的气室里，下面一根主管、两边附管。和单簧管一样以奇次谐波为主，
+/// 偶次谐波也不弱。对着四段独奏录音（侗乡之夜、山寨情歌、瑶族舞曲、守望之夜）的长音：二、三、四、五次谐波
+/// 约 -12 / 0 / -15 / -10 dB；长音的颤动几乎全在气息上（腹震音、气震音：音量起伏标准差约 0.16 … 0.25，每秒约 3 … 4 下），
+/// 音高几乎不揉（±2 … 3 音分）；附管默认不响（`drone` 打开）。
+pub fn hulusi() -> DiziParams {
+    let mut w = WindParams::clarinet();
+    w.opening = 0.7;
+    w.reed_frequency = 3_500.0;
+    w.bell = 4_000.0;
+    w.tone = 6_000.0;
+    w.vibrato_rate = 4.0;
+    w.vibrato_depth = 0.0;
+    w.tremolo = 0.5;
+    w.vibrato_delay = 0.3;
+    w.attack = 0.03;
+    w.portamento = false;
+    w.legato_time = 0.08;
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0 }
 }
 
 /// 笛子：一支单音的吹管，后面接笛膜（越响越"沙"的高频泛音）。
 pub(crate) struct Dizi {
     synth: Synth<WindVoice, f32>,
+    /// 附管（`drone` > 0 时），按着几个音、它在吹哪个音，混音用的缓冲。
+    drone: Synth<WindVoice, f32>,
+    held: usize,
+    drone_key: Option<u8>,
+    drone_buf: AudioBuffer<f32>,
     params: DiziParams,
     /// 笛膜的两个共鸣（约 3 kHz、6 kHz），左右声道各一份。
     membrane: [[Filter<f32>; 2]; 2],
@@ -418,6 +448,8 @@ pub(crate) struct Dizi {
     slide: bool,
     accent: bool,
     breath_gain: f32,
+    even_env: [f32; 2],
+    even_dc: [f32; 2],
     sr: f64,
     rng: u32,
 }
@@ -430,9 +462,10 @@ impl Dizi {
         let w = params.wind;
         let mut synth = Synth::with_voices(1, move || WindVoice::new(w));
         synth.set_legato(true);
+        let drone = Synth::with_voices(1, move || WindVoice::new(w));
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
-        Self { synth, params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
-            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, sr: 48_000.0, rng: 0x1234_5678 }
+        Self { synth, drone, held: 0, drone_key: None, drone_buf: AudioBuffer::new(1, 0), params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
+            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], sr: 48_000.0, rng: 0x1234_5678 }
     }
 
     pub(crate) fn flutter_next(&mut self, on: bool) {
@@ -458,6 +491,10 @@ impl Dizi {
 
     pub(crate) fn prepare(&mut self, spec: &ProcessSpec) {
         Processor::prepare(&mut self.synth, spec);
+        Processor::prepare(&mut self.drone, spec);
+        self.drone_buf = AudioBuffer::new(spec.num_channels, spec.max_block_size);
+        self.held = 0;
+        self.drone_key = None;
         self.sr = spec.sample_rate;
         let mono = ProcessSpec { num_channels: 1, ..*spec };
         self.membrane.iter_mut().flatten().for_each(|f| f.prepare(&mono));
@@ -472,10 +509,25 @@ impl Dizi {
         let w = self.voice_params(accent, self.slide);
         self.synth.voices_mut().for_each(|v| v.set_params(w));
         self.synth.note_on_accented(note, velocity, accent);
+        self.held += 1;
+        if self.params.drone > 0.0 && self.drone_key.is_none() {
+            let key = self.params.drone_note.round().clamp(24.0, 108.0) as u8;
+            let mut d = w;
+            d.portamento = false;
+            self.drone.voices_mut().for_each(|v| v.set_params(d));
+            self.drone.note_on_accented(NoteRef::new(0, key), velocity, false);
+            self.drone_key = Some(key);
+        }
     }
 
     pub(crate) fn note_off(&mut self, note: NoteRef, velocity: f32) {
         self.synth.note_off(note, velocity);
+        self.held = self.held.saturating_sub(1);
+        if self.held == 0 {
+            if let Some(key) = self.drone_key.take() {
+                self.drone.note_off(NoteRef::new(0, key), velocity);
+            }
+        }
     }
 
     pub(crate) fn midi(&mut self, message: MidiMessage) {
@@ -484,6 +536,21 @@ impl Dizi {
 
     pub(crate) fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         Processor::process(&mut self.synth, buffer);
+        if self.params.drone > 0.0 || self.drone.voices_mut().any(|v| manguebyte::prelude::Voice::<f32>::is_active(v)) {
+            let n = buffer.num_frames();
+            if self.drone_buf.num_frames() < n || self.drone_buf.num_channels() < buffer.num_channels() {
+                self.drone_buf = AudioBuffer::new(buffer.num_channels(), n);
+            }
+            self.drone_buf.set_num_frames(n);
+            self.drone_buf.clear();
+            Processor::process(&mut self.drone, &mut self.drone_buf);
+            let g = self.params.drone.clamp(0.0, 1.0) as f32;
+            for c in 0..buffer.num_channels() {
+                for (y, d) in buffer.channel_mut(c).iter_mut().zip(self.drone_buf.channel(c.min(self.drone_buf.num_channels() - 1))) {
+                    *y += g * *d;
+                }
+            }
+        }
         if self.flutter {
             self.flutter_tongue(buffer);
         }
@@ -499,6 +566,21 @@ impl Dizi {
             }
             if (self.breath_gain - target).abs() < 1e-4 {
                 self.breath_gain = target;
+            }
+        }
+        if self.params.even > 0.0 {
+            let k = self.params.even as f32;
+            for c in 0..buffer.num_channels().min(2) {
+                let env = &mut self.even_env[c];
+                let dc = &mut self.even_dc[c];
+                for x in buffer.channel_mut(c).iter_mut() {
+                    *env = x.abs().max(*env * 0.9995);
+                    let d = *x / (*env + 1e-6);
+                    // 平方出二次谐波（及奇次谐波的和差：偶次），减掉它自己的直流。
+                    let y = k * *env * d * d;
+                    *dc += 0.0005 * (y - *dc);
+                    *x += y - *dc;
+                }
             }
         }
         let m = self.params.membrane.clamp(0.0, 1.0) as f32;
@@ -564,6 +646,7 @@ impl Dizi {
 
     pub(crate) fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
         self.synth.set_tuning(tuning);
+        self.drone.set_tuning(tuning);
     }
 }
 
@@ -699,6 +782,43 @@ pub(crate) fn vibrato_bend(length_beats: f64, bps: f64, (cents, rate, delay): (f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_drone_pipe_sounds_while_the_player_blows() {
+        let sr = 48_000.0;
+        let mut p = hulusi();
+        p.drone = 0.5;
+        p.drone_note = 60.0;
+        let mut d = Dizi::new(p);
+        d.prepare(&ProcessSpec { sample_rate: sr, max_block_size: 480, num_channels: 1 });
+        let mut b = AudioBuffer::<f32>::new(1, 480);
+        let mut run = |d: &mut Dizi, blocks: usize| {
+            let mut x = Vec::new();
+            for _ in 0..blocks {
+                b.clear();
+                d.process(&mut b);
+                x.extend_from_slice(b.channel(0));
+            }
+            x
+        };
+        let energy_at = |x: &[f32], hz: f64| {
+            let (mut re, mut im) = (0.0f64, 0.0f64);
+            for (i, &v) in x.iter().enumerate() {
+                let a = core::f64::consts::TAU * hz * i as f64 / sr;
+                re += f64::from(v) * a.cos();
+                im += f64::from(v) * a.sin();
+            }
+            re.hypot(im) / x.len() as f64
+        };
+        let c4 = 261.63;
+        d.note_on(NoteRef::new(0, 72), 0.8, false);
+        let blowing = run(&mut d, 40);
+        d.note_off(NoteRef::new(0, 72), 0.0);
+        run(&mut d, 60);
+        let after = run(&mut d, 20);
+        assert!(energy_at(&blowing[9600..], c4) > 0.002, "the drone sounds under the melody");
+        assert!(energy_at(&after, c4) < energy_at(&blowing[9600..], c4) * 0.05, "and stops with the breath");
+    }
 
     #[test]
     fn slurs_change_at_once_and_only_slides_glide() {

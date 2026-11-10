@@ -404,7 +404,7 @@ FAMILY_PAGES = {
         "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
     ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
-        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫), `yinse.blow.hulusi` (葫芦丝). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
         "Playing techniques are note fields, the same on every instrument that has them (others ignore them): "
         "`\"tremolo\": true` (琵琶轮指, 扬琴轮音, 古筝摇指: plucked or struck again and again for the whole note, `tremolo_rate` per second); "
@@ -538,6 +538,17 @@ CHINESE_PAGES = [
         "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin.",
         "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet.",
         "`vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
+    ]),
+    ("hulusi", "Hulusi (葫芦丝)", ["yinse.blow.hulusi"], [
+        "The Dai free-reed gourd pipe of Yunnan: soft, round, a little nasal, like a gentle clarinet (odd harmonics strong, the even ones weaker but present). "
+        "A C hulusi plays about G4-A5 (筒音 5̣ = G4); keep melodies there and in the pentatonic scale, smooth and singing (侗乡之夜, 月光下的凤尾竹 style).",
+        "**Breath vibrato is its voice (气震音, 腹震音)**: long notes pulse in the breath about 3-4 times a second while the pitch hardly moves; it is on by default (`breath_vibrato` 0.5; 0.8 a strong pulse, 0 a plain tone).",
+        "**Finger ornaments**: 打音, a lower neighbour struck very briefly (about 0.05 s) in a held note, often again and again (four or five a second in lively dances); "
+        "叠音, an upper-neighbour grace just before the note; 历音, a quick run into the note; 颤音 `\"trill\": true`; 虚颤音 `\"half_trill\": true`.",
+        "**Slurs and slides**: overlapping notes slur (the note changes at once); `\"slide\": true` on the overlapping note glides into it (上滑音, 下滑音); a gap is a new tongued note (单吐; 双吐 alternates strong and slightly softer short notes). "
+        "Circular breathing (循环换气) needs nothing: write long phrases without gaps.",
+        "**Drone pipe (附管)**: `drone` 0.3 makes a side pipe sound a held note under the melody while the player blows (it stops at the breaks); `drone_note` is its pitch, usually the tonic (72 = C5 for a C hulusi) or the fifth. Off by default.",
+        "`breath` and `embouchure` shape the tone over a phrase as on the flutes.",
     ]),
     ("dizi", "Dizi (笛子): bangdi (梆笛), qudi (曲笛) and xiao (箫)", ["yinse.blow.bangdi", "yinse.blow.qudi", "yinse.blow.xiao"], [
         "**Two schools, two flutes.** Northern style (北派, `yinse.blow.bangdi`, the high 梆笛; `yinse.blow.dizi` is the same flute): tongue techniques, 吐音, 剁音, 花舌, 滑音, bright and lively (喜相逢, 陕北好). "

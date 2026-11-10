@@ -115,7 +115,7 @@ section content that fills only a short stretch with no `length` written (so it 
 | General synths | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
 | Guitar | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` `yinse.pluck.electric_guitar` `yinse.pluck.electric_guitar_clean` |
 | Singing voice (yinse) | [voice.md](skills/instruments/voice.md) | `yinse.voice.soprano` `yinse.voice.alto` `yinse.voice.tenor` `yinse.voice.bass` `yinse.voice.child` |
-| Chinese traditional | [chinese.md](skills/instruments/chinese.md) (overview), one page each in [chinese/](skills/instruments/chinese/) | `yinse.pluck.guzheng` `yinse.pluck.pipa` `yinse.pluck.guqin` `yinse.strike.yangqin` `yinse.bow.erhu` `yinse.blow.bangdi` `yinse.blow.qudi` `yinse.blow.xiao` |
+| Chinese traditional | [chinese.md](skills/instruments/chinese.md) (overview), one page each in [chinese/](skills/instruments/chinese/) | `yinse.pluck.guzheng` `yinse.pluck.pipa` `yinse.pluck.guqin` `yinse.strike.yangqin` `yinse.bow.erhu` `yinse.blow.bangdi` `yinse.blow.qudi` `yinse.blow.xiao` `yinse.blow.hulusi` |
 | Accordion | [accordion.md](skills/instruments/accordion.md) | `yinse.blow.accordion` `yinse.blow.accordion_dry` `yinse.blow.bandoneon` |
 | Bass | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
 | Organ | [organ.md](skills/instruments/organ.md) | `organ.jazz` `organ.gospel` `organ.full` `organ.ballad` |
