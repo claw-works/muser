@@ -448,8 +448,8 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
     for (ti, t) in project.tracks.iter().enumerate() {
         let name = if t.name.is_empty() { format!("tracks[{ti}]") } else { t.name.clone() };
         let inst = t.instrument.trim();
-        if inst == muser_core::audio::INSTRUMENT || inst.starts_with("drums.") {
-            notes.push(format!("'{name}' not exported ({})", if inst.starts_with("drums.") { "drum kit" } else { "audio track" }));
+        if inst == muser_core::audio::INSTRUMENT || muser_core::is_drum_kit(inst) {
+            notes.push(format!("'{name}' not exported ({})", if muser_core::is_drum_kit(inst) { "drum kit" } else { "audio track" }));
             continue;
         }
         let mut tones = Vec::new();

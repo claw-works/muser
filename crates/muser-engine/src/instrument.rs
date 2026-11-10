@@ -389,6 +389,26 @@ struct DrumsTunable {
     kit: DrumKit,
 }
 
+impl Playable for crate::percussion::Kit {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        crate::percussion::Kit::prepare(self, spec);
+    }
+    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        crate::percussion::Kit::note_on(self, note, velocity, accent);
+    }
+    fn note_off(&mut self, note: NoteRef, velocity: f32) {
+        crate::percussion::Kit::note_off(self, note, velocity);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        crate::percussion::Kit::process(self, buffer);
+    }
+    fn midi(&mut self, _message: MidiMessage) {}
+    fn set_param(&mut self, name: &str, value: f64) {
+        crate::percussion::Kit::set_param(self, name, value);
+    }
+    fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
+}
+
 impl Playable for DrumsTunable {
     fn prepare(&mut self, spec: &ProcessSpec) {
         Processor::prepare(&mut self.synth, spec);
@@ -455,6 +475,7 @@ pub struct InstrumentInfo {
 #[derive(Clone)]
 enum Patch {
     Drums(DrumKit),
+    Kit(crate::percussion::KitParams),
     Poly(PolySynthParams),
     Fm(FmParams),
     String(StringParams, usize),
@@ -505,6 +526,14 @@ impl Patch {
             Patch::Bowed(p, _) => params::apply(params::BOWED, p, params),
             Patch::Wind(p, _) => params::apply(params::WIND, p, params),
             Patch::Choir(p, _) => params::apply(params::CHOIR, p, params),
+            Patch::Kit(kit) => {
+                for (piece, value) in params {
+                    let i = kit.index(piece).ok_or_else(|| format!("unknown piece '{piece}': this kit has {}", kit.keys()))?;
+                    let obj = value.as_object().ok_or_else(|| format!("{piece}: expected an object, e.g. {{ \"tune\": -2 }}"))?;
+                    params::apply(params::KIT_PIECE, &mut kit.set[i], obj).map_err(|e| format!("{piece}.{e}"))?;
+                }
+                Ok(())
+            }
             Patch::Drums(kit) => {
                 for (piece, value) in params {
                     let key = params::piece_key(piece).ok_or_else(|| {
@@ -584,6 +613,10 @@ impl Patch {
             Patch::Bowed(p, _) => (params::describe(params::BOWED, p, params::NEXT_BOWED), String::new()),
             Patch::Wind(p, _) => (params::describe(params::WIND, p, &[]), String::new()),
             Patch::Choir(p, _) => (params::describe(params::CHOIR, p, &[]), String::new()),
+            Patch::Kit(kit) => (
+                params::specs(params::KIT_PIECE, params::NEXT_KIT_PIECE),
+                format!("Set per piece, by name or key: {{ \"daluo\": {{ \"tune\": -2, \"decay\": 1.5 }}, \"52\": {{ \"level\": 0.8 }} }}; automate as `piece.param` (e.g. \"daluo.tune\"). Pieces: {}", kit.keys()),
+            ),
             Patch::Drums(kit) => (
                 params::specs(params::PIECE, params::NEXT_PIECE),
                 format!(
@@ -600,6 +633,7 @@ impl Patch {
     /// 生成可演奏的乐器。
     fn instantiate(self) -> Result<TrackInstrument, String> {
         Ok(match self {
+            Patch::Kit(kit) => TrackInstrument::new(crate::percussion::Kit::new(kit), 9),
             Patch::Drums(kit) => TrackInstrument::new(
                 DrumsTunable { synth: Synth::new(DrumKitVoice::voices(24, kit)), kit },
                 9,
@@ -643,6 +677,7 @@ impl Patch {
 pub fn drum_kit_keys(name: &str) -> Option<Vec<u8>> {
     match lookup(name)?.1 {
         Patch::Drums(kit) => Some(kit.keys().collect()),
+        Patch::Kit(kit) => Some(kit.defs.iter().map(|d| d.key).collect()),
         _ => None,
     }
 }
@@ -762,6 +797,8 @@ macro_rules! b {
 
 static BUILTINS: &[Builtin] = &[
     // —— 鼓组 ——
+    // —— muser 自己的打击乐（yinse）——
+    b!("yinse.strike.luogu", ["luogu"], "drums", true, (36, 81), 48, "Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), small gong 小锣 (rises), cymbals 大钹 (and muted) and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃", || Patch::Kit(crate::percussion::KitParams::luogu())),
     b!("drums.808", ["808"], "drums", true, DRUM_RANGE, 24, "TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic", || Patch::Drums(DrumKit::style_808())),
     b!("drums.909", ["909"], "drums", true, DRUM_RANGE, 24, "TR-909 style: punchy kick and cymbals; house / techno", || Patch::Drums(DrumKit::style_909())),
     b!("drums.606", ["606"], "drums", true, DRUM_RANGE, 24, "TR-606 style: light and crisp; acid / electro", || Patch::Drums(DrumKit::style_606())),
@@ -1055,6 +1092,13 @@ pub(crate) fn automation_param(
         Patch::Bowed(p, _) => find(params::BOWED, p, param, params::NEXT_BOWED),
         Patch::Wind(p, _) => find(params::WIND, p, param, &[]),
         Patch::Choir(p, _) => find(params::CHOIR, p, param, &[]),
+        Patch::Kit(kit) => {
+            let (piece, field) = param
+                .split_once('.')
+                .ok_or_else(|| format!("percussion parameters are written as `piece.param`, e.g. \"daluo.tune\", got '{param}'"))?;
+            let i = kit.index(piece).ok_or_else(|| format!("unknown piece '{piece}'"))?;
+            find(params::KIT_PIECE, &kit.set[i], field, params::NEXT_KIT_PIECE)
+        }
         Patch::Drums(kit) => {
             let (piece, field) = param
                 .split_once('.')

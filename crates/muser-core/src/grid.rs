@@ -26,6 +26,9 @@ pub const DRUM_PIECES: &[(&str, u8)] = &[
     ("tambourine", 54), ("splash", 55), ("cowbell", 56), ("crash2", 57), ("ride2", 59),
     ("bongo_high", 60), ("bongo_low", 61), ("conga_mute", 62), ("conga_high", 63), ("conga_low", 64),
     ("cabasa", 69), ("shaker", 70), ("maracas", 70), ("guiro_short", 73), ("guiro_long", 74), ("claves", 75),
+    // yinse.strike.luogu（锣鼓）的件名。
+    ("dagu", 36), ("gubian", 37), ("tanggu", 38), ("ban", 39), ("bangu", 40), ("daluo", 49), ("xiaoluo", 52),
+    ("xiaobo", 55), ("naobo", 57), ("naobo_mute", 58), ("bangzi", 75), ("muyu", 76), ("muyu_low", 77), ("pengling", 81),
 ];
 
 /// 鼓件名或 MIDI 数字 → GM 鼓键。

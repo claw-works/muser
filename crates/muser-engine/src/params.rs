@@ -530,6 +530,17 @@ pub(crate) static PIECE: &[ParamDef<Piece>] = &[
 /// 鼓件别名 → GM 鼓键。
 pub(crate) use muser_core::grid::{drum_key as piece_key, DRUM_PIECES as PIECE_ALIASES};
 
+/// yinse 打击乐（[`crate::percussion`]）每件的参数。
+pub(crate) static KIT_PIECE: &[ParamDef<crate::percussion::PieceSet>] = &[
+    num!("tune", -24.0, 24.0, "st", "Tuning in semitones: a gong tuned down is bigger and darker", |p| p.tune),
+    num!("decay", 0.1, 10.0, "x", "How long it rings, as a multiple of its own decay: 0.5 shorter, 2 longer", |p| p.decay),
+    num!("level", 0.0, 4.0, "x", "Volume (multiplier), 1 = unchanged", |p| p.level),
+    num!("tone", 0.0, 1.0, "", "Brightness of the strike: 0 soft and dark, 0.5 as designed, 1 bright and hard", |p| p.tone),
+    num!("pan", -1.0, 1.0, "", "Pan: -1 left to 1 right", |p| p.pan),
+];
+
+pub(crate) const NEXT_KIT_PIECE: &[&str] = &["tune", "decay", "level", "tone", "pan"];
+
 // ---------------------------------------------------------------------------
 // 通用逻辑
 // ---------------------------------------------------------------------------

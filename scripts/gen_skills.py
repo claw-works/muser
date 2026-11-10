@@ -371,7 +371,41 @@ KIT_KEYS = {
     "drums.house": "35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,56,57,59,62,63,64,69,70",
     "drums.dnb": "35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,55,57,59",
     "drums.lofi": "35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,57,59,69,70",
+    "yinse.strike.luogu": "36,37,38,39,40,49,52,55,57,58,75,76,77,81 (its own pieces, see below)",
 }
+
+LUOGU = """
+## Chinese percussion: `yinse.strike.luogu` (锣鼓)
+
+muser's own kit for Beijing opera, folk wind-and-percussion bands (吹打) and festivals. Every piece is modeled from its vibration modes:
+drum heads, gong plates, cymbals and wood each have their own overtone ratios; the big gong falls in pitch after the strike (the "kuang～"),
+the small gong rises ("taing"). Write the pieces by name in a `grid` or by key in `notes`:
+
+| pitch | name | piece | sound |
+|---|---|---|---|
+| 36 | `dagu` | 大鼓 big drum | deep boom, rings about a second |
+| 37 | `gubian` | 鼓边 rim of the tanggu | dry click |
+| 38 | `tanggu` | 堂鼓 tanggu | mid drum |
+| 39 | `ban` | 拍板 clapper | hard wooden slap that keeps the beat (板) |
+| 40 | `bangu` | 板鼓 bangu | high, hard and short: the conductor of the band |
+| 49 | `daluo` | 大锣 big gong | long, falls in pitch |
+| 52 | `xiaoluo` | 小锣 small gong | bright, rises in pitch |
+| 55 | `xiaobo` | 小钹 small cymbals | thin and bright |
+| 57 | `naobo` | 大钹 cymbals (nao/bo) | open crash; a later 58 chokes it |
+| 58 | `naobo_mute` | 大钹闷击 cymbals pressed together | short muted "qi" |
+| 75 | `bangzi` | 梆子 bangzi | very high wood, the beat of 梆子腔 operas |
+| 76 / 77 | `muyu` / `muyu_low` | 木鱼 wood blocks | high / low |
+| 81 | `pengling` | 碰铃 bells | two little bells, beating against each other |
+
+Luogu syllables (锣鼓经) map onto pieces: **仓** (cang) = big gong + cymbals + bangu together; **才** (cai) = cymbals; **台** (tai) = small gong;
+**七** (qi) = muted cymbals (58); **大** (da) = one bangu stroke; **嘟** (du) = a bangu roll (strokes getting faster); **令** (ling) = a light small-gong stroke.
+
+- 四击头 (the four-stroke cadence that ends an entrance): 大 大 | 仓 . 才 . | 七 才 | 仓 — —
+- 急急风 (fast running): 仓才 仓才 … on every half beat, bangu on every stroke, ending on 仓 七 七 仓.
+- 吹打: 大鼓 on the strong beats, 堂鼓 between, 鼓边 on the off-beats, 小钹 on every half beat.
+- The pieces of one stroke are written at the same `start`. 仓 stacks three loud pieces: leave headroom (track `gain_db` about -8).
+- Per piece: `{ "daluo": { "tune": -3, "decay": 1.5 }, "xiaoluo": { "tune": 2 } }`: a lower, longer big gong for 京剧 "大锣"; `tone` softens or hardens the strike.
+"""
 
 FAMILY_PAGES = {
     "drums": ("Drum kits", "drums.md", [
@@ -744,6 +778,7 @@ def family_page(family, title, tips):
         for name, keys in KIT_KEYS.items():
             lines.append(f"| `{name}` | {keys} |\n")
         lines.append("\nNote: `drums.606` and `drums.cr78` have no hand clap (39).\n")
+        lines.append(LUOGU)
         lines.append("\n## Common rhythm skeletons (4/4, one bar = 4 beats)\n\n")
         lines.append("- Basic pop/rock: kick on 0, 2; snare on 1, 3; closed hi-hat every 0.5 beat.\n")
         lines.append("- house/techno four-on-the-floor: kick on 0, 1, 2, 3; clap on 1, 3; open hi-hat at 0.5, 1.5, 2.5, 3.5.\n")

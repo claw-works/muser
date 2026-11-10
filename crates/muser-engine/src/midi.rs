@@ -95,7 +95,7 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
             skipped.push(name);
             continue;
         }
-        let drums = t.instrument.trim().starts_with("drums.");
+        let drums = muser_core::is_drum_kit(&t.instrument);
         let channel = if drums { 9 } else { melodic.next().unwrap_or(0) };
         let mut track = Track::new();
         track.push_meta(0, MetaEvent::TrackName(if t.muted { format!("{name} (muted)") } else { name }));

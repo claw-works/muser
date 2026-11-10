@@ -103,7 +103,7 @@ pub fn arranged(project: &Project) -> Result<Cow<'_, Project>, String> {
             let at = format!("tracks[{ti}].parts.{}", span.name);
             let ctx = Ctx {
                 project,
-                drums: track.instrument.trim().starts_with("drums."),
+                drums: muser_core::is_drum_kit(&track.instrument),
                 seed: SplitMix64(occ_seed ^ (ti as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)).next_u64(),
             };
             let mut notes = if part.align == muser_core::arrange::Align::Global && span.start > 0.0 {

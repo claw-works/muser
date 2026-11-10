@@ -44,7 +44,7 @@ pub fn export(project: &Project, fps: Option<u32>, settings: RenderSettings) -> 
             notes.sort_by(|a, b| a[0].as_f64().partial_cmp(&b[0].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
         }
         tracks.push(json!({
-            "name": t.name, "instrument": t.instrument, "drums": t.instrument.trim().starts_with("drums."),
+            "name": t.name, "instrument": t.instrument, "drums": muser_core::is_drum_kit(&t.instrument),
             "muted": t.muted, "gain_db": t.gain_db, "notes": notes,
             "automation": curves(&t.automation, beats, &tm),
         }));

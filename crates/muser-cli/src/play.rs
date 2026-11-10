@@ -231,7 +231,7 @@ pub fn run_loop(command: LoopCommand) -> Result<()> {
             let p = crate::load_project(&project)?;
             let t = p.tracks.get(track).ok_or_else(|| anyhow!("no tracks[{track}]"))?;
             let c = t.clips.get(clip).ok_or_else(|| anyhow!("tracks[{track}] has no clips[{clip}]"))?;
-            let drums = t.instrument.trim().starts_with("drums.");
+            let drums = muser_core::is_drum_kit(&t.instrument);
             let notes = muser_engine::clip_notes(&p, track, clip).map_err(fail)?;
             let grid = match (drums, &c.grid, c.notes.is_empty() && c.abc.is_none() && c.drummer.is_none()) {
                 (false, _, _) => muser_core::grid::Grid::default(),

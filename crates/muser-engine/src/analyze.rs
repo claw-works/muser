@@ -148,7 +148,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         let name = if t.name.is_empty() { format!("tracks[{ti}]") } else { t.name.clone() };
         let inst = t.instrument.trim();
         // 鼓组的键位是鼓件，不是音高：不参与调性、和弦、冲突。
-        let drums = inst.starts_with("drums.") || inst.strip_prefix("sfz:").is_some_and(|p| crate::sfz::is_percussion(&crate::sfz::resolve(p.trim())));
+        let drums = muser_core::is_drum_kit(inst) || inst.strip_prefix("sfz:").is_some_and(|p| crate::sfz::is_percussion(&crate::sfz::resolve(p.trim())));
         if !drums && !tones.is_empty() && t.humanize.is_none() && t.clips.iter().all(|c| c.humanize.is_none()) {
             unhumanized.push(name.clone());
         }

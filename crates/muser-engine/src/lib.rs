@@ -158,6 +158,7 @@ mod electric;
 mod accordion;
 mod chinese;
 mod zither;
+pub mod percussion;
 pub(crate) mod singer;
 pub mod xfer;
 pub mod sounds;
@@ -205,11 +206,11 @@ pub fn clip_notes(project: &muser_core::Project, ti: usize, ci: usize) -> Result
     }
     if !clip.transform.is_empty() {
         let seed = muser_core::automation::derive_seed(project.seed, Some(ti), 0x5452_0000 + ci);
-        let drums = track.instrument.trim().starts_with("drums.");
+        let drums = muser_core::is_drum_kit(&track.instrument);
         arrange::apply(&clip.transform, &mut notes, &mut clip.length.0.clone(), 0, &[], drums, seed);
     }
     // 整首变调：有音高的轨演奏时移调（鼓组不动）。
-    if project.transpose != 0 && !track.instrument.trim().starts_with("drums.") {
+    if project.transpose != 0 && !muser_core::is_drum_kit(&track.instrument) {
         notes.retain_mut(|n| {
             let p = i32::from(n.pitch) + project.transpose;
             n.pitch = p.clamp(0, 127) as u8;
