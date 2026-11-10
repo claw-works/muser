@@ -26,6 +26,10 @@ muser's own instruments live under **`yinse.`** (*yīnsè*, "tone colour"), name
 
 ### Fixes
 
+- **A clip with only `"from": "loop:<name>"` was silent** (validate said OK): it now plays that loop from the library (its grid or notes repeated over the clip, with its humanize); an unknown loop name fails validation.
+- **Notes may start before their clip**, up to one beat (flams, pickups, early grace notes), and play at their absolute time; before beat 0 of the project is still an error.
+- **`analyze` no longer reads SFZ drum kits as harmony**: kits (every region `pitch_keytrack=0`, or drumkit / drums / percussion in the path) are left out of key, chord and clash detection like `drums.*`, and a project with no pitched track shows no key.
+- **Several large SFZ libraries in one project no longer exhaust memory**: libraries share one budget of 1 GB of sample files (`MUSER_SFZ_MEMORY_MB`); those loaded after it is used up stream from disk.
 - **Stems with master automation**: `render --stems` failed validation when the project automated a master effect (the stems drop the master effects but kept their automation). The `--stems` help now also says the stems are 24-bit (the full mix is 16-bit).
 - `sounds state` given a file path that is not in the list explains that sound names are the listed names (Serum 2 takes them from inside the preset, not from the file name).
 
