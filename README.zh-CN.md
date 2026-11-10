@@ -397,7 +397,7 @@ muser/
 │  └─ muser-mcp/      MCP server（stdio）
 ├─ vendor/manguebyte/ 上游音频引擎（git submodule）
 ├─ samples/           示范工程（songs/instruments/params/effects/automation/routing/plugins 分组）
-├─ ARCHITECTURE.md    架构、分层、工程 JSON schema、路线图
+├─ ARCHITECTURE.zh-CN.md 架构、分层、工程 JSON schema、路线图
 ├─ SKILLS.md          给 AI 的编曲操作手册（总入口）
 ├─ skills/            子 skill：每个乐器类别、每个效果器、自动化、路由、内置插件画像
 ├─ profiles/          muser 内置的插件画像（JSON）
@@ -408,7 +408,7 @@ muser/
 
 ## 深入阅读
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — 三层架构、数据流、工程文件格式、vendored 策略、路线图
+- [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md) — 三层架构、数据流、工程文件格式、vendored 策略、路线图
 - [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（总入口：工作流、速查、乐器与效果器索引）
 - [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误；自动化、路由、延音踏板
 - [TOOLS.md](TOOLS.md) — CLI 命令与 MCP tools 清单

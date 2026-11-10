@@ -1,193 +1,202 @@
-# muser 架构
+# muser architecture
 
-muser 是一个**面向 AI 的无头（headless）编曲引擎**：用数据而不是鼠标来编曲。它不提供编辑器窗口，
-而是提供结构化数据格式 + CLI + MCP server，让 AI agent 能够以「表达音乐意图」
-的方式驱动一个确定性的音频引擎，产出可听的音频。
+English | [简体中文](ARCHITECTURE.zh-CN.md)
 
-设计信条：**引擎负责确定性的"音频真相"，AI 负责"意图翻译"，接口层是两者的契约。**
+muser is a **headless arrangement engine for AI**: you arrange with data instead of a mouse. It has no editor window.
+It offers a structured data format + a CLI + an MCP server, so an AI agent can drive a deterministic audio engine
+by "expressing musical intent" and get audio you can listen to.
+
+Design principle: **the engine owns the deterministic "audio truth", the AI owns the "translation of intent", and the interface layer is the contract between them.**
 
 ---
 
-## 三层模型
+## Three layers
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  3. 接口层 (muser-cli + muser-mcp)                            │
-│     - CLI 子命令：render / validate / instruments / effects /     │
-│       plugin / audition / view / routing / new               │
-│     - MCP server (muser-mcp)：把能力作为 tools 暴露给 agent    │
-│     - skill 文档：告诉 AI 如何表达音乐意图 (SKILLS.md)         │
+│  3. Interface layer (muser-cli + muser-mcp)                   │
+│     - CLI subcommands: render / validate / instruments /      │
+│       effects / plugin / audition / view / routing / new      │
+│     - MCP server (muser-mcp): the same capabilities as tools  │
+│     - skill docs: how the AI expresses musical intent         │
+│       (SKILLS.md)                                             │
 ├─────────────────────────────────────────────────────────────┤
-│  2. 引擎适配层 (muser-engine)                                 │
-│     - instrument：语义乐器名 → manguebyte 乐器                 │
-│     - render：Project → 流式 Renderer → WAV / 播放页 / 声卡    │
+│  2. Engine adapter layer (muser-engine)                       │
+│     - instrument: semantic instrument name → manguebyte       │
+│       instrument                                              │
+│     - render: Project → streaming Renderer → WAV / player     │
+│       page / sound card                                       │
 ├─────────────────────────────────────────────────────────────┤
-│  1. 领域模型层 (muser-core)                                   │
+│  1. Domain model layer (muser-core)                           │
 │     - Project / Track / Clip / Note / Beats / TimeSignature   │
-│     - 全 serde：JSON 就是 AI 读写工程的格式                    │
-│     - 时间以「拍 (beats)」表示，与 tempo/采样率解耦            │
+│     - all serde: the JSON is the format the AI reads and      │
+│       writes projects in                                      │
+│     - time is in beats, independent of tempo and sample rate  │
 ├─────────────────────────────────────────────────────────────┤
-│  0. 音频引擎 (vendored: vendor/manguebyte)                    │
-│     - DSP、乐器/鼓组、音频图、插件宿主、音频文件格式           │
-│     - 上游独立 workspace，MIT/Apache，通过 path 依赖引入       │
+│  0. Audio engine (vendored: vendor/manguebyte)                │
+│     - DSP, instruments / drum kits, audio graph, plugin host, │
+│       audio file formats                                      │
+│     - its own upstream workspace, MIT/Apache, used through a  │
+│       path dependency                                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-AI 只需理解**第 1 层的 JSON 格式**和**第 3 层的命令**；第 0、2 层对 AI 透明。
+The AI only needs to understand **the JSON format of layer 1** and **the commands of layer 3**; layers 0 and 2 are invisible to it.
 
 ---
 
-## crate 划分
+## Crates
 
-| crate | 层 | 职责 | 关键依赖 |
+| crate | layer | role | key dependencies |
 |---|---|---|---|
-| `muser-core` | 1 | 领域模型 + 序列化。无音频依赖，编译极快。 | serde |
-| `muser-engine` | 2 | 把 core 模型编译成 manguebyte 乐器，流式渲染（离线 WAV、边渲染边播、本机声卡）。 | muser-core, manguebyte |
-| `muser-cli` | 3 | CLI 可执行文件 `muser`。 | muser-core, muser-engine, clap |
-| `muser-mcp` | 3 | MCP server（stdio），把能力暴露为 agent tools。 | muser-core, muser-engine, rmcp |
-| `vendor/manguebyte` | 0 | 上游音频引擎（vendored）。 | — |
+| `muser-core` | 1 | Domain model + serialization. No audio dependencies; compiles very fast. | serde |
+| `muser-engine` | 2 | Compiles the core model into manguebyte instruments; streaming render (offline WAV, play while rendering, local sound card). | muser-core, manguebyte |
+| `muser-cli` | 3 | The `muser` CLI executable. | muser-core, muser-engine, clap |
+| `muser-mcp` | 3 | MCP server (stdio) exposing the capabilities as agent tools. | muser-core, muser-engine, rmcp |
+| `vendor/manguebyte` | 0 | The upstream audio engine (vendored). | — |
 
-### 为什么 vendored（git submodule）而非 crates.io 依赖
+### Why vendored (a git submodule) instead of a crates.io dependency
 
-- **可控**：以 git submodule 固定在仓库内的某个提交，上游若断更可切到自己的 fork 接管维护（许可为 MIT/Apache，允许 fork）。
-- **隔离**：`vendor/manguebyte` 是它自己的 Cargo workspace；muser 顶层 workspace 用
-  `exclude = ["vendor"]` 排除它，再以 `path` 依赖指向 `vendor/manguebyte/crates/manguebyte`。
-  （Cargo 不允许 workspace 嵌套，这是唯一正确的接法。）
-- **按需开设备**：依赖时 `default-features = false`，只用渲染所需的部分；本机声卡播放（`muser view --device`）
-  通过 muser-engine 的 `devices` 特性打开 manguebyte 的 `devices`（CoreAudio / WASAPI / ALSA，Linux 需 libasound2-dev）。
+- **Control**: the submodule pins a commit inside the repository; if upstream stops being maintained we can switch to our own fork (the MIT/Apache license allows forking).
+- **Isolation**: `vendor/manguebyte` is its own Cargo workspace; the top-level muser workspace leaves it out with
+  `exclude = ["vendor"]` and points a `path` dependency at `vendor/manguebyte/crates/manguebyte`.
+  (Cargo does not allow nested workspaces, so this is the only correct way to wire it.)
+- **Devices only when needed**: the dependency uses `default-features = false`, only what rendering needs; local sound-card playback (`muser view --device`)
+  turns on manguebyte's `devices` through muser-engine's `devices` feature (CoreAudio / WASAPI / ALSA; Linux needs libasound2-dev).
 
-### 同步上游
+### Updating upstream
 
 ```bash
-# 在 vendor/manguebyte 内拉取上游更新
+# pull upstream changes inside vendor/manguebyte
 cd vendor/manguebyte && git pull
-# 若上游 API 变化，只需调整 muser-engine 这一层（唯一与 manguebyte 耦合的 crate）
+# if the upstream API changed, only muser-engine needs adjusting (the only crate coupled to manguebyte)
 ```
 
-与引擎耦合的代码**全部集中在 `muser-engine`**。core 和 cli 不碰 manguebyte，
-因此上游变动的影响面被限制在一个 crate 内。
+The code coupled to the engine **all lives in `muser-engine`**. core and cli never touch manguebyte,
+so upstream changes affect a single crate.
 
 ---
 
-## 数据流
+## Data flow
 
 ```
-自然语言意图
-    │  (AI 翻译)
+natural-language intent
+    │  (AI translates)
     ▼
 Project JSON  ──Project::from_json──►  muser_core::Project
                                            │  Project::validate()
                                            ▼
-                                 muser_engine::Renderer（流式）
+                                 muser_engine::Renderer (streaming)
                                            │
                  ┌─────────────────────────┼─────────────────────────┐
                  ▼                          ▼                          ▼
-          每条 Track                 instrument::resolve        逐 clip/note
-       instrument 语义名  ──►   manguebyte 乐器(Synth<V>)   ──► 换算成样本精确事件
-                                                                 (note_on/note_off)
-                                           │  内置乐器各在一个演奏线程里领先一段先算
+          each Track                instrument::resolve         each clip / note
+     semantic instrument  ──►   manguebyte instrument    ──►  turned into sample-accurate
+           name                       (Synth<V>)               events (note_on / note_off)
+                                           │  each built-in instrument computes a stretch ahead on its own performer thread
                                            ▼
-             每次 process() 往前推进一段：按路由计划依次处理每个节点
-             （乐器 → 效果链 → 推子 → 送进总线 / 发送 / 侧链键 → 主总线效果链 → 主增益）
+             each process() moves forward one stretch: the nodes are processed in routing-plan order
+             (instrument → effect chain → fader → into buses / sends / sidechain keys → master effect chain → master gain)
                                            │
              ┌─────────────────────────────┼─────────────────────────────┐
              ▼                             ▼                             ▼
-   render()：从头推进到结尾       muser view：边渲染边播放       muser view --device：
-   → wav::write_file              （分段送给浏览器）             无锁队列 → 本机声卡
+   render(): from start to end    muser view: plays while        muser view --device:
+   → wav::write_file              rendering (sent to the          lock-free queue →
+                                  browser in pieces)              local sound card
 ```
 
-离线渲染就是从头到尾调用流式渲染器，两者逐样本一致（测试 `streaming_matches_offline` 用任意块长对比）。
-效果链按从工程开头算起、固定步长的块处理，流式推进的每一段都对齐到这些块的公倍数，所以分块方式与一次处理整首相同；
-有延迟的效果器（limiter 前瞻、插件）让节点的输出取效果链输出往后 latency 帧的样本，上游相应多算这么多。
-声卡播放时推子、静音、独奏在播放线程里从下一段起生效（`Renderer::set_mix`），听到的延迟约等于队列长度（几十毫秒）；
-跳转像 DAW 一样直接从目标位置开始（`Renderer::new_at`）：那时还按着的音与踏板补发（chase），效果器从空状态开始，
-音轨乐器已在缓存里时用缓存的输出；SFZ 音色在进程里只加载一次（`sfz::load_shared`），重建不用重新读采样。
+Offline rendering is the streaming renderer run from start to end; the two are sample-identical (the test `streaming_matches_offline` compares them with arbitrary block sizes).
+Effect chains process fixed-size blocks counted from the start of the project, and every stretch of streaming is aligned to a common multiple of those blocks, so splitting into stretches gives the same result as processing the whole song at once;
+effects with latency (limiter look-ahead, plugins) make a node take its effect chain's output `latency` frames later, and the upstream nodes compute that much more.
+During sound-card playback, faders, mute and solo take effect in the playback thread from the next stretch (`Renderer::set_mix`); the delay you hear is about the queue length (tens of milliseconds).
+Seeking starts straight from the target position, as a DAW does (`Renderer::new_at`): notes and pedals still held at that point are sent again (chase), effects start from an empty state,
+and a track's instrument output is taken from the cache when it is there; an SFZ sound is loaded only once per process (`sfz::load_shared`), so rebuilding does not read the samples again.
 
-### 时间模型
+### Time model
 
-core 层用**拍 (beats)** 作为唯一时间单位，`1 beat = 一个四分音符`。
-引擎层负责换算：
+The core layer uses **beats** as its only unit of time: `1 beat = one quarter note`.
+The engine layer converts:
 
 ```
 seconds = beats × (60 / tempo)
 samples = seconds × sample_rate
 ```
 
-这样 AI 推理时无需关心采样率，改 tempo 不必改音符时间。
+So the AI never has to think about the sample rate, and changing the tempo does not change note times.
 
-### 乐器解析
+### Instrument resolution
 
-音轨用**语义名**引用乐器（如 `"drums.808"`、`"synth.poly"`、`"synth.fm"`），
-由 `muser_engine::instrument::resolve()` 映射到具体的 manguebyte 乐器。
-不同乐器的 Voice 是不同 Rust 类型，用枚举 `TrackInstrument` 做类型擦除，
-对外暴露统一的 `prepare / note_on / note_off / process`。鼓组按惯例走 MIDI 通道 9。
+A track refers to its instrument by a **semantic name** (such as `"drums.808"`, `"synth.poly"`, `"synth.fm"`),
+which `muser_engine::instrument::resolve()` maps to a concrete manguebyte instrument.
+Each instrument's Voice is a different Rust type; the `TrackInstrument` enum erases the type
+and exposes a uniform `prepare / note_on / note_off / process`. Drum kits use MIDI channel 9 by convention.
 
 ---
 
-## 工程文件格式 (`*.muser.json`)
+## Project file format (`*.muser.json`)
 
-工程文件是 muser 的核心契约——**AI 产出/编辑的就是这个 JSON**。
+The project file is muser's core contract: **this JSON is what the AI produces and edits**.
 
-### 结构
+### Structure
 
 ```jsonc
 {
-  "schema_version": 1,          // 格式版本，用于未来迁移（可省略，默认 1）
-  "name": "example",            // 工程名（可省略）
-  "tempo": 90.0,                // 必填，每分钟四分音符数，> 0
-  "time_signature": {           // 拍号（可省略，默认 4/4）
+  "schema_version": 1,          // format version, for future migrations (optional, default 1)
+  "name": "example",            // project name (optional)
+  "tempo": 90.0,                // required, quarter notes per minute, > 0
+  "time_signature": {           // time signature (optional, default 4/4)
     "numerator": 4,
     "denominator": 4
   },
-  "master_gain_db": 0.0,        // 主输出增益 dB（可省略，默认 0）
-  "master_effects": [           // 主总线效果链（可省略，默认空；在主增益前施加）
+  "master_gain_db": 0.0,        // master output gain in dB (optional, default 0)
+  "master_effects": [           // master effect chain (optional, default empty; applied before the master gain)
     { "type": "compressor", "threshold_db": -16, "ratio": 3 }
   ],
-  "seed": 0,                    // 随机种子（可省略）：决定没写 seed 的 random 自动化
-  "automation": [               // 主总线自动化（可省略）：目标 master_gain_db / master_effects[i]
+  "seed": 0,                    // random seed (optional): decides random automation that has no seed of its own
+  "automation": [               // master automation (optional): targets master_gain_db / master_effects[i]
     { "target": "master_effects[0]", "param": "ratio", "shape": "points", "points": [[0, 2], [16, 4]] }
   ],
-  "buses": [                    // 总线（可省略）：汇集送来的信号 → effects → gain_db/pan → output
+  "buses": [                    // buses (optional): sum what is sent in → effects → gain_db/pan → output
     {
-      "name": "reverb",         // 必填，唯一，不能叫 master、不能含 "."
+      "name": "reverb",         // required, unique, not "master", no "."
       "effects": [{ "type": "reverb", "mix": 1.0 }],
       "gain_db": 0.0, "pan": 0.0, "muted": false,
-      "output": "master",       // 去向（可省略，默认 master）：master 或另一条总线
-      "sends": {},              // 发送到其它总线（dB）
-      "automation": []          // 目标 effects[i] / gain_db / pan / sends.<总线>
+      "output": "master",       // destination (optional, default master): master or another bus
+      "sends": {},              // sends to other buses (dB)
+      "automation": []          // targets effects[i] / gain_db / pan / sends.<bus>
     }
   ],
-  "tracks": [                   // 音轨数组
+  "tracks": [                   // the tracks
     {
-      "name": "drums",          // 轨名（可省略）
-      "instrument": "drums.lofi", // 必填，乐器名（见 `muser instruments`），或 sfz:/path.sfz、plugin:/path.vst3
-      "instrument_params": {    // 调音色（可省略）：在预设上覆盖，键与范围见 `muser instruments <名称>`
-        "kick": { "tune": -2 }  //   鼓组按鼓件；旋律乐器直接写参数，如 { "cutoff": 800 }
+      "name": "drums",          // track name (optional)
+      "instrument": "drums.lofi", // required, instrument name (see `muser instruments`), or sfz:/path.sfz, plugin:/path.vst3
+      "instrument_params": {    // sound shaping (optional): overrides the preset; keys and ranges in `muser instruments <name>`
+        "kick": { "tune": -2 }  //   drum kits per piece; melodic instruments take the parameters directly, e.g. { "cutoff": 800 }
       },
-      "gain_db": 0.0,           // 轨增益 dB（可省略，默认 0）
-      "pan": 0.0,               // 声像 -1(左)~1(右)（可省略，默认 0）
-      "muted": false,           // 是否静音（可省略，默认 false）
-      "effects": [              // 轨级效果链（可省略，默认空；在增益/声像前施加）
+      "gain_db": 0.0,           // track gain in dB (optional, default 0)
+      "pan": 0.0,               // pan -1 (left) to 1 (right) (optional, default 0)
+      "muted": false,           // muted (optional, default false)
+      "effects": [              // track effect chain (optional, default empty; applied before gain / pan)
         { "type": "reverb", "mix": 0.3 }
       ],
-      "output": "master",       // 去向（可省略，默认 master）：master 或总线名
-      "sends": { "reverb": -6 }, // 推子后发送到总线（可省略）：总线名 → dB
-      "automation": [           // 轨自动化（可省略）：目标 instrument / effects[i] / gain_db / pan / sends.<总线>
+      "output": "master",       // destination (optional, default master): master or a bus name
+      "sends": { "reverb": -6 }, // post-fader sends to buses (optional): bus name → dB
+      "automation": [           // track automation (optional): targets instrument / effects[i] / gain_db / pan / sends.<bus>
         { "target": "pan", "shape": "lfo", "period_beats": 8, "min": -0.5, "max": 0.5 }
       ],
-      "clips": [                // 片段数组
+      "clips": [                // the clips
         {
-          "start": 0.0,         // 必填，片段起点（beats，从工程开头算）
-          "length": 4.0,        // 必填，片段长度（beats），> 0
-          "legato": false,      // 连奏（可省略）：每个音接到下一个不同音高的音，重叠约 40 ms
-          "pedal": [[0.1, 4.03]], // 延音踏板（CC64）踩下区间（可省略）：[起, 止] 拍，相对 clip 起点，递增不重叠
-          "notes": [            // 音符数组
+          "start": 0.0,         // required, clip start (beats, from the start of the project)
+          "length": 4.0,        // required, clip length (beats), > 0
+          "legato": false,      // legato (optional): each note runs into the next note of a different pitch, overlapping about 40 ms
+          "pedal": [[0.1, 4.03]], // sustain pedal (CC64) down intervals (optional): [down, up] in beats, relative to the clip start, increasing, not overlapping
+          "notes": [            // the notes
             {
-              "pitch": 36,      // 必填，MIDI 音高 0-127（60 = 中央C）
-              "start": 0.0,     // 必填，音符起点（beats，相对 clip 起点）
-              "length": 0.25,   // 必填，音符时值（beats），> 0
-              "velocity": 0.8,  // 力度 0.0-1.0（可省略，默认 0.8）
-              "accent": false   // 重音（可省略）：鼓组、acid 贝斯更响更亮
+              "pitch": 36,      // required, MIDI pitch 0-127 (60 = middle C)
+              "start": 0.0,     // required, note start (beats, relative to the clip start)
+              "length": 0.25,   // required, note length (beats), > 0
+              "velocity": 0.8,  // velocity 0.0-1.0 (optional, default 0.8)
+              "accent": false   // accent (optional): drum kits and acid bass play louder and brighter
             }
           ]
         }
@@ -197,84 +206,83 @@ samples = seconds × sample_rate
 }
 ```
 
-### 字段约束（`Project::validate` 会检查）
+### Constraints (checked by `Project::validate`)
 
-- `tempo` 必须 > 0
-- 每个 clip 的 `start` ≥ 0，`length` > 0
-- 超出 clip `length` 的音符会在渲染时被裁剪到 clip 边界
-- 鼓组音轨的 `pitch` 用 GM 鼓键编号（36=底鼓, 38=军鼓, 42=闭镲, …）
-- 路由（`muser_core::routing::plan`）：总线名合法且唯一；output / sends / compressor 的 `sidechain` 引用存在；
-  不自指、不成环（侧链键也算依赖）。通过后按拓扑序得到处理顺序
+- `tempo` must be > 0
+- each clip's `start` ≥ 0 and `length` > 0; a note's `start` may be up to 1 beat before its clip's start (grace notes, pickups), but not before the start of the project
+- notes running past the clip `length` are cut at the clip boundary when rendering
+- drum-kit tracks use GM drum keys for `pitch` (36 = kick, 38 = snare, 42 = closed hi-hat, …)
+- routing (`muser_core::routing::plan`): bus names are valid and unique; the buses named by output / sends / a compressor's `sidechain` exist;
+  nothing routes to itself and there are no cycles (sidechain keys count as dependencies). Once it passes, the topological order is the processing order
 
-### 时间直觉速查（4/4 拍）
+### Time cheat sheet (4/4)
 
-| 想要 | beats 值 |
+| You want | beats |
 |---|---|
-| 一个全音符 | 4.0 |
-| 一个四分音符 | 1.0 |
-| 一个八分音符 | 0.5 |
-| 一个十六分音符 | 0.25 |
-| 一小节 | 4.0（= `time_signature.beats_per_bar()`） |
+| a whole note | 4.0 |
+| a quarter note | 1.0 |
+| an eighth note | 0.5 |
+| a sixteenth note | 0.25 |
+| one bar | 4.0 (= `time_signature.beats_per_bar()`) |
 
 ---
 
-## 当前状态 (MVP)
+## Current state (MVP)
 
-已验证跑通的端到端闭环：
+The end-to-end loop that has been verified:
 
 ```bash
-muser new -o demo.muser.json     # 生成示例工程
-muser validate demo.muser.json   # 校验
-muser render demo.muser.json -o demo.wav   # 离线渲染
-# → 产出有效的 16-bit / 48kHz / stereo WAV
+muser new -o demo.muser.json     # generate an example project
+muser validate demo.muser.json   # validate
+muser render demo.muser.json -o demo.wav   # render offline
+# → a valid 16-bit / 48 kHz / stereo WAV
 ```
 
-已实现：
-- 多轨、多 clip、多音符的离线渲染
-- 115 个内置音源：10 套鼓组、68 个 poly 合成器预设、吉他/贝斯/风琴/打击旋律/弦乐/管乐/合唱
-- 乐器与效果器描述表（名称、参数、范围、默认值、说明）只在代码里写一份：
-  core `EFFECT_SPECS`、engine `instrument::catalog()` 与 `params.rs`；CLI、MCP、`validate` 与 `skills/` 文档都由它派生
-- 内置乐器参数 `instrument_params`：每类乐器开放常用参数（统一命名、真实单位），在预设上覆盖；
-  鼓组按鼓件设置；渲染时检测数值发散并报错
-- `sfz:` 内置 SFZ 采样器（manguebyte-sampler）：直接加载 .sfz 音色库，无需外部插件
-- 外置插件通用层（`host` 特性）：扫描（独立进程、缓存）、信息、参数搜索、选项文字；插件参数按**名称**设置，
-  值可写插件显示的文字（往返校验 + 查表回退），用于 `plugin:` 乐器的 `instrument_params`、`plugin` 效果器的 `params`
-  与自动化；激活后静音预热，插件未采纳参数时重发
-- 插件画像（profile）：纯数据 JSON，按插件 id 匹配（多格式 id），含别名、常用取值、试听观察、预设、setup、经验、
-  来源与验证版本；用户目录 > `MUSER_PROFILE_PATH` > 内置；结构校验与文字清洗（为社区分享做准备）；
-  自动草稿与试听回写；渲染为 skill 文档。工程参数里的保留键：`@state` / `@setup` / `@preset`
-- 插件状态（state）：保存/加载插件完整音色，文件头记录插件 id 与版本，装错插件会被拒绝
-- 画像扩展：`selector`（"类型/程序"只在状态里的插件：改写 JUCE XML 状态的根属性切换并刷新参数表，
-  如 Airwindows Consolidated 的 `effect`）；`state_format: "vital"`（解析 Vital 状态里的 JSON 预设，
-  `@wavetable` 生成波表、`@modulations` 写调制矩阵）；`source.lang: "en"` 生成英文 skill
-- 内置画像（`profiles/`）：Surge XT、Surge XT Effects、Vital、Airwindows Consolidated（效果清单来自 Airwindows 注册表，
-  与安装版本取交集）、Plasma
-- 插件走带：渲染时把工程速度、拍号交给插件（按块推进），tempo 同步的 LFO / 延迟正确；插件动态库在进程内常驻复用
-  （有的插件卸载时后台线程仍在运行会崩溃）；路径支持 `~/`
-- 试听（audition）：按参数取值逐个渲染测试音，报告响度、频谱重心、频段占比、起音、余音——给 AI 的"耳朵"
-- 自动化：points / lfo / random（带种子）三种形状，目标覆盖内置乐器参数、效果器参数、
-  轨增益与声像、主增益与主总线效果器；乐器/效果器每 64 帧更新，增益与声像逐帧更新
-- 轨增益、等功率声像、主增益、结尾余响
-- 效果器链：reverb / delay / compressor / multiband_compressor / chorus / eq(filter) / limiter / phaser / flanger / tremolo / auto_pan / widener / transient_shaper / tape / bitcrusher / ring_mod / frequency_shifter / formant_filter / granular_delay / vocoder（侧链调制），可挂到轨级、总线或主总线
-- 路由：总线（`buses`）、音轨/总线的 `output` 与推子后 `sends`（可自动化）、总线套总线；compressor `sidechain`
-  由任意音轨/总线的推子后信号触发（静音的键轨照样触发）；按拓扑序离线处理，缓冲用完即释放；
-  有延迟的效果器（limiter 前瞻、插件上报的延迟）在各自链路上补偿，保证并联信号对齐。
-  AI 只写这些简单字段，不接触节点/连线图
-- 插件宿主（`host` 特性）：加载第三方 CLAP/VST3/LV2 作为**效果器**
-  （`{ "type": "plugin", "path": "..." }`），由 manguebyte-host 激活为 Processor。
-  已用真实插件验证：加载本机 `Surge XT Effects.vst3`，输出与无插件对照显著不同。
-- 第三方插件作为**乐器**（`host` 特性）：音轨 `instrument` 用 `plugin:路径[#id]`，
-  音符经 `process_with`+`ProcessContext` 喂给插件。已用真实 VSTi 验证：
-  `Surge XT.vst3` 有音符时 RMS 895、无音符时 RMS 0（完全静音），证明响应音符发声。
-- 播放页 `muser view`：本地服务（tiny_http，只绑 127.0.0.1，校验 Host/Origin）。后台渲染线程合并请求、复用
-  `RenderCache`（各音轨乐器输出按"影响声音的内容"做键缓存，裁掉首尾静音），改音量/静音/独奏只重跑效果链、总线与主总线；
-  页面按播放进度分段拉取 16-bit PCM，用 Web Audio 排期播放，新版本从当前位置无缝换上；保存只写回改过的字段；轮询文件变化
-- 流式渲染：离线 WAV、边渲染边播、本机声卡共用 `Renderer`，结果逐样本一致；内置乐器各在一个演奏线程里并行演奏
-  （插件乐器与效果器在渲染线程），渲染期间关闭非规格化浮点（`NoDenormals`），近乎静音的尾巴不再拖慢滤波与混响
-- 插件实例延迟约一分钟释放（同一线程内），避免插件后台线程（如 JUCE 联网检查更新）访问已释放对象
-- CI / 发布：GitHub Actions 在 Linux、macOS、Windows 上构建与测试（默认与插件宿主特性）；推送 `v*` 标签时构建
-  Linux x86_64 / arm64（各有桌面版与 headless 版）、macOS arm64 / x86_64、Windows x86_64 的 `muser` + `muser-mcp`（含插件宿主），附文档与 SHA256，发布到 GitHub Release
-- MCP server（`muser-mcp`）：34 个 tools（工程生命周期 + 增量编辑 + 路由 + 自动化 + 磁盘读写 + 渲染 + 乐器/效果器查询 + 外置插件 + 试听 + 插件画像与状态），stdio 运行
+Implemented:
+- Offline rendering of multiple tracks, clips and notes
+- 115 built-in sounds: 10 drum kits, 68 poly synth presets, guitar / bass / organ / mallets / strings / winds / choir
+- The instrument and effect description tables (names, parameters, ranges, defaults, descriptions) are written once, in the code:
+  core `EFFECT_SPECS`, engine `instrument::catalog()` and `params.rs`; the CLI, MCP, `validate` and the `skills/` docs are all derived from them
+- Built-in instrument parameters `instrument_params`: each kind of instrument exposes its common parameters (uniform names, real units), overriding the preset;
+  drum kits are set per piece; rendering detects diverging values and reports an error
+- `sfz:` built-in SFZ sampler (manguebyte-sampler): loads .sfz sound libraries directly, no external plugin needed
+- A generic layer for external plugins (`host` feature): scanning (in a separate process, cached), info, parameter search, option text; plugin parameters are set by **name**,
+  and the value can be the text the plugin displays (round-trip checked, with a lookup-table fallback); used in the `instrument_params` of `plugin:` instruments, the `params` of `plugin` effects,
+  and automation; after activation the plugin is warmed up silently, and parameters it did not take are sent again
+- Plugin profiles: pure-data JSON, matched by plugin id (ids in several formats), with aliases, common values, audition notes, presets, setup, experience,
+  sources and the verified version; user directory > `MUSER_PROFILE_PATH` > built-in; structure validation and text cleaning (in preparation for community sharing);
+  automatic drafts and audition write-back; rendered as skill docs. Reserved keys in project parameters: `@state` / `@setup` / `@preset`
+- Plugin state: saves / loads a plugin's complete sound; the file header records the plugin id and version, and loading it into the wrong plugin is refused
+- Profile extensions: `selector` (for plugins whose "type / program" lives only in their state: rewrites a root attribute of the JUCE XML state to switch it and refreshes the parameter table,
+  as with Airwindows Consolidated's `effect`); `state_format: "vital"` (parses the JSON preset in Vital's state:
+  `@wavetable` generates a wavetable, `@modulations` writes the modulation matrix); `source.lang: "en"` generates an English skill
+- Built-in profiles (`profiles/`): Surge XT, Surge XT Effects, Vital, Airwindows Consolidated (its effect list comes from the Airwindows registry,
+  intersected with the installed version), Plasma
+- Plugin transport: rendering passes the project tempo and time signature to plugins (advancing block by block), so tempo-synced LFOs and delays are right; plugin dynamic libraries stay loaded in the process and are reused
+  (some plugins crash on unload while a background thread is still running); paths support `~/`
+- Audition: renders a test sound for each value of a parameter and reports loudness, spectral centroid, band shares, attack and tail: an "ear" for the AI
+- Automation: three shapes, points / lfo / random (seeded), targeting built-in instrument parameters, effect parameters,
+  track gain and pan, master gain and master effects; instruments and effects update every 64 frames, gain and pan every frame
+- Track gain, equal-power pan, master gain, a reverb tail at the end
+- Effect chains: reverb / delay / compressor / multiband_compressor / chorus / eq (filter) / limiter / phaser / flanger / tremolo / auto_pan / widener / transient_shaper / tape / bitcrusher / ring_mod / frequency_shifter / formant_filter / granular_delay / vocoder (sidechain-modulated), on a track, a bus or the master bus
+- Routing: buses (`buses`), the `output` of tracks and buses and post-fader `sends` (automatable), buses into buses; a compressor's `sidechain`
+  is triggered by the post-fader signal of any track or bus (a muted key track still triggers); processed offline in topological order, buffers freed as soon as they are used;
+  effects with latency (limiter look-ahead, latency reported by plugins) are compensated on their own paths, so parallel signals stay aligned.
+  The AI only writes these simple fields and never touches a node / connection graph
+- Plugin host (`host` feature): loads third-party CLAP / VST3 / LV2 plugins as **effects**
+  (`{ "type": "plugin", "path": "..." }`), activated as a Processor by manguebyte-host.
+  Verified with a real plugin: loading the local `Surge XT Effects.vst3` gives output clearly different from the plugin-free control.
+- Third-party plugins as **instruments** (`host` feature): a track's `instrument` is `plugin:path[#id]`,
+  and notes are fed to the plugin through `process_with` + `ProcessContext`. Verified with a real VSTi:
+  `Surge XT.vst3` has an RMS of 895 with notes and 0 without (complete silence), showing it responds to notes.
+- Player page `muser view`: a local server (tiny_http, bound to 127.0.0.1 only, checking Host / Origin). A background render thread merges requests and reuses
+  a `RenderCache` (each track's instrument output is cached under a key of "what affects the sound", with leading and trailing silence trimmed), so changing volume / mute / solo only re-runs the effect chains, buses and master;
+  the page fetches 16-bit PCM in pieces as playback progresses and schedules it with Web Audio, switching to a new version seamlessly from the current position; saving writes back only the changed fields; it polls for file changes
+- Streaming render: offline WAV, play while rendering and the local sound card share `Renderer`, with sample-identical results; built-in instruments each play in parallel on a performer thread
+  (plugin instruments and effects on the render thread); denormal floats are turned off while rendering (`NoDenormals`), so almost-silent tails no longer slow down filters and reverbs
+- Plugin instances are released about a minute later (on the same thread), so plugin background threads (such as JUCE's online update check) do not touch freed objects
+- CI / release: GitHub Actions builds and tests on Linux, macOS and Windows (default and plugin-host features); pushing a `v*` tag builds
+  `muser` + `muser-mcp` (with the plugin host) for Linux x86_64 / arm64 (each in a desktop and a headless build), macOS arm64 / x86_64 and Windows x86_64, with the docs and SHA256 sums, published to a GitHub Release
+- MCP server (`muser-mcp`): 34 tools (project lifecycle + incremental editing + routing + automation + disk read / write + rendering + instrument / effect lookup + external plugins + audition + plugin profiles and state), over stdio
 
-尚未实现（路线图）：0.5 的 yinse 合成器（muser 自己的、给 AI 用的音色引擎）等。
-```
+Not implemented yet (roadmap): the 0.6 yinse synthesizer (muser's own sound engine, made for AI), among others.
