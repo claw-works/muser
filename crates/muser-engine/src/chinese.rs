@@ -671,13 +671,13 @@ impl Dizi {
         let w = self.params.width.clamp(0.0, 1.0) as f32;
         for i in 0..buffer.num_frames() {
             let mono = 0.5 * (buffer.channel(0)[i] + buffer.channel(1)[i]);
-            for c in 0..2 {
+            for (c, taps) in TAPS.iter().enumerate() {
                 self.room_lp[c] += 0.35 * (mono - self.room_lp[c]);
                 self.room_buf[c][self.room_at] = self.room_lp[c];
                 let mut wet = 0.0;
-                for (k, t) in TAPS[c].iter().enumerate() {
+                for (t, g) in taps.iter().zip([0.5f32, 0.35, 0.25]) {
                     let d = (t * self.sr) as usize;
-                    wet += self.room_buf[c][(self.room_at + len - d) % len] * [0.5f32, 0.35, 0.25][k];
+                    wet += self.room_buf[c][(self.room_at + len - d) % len] * g;
                 }
                 buffer.channel_mut(c)[i] += w * wet;
             }
