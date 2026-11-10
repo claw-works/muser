@@ -296,7 +296,10 @@ impl DiziParams {
         w.articulation = 0.8;
         w.portamento = true;
         w.legato_time = 0.06;
-        Self { wind: w, membrane: 0.6 }
+        // 七段竹笛独奏录音（喜相逢、喜洋洋、北京小曲等）的长音：二次谐波比基音低约 19 dB、三次约 16 dB、四次约 31 dB；
+        // 长笛的默认（吹口偏 1.0）偶次谐波太强（二次只低 3 dB），像长笛不像笛子。0.2 时二、三、四次约 -17 / -12 / -25 dB。
+        w.jet_offset = 0.2;
+        Self { wind: w, membrane: 0.45 }
     }
 }
 
@@ -327,6 +330,12 @@ pub(crate) struct Dizi {
     wet2: AudioBuffer<f32>,
     /// 每个声道的峰值包络（膜按波形的形状削，削出的声音跟着音量走）。
     env: [f32; 2],
+    /// 下一个音要不要花舌，正在吹的音花不花舌；花舌的相位与噪声种子。
+    flutter_next: bool,
+    flutter: bool,
+    flutter_phase: f64,
+    sr: f64,
+    rng: u32,
 }
 
 impl Dizi {
@@ -335,11 +344,17 @@ impl Dizi {
         let mut synth = Synth::with_voices(1, move || WindVoice::new(w));
         synth.set_legato(true);
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
-        Self { synth, params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2] }
+        Self { synth, params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
+            flutter_next: false, flutter: false, flutter_phase: 0.0, sr: 48_000.0, rng: 0x1234_5678 }
+    }
+
+    pub(crate) fn flutter_next(&mut self, on: bool) {
+        self.flutter_next = on;
     }
 
     pub(crate) fn prepare(&mut self, spec: &ProcessSpec) {
         Processor::prepare(&mut self.synth, spec);
+        self.sr = spec.sample_rate;
         let mono = ProcessSpec { num_channels: 1, ..*spec };
         self.membrane.iter_mut().flatten().for_each(|f| f.prepare(&mono));
         self.wet = AudioBuffer::new(1, spec.max_block_size);
@@ -347,6 +362,7 @@ impl Dizi {
     }
 
     pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
+        self.flutter = std::mem::take(&mut self.flutter_next);
         self.synth.note_on_accented(note, velocity, accent);
     }
 
@@ -360,6 +376,9 @@ impl Dizi {
 
     pub(crate) fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         Processor::process(&mut self.synth, buffer);
+        if self.flutter {
+            self.flutter_tongue(buffer);
+        }
         let m = self.params.membrane.clamp(0.0, 1.0) as f32;
         if m == 0.0 {
             return;
@@ -386,6 +405,27 @@ impl Dizi {
             hi.process(&mut self.wet2);
             for ((y, a), b) in buffer.channel_mut(c).iter_mut().zip(self.wet.channel(0)).zip(self.wet2.channel(0)) {
                 *y += m * 1.2 * (*a + 0.7 * *b);
+            }
+        }
+    }
+
+    /// 花舌：舌尖打嘟噜，每秒约 40 下把气流截断又放开。录音里长音的包络在 38–42 Hz 上起伏（起伏的标准差约 0.13–0.25），
+    /// 每次放开时多一股气声。舌头的快慢不完全匀，频率随机晃一点。
+    fn flutter_tongue(&mut self, buffer: &mut AudioBuffer<f32>) {
+        let n = buffer.num_frames();
+        for i in 0..n {
+            self.rng ^= self.rng << 13;
+            self.rng ^= self.rng >> 17;
+            self.rng ^= self.rng << 5;
+            let noise = (self.rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+            let rate = 40.0 * (1.0 + 0.06 * f64::from(noise));
+            self.flutter_phase = (self.flutter_phase + rate / self.sr).fract();
+            // 舌头贴上去时短、放开时长：半波整流过的正弦，底不到零（气没断）。
+            let open = (core::f64::consts::TAU * self.flutter_phase).sin().max(0.0) as f32;
+            let gain = 0.65 + 0.35 * open;
+            for c in 0..buffer.num_channels() {
+                let x = buffer.channel(c)[i];
+                buffer.channel_mut(c)[i] = x * gain + 0.25 * x.abs() * noise * open;
             }
         }
     }
@@ -534,6 +574,37 @@ pub(crate) fn vibrato_bend(length_beats: f64, bps: f64, (cents, rate, delay): (f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flutter_tongue_shakes_the_note_about_forty_times_a_second() {
+        let sr = 48_000.0;
+        let play = |flutter: bool| {
+            let mut d = Dizi::new(DiziParams::dizi());
+            d.prepare(&ProcessSpec { sample_rate: sr, max_block_size: 480, num_channels: 1 });
+            d.flutter_next(flutter);
+            d.note_on(NoteRef::new(0, 81), 0.8, false);
+            let mut b = AudioBuffer::<f32>::new(1, 480);
+            let mut env = Vec::new();
+            for _ in 0..200 {
+                b.clear();
+                d.process(&mut b);
+                // 每 1 ms 一个峰值。
+                env.extend(b.channel(0).chunks(48).map(|c| c.iter().fold(0f32, |m, x| m.max(x.abs()))));
+            }
+            env.drain(..500).count();
+            // 40 Hz 处的起伏占比。
+            let (mut re, mut im) = (0.0f64, 0.0f64);
+            let mean = env.iter().map(|&x| f64::from(x)).sum::<f64>() / env.len() as f64;
+            for (i, &x) in env.iter().enumerate() {
+                let a = core::f64::consts::TAU * 40.0 * i as f64 / 1000.0;
+                re += (f64::from(x) - mean) * a.cos();
+                im += (f64::from(x) - mean) * a.sin();
+            }
+            (re.hypot(im) * 2.0 / env.len() as f64) / mean
+        };
+        let (plain, fluttered) = (play(false), play(true));
+        assert!(fluttered > 0.15 && plain < 0.05, "plain {plain}, flutter {fluttered}");
+    }
 
     #[test]
     fn guzheng_vibrato_starts_late_and_swings_both_ways() {

@@ -276,6 +276,9 @@ impl Playable for crate::zither::Zither {
 }
 
 impl Playable for crate::chinese::Dizi {
+    fn technique(&mut self, _note: NoteRef, tag: crate::zither::NoteTag) {
+        crate::chinese::Dizi::flutter_next(self, tag.flutter);
+    }
     fn prepare(&mut self, spec: &ProcessSpec) {
         crate::chinese::Dizi::prepare(self, spec);
     }

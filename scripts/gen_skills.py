@@ -426,7 +426,12 @@ FAMILY_PAGES = {
         "`body_mix` and `sympathetic` control the shared body and unplayed-string resonance. "
         "This is a synthesis approximation rather than a measured replica of a particular qin. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.",
         "**Yangqin**: struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo.",
-        "**Dizi**: high (G4-C7) and lively; a note that overlaps the next slides into it, grace notes (打音、倚音) are 1/8-beat notes just before, a trill (颤音) alternates two notes in 1/8 beats; `membrane` sets the buzz. "
+        "**Dizi**: high (G4-C7) and lively, and most of its character is in the ornaments: in solo recordings about a third of the notes are shorter than 70 ms. "
+        "叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; "
+        "历音 a run of three quick notes from below into the note; 颤音 alternates the note and the one above about ten times a second; "
+        "吐音 (tonguing) is repeated short notes with small gaps; a note that overlaps the next slides into it (滑音). "
+        "`\"flutter\": true` on a note is 花舌, the tongue rolling about 40 times a second (the rough \"drrr\" on long notes of lively northern pieces such as 喜相逢). "
+        "Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured); `membrane` sets the buzz. "
         "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
         "**Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. "
         "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin. "

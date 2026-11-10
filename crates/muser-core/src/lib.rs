@@ -676,6 +676,10 @@ pub struct Note {
     /// 连奏的音不会连进这个音。ABC 里写 `!breath!`。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub breath: bool,
+    /// 花舌（可省略，默认 false）：吹这个音时舌尖打嘟噜，气流被打成每秒约 40 下的颤动，声音"嘟噜噜"带沙（`yinse.blow.dizi`）。
+    /// 其它乐器忽略。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub flutter: bool,
     /// 止音（可省略，默认 false）：这个音结束时手按住弦，余音很快收掉（古筝、古琴谱上的 `×`）；
     /// 不写就任弦自己响。`yinse.pluck.guzheng`、`yinse.pluck.guqin`；其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
@@ -735,7 +739,7 @@ impl Note {
             tremolo: false,
             slide: false,
             slide_out: false,
-            breath: false, damp: false,
+            breath: false, damp: false, flutter: false,
             bend: Vec::new(),
             lyric: None,
             technique: None, harmonic: None,

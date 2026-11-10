@@ -151,6 +151,9 @@ struct NoteSpec {
     /// Damp (optional, yinse.pluck.guzheng / guqin): the hand stops the string when this note ends (止音, × in guzheng scores); otherwise it keeps ringing.
     #[serde(default)]
     damp: Option<bool>,
+    /// Flutter tongue (optional, yinse.blow.dizi): 花舌, the tongue rolls about 40 times a second through the note, a rough, buzzing "drrr".
+    #[serde(default)]
+    flutter: Option<bool>,
     /// Slide out (optional, yinse.voice.*): the end of this word slides to the next note's pitch, where the next word starts.
     #[serde(default)]
     slide_out: Option<bool>,
@@ -824,6 +827,7 @@ impl Muser {
                 note.slide = n.slide.unwrap_or(false);
                 note.breath = n.breath.unwrap_or(false);
                 note.damp = n.damp.unwrap_or(false);
+                note.flutter = n.flutter.unwrap_or(false);
                 note.slide_out = n.slide_out.unwrap_or(false);
                 note.bend = n.bend;
                 note.technique = n.technique.map(|t| match t {
