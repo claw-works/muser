@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/muser-logo-horizontal.png">
+    <img alt="muser" src="assets/logo/muser-logo-horizontal-light.png" width="420">
+  </picture>
+</p>
+
 # muser
 
 [English](README.md) | 简体中文
