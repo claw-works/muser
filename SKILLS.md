@@ -104,7 +104,7 @@ section content that fills only a short stretch with no `length` written (so it 
 - `velocity` is 0-1, default 0.8.
 - `accent` is true/false, default false. For drum kits and `bass.acid*` an accent is louder and brighter (acid's 303 character mostly comes from it); other instruments ignore it.
 - `bend` (pitch bend, guitar string bends, etc.) is `[[beat, semitones], ...]`; see "Pitch bend: bend" below.
-- Guqin notes can override their playing technique with `"guqin": {"technique": "open"}`, `"pressed"`, or `"harmonic"` (optionally `"harmonic": 2` for a half-string node). `pitch` is the sounding pitch. See [skills/instruments/chinese.md](skills/instruments/chinese.md).
+- Chinese instruments take their playing techniques as note fields: `"technique": "open"` / `"pressed"` / `"harmonic"` with `"harmonic": 2` (guqin, guzheng; `pitch` is the sounding pitch), `"damp": true` (止音), `"flutter": true` (dizi 花舌), `"tremolo": true`. See [skills/instruments/chinese.md](skills/instruments/chinese.md) and the page of the instrument you use.
 
 ## Instrument index (built-in + SFZ sound libraries + external VSTi)
 
@@ -115,7 +115,7 @@ section content that fills only a short stretch with no `length` written (so it 
 | General synths | [synth.md](skills/instruments/synth.md) | `synth.poly` `synth.fm` |
 | Guitar | [guitar.md](skills/instruments/guitar.md) | `guitar.nylon` `guitar.steel` `yinse.pluck.electric_guitar` `yinse.pluck.electric_guitar_clean` |
 | Singing voice (yinse) | [voice.md](skills/instruments/voice.md) | `yinse.voice.soprano` `yinse.voice.alto` `yinse.voice.tenor` `yinse.voice.bass` `yinse.voice.child` |
-| Chinese traditional | [chinese.md](skills/instruments/chinese.md) | `yinse.pluck.guzheng` `yinse.pluck.pipa` `yinse.pluck.guqin` `yinse.strike.yangqin` `yinse.bow.erhu` `yinse.blow.dizi` `yinse.blow.xiao` |
+| Chinese traditional | [chinese.md](skills/instruments/chinese.md) (overview), one page each in [chinese/](skills/instruments/chinese/) | `yinse.pluck.guzheng` `yinse.pluck.pipa` `yinse.pluck.guqin` `yinse.strike.yangqin` `yinse.bow.erhu` `yinse.blow.dizi` `yinse.blow.xiao` |
 | Accordion | [accordion.md](skills/instruments/accordion.md) | `yinse.blow.accordion` `yinse.blow.accordion_dry` `yinse.blow.bandoneon` |
 | Bass | [bass.md](skills/instruments/bass.md) | `bass.finger` `bass.slap` `bass.acid` |
 | Organ | [organ.md](skills/instruments/organ.md) | `organ.jazz` `organ.gospel` `organ.full` `organ.ballad` |

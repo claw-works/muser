@@ -404,38 +404,12 @@ FAMILY_PAGES = {
         "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
     ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
-        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子), `yinse.blow.xiao` (箫).",
-        "**Tremolo** (琵琶轮指, 扬琴轮音, 古筝摇指): `\"tremolo\": true` on a note plucks or strikes it again and again for its whole length (`tremolo_rate` per second); write it on long melody notes, the way players sustain on these instruments.",
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.dizi` (笛子), `yinse.blow.xiao` (箫). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
-        "**Guzheng**: 21 strings tuned to D pentatonic (D2-D6); other pitches (the 4 and 7, G and C#) are pressed from the string below automatically. "
-        "Strings ring until they are damped: `\"damp\": true` on a note stops it when it ends (止音, the × in guzheng scores). Held notes get a light left-hand vibrato (揉弦) by themselves (`vibrato`); "
-        "write a deeper vibrato (颤音) as a sine `bend` of about ±0.4 semitones at 5-6 Hz. "
-        "Every note follows its `bend` (up to ±24 semitones, phase-continuous): a slide up after the pluck (上滑音) is `[[0, 0], [0.15, 0], [0.4, 3]]` from 3 to 5 or 6 to 1; "
-        "a slide down into the note (下滑音) `[[0, 2], [0.2, 2], [0.45, 0]]`; a return slide (回滑音) on one pluck goes up, back and up again; pressing three times (重颤) is three small humps. "
-        "Harmonics (泛音) take `\"technique\": \"harmonic\", \"harmonic\": 2`. A glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is the same note repeated fast (16ths or faster).",
-        "**Pipa**: crisp and short-ringing; long notes are tremolo, bends (推拉) are `bend`; a strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart. "
-        "**Guqin**: low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes. "
-        "The guqin and guzheng share a modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
-        "Set the track's `technique`, or override a note with `\"technique\": \"harmonic\", \"harmonic\": 2` (`\"open\"`, `\"pressed\"`, `\"harmonic\"`, `\"auto\"`). "
-        "`pitch` is always the sounding pitch: C4 with harmonic=2 models a C3 string touched halfway along it. "
-        "Node denominators 2-8 suppress the modes that do not have a node there; this is not just an octave shift or a low-pass preset. "
-        "Pressed notes support `bend` up to ±24 semitones, with continuous mode phase, contact damping and motion noise (`slide_noise`). "
-        "Open and harmonic notes do not take pitch bends or automatic vibrato. Auto chooses open notes at C2 D2 F2 G2 A2 C3 D3 and pressed elsewhere; "
-        "open notes at other pitches extend the model beyond that seven-string tuning. "
-        "For a softer touch try `{\"strike\": 0.25, \"pluck_brightness\": 2800, \"pluck_noise\": 0.1, \"high_decay\": 0.08}`; "
-        "`body_mix` and `sympathetic` control the shared body and unplayed-string resonance. "
-        "This is a synthesis approximation rather than a measured replica of a particular qin. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.",
-        "**Yangqin**: struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo.",
-        "**Dizi**: high (G4-C7) and lively, and most of its character is in the ornaments: in solo recordings about a third of the notes are shorter than 70 ms. "
-        "叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; "
-        "历音 a run of three quick notes from below into the note; 颤音 alternates the note and the one above about ten times a second; "
-        "吐音 (tonguing) is repeated short notes with small gaps; a note that overlaps the next slides into it (滑音). "
-        "`\"flutter\": true` on a note is 花舌, the tongue rolling about 40 times a second (the rough \"drrr\" on long notes of lively northern pieces such as 喜相逢). "
-        "Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured); `membrane` sets the buzz. "
-        "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
-        "**Erhu**: one note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow. "
-        "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin. "
-        "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet. `vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
+        "Playing techniques are note fields, the same on every instrument that has them (others ignore them): "
+        "`\"tremolo\": true` (琵琶轮指, 扬琴轮音, 古筝摇指: plucked or struck again and again for the whole note, `tremolo_rate` per second); "
+        "`bend` (按音, 推拉, 滑音; ±2 semitones, ±24 on the guqin and guzheng); "
+        "`\"technique\"` / `\"harmonic\"` (散音, 按音, 泛音 on the guqin and guzheng); `\"damp\": true` (止音 on the guqin and guzheng); `\"flutter\": true` (花舌 on the dizi).",
     ]),
     "accordion": ("Accordion", "accordion.md", [
         "muser's own free-reed instrument (yinse): `yinse.blow.accordion` (musette: three middle reeds tuned apart, the French shimmer), `yinse.blow.accordion_dry` (fuller and nearly in tune: tango, folk, polka), `yinse.blow.bandoneon` (low + middle reeds an octave apart: the tango sound).",
@@ -525,6 +499,81 @@ def fmt_val(v):
     return fmt_num(round(v, 4))
 
 
+# 民族乐器每件一页（chinese.md 只放总览）：(文件名, 标题, 乐器, 技巧)。
+CHINESE_PAGES = [
+    ("guzheng", "Guzheng (古筝)", ["yinse.pluck.guzheng"], [
+        "21 strings tuned to D pentatonic (D2-D6); other pitches (the 4 and 7, G and C#) are pressed from the string below automatically.",
+        "Strings ring until they are damped: `\"damp\": true` on a note stops it when it ends (止音, the × in guzheng scores).",
+        "Held notes get a light left-hand vibrato (揉弦) by themselves (`vibrato`); write a deeper vibrato (颤音) as a sine `bend` of about ±0.4 semitones at 5-6 Hz.",
+        "Every note follows its `bend` (up to ±24 semitones, phase-continuous): a slide up after the pluck (上滑音) is `[[0, 0], [0.15, 0], [0.4, 3]]` from 3 to 5 or 6 to 1; "
+        "a slide down into the note (下滑音) `[[0, 2], [0.2, 2], [0.45, 0]]`; a return slide (回滑音) on one pluck goes up, back and up again; pressing three times (重颤) is three small humps.",
+        "Harmonics (泛音) take `\"technique\": \"harmonic\", \"harmonic\": 2`.",
+        "A glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is `\"tremolo\": true` on a long note; "
+        "大撮 is the note with its octave below; 勾托 alternates a note and its octave in eighths.",
+        "It shares its modal string model with the guqin (see [guqin.md](guqin.md)).",
+    ]),
+    ("guqin", "Guqin (古琴)", ["yinse.pluck.guqin"], [
+        "Low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes.",
+        "The guqin has a modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
+        "Set the track's `technique`, or override a note with `\"technique\": \"harmonic\", \"harmonic\": 2` (`\"open\"`, `\"pressed\"`, `\"harmonic\"`, `\"auto\"`).",
+        "`pitch` is always the sounding pitch: C4 with harmonic=2 models a C3 string touched halfway along it. "
+        "Node denominators 2-8 suppress the modes that do not have a node there; this is not just an octave shift or a low-pass preset.",
+        "Pressed notes support `bend` up to ±24 semitones, with continuous mode phase, contact damping and motion noise (`slide_noise`). "
+        "Open and harmonic notes do not take pitch bends or automatic vibrato. Auto chooses open notes at C2 D2 F2 G2 A2 C3 D3 (正调) and pressed elsewhere; "
+        "open notes at other pitches extend the model beyond that seven-string tuning.",
+        "For a softer touch try `{\"strike\": 0.25, \"pluck_brightness\": 2800, \"pluck_noise\": 0.1, \"high_decay\": 0.08}`; "
+        "`body_mix` and `sympathetic` control the shared body and unplayed-string resonance.",
+        "This is a synthesis approximation rather than a measured replica of a particular qin. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.",
+    ]),
+    ("pipa", "Pipa (琵琶)", ["yinse.pluck.pipa"], [
+        "Crisp and short-ringing; long notes are tremolo (轮指, `\"tremolo\": true`), bends (推拉) are `bend`.",
+        "A strummed sweep (扫弦) is the four open strings A2 D3 E3 A3 a few hundredths of a beat apart.",
+    ]),
+    ("yangqin", "Yangqin (扬琴)", ["yinse.strike.yangqin"], [
+        "Struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo (轮音, `\"tremolo\": true`).",
+    ]),
+    ("erhu", "Erhu (二胡)", ["yinse.bow.erhu"], [
+        "One note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow.",
+        "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin.",
+        "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet.",
+        "`vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
+    ]),
+    ("dizi", "Dizi (笛子) and xiao (箫)", ["yinse.blow.dizi", "yinse.blow.xiao"], [
+        "**Dizi**: high (G4-C7) and lively, and most of its character is in the ornaments: in solo recordings about a third of the notes are shorter than 70 ms.",
+        "叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; "
+        "历音 a run of three quick notes from below into the note; 颤音 alternates the note and the one above about ten times a second; "
+        "吐音 (tonguing) is repeated short notes with small gaps; a note that overlaps the next slides into it (滑音).",
+        "`\"flutter\": true` on a note is 花舌, the tongue rolling about 40 times a second (the shake on long notes of lively northern pieces such as 喜相逢).",
+        "Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured); `membrane` sets the buzz.",
+        "**Xiao**: low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
+    ]),
+]
+
+
+def chinese_page(title, names, tips):
+    items = [i for i in INSTRUMENTS if i["name"] in names]
+    lines = [HEADER, f"# Instruments: {title}\n\n", "A note's `pitch` uses the **MIDI pitch (60 = middle C)**. "
+             "The other Chinese instruments and the note fields they share: [../chinese.md](../chinese.md).\n\n",
+             "| instrument | Recommended range | Polyphony | Description |\n|---|---|---|---|\n"]
+    lines += [instrument_row(i) for i in items]
+    groups = {}
+    for i in items:
+        groups.setdefault(tuple(p["name"] for p in describe(i["name"])["params"]), []).append(i)
+    for group in groups.values():
+        sec = params_section("chinese", group, examples=False)
+        if len(groups) > 1:
+            sec = sec.replace("## Adjustable parameters (instrument_params)", "## Adjustable parameters of " + ", ".join(f"`{i['name']}`" for i in group))
+        lines.append(sec.replace("](../automation.md)", "](../../automation.md)"))
+    ex = [e for e in PARAM_EXAMPLES["chinese"] if e[1] in names]
+    if ex:
+        lines.append("\n### Tuning examples\n\n")
+        for t, inst, params in ex:
+            lines.append(f"- {t}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
+    lines.append("\n## Tips and common mistakes\n\n")
+    lines += [f"- {t}\n" for t in tips]
+    return "".join(lines)
+
+
 # Sound-tuning examples for each instrument family (checked by muser validate).
 PARAM_EXAMPLES = {
     "drums": [("Deeper, longer kick, crisper snare, quiet closed hi-hat", "drums.808", {"kick": {"tune": -3, "decay": 1.8}, "snare": {"snap": 0.8}, "closed_hat": {"level": 0.6}})],
@@ -612,6 +661,10 @@ def family_page(family, title, tips):
             lines.append("\n### Tuning examples\n\n")
             for title, inst, params in PARAM_EXAMPLES["synth"]:
                 lines.append(f"- {title}\n\n  ```json\n  {{ \"instrument\": \"{inst}\", \"instrument_params\": {json.dumps(params, ensure_ascii=False)} }}\n  ```\n\n")
+    elif family == "chinese":
+        lines.append("\n## One page per instrument\n\n")
+        for fname, t, names, _ in CHINESE_PAGES:
+            lines.append(f"- [{t}](chinese/{fname}.md): " + ", ".join(f"`{n}`" for n in names) + "\n")
     else:
         # 同一类里参数不一样的乐器（如原声吉他与电吉他）各列一张参数表；调参示例放在最后，只列一次。
         groups = {}
@@ -1356,6 +1409,12 @@ def main():
     for family, (title, filename, tips) in FAMILY_PAGES.items():
         with open(os.path.join(OUT, "instruments", filename), "w") as f:
             f.write(family_page(family, title, tips))
+    os.makedirs(os.path.join(OUT, "instruments", "chinese"), exist_ok=True)
+    covered = sorted(n for _, _, names, _ in CHINESE_PAGES for n in names)
+    assert covered == sorted(i["name"] for i in INSTRUMENTS if i["family"] == "chinese"), f"CHINESE_PAGES misses an instrument: {covered}"
+    for fname, title, names, tips in CHINESE_PAGES:
+        with open(os.path.join(OUT, "instruments", "chinese", f"{fname}.md"), "w") as f:
+            f.write(chinese_page(title, names, tips))
     with open(os.path.join(OUT, "instruments", "poly.md"), "w") as f:
         f.write(poly_page())
     with open(os.path.join(OUT, "instruments", "plugin.md"), "w") as f:
