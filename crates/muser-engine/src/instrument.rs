@@ -278,6 +278,7 @@ impl Playable for crate::zither::Zither {
 impl Playable for crate::chinese::Dizi {
     fn technique(&mut self, _note: NoteRef, tag: crate::zither::NoteTag) {
         crate::chinese::Dizi::flutter_next(self, tag.flutter);
+        crate::chinese::Dizi::slide_next(self, tag.slide);
     }
     fn prepare(&mut self, spec: &ProcessSpec) {
         crate::chinese::Dizi::prepare(self, spec);
@@ -582,7 +583,7 @@ impl Patch {
                  The initial consonant starts a little before the note so the vowel lands on the beat; -n / -ng close the note.".into(),
             ),
             Patch::Erhu(p) => (params::describe(params::BOWED, p, params::NEXT_BOWED), "One note at a time: a note that overlaps the next slides into it under one bow; a small gap is a new bow.".into()),
-            Patch::Dizi(p) => (params::describe(params::DIZI, p, params::NEXT_DIZI), "One note at a time: overlapping notes slide into each other (滑音); trills and grace notes (打音、叠音、颤音) are short notes.".into()),
+            Patch::Dizi(p) => (params::describe(params::DIZI, p, params::NEXT_DIZI), "One note at a time. Overlapping notes are slurred (连奏: the fingers change the note at once, no new tongue stroke); a note with `\"slide\": true` glides from the previous one (滑音); a small gap is a new tongued note (断奏, harder with `articulation`). Ornaments are short notes or `trill` / `half_trill`; `flutter` is 花舌, `accent` 剁音; shape the tone over a phrase by automating `breath` and `embouchure`.".into()),
             Patch::Guzheng(p) | Patch::Yangqin(p) => (
                 params::describe(params::GUZHENG, p, params::NEXT_GUZHENG),
                 "Tuned like any pitched instrument (write the notes you want; for the traditional sound keep to the pentatonic scale, e.g. D E F# A B). \
@@ -842,9 +843,9 @@ static BUILTINS: &[Builtin] = &[
     b!("yinse.pluck.guqin", [], "chinese", false, (36, 84), 12, "Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend`", || Patch::Zither(crate::zither::ZitherParams::default())),
     b!("yinse.pluck.guzheng", [], "chinese", false, (38, 88), 24, "Guzheng (古筝): bright picked strings over a big paulownia soundboard with sympathetic strings; 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique`", || Patch::Zither(crate::zither::ZitherParams::guzheng())),
     b!("yinse.strike.yangqin", [], "chinese", false, (43, 93), 24, "Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo`", || Patch::Yangqin(crate::chinese::GuzhengParams::yangqin())),
-    b!("yinse.blow.bangdi", ["yinse.blow.dizi"], "chinese", false, (67, 96), 1, "Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slide", || Patch::Dizi(crate::chinese::DiziParams::dizi())),
-    b!("yinse.blow.qudi", [], "chinese", false, (64, 91), 1, "Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slide", || Patch::Dizi(crate::chinese::DiziParams::qudi())),
-    b!("yinse.blow.xiao", [], "chinese", false, (55, 86), 1, "Xiao (箫, 洞箫): end-blown bamboo flute, low, dark and nearly pure, a soft attack; one note at a time, overlapping notes slide", || Patch::Wind(crate::chinese::xiao(), 1)),
+    b!("yinse.blow.bangdi", ["yinse.blow.dizi"], "chinese", false, (67, 96), 1, "Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slur (a note with `slide` glides)", || Patch::Dizi(crate::chinese::DiziParams::dizi())),
+    b!("yinse.blow.qudi", [], "chinese", false, (64, 91), 1, "Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slur (a note with `slide` glides)", || Patch::Dizi(crate::chinese::DiziParams::qudi())),
+    b!("yinse.blow.xiao", [], "chinese", false, (55, 86), 1, "Xiao (箫, 洞箫): end-blown bamboo flute, low, dark and nearly pure, a soft attack; one note at a time, overlapping notes slur (a note with `slide` glides)", || Patch::Dizi(crate::chinese::xiao())),
     b!("yinse.bow.erhu", [], "chinese", false, (62, 96), 1, "Erhu (二胡): two-string fiddle with a python-skin resonator, nasal and singing, wide vibrato; slurred notes (legato clips) slide into each other. One note at a time", || Patch::Erhu(crate::chinese::erhu())),
     // —— 手风琴（muser 自己的，yinse）——
     b!("yinse.blow.accordion", [], "accordion", false, (41, 93), 16, "Accordion, musette register: three middle reeds tuned apart, the shimmering French sound; chanson, waltz musette, folk", || Patch::Accordion(crate::accordion::AccordionParams::musette())),

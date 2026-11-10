@@ -667,8 +667,9 @@ pub struct Note {
     /// 快慢由乐器参数 `tremolo_rate` 决定。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub tremolo: bool,
-    /// 滑音（可省略，默认 false）：这个字从上一个字的音高滑进自己的音高（`yinse.voice.*` 唱歌的滑音，
-    /// 在这个字的开头滑）。ABC 里写 `!slide!`（标准 ABC 的"滑进这个音"）。其它乐器忽略。
+    /// 滑音（可省略，默认 false）：这个音从上一个音的音高滑进自己的音高。`yinse.voice.*` 唱歌的滑音（在这个字的开头滑）；
+    /// 笛箫（`yinse.blow.bangdi` / `qudi` / `xiao`）和上一个音重叠时滑过去（不写就是连奏，手指一换就到）。
+    /// ABC 里写 `!slide!`（标准 ABC 的"滑进这个音"）。其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
     pub slide: bool,
     /// 滑出（可省略，默认 false）：这个字唱完前，在它的最后一段滑到下一个字的音高上（`yinse.voice.*`），

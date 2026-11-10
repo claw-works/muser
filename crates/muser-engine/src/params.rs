@@ -335,11 +335,14 @@ pub(crate) static DIZI: &[ParamDef<crate::chinese::DiziParams>] = &[
     num!("vibrato_depth", 0.0, 100.0, "cent", "Vibrato depth: 0 straight; 10-20 normal; 30+ the wide folk vibrato", |p| p.wind.vibrato_depth),
     num!("vibrato_delay", 0.0, 4.0, "s", "Delay after a note starts before the vibrato", |p| p.wind.vibrato_delay),
     num!("breath_noise", 0.0, 1.0, "", "Breath noise: more airflow", |p| p.wind.noise),
+    num!("breath", 0.3, 1.5, "", "Breath strength (气息): scales how hard the player blows; 1 as preset, 0.6 a soft, airy, darker breath, 1.3 a full, bright one. Automate it to shape a phrase", |p| p.breath),
+    num!("embouchure", 0.05, 1.0, "", "Embouchure (口型): how far the lips let the air through; smaller is darker and softer, larger is fuller and brighter", |p| p.wind.opening),
+    num!("articulation", 0.0, 1.0, "", "Tonguing (舌法): how hard the tongue starts a note, 0 soft (legato-like), 1 a hard, clear attack with more chiff (staccato)", |p| p.wind.articulation),
     num!("breath_vibrato", 0.0, 1.0, "", "Breath vibrato (气震音): how much the vibrato also swells the breath, louder and softer at `vibrato_rate`; 0.25 a little, 0.8 the pulsing breath vibrato (with a small `vibrato_depth` it is almost only in the breath)", |p| p.wind.tremolo),
     num!("tone", 500.0, 20000.0, "Hz", "Final low-pass: brightness", |p| p.wind.tone),
 ];
 
-pub(crate) const NEXT_DIZI: &[&str] = &["attack", "release", "vibrato_rate", "vibrato_depth", "vibrato_delay", "breath_vibrato"];
+pub(crate) const NEXT_DIZI: &[&str] = &["attack", "release", "vibrato_rate", "vibrato_depth", "vibrato_delay", "breath_vibrato", "articulation"];
 
 pub(crate) const NEXT_SINGER: &[&str] = &["attack", "vibrato_delay"];
 

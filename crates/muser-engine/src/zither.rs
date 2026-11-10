@@ -155,8 +155,9 @@ pub(crate) type NoteTechnique = (muser_core::Technique, Option<u8>);
 pub(crate) struct NoteTag {
     pub technique: Option<NoteTechnique>,
     pub damp: bool,
-    /// 花舌（笛子用，弦乐器不看）。
+    /// 花舌、滑音（笛箫用，弦乐器不看）。
     pub flutter: bool,
+    pub slide: bool,
 }
 
 impl ZitherParams {
@@ -748,8 +749,8 @@ mod tests {
         q.prepare(&ProcessSpec { sample_rate: 48_000.0, num_channels: 2, max_block_size: 256 });
         let open = NoteRef::new(0, 48);
         let harmonic = NoteRef::new(0, 62);
-        q.playing(open, NoteTag { technique: Some((muser_core::Technique::Open, None)), damp: false, flutter: false });
-        q.playing(harmonic, NoteTag { technique: Some((muser_core::Technique::Harmonic, Some(2))), damp: false, flutter: false });
+        q.playing(open, NoteTag { technique: Some((muser_core::Technique::Open, None)), damp: false, flutter: false, slide: false });
+        q.playing(harmonic, NoteTag { technique: Some((muser_core::Technique::Harmonic, Some(2))), damp: false, flutter: false, slide: false });
         q.note_on(open, 0.8, false);
         q.note_on(harmonic, 0.8, false);
         let tones: Vec<_> = q.synth.voices_mut().filter(|v| v.now.active).map(|v| (v.now.key_pitch, v.now.technique)).collect();

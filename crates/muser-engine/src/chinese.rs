@@ -327,6 +327,8 @@ pub struct DiziParams {
     pub wind: WindParams,
     /// 笛膜：0 没有（像长笛），0.6 贴得正好、明显的"沙"，1 很响的嗡。
     pub membrane: f64,
+    /// 气息强弱（乘在吹气的力度上，0.3 … 1.5）：1 照常，小了虚、暗、气多，大了实、亮。可写自动化。
+    pub breath: f64,
 }
 
 impl DiziParams {
@@ -346,7 +348,9 @@ impl DiziParams {
         // 剁音（北派）：重音的舌头打得更狠、更响，收得也快（见 [`Dizi::note_on`]）。
         w.accent_db = 5.0;
         w.accent_push = 1.0;
-        Self { wind: w, membrane: 0.45 }
+        // 连奏（音重叠）时手指一换音就到，不滑；滑音只在音符写了 `slide` 时（见 [`Dizi::note_on`]）。
+        w.portamento = false;
+        Self { wind: w, membrane: 0.45, breath: 1.0 }
     }
 
     /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
@@ -375,7 +379,7 @@ impl DiziParams {
 /// 箫（洞箫）：竖吹，低、暗，声音几乎只有基音。对着三段洞箫独奏录音（箫雨、梦人间、鼓山夜雨）的长音：
 /// 二、三、四次谐波约 -16 / -26 / -37 dB（比笛子纯得多），谐波之间的气声约 -62 … -67 dB（录音里很干净，不是"气声多"），
 /// 揉音浅（约 ±7 … 9 音分，每秒 4.7 … 5.3 下）；音大多连着吹，起音约 0.1 秒。
-pub fn xiao() -> WindParams {
+pub fn xiao() -> DiziParams {
     let mut w = WindParams::flute();
     w.jet_offset = 0.4;
     w.opening = 0.22;
@@ -387,10 +391,11 @@ pub fn xiao() -> WindParams {
     w.vibrato_rate = 5.0;
     w.vibrato_depth = 8.0;
     w.vibrato_delay = 0.4;
-    w.portamento = true;
     w.legato_time = 0.1;
     w.tone = 7_000.0;
-    w
+    w.portamento = false;
+    // 没有笛膜：和笛子共用同一套处理（花舌、剁音、滑音、气息），膜为 0 时声音就是吹管本身。
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0 }
 }
 
 /// 笛子：一支单音的吹管，后面接笛膜（越响越"沙"的高频泛音）。
@@ -408,6 +413,11 @@ pub(crate) struct Dizi {
     flutter: bool,
     flutter_phase: f64,
     flutter_lp: f32,
+    /// 下一个音、正在吹的音：滑不滑过去，是不是剁音。
+    slide_next: bool,
+    slide: bool,
+    accent: bool,
+    breath_gain: f32,
     sr: f64,
     rng: u32,
 }
@@ -422,11 +432,28 @@ impl Dizi {
         synth.set_legato(true);
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
         Self { synth, params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
-            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, sr: 48_000.0, rng: 0x1234_5678 }
+            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, sr: 48_000.0, rng: 0x1234_5678 }
     }
 
     pub(crate) fn flutter_next(&mut self, on: bool) {
         self.flutter_next = on;
+    }
+
+    pub(crate) fn slide_next(&mut self, on: bool) {
+        self.slide_next = on;
+    }
+
+    /// 这一个音的吹管设置：气息强弱缩放吹气的范围；写了 `slide` 的音滑过去；剁音（重音）松开时一下收住。
+    fn voice_params(&self, accent: bool, slide: bool) -> WindParams {
+        let mut w = self.params.wind;
+        let b = self.params.breath.clamp(0.3, 1.5);
+        w.breath_soft = (w.breath_soft * b).min(1.0);
+        w.breath_loud = (w.breath_loud * b).min(1.0);
+        w.portamento = slide;
+        if accent {
+            w.release = w.release.min(0.02);
+        }
+        w
     }
 
     pub(crate) fn prepare(&mut self, spec: &ProcessSpec) {
@@ -440,11 +467,9 @@ impl Dizi {
 
     pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
         self.flutter = std::mem::take(&mut self.flutter_next);
-        // 剁音：重音的音松开时一下就收住（舌头截断气流），不按平常的余音。
-        let mut w = self.params.wind;
-        if accent {
-            w.release = w.release.min(0.02);
-        }
+        self.accent = accent;
+        self.slide = std::mem::take(&mut self.slide_next);
+        let w = self.voice_params(accent, self.slide);
         self.synth.voices_mut().for_each(|v| v.set_params(w));
         self.synth.note_on_accented(note, velocity, accent);
     }
@@ -461,6 +486,20 @@ impl Dizi {
         Processor::process(&mut self.synth, buffer);
         if self.flutter {
             self.flutter_tongue(buffer);
+        }
+        // 气息强弱：吹管模型里它只改音色（吹得越足越亮），响度要另外跟上；平滑地跟，免得自动化一段一段地跳。
+        let target = self.params.breath.clamp(0.3, 1.5).powf(1.2) as f32;
+        if target != 1.0 || self.breath_gain != 1.0 {
+            let k = (1.0 - (-1.0 / (0.02 * self.sr)).exp()) as f32;
+            for i in 0..buffer.num_frames() {
+                self.breath_gain += (target - self.breath_gain) * k;
+                for c in 0..buffer.num_channels() {
+                    buffer.channel_mut(c)[i] *= self.breath_gain;
+                }
+            }
+            if (self.breath_gain - target).abs() < 1e-4 {
+                self.breath_gain = target;
+            }
         }
         let m = self.params.membrane.clamp(0.0, 1.0) as f32;
         if m == 0.0 {
@@ -518,7 +557,7 @@ impl Dizi {
 
     pub(crate) fn set_param(&mut self, name: &str, value: f64) {
         if params::set_number(params::DIZI, &mut self.params, name, value) {
-            let w = self.params.wind;
+            let w = self.voice_params(self.accent, self.slide);
             self.synth.voices_mut().for_each(|v| v.set_params(w));
         }
     }
@@ -660,6 +699,38 @@ pub(crate) fn vibrato_bend(length_beats: f64, bps: f64, (cents, rate, delay): (f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slurs_change_at_once_and_only_slides_glide() {
+        let sr = 48_000.0;
+        // 从 D5 连到 G5，30 ms 之后的音高（过零点数）。
+        let pitch_after_slur = |slide: bool| {
+            let mut d = Dizi::new(DiziParams::qudi());
+            d.prepare(&ProcessSpec { sample_rate: sr, max_block_size: 480, num_channels: 1 });
+            d.note_on(NoteRef::new(0, 74), 0.8, false);
+            let mut b = AudioBuffer::<f32>::new(1, 480);
+            for _ in 0..40 {
+                b.clear();
+                d.process(&mut b);
+            }
+            d.slide_next(slide);
+            d.note_on(NoteRef::new(0, 79), 0.8, false);
+            d.note_off(NoteRef::new(0, 74), 0.0);
+            let mut x = Vec::new();
+            for _ in 0..8 {
+                b.clear();
+                d.process(&mut b);
+                x.extend_from_slice(b.channel(0));
+            }
+            let w = &x[1440..2400];
+            let crossings = w.windows(2).filter(|p| p[0] <= 0.0 && p[1] > 0.0).count();
+            crossings as f64 / (w.len() as f64 / sr)
+        };
+        let g5 = 783.99;
+        let (slur, slide) = (pitch_after_slur(false), pitch_after_slur(true));
+        assert!((slur - g5).abs() < 60.0, "a slur is at the new note: {slur} Hz");
+        assert!(slide < g5 - 60.0, "a slide is still on its way: {slide} Hz");
+    }
 
     #[test]
     fn trills_alternate_and_half_trills_shake_the_pitch() {

@@ -6,11 +6,11 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. The other Chinese inst
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.blow.bangdi` | 67–96 | 1 | Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slide |
-| `yinse.blow.qudi` | 64–91 | 1 | Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slide |
-| `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫, 洞箫): end-blown bamboo flute, low, dark and nearly pure, a soft attack; one note at a time, overlapping notes slide |
+| `yinse.blow.bangdi` | 67–96 | 1 | Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slur (a note with `slide` glides) |
+| `yinse.blow.qudi` | 64–91 | 1 | Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slur (a note with `slide` glides) |
+| `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫, 洞箫): end-blown bamboo flute, low, dark and nearly pure, a soft attack; one note at a time, overlapping notes slur (a note with `slide` glides) |
 
-## Adjustable parameters of `yinse.blow.bangdi`, `yinse.blow.qudi`
+## Adjustable parameters (instrument_params)
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
@@ -23,6 +23,9 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `vibrato_depth` | 0 – 100 cent | next note | Vibrato depth: 0 straight; 10-20 normal; 30+ the wide folk vibrato |
 | `vibrato_delay` | 0 – 4 s | next note | Delay after a note starts before the vibrato |
 | `breath_noise` | 0 – 1 | ✓ | Breath noise: more airflow |
+| `breath` | 0.3 – 1.5 | ✓ | Breath strength (气息): scales how hard the player blows; 1 as preset, 0.6 a soft, airy, darker breath, 1.3 a full, bright one. Automate it to shape a phrase |
+| `embouchure` | 0.05 – 1 | ✓ | Embouchure (口型): how far the lips let the air through; smaller is darker and softer, larger is fuller and brighter |
+| `articulation` | 0 – 1 | next note | Tonguing (舌法): how hard the tongue starts a note, 0 soft (legato-like), 1 a hard, clear attack with more chiff (staccato) |
 | `breath_vibrato` | 0 – 1 | next note | Breath vibrato (气震音): how much the vibrato also swells the breath, louder and softer at `vibrato_rate`; 0.25 a little, 0.8 the pulsing breath vibrato (with a small `vibrato_depth` it is almost only in the breath) |
 | `tone` | 500 – 20000 Hz | ✓ | Final low-pass: brightness |
 
@@ -30,34 +33,11 @@ Automation column: ✓ = notes already sounding follow immediately; next note = 
 
 Preset values of each instrument:
 
-| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath_vibrato` | `tone` |
-|---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.bangdi` | 0.45 | 0.03 | 0.08 | 5.5 | 12 | 0.2 | 0.45 | 0.25 | 8000 |
-| `yinse.blow.qudi` | 0.25 | 0.04 | 0.08 | 4.8 | 9 | 0.35 | 0.75 | 0.25 | 8000 |
-
-## Adjustable parameters of `yinse.blow.xiao`
-
-Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
-
-| Parameter | Range | Automation | Description |
-|---|---|---|---|
-| `attack` | 0.002 – 1 s | ✓ | Breath build-up time: short = clear tonguing; long = soft entry |
-| `release` | 0.005 – 2 s | ✓ | Wind-down time after release |
-| `vibrato_rate` | 0 – 12 Hz | ✓ | Vibrato rate. 4-6 normal |
-| `vibrato_depth` | 0 – 100 cent | ✓ | Vibrato depth (cents). 0 straight tone; 10-25 normal |
-| `vibrato_delay` | 0 – 4 s | ✓ | Delay after note start before vibrato begins |
-| `tone` | 500 – 20000 Hz | ✓ | Final low-pass: brightness |
-| `breath_noise` | 0 – 1 | ✓ | Breath noise: higher means more airflow noise |
-| `brassiness` | 0 – 1 | ✓ | Brass blare (trumpet/trombone brighten when loud) |
-| `portamento` | `true` / `false` | — | Glide between legato (overlapping) notes, like a trombone slide |
-
-Automation column: ✓ = notes already sounding follow immediately; next note = affects only notes that start afterward; — = cannot be automated. See [automation.md](../../automation.md).
-
-Preset values of each instrument:
-
-| instrument | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `tone` | `breath_noise` | `brassiness` | `portamento` |
-|---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.xiao` | 0.05 | 0.15 | 5 | 8 | 0.4 | 7000 | 0.15 | 0 | true |
+| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `breath_vibrato` | `tone` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `yinse.blow.bangdi` | 0.45 | 0.03 | 0.08 | 5.5 | 12 | 0.2 | 0.45 | 1 | 0.5 | 0.8 | 0.25 | 8000 |
+| `yinse.blow.qudi` | 0.25 | 0.04 | 0.08 | 4.8 | 9 | 0.35 | 0.75 | 1 | 0.5 | 0.65 | 0.25 | 8000 |
+| `yinse.blow.xiao` | 0 | 0.05 | 0.15 | 5 | 8 | 0.4 | 0.15 | 1 | 0.22 | 0.6 | 0.25 | 7000 |
 
 ### Tuning examples
 
@@ -72,7 +52,8 @@ Preset values of each instrument:
 
 - **Two schools, two flutes.** Northern style (北派, `yinse.blow.bangdi`, the high 梆笛; `yinse.blow.dizi` is the same flute): tongue techniques, 吐音, 剁音, 花舌, 滑音, bright and lively (喜相逢, 陕北好). Southern style (南派, `yinse.blow.qudi`, the lower, rounder 曲笛 with a lighter membrane): finger techniques, 颤音, 叠音, 打音, elegant and smooth (Jiangnan tunes, Kunqu). Most of a dizi's character is in these ornaments: in solo recordings about a third of the notes are shorter than 70 ms.
 - **Fingers (指).** 颤音 (trill): `"trill": true` alternates the note with the whole tone above about 8 times a second for its whole length (`"trill": 1` a half tone above); 虚颤音 (half-hole trill): `"half_trill": true`, a softer shake, the pitch dipping 0 to about -25 cents 6 times a second (the half-covered hole only flattens it). 叠音 is an upper-neighbour grace of about 0.05 s just before the note; 打音 a lower neighbour of about 0.06 s struck in the middle of a held or repeated note; 历音 a run of three quick notes from below into the note.
-- **Tongue (舌).** 吐音 (tonguing) is repeated short notes with small gaps (about 0.1 beat): single tonguing (单吐 tu tu) even; double tonguing (双吐 tu-ku) alternates a strong and a slightly softer note (velocity 0.8 / 0.7); triple tonguing (三吐 tu-tu-ku) groups of three, strong-strong-soft, often as a 16th + two 32nds. 剁音: `"accent": true` on a short note: the tongue strikes hard (louder, a sharper attack) and cuts the note off at its end. 花舌: `"flutter": true`, the tongue rolling about 40 times a second through the note (the shake on long notes of lively northern pieces). 滑音: a note that overlaps the next slides into it; or a `bend`.
+- **Tongue (舌).** 吐音 (tonguing) is repeated short notes with small gaps (about 0.1 beat): single tonguing (单吐 tu tu) even; double tonguing (双吐 tu-ku) alternates a strong and a slightly softer note (velocity 0.8 / 0.7); triple tonguing (三吐 tu-tu-ku) groups of three, strong-strong-soft, often as a 16th + two 32nds. 剁音: `"accent": true` on a short note: the tongue strikes hard (louder, a sharper attack) and cuts the note off at its end. 花舌: `"flutter": true`, the tongue rolling about 40 times a second through the note (the shake on long notes of lively northern pieces). **Legato and detached (连奏与断奏).** Overlapping notes are slurred: the fingers change the note at once and the breath carries on, so fast fingered runs stay clean (快速指法). A slide (滑音) is asked for: `"slide": true` on the note that overlaps the previous one glides into it; or a `bend`. A gap between notes is a new tongued note (断奏); `articulation` sets how hard the tongue starts each note (0.4 soft and legato-like, 1 a clear staccato with more chiff).
+- **Tone colour (音色变化).** Automate `breath` (气息: 0.6 airy, soft and darker, 1.3 full and bright) and `embouchure` (口型: smaller darker, larger fuller) across a phrase, the way a player blows a long note fuller as it grows, or softens the end of a phrase.
 - **Breath (气).** Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured; the qudi a little slower and deeper). 气震音 (breath vibrato): `breath_vibrato` (0.8 with a small `vibrato_depth`) makes the breath pulse louder and softer instead of the pitch. Circular breathing (循环换气) needs nothing: the synthesized flute never runs out of air, so write long phrases without gaps; leave gaps only where a player would breathe.
 - `membrane` sets the buzz (the bangdi 0.45, the qudi 0.25).
-- **Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and nearly pure (in recordings the second harmonic is about 16 dB under the fundamental and there is little breath noise); slow phrases played mostly slurred: overlap the notes; a light vibrato comes by itself.
+- **Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and nearly pure (in recordings the second harmonic is about 16 dB under the fundamental and there is little breath noise); slow phrases played mostly slurred: overlap the notes; a light vibrato comes by itself. It takes the same techniques as the flutes (slur, `slide`, `trill`, `half_trill`, `breath`, `embouchure`, `articulation`).

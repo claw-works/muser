@@ -551,12 +551,16 @@ CHINESE_PAGES = [
         "triple tonguing (三吐 tu-tu-ku) groups of three, strong-strong-soft, often as a 16th + two 32nds. "
         "剁音: `\"accent\": true` on a short note: the tongue strikes hard (louder, a sharper attack) and cuts the note off at its end. "
         "花舌: `\"flutter\": true`, the tongue rolling about 40 times a second through the note (the shake on long notes of lively northern pieces). "
-        "滑音: a note that overlaps the next slides into it; or a `bend`.",
+        "**Legato and detached (连奏与断奏).** Overlapping notes are slurred: the fingers change the note at once and the breath carries on, so fast fingered runs stay clean (快速指法). "
+        "A slide (滑音) is asked for: `\"slide\": true` on the note that overlaps the previous one glides into it; or a `bend`. "
+        "A gap between notes is a new tongued note (断奏); `articulation` sets how hard the tongue starts each note (0.4 soft and legato-like, 1 a clear staccato with more chiff).",
+        "**Tone colour (音色变化).** Automate `breath` (气息: 0.6 airy, soft and darker, 1.3 full and bright) and `embouchure` (口型: smaller darker, larger fuller) across a phrase, the way a player blows a long note fuller as it grows, or softens the end of a phrase.",
         "**Breath (气).** Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured; the qudi a little slower and deeper). "
         "气震音 (breath vibrato): `breath_vibrato` (0.8 with a small `vibrato_depth`) makes the breath pulse louder and softer instead of the pitch. "
         "Circular breathing (循环换气) needs nothing: the synthesized flute never runs out of air, so write long phrases without gaps; leave gaps only where a player would breathe.",
         "`membrane` sets the buzz (the bangdi 0.45, the qudi 0.25).",
-        "**Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and nearly pure (in recordings the second harmonic is about 16 dB under the fundamental and there is little breath noise); slow phrases played mostly slurred: overlap the notes; a light vibrato comes by itself.",
+        "**Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and nearly pure (in recordings the second harmonic is about 16 dB under the fundamental and there is little breath noise); slow phrases played mostly slurred: overlap the notes; a light vibrato comes by itself. "
+        "It takes the same techniques as the flutes (slur, `slide`, `trill`, `half_trill`, `breath`, `embouchure`, `articulation`).",
     ]),
 ]
 

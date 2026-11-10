@@ -321,8 +321,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
-            if note.damp || note.flutter || note.string_technique().is_some() {
-                let technique = crate::zither::NoteTag { technique: note.string_technique(), damp: note.damp, flutter: note.flutter };
+            if note.damp || note.flutter || note.slide || note.string_technique().is_some() {
+                let technique = crate::zither::NoteTag { technique: note.string_technique(), damp: note.damp, flutter: note.flutter, slide: note.slide };
                 acts.push((on_at, Act::Technique { key: note.pitch, ch, technique }));
             }
             if singer && note.slide_out {

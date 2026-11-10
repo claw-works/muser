@@ -3,7 +3,7 @@
  "tempo": 76,
  "master_gain_db": -3,
  "key": "D",
- "description": "A tour of the yinse Chinese instruments in D pentatonic, four bars each: pipa (a strummed sweep, crisp melody, tremolo 轮指 on long notes, a bend), guqin (low and slow, slides after the pluck 走手音, its slow vibrato), yangqin (16th-note runs, tremolo 轮音), dizi (grace notes, slides, a trill, the membrane buzz), xiao (low, breathy, slurred).",
+ "description": "A tour of the yinse Chinese instruments in D pentatonic, four bars each: pipa (a strummed sweep, crisp melody, tremolo 轮指 on long notes, a bend), guqin (low and slow, slides after the pluck 走手音, its slow vibrato), yangqin (16th-note runs, tremolo 轮音), dizi (grace notes, slides, a trill, the membrane buzz), xiao (low, dark, slurred).",
  "tracks": [
   {
    "name": "pipa",
@@ -556,7 +556,8 @@
        "pitch": 83,
        "start": 2.0,
        "length": 0.96,
-       "velocity": 0.78
+       "velocity": 0.78,
+       "slide": true
       },
       {
        "pitch": 81,
@@ -574,7 +575,8 @@
        "pitch": 88,
        "start": 4.75,
        "length": 0.21,
-       "velocity": 0.78
+       "velocity": 0.78,
+       "slide": true
       },
       {
        "pitch": 86,
@@ -676,7 +678,8 @@
        "pitch": 86,
        "start": 12.0,
        "length": 2.96,
-       "velocity": 0.78
+       "velocity": 0.78,
+       "slide": true
       }
      ]
     }
