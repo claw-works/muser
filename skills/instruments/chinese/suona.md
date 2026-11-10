@@ -36,11 +36,11 @@ Preset values of each instrument:
 
 | instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `width` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.suona` | 1 | 0.03 | 0.06 | 5.5 | 30 | 0.25 | 0.3 | 1 | 0.6 | 0.5 | 0 | 0 | 72 | 0.3 | 14000 |
+| `yinse.blow.suona` | 1 | 0.03 | 0.06 | 5.5 | 30 | 0.25 | 0.6 | 1 | 0.6 | 0.5 | 0 | 0 | 72 | 0.3 | 14000 |
 
 ## Tips and common mistakes
 
-- The loud double-reed horn with a brass bell: bright, nasal and raspy (its energy sits at 1.6-4 kHz), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. Range about G4-B6, mostly A5-A6.
+- The loud double-reed horn with a brass bell: bright, nasal and raspy (its energy sits at 1.6-4 kHz), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. Range about G4-B6; melodies sit mostly in A4-D6 (an octave higher only for climaxes and bird calls).
 - **Slides are its speech**: most held notes scoop up into their pitch or fall off the end. `"scoop": 1` (0-2 semitones) starts the note below and slides up in about 0.12 s; `"fall": 1.5` drops the last 0.15 s; for wider swoops write a `bend`. `"slide": true` on an overlapping note glides from the previous one.
 - **Wide vibrato**: about ±30-40 cents at 5-6 Hz on long notes, by itself (`vibrato_depth`); 50+ for the singing, crying style of 豫剧 and northern pieces.
 - **Ornaments, very many**: in solo recordings half the notes are shorter than 70 ms. 叠音 (an upper flick just before a note), 打音 (a lower flick inside a held note), 历音 (a quick run up into a note), 颤音 `"trill": true`, written as on the dizi (see [dizi.md](dizi.md) for timings).
