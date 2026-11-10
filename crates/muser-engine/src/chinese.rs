@@ -204,6 +204,16 @@ pub(crate) fn expand_trills(notes: &[muser_core::Note], bps: f64) -> Vec<muser_c
     let mut out = Vec::with_capacity(notes.len());
     for n in notes {
         let mut n = n.clone();
+        if (n.scoop > 0.0 || n.fall > 0.0) && n.bend.is_empty() {
+            // 滑进来：从下面 `scoop` 个半音，0.12 秒滑到本音；甩出去：最后 0.15 秒往下滑 `fall` 个半音。
+            let (into, out) = ((0.12 * bps).min(n.length.0 * 0.4), (0.15 * bps).min(n.length.0 * 0.4));
+            let mut b = vec![(0.0, -n.scoop), (into, 0.0)];
+            if n.fall > 0.0 {
+                b.push(((n.length.0 - out).max(into), 0.0));
+                b.push((n.length.0, -n.fall));
+            }
+            n.bend = b;
+        }
         if n.half_trill && n.bend.is_empty() {
             // 手指在孔上半开半合：只往下（盖住一点就低一点），0 到 -25 音分，每秒 6 下；
             // 两边对称地摆就成了弦乐的揉弦。每个来回 8 个点。
@@ -420,6 +430,30 @@ pub fn hulusi() -> DiziParams {
     w.portamento = false;
     w.legato_time = 0.08;
     DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0 }
+}
+
+/// 唢呐：双簧片、锥形木管、铜碗（喇叭口）——响、亮、带沙。对着七段独奏录音（百鸟朝凤、正月十五闹花灯、小放牛、喜事儿等）：
+/// 长音的二、三、四、五次谐波约 0 / -6 / -11 / -20 dB，能量集中在 1.6 … 4 kHz；揉音宽（约 ±40 音分）；
+/// 音很碎（一半的音短于 70 ms），大量从下面滑进来、结尾往下甩的滑音。萨克斯的锥形管模型，
+/// 簧片共鸣放到最高、阻尼加大（不然有的音翻到八度上去），笛膜的"沙"当作铜碗和簧片的响亮的毛刺。
+pub fn suona() -> DiziParams {
+    let mut w = WindParams::saxophone();
+    w.opening = 0.6;
+    w.reed_frequency = 6_000.0;
+    w.reed_damping = 1.6;
+    w.bell = 2_500.0;
+    w.brassiness = 0.3;
+    w.tone = 14_000.0;
+    w.noise = 0.3;
+    w.breath_soft = 0.4;
+    w.breath_loud = 1.0;
+    w.vibrato_depth = 30.0;
+    w.vibrato_rate = 5.5;
+    w.vibrato_delay = 0.25;
+    w.tremolo = 0.3;
+    w.portamento = false;
+    w.legato_time = 0.06;
+    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0 }
 }
 
 /// 笛子：一支单音的吹管，后面接笛膜（越响越"沙"的高频泛音）。
@@ -781,6 +815,40 @@ pub(crate) fn vibrato_bend(length_beats: f64, bps: f64, (cents, rate, delay): (f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_suona_keeps_its_fundamental_and_scoops_and_falls() {
+        let sr = 48_000.0;
+        for key in (67u8..=95).step_by(2) {
+            for velocity in [0.5f32, 1.0] {
+                let mut d = Dizi::new(suona());
+                d.prepare(&ProcessSpec { sample_rate: sr, max_block_size: 480, num_channels: 1 });
+                d.note_on(NoteRef::new(0, key), velocity, false);
+                let mut b = AudioBuffer::<f32>::new(1, 480);
+                let mut x = Vec::new();
+                for _ in 0..40 {
+                    b.clear();
+                    d.process(&mut b);
+                    x.extend_from_slice(b.channel(0));
+                }
+                let f0 = 440.0 * 2f64.powf((f64::from(key) - 69.0) / 12.0);
+                let at = |hz: f64| {
+                    let (mut re, mut im) = (0.0f64, 0.0f64);
+                    for (i, &v) in x[9_600..].iter().enumerate() {
+                        let a = core::f64::consts::TAU * hz * i as f64 / sr;
+                        re += f64::from(v) * a.cos();
+                        im += f64::from(v) * a.sin();
+                    }
+                    re.hypot(im)
+                };
+                assert!(at(f0) > 0.5 * at(2.0 * f0), "key {key} velocity {velocity} jumped to its octave");
+            }
+        }
+        let n: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 0, "length": 2, "scoop": 1.5, "fall": 2})).unwrap();
+        let bend = &expand_trills(&[n], 2.0)[0].bend;
+        assert_eq!((bend[0], bend[1].1), ((0.0, -1.5), 0.0));
+        assert_eq!(*bend.last().unwrap(), (2.0, -2.0));
+    }
 
     #[test]
     fn the_hulusi_does_not_crack_into_its_twelfth() {

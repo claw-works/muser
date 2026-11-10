@@ -160,6 +160,12 @@ struct NoteSpec {
     /// Half-hole trill (optional, 虚颤音): a small, fast downward pitch shake (0 to about -25 cents, 6 times a second); skipped when the note has its own bend.
     #[serde(default)]
     half_trill: Option<bool>,
+    /// Scoop (optional, 0-2 semitones): the note starts this far below and slides up into its pitch in about 0.12 s (the suona's and saxophone's scoop); skipped when the note has its own bend.
+    #[serde(default)]
+    scoop: Option<f64>,
+    /// Fall (optional, 0-2 semitones): the last ~0.15 s of the note drops this far (the suona's 甩音, a jazz fall).
+    #[serde(default)]
+    fall: Option<f64>,
     /// Slide out (optional, yinse.voice.*): the end of this word slides to the next note's pitch, where the next word starts.
     #[serde(default)]
     slide_out: Option<bool>,
@@ -836,6 +842,8 @@ impl Muser {
                 note.flutter = n.flutter.unwrap_or(false);
                 note.trill = n.trill.unwrap_or(0);
                 note.half_trill = n.half_trill.unwrap_or(false);
+                note.scoop = n.scoop.unwrap_or(0.0);
+                note.fall = n.fall.unwrap_or(0.0);
                 note.slide_out = n.slide_out.unwrap_or(false);
                 note.bend = n.bend;
                 note.technique = n.technique.map(|t| match t {

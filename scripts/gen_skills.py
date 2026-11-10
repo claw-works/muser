@@ -404,13 +404,13 @@ FAMILY_PAGES = {
         "Write the melody in the part's range (soprano 60-84, alto 55-79, tenor 48-72, bass 40-64); high soprano notes open the first formant automatically, as singers do.",
     ]),
     "chinese": ("Chinese traditional instruments", "chinese.md", [
-        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫), `yinse.blow.hulusi` (葫芦丝). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
+        "muser's own (yinse) Chinese instruments: `yinse.pluck.guzheng` (古筝), `yinse.pluck.pipa` (琵琶), `yinse.pluck.guqin` (古琴), `yinse.strike.yangqin` (扬琴), `yinse.bow.erhu` (二胡), `yinse.blow.bangdi` (梆笛; `yinse.blow.dizi` also works), `yinse.blow.qudi` (曲笛), `yinse.blow.xiao` (箫), `yinse.blow.hulusi` (葫芦丝), `yinse.blow.suona` (唢呐). Each has its own page (below) with its parameters and playing techniques: read only the ones you use.",
         "Keep to the pentatonic scale for the traditional sound: in D, D E F# A B (宫 商 角 徵 羽); the fourth and seventh appear as passing or pressed notes.",
         "Playing techniques are note fields, the same on every instrument that has them (others ignore them): "
         "`\"tremolo\": true` (琵琶轮指, 扬琴轮音, 古筝摇指: plucked or struck again and again for the whole note, `tremolo_rate` per second); "
         "`bend` (按音, 推拉, 滑音; ±2 semitones, ±24 on the guqin and guzheng); "
         "`\"technique\"` / `\"harmonic\"` (散音, 按音, 泛音 on the guqin and guzheng); `\"damp\": true` (止音 on the guqin and guzheng); `\"flutter\": true` (花舌 on the dizi and qudi); "
-        "`\"trill\": true` / `1` (颤音: alternates with the whole / half tone above about 8 times a second, any instrument) and `\"half_trill\": true` (虚颤音: a small pitch shake).",
+        "`\"trill\": true` / `1` (颤音: alternates with the whole / half tone above about 8 times a second, any instrument) and `\"half_trill\": true` (虚颤音: a small pitch shake); `\"scoop\"` / `\"fall\"` (sliding in from below, dropping off the end: the suona's slides).",
     ]),
     "accordion": ("Accordion", "accordion.md", [
         "muser's own free-reed instrument (yinse): `yinse.blow.accordion` (musette: three middle reeds tuned apart, the French shimmer), `yinse.blow.accordion_dry` (fuller and nearly in tune: tango, folk, polka), `yinse.blow.bandoneon` (low + middle reeds an octave apart: the tango sound).",
@@ -544,6 +544,16 @@ CHINESE_PAGES = [
         "Players change bow on most notes and slur only a few pairs, so leave a small gap (about 0.08 beat) between most notes and overlap only where you want a slide; a clip with `\"legato\": true` slurs everything, which sounds like a violin.",
         "Its range starts at D4 (the inner string); write melodies mostly in D4-E5 and only touch higher notes briefly: long, held high notes (above A5) sound like a trumpet.",
         "`vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
+    ]),
+    ("suona", "Suona (唢呐)", ["yinse.blow.suona"], [
+        "The loud double-reed horn with a brass bell: bright, nasal and raspy (its energy sits at 1.6-4 kHz), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. Range about G4-B6, mostly A5-A6.",
+        "**Slides are its speech**: most held notes scoop up into their pitch or fall off the end. `\"scoop\": 1` (0-2 semitones) starts the note below and slides up in about 0.12 s; `\"fall\": 1.5` drops the last 0.15 s; for wider swoops write a `bend`. "
+        "`\"slide\": true` on an overlapping note glides from the previous one.",
+        "**Wide vibrato**: about ±30-40 cents at 5-6 Hz on long notes, by itself (`vibrato_depth`); 50+ for the singing, crying style of 豫剧 and northern pieces.",
+        "**Ornaments, very many**: in solo recordings half the notes are shorter than 70 ms. 叠音 (an upper flick just before a note), 打音 (a lower flick inside a held note), 历音 (a quick run up into a note), 颤音 `\"trill\": true`, written as on the dizi (see [dizi.md](dizi.md) for timings).",
+        "**Tongue**: 吐音 single, double and triple tonguing as quick short notes with small gaps; `\"flutter\": true` is 花舌, common in lively pieces; `accent` is a hard tongued attack.",
+        "**Bird calls (百鸟朝凤)**: fast upward chirps: very short notes with a `bend` rising one or two semitones, in quick groups, and trills high up.",
+        "`breath` (气息) and `embouchure` shape the tone as on the flutes; `membrane` (here the reed's and bell's rasp) at 0.5 is a smoother suona, 1 the default.",
     ]),
     ("hulusi", "Hulusi (葫芦丝)", ["yinse.blow.hulusi"], [
         "The Dai free-reed gourd pipe of Yunnan: soft, round, a little nasal, like a gentle clarinet (odd harmonics strong, the even ones weaker but present). "

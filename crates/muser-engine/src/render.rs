@@ -171,7 +171,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
         // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
         let mut all = crate::clip_notes(project, ti, ci).unwrap_or_default();
         // 颤音、虚颤音（笛子的指颤、半孔颤；其它乐器一样）：拆成交替的音 / 写成弯音（按 clip 开头的速度）。
-        if all.iter().any(|n| n.trill > 0 || n.half_trill) {
+        if all.iter().any(|n| n.trill > 0 || n.half_trill || n.scoop > 0.0 || n.fall > 0.0) {
             all = crate::chinese::expand_trills(&all, tm.bpm_at(clip.start.0) / 60.0);
         }
         // 轮音（琵琶的轮指、扬琴的轮音、古筝的摇指）：拆成一串重复的音（按 clip 开头的速度）。

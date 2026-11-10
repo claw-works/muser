@@ -341,6 +341,9 @@ impl Project {
                     if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin, yinse.pluck.guzheng and yinse.pluck.pipa accept per-note string techniques")));
                     }
+                    if !(0.0..=2.0).contains(&note.scoop) || !(0.0..=2.0).contains(&note.fall) {
+                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}]: scoop and fall are 0-2 semitones")));
+                    }
                     if note.trill > 4 {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].trill: {} semitones is too wide (1-4)", note.trill)));
                     }
@@ -688,6 +691,13 @@ pub struct Note {
     /// 音符自己写了 `bend` 时不加。能弯音的乐器才有。
     #[serde(default, skip_serializing_if = "is_false")]
     pub half_trill: bool,
+    /// 滑进来（可省略，默认 0）：音从下面这么多个半音开始，约 0.12 秒滑到本音（唢呐、萨克斯的"兜"上去）。0 … 2。
+    /// 音符自己写了 `bend` 时不加。
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub scoop: f64,
+    /// 甩出去（可省略，默认 0）：音的最后约 0.15 秒往下滑这么多个半音（唢呐的甩音、爵士的 fall）。0 … 2。
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub fall: f64,
     /// 花舌（可省略，默认 false）：吹这个音时舌尖打嘟噜，气流被打成每秒约 40 下的颤动，声音"嘟噜噜"带沙（`yinse.blow.bangdi`、`yinse.blow.qudi`）。
     /// 其它乐器忽略。
     #[serde(default, skip_serializing_if = "is_false")]
@@ -735,6 +745,10 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
+}
+
 fn is_zero_u8(v: &u8) -> bool {
     *v == 0
 }
@@ -769,7 +783,7 @@ impl Note {
             tremolo: false,
             slide: false,
             slide_out: false,
-            breath: false, damp: false, flutter: false, trill: 0, half_trill: false,
+            breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0,
             bend: Vec::new(),
             lyric: None,
             technique: None, harmonic: None,
