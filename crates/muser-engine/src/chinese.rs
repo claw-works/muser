@@ -372,20 +372,24 @@ impl DiziParams {
     }
 }
 
-/// 箫：竖吹，低、暗、气声多，起音慢，揉得轻。
+/// 箫（洞箫）：竖吹，低、暗，声音几乎只有基音。对着三段洞箫独奏录音（箫雨、梦人间、鼓山夜雨）的长音：
+/// 二、三、四次谐波约 -16 / -26 / -37 dB（比笛子纯得多），谐波之间的气声约 -62 … -67 dB（录音里很干净，不是"气声多"），
+/// 揉音浅（约 ±7 … 9 音分，每秒 4.7 … 5.3 下）；音大多连着吹，起音约 0.1 秒。
 pub fn xiao() -> WindParams {
     let mut w = WindParams::flute();
-    w.noise = 0.7;
+    w.jet_offset = 0.4;
+    w.opening = 0.22;
+    w.noise = 0.15;
     w.breath_soft = 0.35;
     w.bell = 2_000.0;
-    w.attack = 0.09;
+    w.attack = 0.05;
     w.release = 0.15;
-    w.vibrato_rate = 4.5;
-    w.vibrato_depth = 10.0;
+    w.vibrato_rate = 5.0;
+    w.vibrato_depth = 8.0;
     w.vibrato_delay = 0.4;
     w.portamento = true;
     w.legato_time = 0.1;
-    w.tone = 5_000.0;
+    w.tone = 7_000.0;
     w
 }
 

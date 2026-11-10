@@ -556,7 +556,7 @@ CHINESE_PAGES = [
         "气震音 (breath vibrato): `breath_vibrato` (0.8 with a small `vibrato_depth`) makes the breath pulse louder and softer instead of the pitch. "
         "Circular breathing (循环换气) needs nothing: the synthesized flute never runs out of air, so write long phrases without gaps; leave gaps only where a player would breathe.",
         "`membrane` sets the buzz (the bangdi 0.45, the qudi 0.25).",
-        "**Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.",
+        "**Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and nearly pure (in recordings the second harmonic is about 16 dB under the fundamental and there is little breath noise); slow phrases played mostly slurred: overlap the notes; a light vibrato comes by itself.",
     ]),
 ]
 

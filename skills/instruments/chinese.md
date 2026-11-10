@@ -12,7 +12,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 | `yinse.strike.yangqin` | 43–93 | 24 | Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo` |
 | `yinse.blow.bangdi` | 67–96 | 1 | Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slide |
 | `yinse.blow.qudi` | 64–91 | 1 | Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slide |
-| `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide |
+| `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫, 洞箫): end-blown bamboo flute, low, dark and nearly pure, a soft attack; one note at a time, overlapping notes slide |
 | `yinse.bow.erhu` | 62–96 | 1 | Erhu (二胡): two-string fiddle with a python-skin resonator, nasal and singing, wide vibrato; slurred notes (legato clips) slide into each other. One note at a time |
 
 ## One page per instrument

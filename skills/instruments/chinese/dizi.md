@@ -8,7 +8,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. The other Chinese inst
 |---|---|---|---|
 | `yinse.blow.bangdi` | 67–96 | 1 | Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slide |
 | `yinse.blow.qudi` | 64–91 | 1 | Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slide |
-| `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫): end-blown bamboo flute, low, dark and breathy, a slow, quiet attack; one note at a time, overlapping notes slide |
+| `yinse.blow.xiao` | 55–86 | 1 | Xiao (箫, 洞箫): end-blown bamboo flute, low, dark and nearly pure, a soft attack; one note at a time, overlapping notes slide |
 
 ## Adjustable parameters of `yinse.blow.bangdi`, `yinse.blow.qudi`
 
@@ -57,7 +57,7 @@ Preset values of each instrument:
 
 | instrument | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `tone` | `breath_noise` | `brassiness` | `portamento` |
 |---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.xiao` | 0.09 | 0.15 | 4.5 | 10 | 0.4 | 5000 | 0.7 | 0 | true |
+| `yinse.blow.xiao` | 0.05 | 0.15 | 5 | 8 | 0.4 | 7000 | 0.15 | 0 | true |
 
 ### Tuning examples
 
@@ -75,4 +75,4 @@ Preset values of each instrument:
 - **Tongue (舌).** 吐音 (tonguing) is repeated short notes with small gaps (about 0.1 beat): single tonguing (单吐 tu tu) even; double tonguing (双吐 tu-ku) alternates a strong and a slightly softer note (velocity 0.8 / 0.7); triple tonguing (三吐 tu-tu-ku) groups of three, strong-strong-soft, often as a 16th + two 32nds. 剁音: `"accent": true` on a short note: the tongue strikes hard (louder, a sharper attack) and cuts the note off at its end. 花舌: `"flutter": true`, the tongue rolling about 40 times a second through the note (the shake on long notes of lively northern pieces). 滑音: a note that overlaps the next slides into it; or a `bend`.
 - **Breath (气).** Long notes get a light vibrato by themselves (about ±12 cents at 5.5 Hz, as measured; the qudi a little slower and deeper). 气震音 (breath vibrato): `breath_vibrato` (0.8 with a small `vibrato_depth`) makes the breath pulse louder and softer instead of the pitch. Circular breathing (循环换气) needs nothing: the synthesized flute never runs out of air, so write long phrases without gaps; leave gaps only where a player would breathe.
 - `membrane` sets the buzz (the bangdi 0.45, the qudi 0.25).
-- **Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and breathy; slow phrases, overlapping notes slur.
+- **Xiao** (箫, the end-blown 洞箫): low (G3-D6), dark and nearly pure (in recordings the second harmonic is about 16 dB under the fundamental and there is little breath noise); slow phrases played mostly slurred: overlap the notes; a light vibrato comes by itself.
