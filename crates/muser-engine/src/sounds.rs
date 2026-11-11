@@ -25,7 +25,7 @@ pub struct Sound {
     /// 写进音轨 `instrument` 的值。
     pub spec: String,
     pub name: String,
-    /// builtin / sfz / plugin。
+    /// builtin / sfz / yinse（`$MUSER_YINSE_PATH` 音色库里从录音提取的乐器）/ plugin。
     pub kind: String,
     /// 类别（内置乐器的 family）、音色库目录（SFZ）或厂商（插件）。
     pub group: String,
@@ -60,6 +60,18 @@ pub fn list() -> Vec<Sound> {
         kind: "sfz".into(),
         group: rel.split('/').next().filter(|g| *g != rel).unwrap_or("").to_string(),
         description: String::new(),
+        card: None,
+    }));
+    out.extend(crate::modal::library().into_iter().map(|e| Sound {
+        spec: e.spec,
+        name: e.name,
+        kind: "yinse".into(),
+        group: e.family,
+        description: [e.description, [e.source, e.license].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" — "),
         card: None,
     }));
     if let Ok((plugins, _)) = crate::plugin::scan(false) {

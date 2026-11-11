@@ -27,11 +27,30 @@ muser yinse compare piano.yinse.json piano-notes/
 `--from` also plays a short note per pitch to measure the dampers: a piano's notes then stop when released (the sustain pedal holds them), a yangqin's ring on.
 Check the source's license before you share what you extract (see the library rules below).
 
+## Built-in or extracted?
+
+Both are muser's own (yinse) and are told apart by how they are written: a built-in is `yinse.strike.yangqin` (dots),
+an extracted instrument is `yinse:strike/grand-piano` (a colon and a path). Use both; pick by what the part needs:
+
+| | Built-in (`yinse.<how>.<name>`) | Extracted (`yinse:<file or library name>`) |
+|---|---|---|
+| What it is | A physical / modal model written in muser | Partial tables measured from recordings |
+| Sounds like | The instrument in general | That recording of that instrument (closest to the real thing) |
+| Pitches | Any, and the techniques bend and slide it far (guqin 按音 / 泛音 / 走手音, ±24 semitone bends) | Any (blended between recorded pitches); bends work, but the timbre does not follow a press or slide |
+| Playing techniques | The built-in ones (`technique`, `tremolo`, `trill`, `flutter` …) | Only what was recorded and tagged (`articulation`), plus `tremolo` |
+| Tuning the sound | Many `instrument_params` | Few: the sound is the recording's (`release`, `tremolo_rate`) |
+| Held sounds (flute, erhu, voice) | Yes | Not yet: struck and plucked only |
+| Where | Always there | A file, or a library on `MUSER_YINSE_PATH` (`muser sounds list --kind yinse`) |
+
+When a library has the instrument, prefer it for exposed solo parts that should sound like a real recording; prefer the
+built-in one for techniques the recording does not have, wide slides, or when no library is installed.
+
 ## Libraries
 
 Extracted instruments can live in a library such as [muser-yinse](https://github.com/claw-works/muser-yinse): put its folder
 on `MUSER_YINSE_PATH` (several with the path separator) and write `yinse:<family>/<name>`, e.g. `yinse:strike/grand-piano`, which
-finds `instruments/strike/grand-piano/grand-piano.yinse.json` there. A plain file path works too.
+finds `instruments/strike/grand-piano/grand-piano.yinse.json` there. A plain file path works too. `muser sounds list --kind yinse` (and the sound panel of
+`muser view`) lists what the libraries on this machine have, with each one's source and license.
 
 ## Recordings
 

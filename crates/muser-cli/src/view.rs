@@ -920,7 +920,7 @@ impl Shared {
         Ok(n)
     }
 
-    /// 可选的音色：内置乐器与 `$MUSER_SFZ_PATH` 里的 SFZ（直接换）、扫描到的 VST3 / CLAP 乐器插件（在插件窗口里选）。
+    /// 可选的音色：内置乐器、`$MUSER_SFZ_PATH` 里的 SFZ、`$MUSER_YINSE_PATH` 音色库里的 yinse 乐器（直接换）、扫描到的 VST3 / CLAP 乐器插件（在插件窗口里选）。
     fn sound_choices() -> Vec<Value> {
         let mut out: Vec<Value> = muser_engine::instrument::catalog()
             .into_iter()
@@ -933,6 +933,11 @@ impl Shared {
                 let group = rel.split('/').next().filter(|g| *g != rel).unwrap_or("").to_string();
                 json!({ "spec": format!("sfz:{rel}"), "name": name, "vendor": group, "format": "sfz" })
             }));
+        out.extend(muser_engine::modal::library().into_iter().map(|e| {
+            let source = [e.source, e.license].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+            let description = [e.description, source].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" — ");
+            json!({ "spec": e.spec, "name": e.name, "vendor": e.family, "description": description, "format": "yinse" })
+        }));
         if cfg!(all(target_os = "macos", feature = "host")) {
             if let Ok((list, _)) = muser_engine::plugin::scan(false) {
                 out.extend(

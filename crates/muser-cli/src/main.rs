@@ -427,7 +427,7 @@ enum YinseCommand {
 enum SoundsCommand {
     /// List the sounds usable on this machine: built-in instruments, SFZ in $MUSER_SFZ_PATH, scanned instrument plugins; ones already listened to carry a one-line card description.
     List {
-        /// Only one kind: builtin / sfz / plugin.
+        /// Only one kind: builtin / sfz / yinse (instruments extracted from recordings, in the libraries on $MUSER_YINSE_PATH) / plugin.
         #[arg(long)]
         kind: Option<String>,
         /// Keyword filter (name, category, description, path; every space-separated word must appear).

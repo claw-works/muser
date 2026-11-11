@@ -544,6 +544,7 @@ const I18N = {
     soundNeedName: "Give the sound a name first — it's saved to My sounds under it", presetNone: (p) => `No sounds used with ${p} yet: load one in its own browser with the button below.`, soundOpen: "Open plugin window", soundAudition: "▶ Audition track", soundStopAudition: "■ Stop",
     soundDone: "Done", soundCancel: "Discard", soundUsed: (s) => `Switched to ${s}; re-rendering`,
     sfzSampler: "SFZ sampler", sfzCount: (n) => `Built-in sampler · ${n} sounds in MUSER_SFZ_PATH`, sfzSearch: "Search sounds (name, library, path)…",
+    yinseLibrary: "yinse library", yinseCount: (n) => `Extracted from recordings · ${n} in MUSER_YINSE_PATH`, yinseSearch: "Search (name, strike / pluck, source, license)…",
     sfzShown: (a, b) => (a === b ? `${b} sounds` : `${a} of ${b} sounds`),
     presetSearch: "Search this plugin's sounds (name, library, category, tags)…", presetShown: (a, b) => (a === b ? `${b} built-in sounds` : `${a} of ${b} built-in sounds`),
     load_auto: "ready", load_captured: "captured", load_manual: "load once",
@@ -612,6 +613,7 @@ const I18N = {
     soundNeedName: "先给音色起个名字：会按这个名字存进我的音色", presetNone: (p) => `还没有在 ${p} 里用过的音色：点下面的按钮，在它自己的浏览器里载入一个。`, soundOpen: "打开插件窗口", soundAudition: "▶ 试听本轨", soundStopAudition: "■ 停止",
     soundDone: "完成", soundCancel: "放弃", soundUsed: (s) => `已换成 ${s}，正在重新渲染`,
     sfzSampler: "SFZ 采样器", sfzCount: (n) => `内置采样器 · MUSER_SFZ_PATH 里 ${n} 个音色`, sfzSearch: "搜索音色（名字、音色库、路径）…",
+    yinseLibrary: "yinse 音色库", yinseCount: (n) => `从录音提取的乐器 · MUSER_YINSE_PATH 里 ${n} 件`, yinseSearch: "搜索（名字、strike / pluck、录音来源、许可证）…",
     sfzShown: (a, b) => (a === b ? `${b} 个音色` : `${b} 个里的 ${a} 个`),
     presetSearch: "搜索这个插件的音色（名字、音色库、类别、标签）…", presetShown: (a, b) => (a === b ? `${b} 个内置音色` : `${b} 个里的 ${a} 个`),
     load_auto: "直接用", load_captured: "已采集", load_manual: "需载入一次",
@@ -998,11 +1000,12 @@ function card(icon, name, meta, tag, current, onclick) {
 function renderInstruments() {
   const box = $("sd-instruments"); box.innerHTML = "";
   const of = (f) => soundChoices.filter((p) => p.format === f);
-  const plugins = soundChoices.filter((p) => p.format !== "sfz" && p.format !== "builtin");
+  const plugins = soundChoices.filter((p) => !["sfz", "builtin", "yinse"].includes(p.format));
   const cur = soundTrack.instrument || "";
   const builtin = of("builtin");
   box.appendChild(card("🎵", t("builtinInstruments"), t("builtinCount", builtin.length), "muser", builtin.some((p) => p.spec === cur), () => openList("builtin")));
   box.appendChild(card("🎹", t("sfzSampler"), t("sfzCount", of("sfz").length), "SFZ", cur.startsWith("sfz:"), () => openList("sfz")));
+  if (of("yinse").length || cur.startsWith("yinse:")) box.appendChild(card("🎼", t("yinseLibrary"), t("yinseCount", of("yinse").length), "yinse", cur.startsWith("yinse:"), () => openList("yinse")));
   for (const p of plugins) {
     box.appendChild(card("🎛", p.name, p.vendor || "", p.format.toUpperCase(), sameSound(p.spec, cur), () => openPlugin(p)));
   }
@@ -1012,8 +1015,9 @@ function renderInstruments() {
 let listKind = "sfz";
 function openList(kind) {
   listKind = kind; drawerPage("sd-sfz");
-  $("sd-title").textContent = `${t("sound")} · ${soundTrack.name} · ${kind === "sfz" ? t("sfzSampler") : t("builtinInstruments")}`;
-  $("sd-search").placeholder = t(kind === "sfz" ? "sfzSearch" : "builtinSearch"); $("sd-search").value = "";
+  const title = { sfz: "sfzSampler", yinse: "yinseLibrary", builtin: "builtinInstruments" }[kind];
+  $("sd-title").textContent = `${t("sound")} · ${soundTrack.name} · ${t(title)}`;
+  $("sd-search").placeholder = t({ sfz: "sfzSearch", yinse: "yinseSearch", builtin: "builtinSearch" }[kind]); $("sd-search").value = "";
   renderSfz(); setTimeout(() => $("sd-search").focus(), 50);
 }
 function renderSfz() {

@@ -954,6 +954,58 @@ pub(crate) fn load(path: &str) -> Result<(&'static ModalTable, &'static crate::z
     Ok((table, profile))
 }
 
+/// `$MUSER_YINSE_PATH` 音色库里的一件乐器（muser-yinse 的目录：`instruments/<类>/<名>/<名>.yinse.json` 和旁边的 `meta.json`）。
+#[derive(Debug, Clone, Serialize)]
+pub struct LibraryEntry {
+    /// 写进音轨 `instrument` 的值：`yinse:<类>/<名>`。
+    pub spec: String,
+    pub name: String,
+    /// strike / pluck。
+    pub family: String,
+    pub description: String,
+    /// 录音的许可证（SPDX）与来源，`meta.json` 里没写就是空的。
+    pub license: String,
+    pub source: String,
+    pub path: PathBuf,
+}
+
+/// 列出 `$MUSER_YINSE_PATH` 里所有库的乐器（按写法排序；同名的只取前面的库）。
+pub fn library() -> Vec<LibraryEntry> {
+    let roots = std::env::var_os("MUSER_YINSE_PATH").map(|v| std::env::split_paths(&v).collect::<Vec<_>>()).unwrap_or_default();
+    let mut out: Vec<LibraryEntry> = Vec::new();
+    let dirs = |p: &Path| -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(p).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        v.sort();
+        v
+    };
+    for root in roots.iter().filter(|r| !r.as_os_str().is_empty()) {
+        for family in dirs(&root.join("instruments")) {
+            for dir in dirs(&family) {
+                let (f, n) = (family.file_name().unwrap_or_default().to_string_lossy().into_owned(), dir.file_name().unwrap_or_default().to_string_lossy().into_owned());
+                let path = dir.join(format!("{n}.yinse.json"));
+                let spec = format!("yinse:{f}/{n}");
+                if !path.is_file() || out.iter().any(|e| e.spec == spec) {
+                    continue;
+                }
+                let meta: serde_json::Value = std::fs::read_to_string(dir.join("meta.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+                let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
+                let zh = text(&meta["zh"]);
+                out.push(LibraryEntry {
+                    spec,
+                    name: if zh.is_empty() { n.clone() } else { format!("{n} ({zh})") },
+                    family: f,
+                    description: text(&meta["description"]),
+                    license: text(&meta["source"]["license"]),
+                    source: [text(&meta["source"]["title"]), text(&meta["source"]["author"])].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(", "),
+                    path,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.spec.cmp(&b.spec));
+    out
+}
+
 /// `yinse:<文件>` 这条音轨的表（不是录音提取的乐器、读不到都是 None）。
 pub(crate) fn table_of(instrument: &str) -> Option<&'static ModalTable> {
     load(instrument.trim().strip_prefix("yinse:")?).ok().map(|(t, _)| t)
@@ -1222,8 +1274,12 @@ mod tests {
         let dir = root.join("instruments/strike/bell");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("bell.yinse.json"), "{}").unwrap();
+        std::fs::write(dir.join("meta.json"), r#"{"zh":"钟","description":"a bell","source":{"title":"Bells","author":"Someone","license":"CC0-1.0"}}"#).unwrap();
         // 只有这个测试读写 MUSER_YINSE_PATH。
         unsafe { std::env::set_var("MUSER_YINSE_PATH", &root) };
+        let list = library();
+        assert_eq!(list.len(), 1);
+        assert_eq!((list[0].spec.as_str(), list[0].name.as_str(), list[0].license.as_str(), list[0].source.as_str()), ("yinse:strike/bell", "bell (钟)", "CC0-1.0", "Bells, Someone"));
         assert_eq!(resolve("strike/bell"), dir.join("bell.yinse.json"));
         assert_eq!(resolve("instruments/strike/bell/bell.yinse.json"), dir.join("bell.yinse.json"));
         assert_eq!(resolve("strike/none"), PathBuf::from("strike/none"));

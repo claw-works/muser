@@ -48,7 +48,7 @@ Do not write instrument names and effect parameters from memory; look them up fi
 | To find out | CLI | MCP tool |
 |---|---|---|
 | Which instruments exist | `muser instruments [--family F]` | `list_instruments` |
-| All sounds usable on this machine (built-in, SFZ, instrument plugins) | `muser sounds list [--kind builtin\|sfz\|plugin] [--filter word]` | - |
+| All sounds usable on this machine (built-in, SFZ, yinse libraries, instrument plugins) | `muser sounds list [--kind builtin\|sfz\|yinse\|plugin] [--filter word]` | - |
 | What a sound is like (brightness, attack, sustain, range, velocity, stereo, pitch) | `muser sounds describe <sound> [--params JSON]` | - |
 | An instrument's pitch convention, range, polyphony, **tunable parameters and the preset's current values** | `muser instruments <name>` | `describe_instrument` |
 | Which effects exist | `muser effects` | `list_effects` |
