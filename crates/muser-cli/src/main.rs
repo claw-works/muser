@@ -383,8 +383,27 @@ enum YinseCommand {
     /// or, per pitch, from the loudness order. The result is a small JSON of partial tables (no audio): play it as "instrument": "yinse:<file>".
     Extract {
         /// Audio files or folders of them (wav / flac / aiff / ogg / mp3).
-        #[arg(required = true)]
+        #[arg(required_unless_present = "from")]
         inputs: Vec<std::path::PathBuf>,
+        /// Instead of recordings, play an instrument muser can play and extract from that: an SFZ library (sfz:/path/Piano.sfz),
+        /// a plugin (plugin:..., with --params '{"@state": ...}') or a built-in one.
+        #[arg(long)]
+        from: Option<String>,
+        /// With --from: instrument_params for it (JSON).
+        #[arg(long)]
+        params: Option<String>,
+        /// With --from: pitches to play: "21-108/3" (from-to, every 3 semitones) or "45,57,69".
+        #[arg(long, default_value = "36-96/3")]
+        pitches: String,
+        /// With --from: velocities, comma-separated (0-1).
+        #[arg(long, default_value = "0.35,0.65,0.95")]
+        velocities: String,
+        /// With --from: how long each note is held (seconds); only that part is analysed.
+        #[arg(long, default_value_t = 5.0)]
+        hold: f64,
+        /// With --from: keep the played notes in this folder (to `compare` against later); otherwise they are deleted.
+        #[arg(long)]
+        notes_dir: Option<std::path::PathBuf>,
         /// Output file (suggested extension .yinse.json).
         #[arg(short, long)]
         output: std::path::PathBuf,
@@ -1196,16 +1215,51 @@ fn audio_files(inputs: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
     files
 }
 
+/// "21-108/3" 或 "45,57,69"。
+fn parse_pitches(text: &str) -> Result<Vec<u8>> {
+    let bad = || anyhow::anyhow!("--pitches: write \"21-108/3\" (from-to every 3 semitones) or \"45,57,69\"");
+    if let Some((range, step)) = text.split_once('/').map(|(a, b)| (a, Some(b))).or(Some((text, None))).filter(|(a, _)| a.contains('-')) {
+        let (a, b) = range.split_once('-').ok_or_else(bad)?;
+        let (a, b): (u8, u8) = (a.trim().parse().map_err(|_| bad())?, b.trim().parse().map_err(|_| bad())?);
+        let step: usize = step.map_or(Ok(1), |s| s.trim().parse()).map_err(|_| bad())?;
+        return Ok((a..=b.min(127)).step_by(step.max(1)).collect());
+    }
+    text.split(',').map(|p| p.trim().parse::<u8>().map_err(|_| bad())).collect()
+}
+
 fn cmd_yinse(command: YinseCommand) -> Result<()> {
     use muser_engine::modal;
     match command {
-        YinseCommand::Extract { inputs, output, name } => {
+        YinseCommand::Extract { inputs, output, name, from, params, pitches, velocities, hold, notes_dir } => {
             let name = name.unwrap_or_else(|| output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default());
-            let files = audio_files(&inputs);
-            let table = modal::extract(&files, &name, |n| {
+            let (mut files, mut release, mut temp) = (audio_files(&inputs), None, None);
+            if let Some(spec) = &from {
+                let pitches = parse_pitches(&pitches)?;
+                let velocities: Vec<f64> = velocities.split(',').map(|v| v.trim().parse::<f64>().map(|v| v.clamp(0.01, 1.0))).collect::<Result<_, _>>().map_err(|e| anyhow::anyhow!("--velocities: {e}"))?;
+                let params: muser_core::InstrumentParams = match &params {
+                    Some(p) => serde_json::from_str(p).map_err(|e| anyhow::anyhow!("--params: {e}"))?,
+                    None => Default::default(),
+                };
+                let dir = notes_dir.clone().unwrap_or_else(|| std::env::temp_dir().join(format!("muser-yinse-{}", std::process::id())));
+                if notes_dir.is_none() {
+                    temp = Some(dir.clone());
+                }
+                eprintln!("playing {} pitches x {} velocities on {spec} ...", pitches.len(), velocities.len());
+                let (rendered, damper) = modal::render_notes(spec, &params, &pitches, &velocities, hold, &dir).map_err(|e| anyhow::anyhow!(e))?;
+                files = rendered;
+                release = damper;
+            }
+            let result = modal::extract(&files, &name, |n| {
                 eprintln!("  {}: pitch {:.2}, {} partials, slowest {:.1} s", n.source, n.pitch, n.partials.len(), n.partials.iter().map(|p| p.t60).fold(0.0, f64::max));
-            })
-            .map_err(|e| anyhow::anyhow!(e))?;
+            });
+            if let Some(dir) = temp {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            let mut table = result.map_err(|e| anyhow::anyhow!(e))?;
+            if let Some(r) = release {
+                eprintln!("  dampers: released notes die in {r:.2} s");
+                table.release = Some((r * 1000.0).round() / 1000.0);
+            }
             std::fs::write(&output, serde_json::to_string(&table)?)?;
             let (lo, hi) = table.range();
             let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);

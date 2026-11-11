@@ -1504,6 +1504,16 @@ muser yinse compare yangqin.yinse.json ~/samples/yangqin/      # how close it is
 { "instrument": "yinse:yangqin.yinse.json" }
 ```
 
+From an instrument muser can already play (an SFZ library you may use, a plugin, a built-in one), let muser play the notes itself:
+
+```bash
+muser yinse extract --from "sfz:Piano.sfz" --pitches 21-108/3 --velocities 0.3,0.6,0.9 --hold 6 -o piano.yinse.json --notes-dir piano-notes
+muser yinse compare piano.yinse.json piano-notes/
+```
+
+`--from` also plays a short note per pitch to measure the dampers: a piano's notes then stop when released (the sustain pedal holds them), a yangqin's ring on.
+Check the source's license before you share what you extract (see the library rules below).
+
 ## Libraries
 
 Extracted instruments can live in a library such as [muser-yinse](https://github.com/claw-works/muser-yinse): put its folder

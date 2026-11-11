@@ -13,8 +13,8 @@ use manguebyte::dsp::fft::{Complex, RealFft};
 use serde::{Deserialize, Serialize};
 
 pub const FORMAT: &str = "muser-yinse-modal";
-/// 每个音最多提取多少个分音（与模态弦模型的模式数相同）。
-pub const MAX_PARTIALS: usize = 48;
+/// 每个音最多提取多少个分音（与模态弦模型的模式数相同；钢琴的低音要上百个）。
+pub const MAX_PARTIALS: usize = 128;
 /// 起音噪声的衰减时间常数（秒），提取和演奏用同一个。
 pub const NOISE_SECONDS: f64 = 0.006;
 /// 分析每个音的前几秒。
@@ -33,6 +33,9 @@ pub struct ModalTable {
     /// 从带 `tremolo` / `vibrato` / `damp` 标记的录音量出来的动作。
     #[serde(default)]
     pub gestures: Gestures,
+    /// 松开后余音到 -60 dB 的秒数（有制音器的乐器，如钢琴）；没有就是不止音，弦自己响完。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<f64>,
 }
 
 /// 动作类的演奏法：不是音色，是怎么动。
@@ -390,7 +393,9 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
         if expect > 0.45 * sr {
             break;
         }
-        let (hz, m) = peak_near(&mag, bin_hz, expect, (0.3 * f0).max(2.0 * bin_hz));
+        // 基音只在 ±4% 里找；高的分音按已经量到的伸张往外推，窗口不超过它自己频率的 5%（高音区的窗口不会抓到别的峰）。
+        let width = if n == 1 { 0.04 * f0 } else { (0.3 * f0).min(0.05 * expect) };
+        let (hz, m) = peak_near(&mag, bin_hz, expect, width.max(2.0 * bin_hz));
         let lo = ((expect - f0 * 0.5) / bin_hz).max(1.0) as usize;
         let hi = (((expect + f0 * 0.5) / bin_hz) as usize).min(mag.len() - 1);
         let mut around: Vec<f64> = mag[lo..hi].to_vec();
@@ -412,6 +417,8 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
     }
     // 每个分音的包络：窗要够长才分得开相邻的分音。
     let window = ((4.5 / f0).max(0.02) * sr) as usize;
+    // 文件名给了音高：分音的频率比就相对那个音高（录音本身偏了多少音分也照样还原）；没给就相对量到的基频。
+    let base = pitch.map_or(f0, |p| 440.0 * ((p - 69.0) / 12.0).exp2());
     let hop = (HOP_SECONDS * sr) as usize;
     let mut partials = Vec::new();
     for &hz in &freqs {
@@ -423,7 +430,7 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
             continue;
         }
         let mut p = fit_envelope(&t, &amp, hz);
-        p.ratio = hz / f0;
+        p.ratio = hz / base;
         // 立体声：起音后 20 … 600 ms 的左右平均振幅与右边相对左边的相位。
         let (mut sl, mut sr_, mut cr, mut ci) = (0.0, 0.0, 0.0, 0.0);
         for k in (0..t.len()).filter(|&k| (0.02..0.6).contains(&t[k])) {
@@ -488,7 +495,7 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
     }
     Ok(NoteTable {
         source: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-        pitch: 69.0 + 12.0 * (f0 / 440.0).log2(),
+        pitch: pitch.unwrap_or(69.0 + 12.0 * (f0 / 440.0).log2()),
         velocity,
         partials,
         noise,
@@ -583,11 +590,13 @@ pub fn extract(inputs: &[PathBuf], name: &str, mut on_note: impl FnMut(&NoteTabl
     }
     notes.sort_by(|a, b| a.articulation.cmp(&b.articulation).then(a.pitch.total_cmp(&b.pitch)).then(a.velocity.total_cmp(&b.velocity)));
     // 其余弦的共振：余音里不在泛音上的能量越多，琴码带响的弦越响（经验换算，见 [`crate::zither::Profile`] 的 bridge）。
-    let measured: Vec<f64> = notes.iter().filter(|n| n.articulation.is_empty()).map(|n| n.off_harmonic).filter(|&f| f > 0.0).collect();
+    // 中位数：只剩一两个分音的高音、量偏了的个别音不左右整体。
+    let mut measured: Vec<f64> = notes.iter().filter(|n| n.articulation.is_empty()).map(|n| n.off_harmonic).filter(|&f| f > 0.0).collect();
+    measured.sort_by(f64::total_cmp);
     let resonance = if measured.is_empty() {
         0.0
     } else {
-        let f = measured.iter().sum::<f64>() / measured.len() as f64;
+        let f = measured[measured.len() / 2];
         (RESONANCE_SCALE * (f / (1.0 - f).max(0.05)).sqrt()).clamp(0.0, 0.3)
     };
     // 五位有效数字就够了（文件小一半多）。
@@ -607,7 +616,62 @@ pub fn extract(inputs: &[PathBuf], name: &str, mut on_note: impl FnMut(&NoteTabl
         vibrato: gestures.vibrato.map(|v| Vibrato { depth: r(v.depth), rate: r(v.rate), delay: r(v.delay) }),
         damp: gestures.damp.map(r),
     };
-    Ok(ModalTable { format: FORMAT.into(), version: 1, name: name.into(), resonance: r(resonance), notes, gestures })
+    Ok(ModalTable { format: FORMAT.into(), version: 1, name: name.into(), resonance: r(resonance), notes, gestures, release: None })
+}
+
+/// 用 muser 的一个乐器（`sfz:` 音色库、`plugin:`、内置乐器）演奏每个音高、力度，各存成一个文件（文件名带音高、力度），
+/// 只留按住的那 `hold` 秒（松开以后的不要）。再每个音高演奏一个 1 秒的短音，量松开后余音收掉的快慢（有制音器的乐器）。
+pub fn render_notes(spec: &str, params: &muser_core::InstrumentParams, pitches: &[u8], velocities: &[f64], hold: f64, dir: &Path) -> Result<(Vec<PathBuf>, Option<f64>), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create '{}': {e}", dir.display()))?;
+    let gap = hold + 4.0;
+    let mut notes = Vec::new();
+    for &p in pitches {
+        for &v in velocities {
+            notes.push((p, v, hold));
+        }
+        notes.push((p, velocities[velocities.len() / 2], 1.0));
+    }
+    let mut project = muser_core::Project::new("notes", 60.0);
+    let mut track = muser_core::Track::new("t", spec);
+    track.instrument_params = params.clone();
+    let mut clip = muser_core::Clip::new(0.0, notes.len() as f64 * gap);
+    for (i, &(p, v, len)) in notes.iter().enumerate() {
+        let mut n = muser_core::Note::new(p, 0.5 + i as f64 * gap, len);
+        n.velocity = v as f32;
+        clip.notes.push(n);
+    }
+    track.clips.push(clip);
+    project.tracks.push(track);
+    let audio = crate::render::render(&project, crate::render::RenderSettings { tail_seconds: 0.5, ..Default::default() }).map_err(|e| e.to_string())?;
+    let sr = 48_000.0;
+    let names = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"];
+    let (mut files, mut releases) = (Vec::new(), Vec::new());
+    for (i, &(p, v, len)) in notes.iter().enumerate() {
+        let start = ((0.5 + i as f64 * gap) * sr) as usize;
+        let short = len < hold;
+        let end = (start + (if short { 3.0 } else { len } * sr) as usize).min(audio.num_frames());
+        if start >= end {
+            continue;
+        }
+        if short {
+            let mid: Vec<f64> = audio.channel(0)[start..end].iter().zip(&audio.channel(1)[start..end]).map(|(a, b)| 0.5 * f64::from(a + b)).collect();
+            if let Some(d) = analyze_damp(&mid, sr) {
+                releases.push(d);
+            }
+            continue;
+        }
+        let mut b = manguebyte::prelude::AudioBuffer::<f32>::new(2, end - start);
+        for c in 0..2 {
+            b.channel_mut(c).copy_from_slice(&audio.channel(c)[start..end]);
+        }
+        let path = dir.join(format!("{}{}_v{v:.2}.wav", names[usize::from(p % 12)], i32::from(p / 12) - 1));
+        manguebyte::prelude::wav::write_file(&path, &b, 48_000, manguebyte::prelude::WavFormat::Float32).map_err(|e| format!("cannot write '{}': {e:?}", path.display()))?;
+        files.push(path);
+    }
+    releases.sort_by(f64::total_cmp);
+    // 一半以上的音松开后很快收掉，才算有制音器。
+    let release = (releases.len() * 2 > pitches.len()).then(|| releases[releases.len() / 2]);
+    Ok((files, release))
 }
 
 fn read_mid(path: &Path) -> Result<(Vec<f64>, f64), String> {
@@ -1157,7 +1221,7 @@ mod tests {
         muted.articulation = "mute".into();
         let t = ModalTable {
             format: FORMAT.into(), version: 1, name: String::new(), resonance: 0.0,
-            notes: vec![note(60.0, 0.4, 0.1), note(60.0, 0.8, 0.3), note(72.0, 0.8, 0.5), muted], gestures: Gestures::default(),
+            notes: vec![note(60.0, 0.4, 0.1), note(60.0, 0.8, 0.3), note(72.0, 0.8, 0.5), muted], gestures: Gestures::default(), release: None,
         };
         assert!((t.voice(60.0, 0.6, "").partials[0].amp - 0.2).abs() < 1e-9);
         assert!((t.voice(66.0, 0.8, "").partials[0].amp - 0.4).abs() < 1e-9);

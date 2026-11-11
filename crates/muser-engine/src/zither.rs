@@ -11,7 +11,9 @@ use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Processor, Synth, V
 
 use crate::{chinese::GuzhengParams, params};
 
-const MODES: usize = 48;
+/// 录音提取的乐器最多这么多个分音（钢琴的低音要上百个）；内置的乐器只用前 [`GENERIC_MODES`] 个。
+const MODES: usize = 128;
+const GENERIC_MODES: usize = 48;
 const CONTROL: u64 = 16;
 
 /// 一件弦乐器的结构。
@@ -319,14 +321,14 @@ impl ZitherParams {
         Self { pluck, sympathetic: 0.12, profile: &YANGQIN, ..Default::default() }
     }
 
-    /// 从录音提取的乐器：声音全在表里，琴体、共鸣、低通都不再加；没有制音器（`release` 可以改短）。
+    /// 从录音提取的乐器：声音全在表里，琴体、共鸣、低通都不再加；表里量到制音器（钢琴）就按它止音，否则弦自己响完。
     pub(crate) fn from_table(table: &'static crate::modal::ModalTable, profile: &'static Profile) -> Self {
         let mut pluck = GuzhengParams::yangqin();
         pluck.vibrato = 0.0;
         let s = &mut pluck.string;
         s.body_mix = 0.0;
         s.tone = 20_000.0;
-        s.release = 10.0;
+        s.release = table.release.unwrap_or(10.0);
         s.pluck_noise = 1.0;
         s.decay = 5.0;
         s.decay_per_octave = 1.2;
@@ -451,6 +453,8 @@ impl Mode {
 #[derive(Clone, Copy)]
 struct Tone {
     modes: [Mode; MODES],
+    /// 用到的模式数（后面的都是 0，不算）。
+    count: usize,
     /// 弦的另一个振动方向（[`Profile::twin`] > 0 时）：频率差一点、衰减慢一点，和主方向拍出"活"的起伏。
     twins: [Mode; MODES],
     twin_on: bool,
@@ -486,6 +490,7 @@ impl Default for Tone {
     fn default() -> Self {
         Self {
             modes: [Mode::default(); MODES],
+            count: GENERIC_MODES,
             twins: [Mode::default(); MODES],
             pings: [Mode::default(); MODES],
             ping_on: false,
@@ -543,7 +548,7 @@ impl Tone {
             held: true, active: true, rng: 0x9E37_79B9_7F4A_7C15 ^ (u64::from(key) << 32), strength, ..Default::default()
         };
         let mut norm = 0.0;
-        for (i, mode) in tone.modes.iter_mut().enumerate() {
+        for (i, mode) in tone.modes.iter_mut().take(GENERIC_MODES).enumerate() {
             let n = i + 1;
             let ratio = n as f64 / anchor as f64
                 * ((1.0 + stiffness * (n * n) as f64) / (1.0 + stiffness * (anchor * anchor) as f64)).sqrt();
@@ -578,6 +583,7 @@ impl Tone {
             let art = usize::from(p.articulation).checked_sub(1).and_then(|i| names.get(i)).map_or("", String::as_str);
             let v = table.voice(pitch, velocity * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 }, art);
             tone.modes = [Mode::default(); MODES];
+            tone.count = v.partials.len().clamp(1, MODES);
             for (i, q) in v.partials.iter().take(MODES).enumerate() {
                 let beat = q.beat.clamp(0.0, 0.45);
                 // 表里的振幅是包络的对数平均；主弦 1 份、另一根 w/(1-w) 份合起来的对数平均正好是 1。
@@ -610,7 +616,7 @@ impl Tone {
             // 两支话筒离琴一两米：每个分音的辐射方向不同，左右听到的比例各不一样（同一组的几根弦也是）。
             // 到两支话筒的路程差（这个音的弦在琴上的位置决定）：每个分音左右的相位差 = 2π f · 时间差。
             let delay = pr.spread * (0.00025 - 0.00012 * (key_pitch - 68.0) / 25.0);
-            for n in 0..MODES {
+            for n in 0..tone.count {
                 let h = |salt: u64| ((n as u64 * 2 + salt + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as f64 / (1u64 << 24) as f64 * 2.0 - 1.0;
                 let phase = TAU * f0 * tone.modes[n].ratio * delay;
                 let with_phase = |[l, r]: [f64; 2]| [l, r * phase.cos(), r * phase.sin()];
@@ -635,7 +641,7 @@ impl Tone {
             let base = tone.modes[0].re.abs();
             for &k in pr.open_keys {
                 let d = i32::from(k) - i32::from(key);
-                if !(-14..=12).contains(&d) || d == 0 || d.abs() == 12 || tone.strings_on + 2 > MODES {
+                if !(-14..=12).contains(&d) || d == 0 || d.abs() == 12 || tone.strings_on + 2 > GENERIC_MODES {
                     continue;
                 }
                 let hz = tuning.key_frequency(k);
@@ -699,14 +705,14 @@ impl Tone {
                 self.params.pluck.string.release * if self.technique == Technique::Pressed { self.params.profile.pressed_release } else { 1.0 }
             });
             self.energy = 0.0;
-            for mode in &mut self.modes {
+            for mode in &mut self.modes[..self.count] {
                 mode.re *= friction_loss;
                 mode.im *= friction_loss;
                 mode.tune(f0, sr, release);
                 self.energy += mode.energy();
             }
             if self.twin_on {
-                for mode in &mut self.twins {
+                for mode in &mut self.twins[..self.count] {
                     mode.re *= friction_loss;
                     mode.im *= friction_loss;
                     mode.tune(f0, sr, release);
@@ -719,7 +725,7 @@ impl Tone {
             }
             if self.ping_on {
                 self.ping_on = (self.at as f64) < 1.5 * self.params.profile.ping_s * sr;
-                for mode in &mut self.pings {
+                for mode in &mut self.pings[..self.count] {
                     mode.tune(f0, sr, release);
                 }
             }
@@ -730,13 +736,13 @@ impl Tone {
             }
         }
         let mut out = [0.0; 2];
-        for (mode, g) in self.modes.iter_mut().zip(&self.pan) {
+        for (mode, g) in self.modes[..self.count].iter_mut().zip(&self.pan) {
             let v = mode.tick();
             out[0] += v * g[0];
             out[1] += v * g[1] + mode.re * mode.fade * g[2];
         }
         if self.twin_on {
-            for (mode, g) in self.twins.iter_mut().zip(&self.twin_pan) {
+            for (mode, g) in self.twins[..self.count].iter_mut().zip(&self.twin_pan) {
                 let v = mode.tick();
                 out[0] += v * g[0];
                 out[1] += v * g[1] + mode.re * mode.fade * g[2];
@@ -748,7 +754,7 @@ impl Tone {
             out[1] += v * g[1] + mode.re * mode.fade * g[2];
         }
         if self.ping_on {
-            for (mode, g) in self.pings.iter_mut().zip(&self.pan) {
+            for (mode, g) in self.pings[..self.count].iter_mut().zip(&self.pan) {
                 let v = mode.tick();
                 out[0] += v * g[0];
                 out[1] += v * g[1] + mode.re * mode.fade * g[2];
