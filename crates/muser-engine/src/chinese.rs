@@ -156,6 +156,10 @@ impl GuzhengParams {
 
 /// 按乐器名取拨弦类的预设（揉弦、轮音的默认值从这里来）。
 fn pluck_preset(instrument: &str) -> Option<GuzhengParams> {
+    if instrument.trim().starts_with("yinse:") {
+        // 录音提取的乐器：轮音照扬琴（每秒 14 下），不自动揉弦。
+        return Some(GuzhengParams { vibrato: 0.0, ..GuzhengParams::yangqin() });
+    }
     Some(match instrument.trim().to_lowercase().as_str() {
         "yinse.pluck.pipa" => crate::zither::ZitherParams::pipa().pluck,
         "yinse.pluck.guzheng" => crate::zither::ZitherParams::guzheng().pluck,

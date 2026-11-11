@@ -158,6 +158,7 @@ mod electric;
 mod accordion;
 mod chinese;
 mod zither;
+pub mod modal;
 pub mod percussion;
 pub(crate) mod singer;
 pub mod xfer;

@@ -141,6 +141,40 @@ pub(crate) static YANGQIN: Profile = Profile {
     voices: 24,
 };
 
+/// 从录音提取的乐器（`yinse:`）的结构：录到的音高上下一个八度都是空弦；拍、起音、立体声都在表里，
+/// 这里只留琴码带响其余弦的量。
+impl Profile {
+    pub(crate) fn voices(&self) -> usize {
+        self.voices
+    }
+}
+
+pub(crate) fn table_profile(table: &crate::modal::ModalTable) -> &'static Profile {
+    let (lo, hi) = table.range();
+    let keys: Vec<u8> = ((lo - 12.0).max(0.0).round() as u8..=(hi + 12.0).min(127.0).round() as u8).collect();
+    Box::leak(Box::new(Profile {
+        open_keys: Box::leak(keys.into_boxed_slice()),
+        pressed_shortens: false,
+        contact: 0.0,
+        friction: 0.0,
+        pressed_release: 1.0,
+        pressed_stiffness: 0.0006,
+        open_bends: true,
+        twin: 0.0,
+        twin_cents: 0.0,
+        twin_decay: 1.0,
+        radiation_hz: 20.0,
+        spread: 0.0,
+        ping: 0.0,
+        ping_hz: 2_000.0,
+        // 表里起音那一段最长 1 秒。
+        ping_s: 1.0,
+        knock: 1.0,
+        bridge: table.resonance,
+        voices: 32,
+    }))
+}
+
 /// 用这个模型的乐器各是哪种结构。
 pub(crate) fn profile(instrument: &str) -> Option<&'static Profile> {
     match instrument.trim().to_lowercase().as_str() {
@@ -169,6 +203,8 @@ pub(crate) struct ZitherParams {
     pub profile: &'static Profile,
     /// 这个音结束时止音（手按住弦，余音很快收掉）：音符的 `damp`。
     pub damp: bool,
+    /// 用户从录音提取的分音表（`yinse:` 乐器）：有它时每个音的分音从表里查，不按公式算。
+    pub table: Option<&'static crate::modal::ModalTable>,
 }
 
 impl Default for ZitherParams {
@@ -191,7 +227,7 @@ impl Default for ZitherParams {
             BodyMode::new(1_100.0, 2.0, 1.4),
             BodyMode::new(1_850.0, 1.5, 0.5),
         ];
-        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false }
+        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false, table: None }
     }
 }
 
@@ -272,6 +308,23 @@ impl ZitherParams {
             BodyMode::new(2_400.0, 2.0, 0.4),
         ];
         Self { pluck, sympathetic: 0.12, profile: &YANGQIN, ..Default::default() }
+    }
+
+    /// 从录音提取的乐器：声音全在表里，琴体、共鸣、低通都不再加；没有制音器（`release` 可以改短）。
+    pub(crate) fn from_table(table: &'static crate::modal::ModalTable, profile: &'static Profile) -> Self {
+        let mut pluck = GuzhengParams::yangqin();
+        pluck.vibrato = 0.0;
+        let s = &mut pluck.string;
+        s.body_mix = 0.0;
+        s.tone = 20_000.0;
+        s.release = 10.0;
+        s.pluck_noise = 1.0;
+        s.decay = 5.0;
+        s.decay_per_octave = 1.2;
+        let mut hz: Vec<f64> = table.notes.iter().map(|n| n.noise.hz).collect();
+        hz.sort_by(f64::total_cmp);
+        s.pluck_brightness = hz[hz.len() / 2].clamp(200.0, 20_000.0);
+        Self { pluck, sympathetic: 0.0, profile, table: Some(table), ..Default::default() }
     }
 
     /// 这个音跟着弯音、揉弦吗。
@@ -507,6 +560,33 @@ impl Tone {
             mode.re *= gain;
         }
         let pr = p.profile;
+        if let Some(table) = p.table {
+            // 录音提取的分音：振幅就是录音里的振幅（满幅 1），不再按力度、触弦位置归一。
+            let v = table.voice(pitch, velocity * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 });
+            tone.modes = [Mode::default(); MODES];
+            for (i, q) in v.partials.iter().take(MODES).enumerate() {
+                let beat = q.beat.clamp(0.0, 0.45);
+                // 表里的振幅是包络的对数平均；主弦 1 份、另一根 w/(1-w) 份合起来的对数平均正好是 1。
+                tone.modes[i] = Mode { re: q.amp, ratio: q.ratio, t60: q.t60, ..Default::default() };
+                tone.modes[i].tune(f0, sr, None);
+                let pan = [q.left, q.right * q.phase.cos(), q.right * q.phase.sin()];
+                tone.pan[i] = pan;
+                tone.twin_pan[i] = pan;
+                if beat > 0.0 {
+                    tone.twin_on = true;
+                    let c = q.beat_cents * if i % 2 == 0 { 1.0 } else { -1.0 };
+                    tone.twins[i] = Mode { re: q.amp * beat / (1.0 - beat), ratio: q.ratio * (c / 1200.0).exp2(), t60: q.t60, ..Default::default() };
+                    tone.twins[i].tune(f0, sr, None);
+                }
+                if q.fast_amp > 0.0 {
+                    tone.ping_on = true;
+                    tone.pings[i] = Mode { re: q.fast_amp, ratio: q.ratio, t60: q.fast_t60.min(q.t60), ..Default::default() };
+                    tone.pings[i].tune(f0, sr, None);
+                }
+            }
+            // 噪声的式子是 level · strength · pluck_noise · 0.035 · knock：倒推出 strength。
+            tone.strength = v.noise.amp / (s.level * s.pluck_noise * 0.035 * pr.knock).max(1e-9);
+        }
         if pr.spread > 0.0 {
             let at = pr.spread * ((key_pitch - 68.0) / 25.0).clamp(-1.0, 1.0);
             let gains = |x: f64| {
@@ -885,7 +965,7 @@ impl Zither {
         let s = self.params.pluck.string;
         let kt = 1.0 - (-TAU * s.tone.min(0.4 * self.sr) / self.sr).exp();
         let kd = 1.0 - (-TAU * 20.0 / self.sr).exp();
-        let stereo = self.params.profile.spread > 0.0 && buffer.num_channels() >= 2;
+        let stereo = (self.params.profile.spread > 0.0 || self.params.table.is_some()) && buffer.num_channels() >= 2;
         for i in 0..buffer.num_frames() {
             for c in 0..if stereo { 2 } else { 1 } {
                 let source = f64::from(buffer.channel(c)[i]);
@@ -898,8 +978,10 @@ impl Zither {
                     x += r.tick(source) * mode.gain * s.body_mix;
                 }
                 let mut sympathetic = 0.0;
-                for (j, r) in self.sympathetic[c].iter_mut().enumerate() {
-                    sympathetic += r.tick(source) * [1.0, 0.3, 0.14][j % 3];
+                if self.params.sympathetic > 0.0 {
+                    for (j, r) in self.sympathetic[c].iter_mut().enumerate() {
+                        sympathetic += r.tick(source) * [1.0, 0.3, 0.14][j % 3];
+                    }
                 }
                 x += sympathetic * self.params.sympathetic * 0.4;
                 self.tilt[c] += (x - self.tilt[c]) * kt;

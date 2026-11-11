@@ -551,6 +551,11 @@ impl Patch {
             ),
             Patch::Erhu(p) => (params::describe(params::BOWED, p, params::NEXT_BOWED), "One note at a time: a note that overlaps the next slides into it under one bow; a small gap is a new bow.".into()),
             Patch::Dizi(p) => (params::describe(params::DIZI, p, params::NEXT_DIZI), "One note at a time. Overlapping notes are slurred (连奏: the fingers change the note at once, no new tongue stroke); a note with `\"slide\": true` glides from the previous one (滑音); a small gap is a new tongued note (断奏, harder with `articulation`). Ornaments are short notes or `trill` / `half_trill`; `flutter` is 花舌, `accent` 剁音; shape the tone over a phrase by automating `breath` and `embouchure`.".into()),
+            Patch::Zither(p) if p.table.is_some() => (
+                params::describe(params::ZITHER, p, params::NEXT_ZITHER),
+                "Extracted from recordings (`muser yinse extract`): each note's partials, two-stage decay, beating, stereo and attack noise come from the nearest recorded pitches and velocities. \
+                 Struck open, no dampers by default (lower `release` to damp); `decay`, `high_decay`, `pluck_position` and the body parameters do not apply.".into(),
+            ),
             Patch::Zither(p) if p.profile == &crate::zither::YANGQIN => (
                 params::describe(params::ZITHER, p, params::NEXT_ZITHER),
                 "Every pitch has its own course of strings, struck open (no pressing, no bends); keep to the pentatonic scale for the traditional sound (e.g. D E F# A B). \
@@ -901,6 +906,23 @@ fn lookup(name: &str) -> Option<(InstrumentInfo, Patch)> {
             Patch::Sfz(path, Default::default()),
         ));
     }
+    if let Some(path) = trimmed.strip_prefix("yinse:") {
+        let (table, profile) = crate::modal::load(path).ok()?;
+        let (lo, hi) = table.range();
+        return Some((
+            InstrumentInfo {
+                name: trimmed.to_string(),
+                family: "yinse".into(),
+                notes: NoteConvention::Pitched,
+                range: ((lo - 3.0).max(0.0).round() as u8, (hi + 3.0).min(127.0).round() as u8),
+                polyphony: profile.voices(),
+                description: format!("{} (yinse modal instrument extracted from {} recordings: {})", table.name, table.notes.len(), crate::modal::resolve(path).display()),
+                params: Vec::new(),
+                params_note: String::new(),
+            },
+            Patch::Zither(crate::zither::ZitherParams::from_table(table, profile)),
+        ));
+    }
     let key = trimmed.to_ascii_lowercase();
     if let Some(b) = BUILTINS.iter().find(|b| b.name == key || b.aliases.contains(&key.as_str())) {
         return Some((builtin_info(b), (b.patch)()));
@@ -992,6 +1014,9 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
         }
         let (path, id) = crate::plugin::split_spec(rest);
         return crate::plugin::check_params(path, id, params).map_err(|detail| InstrumentError::Param { detail });
+    }
+    if let Some(path) = trimmed.strip_prefix("yinse:") {
+        crate::modal::load(path).map_err(|detail| InstrumentError::Load { detail })?;
     }
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     if let Patch::Sfz(path, _) = &patch {

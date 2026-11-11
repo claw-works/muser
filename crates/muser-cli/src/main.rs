@@ -165,6 +165,11 @@ enum Command {
         #[command(subcommand)]
         command: SoundsCommand,
     },
+    /// Make your own instrument from recordings: extract a small modal instrument from single-note audio files, and compare it with them.
+    Yinse {
+        #[command(subcommand)]
+        command: YinseCommand,
+    },
     /// External plugins (VST3 / CLAP / LV2): scan this machine, show info, list parameters.
     Plugin {
         #[command(subcommand)]
@@ -368,6 +373,34 @@ enum ClipCommand {
         to: Option<f64>,
         #[arg(long, allow_hyphen_values = true)]
         by_ms: Option<f64>,
+    },
+}
+
+#[derive(Subcommand)]
+enum YinseCommand {
+    /// Extract an instrument from single-note recordings (one note per file; struck or plucked sounds that ring away by themselves).
+    /// Pitch comes from the file name (A4, Eb3, C#5 or a MIDI number) or is measured; velocity from the name (v80, vel100, v0.7, pp ... ff)
+    /// or, per pitch, from the loudness order. The result is a small JSON of partial tables (no audio): play it as "instrument": "yinse:<file>".
+    Extract {
+        /// Audio files or folders of them (wav / flac / aiff / ogg / mp3).
+        #[arg(required = true)]
+        inputs: Vec<std::path::PathBuf>,
+        /// Output file (suggested extension .yinse.json).
+        #[arg(short, long)]
+        output: std::path::PathBuf,
+        /// Instrument name (default: the output file name).
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Play every recording's pitch and velocity on an extracted instrument and compare: spectral difference, decay and stereo.
+    Compare {
+        /// The extracted instrument (.yinse.json).
+        instrument: String,
+        /// The recordings (files or folders).
+        #[arg(required = true)]
+        inputs: Vec<std::path::PathBuf>,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -704,6 +737,7 @@ fn run() -> Result<()> {
         }
         Command::Plugin { command } => cmd_plugin(command),
         Command::Sounds { command } => cmd_sounds(command),
+        Command::Yinse { command } => cmd_yinse(command),
         Command::Poly { command } => poly::run(command),
         Command::Loop { command } => play::run_loop(command),
         Command::Play { project, seed, from } => {
@@ -1143,6 +1177,64 @@ fn cmd_profile(command: ProfileCommand) -> Result<()> {
                     anyhow::bail!("{} problem(s)", problems.len());
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+fn audio_files(inputs: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for p in inputs {
+        if p.is_dir() {
+            let mut list: Vec<std::path::PathBuf> = std::fs::read_dir(p).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|f| f.is_file()).collect();
+            list.sort();
+            files.extend(list.into_iter().filter(|f| f.extension().and_then(|e| e.to_str()).is_some_and(|e| ["wav", "flac", "aif", "aiff", "ogg", "mp3"].contains(&e.to_ascii_lowercase().as_str()))));
+        } else {
+            files.push(p.clone());
+        }
+    }
+    files
+}
+
+fn cmd_yinse(command: YinseCommand) -> Result<()> {
+    use muser_engine::modal;
+    match command {
+        YinseCommand::Extract { inputs, output, name } => {
+            let name = name.unwrap_or_else(|| output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default());
+            let files = audio_files(&inputs);
+            let table = modal::extract(&files, &name, |n| {
+                eprintln!("  {}: pitch {:.2}, {} partials, slowest {:.1} s", n.source, n.pitch, n.partials.len(), n.partials.iter().map(|p| p.t60).fold(0.0, f64::max));
+            })
+            .map_err(|e| anyhow::anyhow!(e))?;
+            std::fs::write(&output, serde_json::to_string(&table)?)?;
+            let (lo, hi) = table.range();
+            let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
+            println!(
+                "extracted '{}' from {} recordings (pitch {:.0}-{:.0}, string resonance {:.3}) -> {} ({} KB)\nPlay it with \"instrument\": \"yinse:{}\"; check it with `muser yinse compare {} <recordings>`.",
+                table.name,
+                table.notes.len(),
+                lo,
+                hi,
+                table.resonance,
+                output.display(),
+                size.div_ceil(1024),
+                output.display(),
+                output.display()
+            );
+        }
+        YinseCommand::Compare { instrument, inputs, json } => {
+            let list = modal::compare(&instrument, &audio_files(&inputs)).map_err(|e| anyhow::anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            println!("{:<28} {:>5} {:>4} {:>9}  {:<26} {:<26} {:>11}", "recording", "pitch", "vel", "spectral", "decay @0.1/0.5/1/2 s (rec)", "(extracted)", "stereo r/e");
+            let f = |d: [f64; 4]| d.iter().map(|v| if v.is_nan() { "  -".into() } else { format!("{v:>4.0}") }).collect::<Vec<_>>().join(" ");
+            for c in &list {
+                println!("{:<28} {:>5.1} {:>4.2} {:>7.1}dB  {:<26} {:<26} {:>5.2}/{:<5.2}", c.source, c.pitch, c.velocity, c.spectral_db, f(c.decay_ref), f(c.decay_ours), c.stereo_ref, c.stereo_ours);
+            }
+            let mean = list.iter().map(|c| c.spectral_db).sum::<f64>() / list.len().max(1) as f64;
+            println!("mean spectral difference {mean:.2} dB (third-octave bands, 20 ms frames, first 2 s, loudness matched; lower is closer)");
         }
     }
     Ok(())
