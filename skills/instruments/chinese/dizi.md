@@ -26,6 +26,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `breath` | 0.3 – 1.5 | ✓ | Breath strength (气息): scales how hard the player blows; 1 as preset, 0.6 a soft, airy, darker breath, 1.3 a full, bright one. Automate it to shape a phrase |
 | `embouchure` | 0.05 – 1 | ✓ | Embouchure (口型): how far the lips let the air through; smaller is darker and softer, larger is fuller and brighter |
 | `articulation` | 0 – 1 | next note | Tonguing (舌法): how hard the tongue starts a note, 0 soft (legato-like), 1 a hard, clear attack with more chiff (staccato) |
+| `flutter_depth` | 0 – 1 | ✓ | Flutter-tongue depth (花舌的颗粒): how far the sound drops each time the rolling tongue cuts the air on a `flutter` note; 0.44 as in recordings of long notes, 0.8 a coarse, grainy roll, 1 silent between each cut. Automate it to roughen one note |
 | `rasp` | 0 – 1 | ✓ | Rasp (沙哑): noise that rides on every cycle of the wave, the irregular beating of a reed; 0 clean, 0.35 the suona's grain, 0.8 a hoarse, cracking tone (automate it for a 破音 effect) |
 | `width` | 0 – 1 | ✓ | Width: a few very close reflections, different left and right, as if played in a room; the sound gets breadth without a reverb's tail. 0 a dry, centred source |
 | `drone` | 0 – 1 | ✓ | Drone pipe (附管, the hulusi's side pipes): how loud the held note under the melody is, sounding while the player blows; 0 off (stopped), 0.3 a soft drone |
@@ -37,11 +38,11 @@ Automation column: ✓ = notes already sounding follow immediately; next note = 
 
 Preset values of each instrument:
 
-| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `rasp` | `width` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.bangdi` | 0.45 | 0.03 | 0.08 | 5.5 | 12 | 0.2 | 0.45 | 1 | 0.5 | 0.8 | 0 | 0 | 0 | 72 | 0.25 | 8000 |
-| `yinse.blow.qudi` | 0.25 | 0.04 | 0.08 | 4.8 | 9 | 0.35 | 0.75 | 1 | 0.5 | 0.65 | 0 | 0 | 0 | 72 | 0.25 | 8000 |
-| `yinse.blow.xiao` | 0 | 0.05 | 0.15 | 5 | 8 | 0.4 | 0.15 | 1 | 0.22 | 0.6 | 0 | 0 | 0 | 72 | 0.25 | 7000 |
+| instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `flutter_depth` | `rasp` | `width` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `yinse.blow.bangdi` | 0.45 | 0.03 | 0.08 | 5.5 | 12 | 0.2 | 0.45 | 1 | 0.5 | 0.8 | 0.44 | 0 | 0 | 0 | 72 | 0.25 | 8000 |
+| `yinse.blow.qudi` | 0.25 | 0.04 | 0.08 | 4.8 | 9 | 0.35 | 0.75 | 1 | 0.5 | 0.65 | 0.44 | 0 | 0 | 0 | 72 | 0.25 | 8000 |
+| `yinse.blow.xiao` | 0 | 0.05 | 0.15 | 5 | 8 | 0.4 | 0.15 | 1 | 0.22 | 0.6 | 0.44 | 0 | 0 | 0 | 72 | 0.25 | 7000 |
 
 ### Tuning examples
 

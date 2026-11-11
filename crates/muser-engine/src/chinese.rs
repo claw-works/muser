@@ -295,6 +295,8 @@ pub struct DiziParams {
     pub width: f64,
     /// 气息强弱（乘在吹气的力度上，0.3 … 1.5）：1 照常，小了虚、暗、气多，大了实、亮。可写自动化。
     pub breath: f64,
+    /// 花舌的深度（0 … 1）：舌头每次截断时声音落下多少。0.44 照录音里长音的起伏，越大颗粒越粗，1 每下都断到无声。
+    pub flutter_depth: f64,
 }
 
 impl DiziParams {
@@ -316,7 +318,7 @@ impl DiziParams {
         w.accent_push = 1.0;
         // 连奏（音重叠）时手指一换音就到，不滑；滑音只在音符写了 `slide` 时（见 [`Dizi::note_on`]）。
         w.portamento = false;
-        Self { wind: w, membrane: 0.45, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
+        Self { wind: w, membrane: 0.45, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
     }
 
     /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
@@ -361,7 +363,7 @@ pub fn xiao() -> DiziParams {
     w.tone = 7_000.0;
     w.portamento = false;
     // 没有笛膜：和笛子共用同一套处理（花舌、剁音、滑音、气息），膜为 0 时声音就是吹管本身。
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
 }
 
 /// 葫芦丝：自由簧（铜簧片）装在葫芦做的气室里，下面一根主管、两边附管。和单簧管一样以奇次谐波为主，
@@ -383,7 +385,7 @@ pub fn hulusi() -> DiziParams {
     w.attack = 0.03;
     w.portamento = false;
     w.legato_time = 0.08;
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, flutter_depth: 0.44, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
 }
 
 /// 唢呐：双簧片、锥形木管、铜碗（喇叭口）——响、亮、带沙。对着七段独奏录音（百鸟朝凤、正月十五闹花灯、小放牛、喜事儿等）：
@@ -413,7 +415,7 @@ pub fn suona() -> DiziParams {
     // 录音的长时频谱：最响的是 1.3 … 3 kHz 一带（鼻音、"亮"），900 Hz 以下比我们的管子弱得多。
     // 谐波之间的毛（噪声）录音里约 -49 dB（相对最强的谐波），管子本身只有约 -59：加沙哑补上。
     // 高音越吹越尖、越毛（管子本身越往上越干净）：D6 往上每个八度，沙哑与毛刺多 80%。
-    DiziParams { wind: w, membrane: 1.0, breath: 1.0, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 6.0, presence_hz: 2_200.0, rasp: 0.35, high: 0.8, high_from: 86.0 }
+    DiziParams { wind: w, membrane: 1.0, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 6.0, presence_hz: 2_200.0, rasp: 0.35, high: 0.8, high_from: 86.0 }
 }
 
 /// 大唢呐（大杆）：管长、喇叭口大，低四五度；浑厚、粗、低中频多，喇叭口放得出更多低频，揉得更宽。
@@ -730,7 +732,7 @@ impl Dizi {
             // 平滑的正弦起伏（只在谐波两边各出一条 40 Hz 的边带，不像整流波那样一路溅到谐波之间），
             // 气声只加在 3 kHz 以上、跟着舌头放开时出：录音里花舌长音谐波之间的噪声低于 3 kHz 约 -61 dB，3–8 kHz 约 -55 dB。
             let open = 0.5 + 0.5 * (core::f64::consts::TAU * self.flutter_phase).sin() as f32;
-            let gain = 0.78 + 0.22 * (2.0 * open - 1.0);
+            let gain = 1.0 - self.params.flutter_depth.clamp(0.0, 1.0) as f32 * (1.0 - open);
             let hiss = noise - self.flutter_lp;
             self.flutter_lp += 0.33 * (noise - self.flutter_lp);
             for c in 0..buffer.num_channels() {
@@ -1040,8 +1042,8 @@ mod tests {
     #[test]
     fn flutter_tongue_shakes_the_note_about_forty_times_a_second() {
         let sr = 48_000.0;
-        let play = |flutter: bool| {
-            let mut d = Dizi::new(DiziParams::dizi());
+        let play = |flutter: bool, depth: f64| {
+            let mut d = Dizi::new(DiziParams { flutter_depth: depth, ..DiziParams::dizi() });
             d.prepare(&ProcessSpec { sample_rate: sr, max_block_size: 480, num_channels: 1 });
             d.flutter_next(flutter);
             d.note_on(NoteRef::new(0, 81), 0.8, false);
@@ -1064,8 +1066,9 @@ mod tests {
             }
             (re.hypot(im) * 2.0 / env.len() as f64) / mean
         };
-        let (plain, fluttered) = (play(false), play(true));
+        let (plain, fluttered, deep) = (play(false, 0.44), play(true, 0.44), play(true, 0.9));
         assert!(fluttered > 0.15 && plain < 0.05, "plain {plain}, flutter {fluttered}");
+        assert!(deep > fluttered * 1.5, "flutter_depth 0.9 {deep} vs 0.44 {fluttered}");
     }
 
     #[test]
