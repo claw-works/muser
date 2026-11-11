@@ -1517,8 +1517,8 @@ Check the source's license before you share what you extract (see the library ru
 ## Libraries
 
 Extracted instruments can live in a library such as [muser-yinse](https://github.com/claw-works/muser-yinse): put its folder
-on `MUSER_YINSE_PATH` (several with the path separator) and write `yinse:<family>/<name>`, e.g. `yinse:strike/yangqin`, which
-finds `instruments/strike/yangqin/yangqin.yinse.json` there. A plain file path works too.
+on `MUSER_YINSE_PATH` (several with the path separator) and write `yinse:<family>/<name>`, e.g. `yinse:strike/grand-piano`, which
+finds `instruments/strike/grand-piano/grand-piano.yinse.json` there. A plain file path works too.
 
 ## Recordings
 
