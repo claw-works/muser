@@ -1504,6 +1504,12 @@ muser yinse compare yangqin.yinse.json ~/samples/yangqin/      # how close it is
 { "instrument": "yinse:yangqin.yinse.json" }
 ```
 
+## Libraries
+
+Extracted instruments can live in a library such as [muser-yinse](https://github.com/claw-works/muser-yinse): put its folder
+on `MUSER_YINSE_PATH` (several with the path separator) and write `yinse:<family>/<name>`, e.g. `yinse:strike/yangqin`, which
+finds `instruments/strike/yangqin/yangqin.yinse.json` there. A plain file path works too.
+
 ## Recordings
 
 - One note per file (wav, flac, aiff, ogg or mp3), starting at the attack, ringing until it has died away (at least 2-3 s).

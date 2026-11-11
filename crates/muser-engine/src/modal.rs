@@ -878,12 +878,32 @@ pub(crate) fn articulation_index(table: &ModalTable, name: &str) -> u8 {
     table.articulations().iter().position(|a| a == name).map_or(0, |i| (i + 1) as u8)
 }
 
+/// `yinse:` 后面的路径 → 文件。存在的文件（`~/` 展开）原样用；否则在 `$MUSER_YINSE_PATH` 的每个库里找
+/// `库/路径`、`库/路径.yinse.json`、`库/instruments/<类>/<名>/<名>.yinse.json`（`yinse:strike/yangqin`，muser-yinse 的目录）。
+/// 都找不到时原样返回（由调用方报"找不到"）。
 pub fn resolve(path: &str) -> PathBuf {
     let path = path.trim();
-    match path.strip_prefix("~/") {
+    let direct = match path.strip_prefix("~/") {
         Some(rest) => std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(rest),
         None => PathBuf::from(path),
+    };
+    if direct.is_absolute() || direct.is_file() {
+        return direct;
     }
+    let roots = std::env::var_os("MUSER_YINSE_PATH").map(|v| std::env::split_paths(&v).collect::<Vec<_>>()).unwrap_or_default();
+    let last = direct.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    for root in roots.iter().filter(|r| !r.as_os_str().is_empty()) {
+        let candidates = [
+            root.join(&direct),
+            root.join(format!("{path}.yinse.json")),
+            root.join("instruments").join(&direct).join(format!("{last}.yinse.json")),
+            root.join(&direct).join(format!("{last}.yinse.json")),
+        ];
+        if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+            return found;
+        }
+    }
+    direct
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,6 +1125,21 @@ mod tests {
             .collect();
         let d = analyze_damp(&z, sr).expect("damp");
         assert!((d - 0.08).abs() < 0.03, "damp {d}");
+    }
+
+    #[test]
+    fn library_names_are_found_on_the_search_path() {
+        let root = std::env::temp_dir().join(format!("muser-yinse-lib-{}", std::process::id()));
+        let dir = root.join("instruments/strike/bell");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("bell.yinse.json"), "{}").unwrap();
+        // 只有这个测试读写 MUSER_YINSE_PATH。
+        unsafe { std::env::set_var("MUSER_YINSE_PATH", &root) };
+        assert_eq!(resolve("strike/bell"), dir.join("bell.yinse.json"));
+        assert_eq!(resolve("instruments/strike/bell/bell.yinse.json"), dir.join("bell.yinse.json"));
+        assert_eq!(resolve("strike/none"), PathBuf::from("strike/none"));
+        unsafe { std::env::remove_var("MUSER_YINSE_PATH") };
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
