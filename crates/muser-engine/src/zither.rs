@@ -175,8 +175,8 @@ pub(crate) fn table_profile(table: &crate::modal::ModalTable) -> &'static Profil
         spread: 0.0,
         ping: 0.0,
         ping_hz: 2_000.0,
-        // 表里起音那一段最长 1 秒。
-        ping_s: 1.0,
+        // 表里先快的那一段最长 3 秒。
+        ping_s: 3.0,
         knock: 1.0,
         bridge: table.resonance,
         damp_s: table.gestures.damp.unwrap_or(DAMP_SECONDS),
@@ -480,6 +480,9 @@ struct Tone {
     active: bool,
     rng: u64,
     noise_lp: f64,
+    /// 录音提取的乐器：这个音自己的噪声低通频率（Hz），两级低通（0 = 用乐器的 pluck_brightness、一级）。
+    noise_hz: f64,
+    noise_lp2: f64,
     friction_lp: f64,
     motion: f64,
     strength: f64,
@@ -511,6 +514,8 @@ impl Default for Tone {
             active: false,
             rng: 1,
             noise_lp: 0.0,
+            noise_hz: 0.0,
+            noise_lp2: 0.0,
             friction_lp: 0.0,
             motion: 0.0,
             strength: 0.0,
@@ -606,6 +611,7 @@ impl Tone {
             }
             // 噪声的式子是 level · strength · pluck_noise · 0.035 · knock：倒推出 strength。
             tone.strength = v.noise.amp / (s.level * s.pluck_noise * 0.035 * pr.knock).max(1e-9);
+            tone.noise_hz = v.noise.hz.max(50.0);
         }
         if pr.spread > 0.0 {
             let at = pr.spread * ((key_pitch - 68.0) / 25.0).clamp(-1.0, 1.0);
@@ -764,9 +770,17 @@ impl Tone {
         let t = self.at as f64 / sr;
         let n = self.noise();
         let s: StringParams = self.params.pluck.string;
-        let kn = 1.0 - (-TAU * s.pluck_brightness.min(0.4 * sr) / sr).exp();
+        let hz = if self.noise_hz > 0.0 { self.noise_hz } else { s.pluck_brightness };
+        let kn = 1.0 - (-TAU * hz.min(0.4 * sr) / sr).exp();
         self.noise_lp += (n - self.noise_lp) * kn;
-        x += self.noise_lp * s.level * self.strength * s.pluck_noise * 0.035 * self.params.profile.knock * (-t / 0.006).exp();
+        let shaped = if self.noise_hz > 0.0 {
+            // 钢琴、扬琴的击弦声多在低处（"咚"），一级低通的高频留得太多，听起来像"嗒"。
+            self.noise_lp2 += (self.noise_lp - self.noise_lp2) * kn;
+            self.noise_lp2
+        } else {
+            self.noise_lp
+        };
+        x += shaped * s.level * self.strength * s.pluck_noise * 0.035 * self.params.profile.knock * (-t / 0.006).exp();
         // 走手摩擦随手速和仍在振动的弦能量变化；停止移动后自己收掉，不再拨一次弦。
         let kf = 1.0 - (-TAU * 1_200.0 / sr).exp();
         self.friction_lp += (n - self.friction_lp) * kf;

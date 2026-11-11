@@ -306,37 +306,47 @@ fn fit_envelope(t: &[f64], amp: &[f64], hz: f64) -> Partial {
     let kp = (0..early).max_by(|&a, &b| db[a].total_cmp(&db[b])).unwrap_or(0);
     let top = db[kp];
     let end = (kp..db.len()).find(|&k| db[k] < top - 60.0).unwrap_or(db.len());
+    // 两段衰减：先快后慢（钢琴的"击发声"与"余音"、扬琴竹槌那一下）。分界在哪里因乐器而异，几个分界都试，
+    // 取整条包络（dB）拟合得最好的：分界以后拟合慢的一段，分界以前比慢的多出来的拟合快的一段。
+    let fit = |from: f64| -> Option<(f64, f64, f64, f64, f64)> {
+        let slow: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= from).map(|k| (t[k] - t[kp], db[k])).collect();
+        let (b, m) = line(&slow)?;
+        let a0 = 10f64.powf(b / 20.0);
+        let slow_at = |x: f64| a0 * 10f64.powf(m * (x - t[kp]) / 20.0);
+        let excess: Vec<(f64, f64)> = (kp..end)
+            .filter(|&k| t[k] < from)
+            .filter_map(|k| {
+                let e = amp[k] - slow_at(t[k]);
+                (e > 0.05 * amp[k]).then(|| (t[k] - t[kp], e.ln()))
+            })
+            .collect();
+        let (mut fa, mut ft) = (0.0, 0.1);
+        if let Some((c, d)) = line(&excess) {
+            if d < -0.5 && amp[kp] - slow_at(t[kp]) > 0.15 * slow_at(t[kp]) {
+                fa = c.exp().min(amp[kp]);
+                ft = (1000f64.ln() / -d).clamp(0.01, 3.0);
+            }
+        }
+        let total = |x: f64| slow_at(x) + fa * (-(x - t[kp]) * 1000f64.ln() / ft).exp();
+        let err = (kp..end).map(|k| (db[k] - 20.0 * total(t[k]).max(1e-12).log10()).powi(2)).sum::<f64>() / (end - kp).max(1) as f64;
+        Some((err, b, m, fa, ft))
+    };
     let t_end = t[end.saturating_sub(1)];
-    let mut from = (t[kp] + 0.25).max(0.3);
-    if t_end - from < 0.25 {
-        from = t[kp] + 0.05;
-    }
-    let slow: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= from).map(|k| (t[k], db[k])).collect();
-    let Some((b, m)) = line(&slow).or_else(|| line(&(kp..end).map(|k| (t[k], db[k])).collect::<Vec<_>>())) else {
+    let best = [0.3, 0.6, 1.0, 1.5, 2.0]
+        .iter()
+        .map(|&s| (t[kp] + 0.25).max(s))
+        .filter(|&from| t_end - from >= 0.8 || from <= (t[kp] + 0.25).max(0.3))
+        .filter_map(fit)
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    let Some((_, b, m, fast_amp, fast_t60)) = best.or_else(|| fit(t[kp] + 0.05)) else {
         return Partial { ratio: 1.0, amp: amp[kp], t60: 1.0, left: 1.0, right: 1.0, ..Default::default() };
     };
     let t60 = if m < -0.5 { -60.0 / m } else { 30.0 }.clamp(0.05, 30.0);
-    // 演奏时从起音那一刻（峰值）开始：振幅取拟合线在峰值处的值，不往峰值以前外推。
-    let a0 = 10f64.powf((b + m * t[kp]) / 20.0);
-    let b = b + m * t[kp];
-    let model = |x: f64| a0 * 10f64.powf(m * (x - t[kp]) / 20.0);
-    // 起音那一段比慢衰减多出来的：对数线性拟合。
-    let excess: Vec<(f64, f64)> = (kp..end)
-        .filter(|&k| t[k] < 0.35)
-        .filter_map(|k| {
-            let e = amp[k] - model(t[k]);
-            (e > 0.05 * amp[k]).then(|| (t[k], e.ln()))
-        })
-        .collect();
-    let (mut fast_amp, mut fast_t60) = (0.0, 0.1);
-    if let Some((c, d)) = line(&excess) {
-        if d < -1.0 && amp[kp] - model(t[kp]) > 0.15 * model(t[kp]) {
-            fast_amp = (c + d * t[kp]).exp().min(amp[kp]);
-            fast_t60 = (1000f64.ln() / -d).clamp(0.01, 1.0);
-        }
-    }
+    // 演奏时从起音那一刻（峰值）开始：振幅取拟合线在峰值处的值。
+    let a0 = 10f64.powf(b / 20.0);
+    let model_db = |x: f64| 20.0 * (a0 * 10f64.powf(m * (x - t[kp]) / 20.0) + fast_amp * (-(x - t[kp]) * 1000f64.ln() / fast_t60).exp()).max(1e-12).log10();
     // 拍：残差（dB）里最强的周期起伏。
-    let res: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= 0.1).map(|k| (t[k], db[k] - (b + m * (t[k] - t[kp])))).collect();
+    let res: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= 0.1).map(|k| (t[k], db[k] - model_db(t[k]))).collect();
     let (mut beat, mut beat_cents) = (0.0, 0.0);
     if res.len() > 40 && res[res.len() - 1].0 - res[0].0 > 0.5 {
         let n = res.len() as f64;
@@ -466,10 +476,7 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
     }
     let rms = (x[..w15.min(len)].iter().map(|v| v * v).sum::<f64>() / w15 as f64).sqrt();
     let hz = if rest > 0.0 { (moment / rest).clamp(200.0, 0.4 * sr) } else { 4_000.0 };
-    let k = 1.0 - (-TAU * hz / sr).exp();
-    // 白噪声（均匀分布，方差 1/3）过一阶低通、再按 NOISE_SECONDS 指数衰减，在 15 ms 里的均方根。
-    let decay = (NOISE_SECONDS / (2.0 * 0.015) * (1.0 - (-2.0 * 0.015 / NOISE_SECONDS).exp())).sqrt();
-    let unit = (k / (2.0 - k) / 3.0).sqrt() * decay;
+    let unit = unit_noise_rms(hz, sr, w15);
     let noise = Noise { amp: if total > 0.0 { rms * (rest / total).sqrt() / unit.max(1e-9) } else { 0.0 }, hz };
     // 共振：1 … 2 秒的余音里不在这个音泛音上的能量。
     let mut off_harmonic = 0.0;
@@ -502,6 +509,24 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
         off_harmonic,
         articulation: String::new(),
     })
+}
+
+/// 演奏时的起音噪声（均匀白噪声过两级一阶低通、按 [`NOISE_SECONDS`] 衰减，见 [`crate::zither`]）振幅为 1 时，
+/// 前 `n` 个样本的均方根：模拟一遍。
+fn unit_noise_rms(hz: f64, sr: f64, n: usize) -> f64 {
+    let k = 1.0 - (-TAU * hz.min(0.4 * sr) / sr).exp();
+    let (mut rng, mut a, mut b, mut sum) = (0x9E37_79B9_7F4A_7C15u64, 0.0, 0.0, 0.0);
+    for i in 0..n {
+        rng ^= rng << 13;
+        rng ^= rng >> 7;
+        rng ^= rng << 17;
+        let w = 2.0 * (rng >> 11) as f64 / (1u64 << 53) as f64 - 1.0;
+        a += (w - a) * k;
+        b += (a - b) * k;
+        let v = b * (-(i as f64) / sr / NOISE_SECONDS).exp();
+        sum += v * v;
+    }
+    (sum / n.max(1) as f64).sqrt()
 }
 
 /// 从一组文件（或文件夹里的 .wav / .flac / .aif …）提取一件乐器。`on_note` 每分析完一个音调用一次（报告进度）。
