@@ -1513,6 +1513,25 @@ muser yinse compare yangqin.yinse.json ~/samples/yangqin/      # how close it is
   ordered from soft to loud. One recording every 3-5 semitones and 2-3 velocities is enough: notes in between are blended
   from the nearest recorded pitches and velocities.
 
+## Articulations (演奏法)
+
+Tag recordings in the file name and they become playing techniques of the instrument; a note picks one with
+`"articulation": "<name>"`. `muser instruments yinse:<file>` lists what an instrument has; a name it lacks fails validation.
+
+- **Sounds**: `mute` (闷音, `muted` too), `harmonic`, `back` (反竹), `pluck`, `staccato`, `rim`, `soft`, `hard`, or any name as
+  `art-<name>` (`A4_art-fanzhu_v90.wav`). Each gets its own partial tables from its own recordings (a few pitches are enough;
+  pitches in between blend as usual).
+- **Gestures**, measured from one or more recordings and applied to the plain sound:
+  - `tremolo` (轮音): a recording of a tremolo gives strokes per second, how loud the other hammer is, and whether it speeds up.
+    Then `"articulation": "tremolo"` (or `"tremolo": true`) plays every tremolo that way.
+  - `vibrato` (揉音): a recording of a note with vibrato gives its depth (cents), rate and delay; `"articulation": "vibrato"` on a note.
+  - `damp` (止音): a note struck and then stopped gives how fast it is stopped; `"articulation": "damp"` (or `"damp": true`).
+  Gesture recordings are only measured, never used as sounds, so the instrument also needs plain notes.
+
+```text
+A4_v80.wav  A4_v80_mute.wav  D5_tremolo.wav  A4_vibrato.wav  E4_damp.wav
+```
+
 ## Playing it
 
 - Notes ring on after they end (no dampers); set `"release": 0.3` in `instrument_params` to damp them.

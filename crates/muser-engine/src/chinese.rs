@@ -157,8 +157,9 @@ impl GuzhengParams {
 /// 按乐器名取拨弦类的预设（揉弦、轮音的默认值从这里来）。
 fn pluck_preset(instrument: &str) -> Option<GuzhengParams> {
     if instrument.trim().starts_with("yinse:") {
-        // 录音提取的乐器：轮音照扬琴（每秒 14 下），不自动揉弦。
-        return Some(GuzhengParams { vibrato: 0.0, ..GuzhengParams::yangqin() });
+        // 录音提取的乐器：轮音按量到的快慢（没量过就照扬琴每秒 14 下），不自动揉弦（揉音写在音符的 articulation 上）。
+        let rate = crate::modal::table_of(instrument).and_then(|t| t.gestures.tremolo).map_or(14.0, |t| t.rate);
+        return Some(GuzhengParams { vibrato: 0.0, tremolo_rate: rate, ..GuzhengParams::yangqin() });
     }
     Some(match instrument.trim().to_lowercase().as_str() {
         "yinse.pluck.pipa" => crate::zither::ZitherParams::pipa().pluck,
@@ -176,22 +177,36 @@ pub(crate) fn tremolo_rate(instrument: &str, params: &muser_core::InstrumentPara
 }
 
 /// 把写了 `tremolo` 的音拆成一串重复的音（`bps` 每秒几拍）：每下长度约一下的九成，轮指的几个手指力度略有不同。
-pub(crate) fn expand_tremolo(notes: &[muser_core::Note], rate: f64, bps: f64) -> Vec<muser_core::Note> {
+/// 录音量出来的轮音 `shape`（[`crate::modal::Tremolo`]）：两只槌交替的力度比、越轮越快；也认 `"articulation": "tremolo"`。
+pub(crate) fn expand_tremolo(notes: &[muser_core::Note], rate: f64, bps: f64, shape: Option<crate::modal::Tremolo>) -> Vec<muser_core::Note> {
     let mut out = Vec::with_capacity(notes.len());
     for n in notes {
-        if !n.tremolo {
+        if !n.tremolo && n.articulation.as_deref() != Some("tremolo") {
             out.push(n.clone());
             continue;
         }
-        let step = bps / rate;
-        let count = ((n.length.0 / step).floor() as usize).max(1);
-        for i in 0..count {
+        // 一下一下排开：量过的轮音从开头的速度渐变到结尾的速度（accel 倍）。
+        let accel = shape.map_or(1.0, |s| s.accel);
+        let mut starts = Vec::new();
+        let mut t = 0.0;
+        while t < n.length.0 - 1e-9 || starts.is_empty() {
+            starts.push(t);
+            let f = (t / n.length.0.max(1e-9)).clamp(0.0, 1.0);
+            t += bps / (rate * accel.powf(f - 0.5));
+        }
+        for (i, &at) in starts.iter().enumerate() {
+            let step = starts.get(i + 1).map_or(n.length.0 - at, |&b| b - at).max(bps / rate * 0.5);
             let mut m = n.clone();
             m.tremolo = false;
-            m.start = muser_core::Beats(n.start.0 + i as f64 * step);
+            m.articulation = None;
+            m.start = muser_core::Beats(n.start.0 + at);
             m.length = muser_core::Beats(step * 0.9);
-            // 轮指五个手指（扬琴两只槌）：力度按位置小小地起伏。
-            m.velocity = (n.velocity * [1.0, 0.9, 0.95, 0.88, 0.93][i % 5]).clamp(0.0, 1.0);
+            // 轮指五个手指（扬琴两只槌）：力度按位置小小地起伏；量过的就按两只槌的力度比。
+            let pattern = match shape {
+                Some(s) => if i % 2 == 0 { 1.0 } else { s.alternate },
+                None => [1.0, 0.9, 0.95, 0.88, 0.93][i % 5],
+            };
+            m.velocity = (n.velocity * pattern as f32).clamp(0.0, 1.0);
             if i > 0 {
                 m.bend.clear();
             }
@@ -1070,7 +1085,7 @@ mod tests {
         n.tremolo = true;
         let plain = muser_core::Note::new(60, 0.0, 1.0);
         // 每秒 2 拍、每秒 12 下：2 拍 = 1 秒 = 12 下。
-        let out = expand_tremolo(&[plain.clone(), n], 12.0, 2.0);
+        let out = expand_tremolo(&[plain.clone(), n], 12.0, 2.0, None);
         assert_eq!(out[0], plain);
         assert_eq!(out.len(), 13);
         assert!(out[1..].iter().all(|m| m.pitch == 62 && !m.tremolo && m.length.0 < 2.0 / 12.0));
@@ -1078,4 +1093,19 @@ mod tests {
         assert_eq!(tremolo_rate("yinse.pluck.pipa", &Default::default()), Some(16.0));
         assert_eq!(tremolo_rate("yinse.bow.erhu", &Default::default()), None);
     }
+
+    #[test]
+    fn a_measured_tremolo_alternates_and_speeds_up() {
+        let mut n = muser_core::Note::new(69, 0.0, 2.0);
+        n.articulation = Some("tremolo".into());
+        let shape = crate::modal::Tremolo { rate: 13.0, alternate: 0.75, accel: 1.5 };
+        let out = expand_tremolo(&[n], 13.0, 1.0, Some(shape));
+        assert!((24..=30).contains(&out.len()), "{} strokes", out.len());
+        assert!((out[1].velocity / out[0].velocity - 0.75).abs() < 0.01);
+        let first = out[1].start.0 - out[0].start.0;
+        let last = out[out.len() - 1].start.0 - out[out.len() - 2].start.0;
+        assert!(last < first * 0.8, "speeds up: {first} -> {last}");
+        assert!(out.iter().all(|m| m.articulation.is_none()));
+    }
+
 }

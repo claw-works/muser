@@ -176,8 +176,9 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
         }
         // 轮音（琵琶的轮指、扬琴的轮音、古筝的摇指）：拆成一串重复的音（按 clip 开头的速度）。
         if let Some(rate) = crate::chinese::tremolo_rate(&track.instrument, &track.instrument_params) {
-            if all.iter().any(|n| n.tremolo) {
-                all = crate::chinese::expand_tremolo(&all, rate, tm.bpm_at(clip.start.0) / 60.0);
+            if all.iter().any(|n| n.tremolo || n.articulation.as_deref() == Some("tremolo")) {
+                let shape = crate::modal::table_of(&track.instrument).and_then(|t| t.gestures.tremolo);
+                all = crate::chinese::expand_tremolo(&all, rate, tm.bpm_at(clip.start.0) / 60.0, shape);
             }
         }
         // 换气（`yinse.voice.*` 的 `breath`）：前一个音提早收住，空出一口气的时间（约 0.22 秒，在这个字的辅音之前）。
@@ -245,6 +246,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
         });
         let strums = strum_offsets(notes, c0, crate::electric::strum_seconds(&track.instrument, &track.instrument_params));
         let vibrato = crate::chinese::vibrato_for(&track.instrument, &track.instrument_params);
+        let table = crate::modal::table_of(&track.instrument);
         for (ni, note) in notes.iter().enumerate() {
             let (on, raw_off, velocity) = match &performed {
                 None => {
@@ -267,6 +269,11 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             // 弯音曲线按拍：用这个音开头的速度换算（渐变中按当时的速度近似）。
             let bps = tm.bpm_at(c0 + note.start.0) / 60.0;
             // 古筝的揉弦：音符自己没写弯音时，渲染器写一条（见 crate::chinese）。
+            // 录音提取的乐器：写了 `"articulation": "vibrato"` 的音按量到的揉音。
+            let vibrato = match (note.articulation.as_deref(), table) {
+                (Some("vibrato"), Some(t)) => t.gestures.vibrato.map(|v| (v.depth, v.rate, v.delay)).or(vibrato),
+                _ => vibrato,
+            };
             let auto = match (note.bend.is_empty() && crate::zither::bends(&track.instrument, &track.instrument_params, note.pitch, note.string_technique()), vibrato) {
                 (true, Some(v)) => crate::chinese::vibrato_bend(lengths[ni].0, bps, v),
                 _ => Vec::new(),
@@ -321,8 +328,18 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
-            if note.damp || note.flutter || note.slide || note.string_technique().is_some() {
-                let technique = crate::zither::NoteTag { technique: note.string_technique(), damp: note.damp, flutter: note.flutter, slide: note.slide };
+            if note.damp || note.flutter || note.slide || note.string_technique().is_some() || note.articulation.is_some() {
+                let art = note.articulation.as_deref();
+                let technique = crate::zither::NoteTag {
+                    technique: note.string_technique(),
+                    damp: note.damp || art == Some("damp"),
+                    flutter: note.flutter,
+                    slide: note.slide,
+                    articulation: match (art, table) {
+                        (Some(a), Some(t)) => crate::modal::articulation_index(t, a),
+                        _ => 0,
+                    },
+                };
                 acts.push((on_at, Act::Technique { key: note.pitch, ch, technique }));
             }
             if singer && note.slide_out {

@@ -916,7 +916,13 @@ fn lookup(name: &str) -> Option<(InstrumentInfo, Patch)> {
                 notes: NoteConvention::Pitched,
                 range: ((lo - 3.0).max(0.0).round() as u8, (hi + 3.0).min(127.0).round() as u8),
                 polyphony: profile.voices(),
-                description: format!("{} (yinse modal instrument extracted from {} recordings: {})", table.name, table.notes.len(), crate::modal::resolve(path).display()),
+                description: format!(
+                    "{} (yinse modal instrument extracted from {} recordings: {}); articulations: {}",
+                    table.name,
+                    table.notes.len(),
+                    crate::modal::resolve(path).display(),
+                    Some(table.articulations().join(", ")).filter(|a| !a.is_empty()).unwrap_or_else(|| "none".into())
+                ),
                 params: Vec::new(),
                 params_note: String::new(),
             },

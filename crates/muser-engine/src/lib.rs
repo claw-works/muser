@@ -363,6 +363,21 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
             )))
         })?;
     }
+    // 录音提取的乐器：音符的演奏法要是这件乐器有的。
+    for (ti, track) in project.tracks.iter().enumerate() {
+        let Some(table) = modal::table_of(&track.instrument) else { continue };
+        let have = table.articulations();
+        for ci in 0..track.clips.len() {
+            for n in clip_notes(project, ti, ci).unwrap_or_default() {
+                if let Some(a) = n.articulation.as_deref().filter(|a| !have.iter().any(|h| h == a)) {
+                    let list = if have.is_empty() { "none (only plain notes were recorded)".to_string() } else { have.join(", ") };
+                    return Err(EngineError::Core(muser_core::CoreError::Invalid(format!(
+                        "tracks[{ti}].clips[{ci}]: articulation '{a}' is not in this instrument; it has: {list} (gestures tremolo / vibrato / damp need recordings tagged with them)"
+                    ))));
+                }
+            }
+        }
+    }
     // 插件效果器的参数（host 特性下会加载插件检查参数名与取值）。
     let plugin_fx = |fx: &muser_core::Effect, at: String| -> Result<(), EngineError> {
         if let muser_core::Effect::Plugin { path, id, params } = fx {

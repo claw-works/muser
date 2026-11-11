@@ -45,6 +45,8 @@ pub(crate) struct Profile {
     knock: f64,
     /// 一敲琴码就晃，同一个琴码上下一个八度里的弦都跟着响：这些弦的振幅（相对这个音的基音，0 没有）。
     bridge: f64,
+    /// 止音（音符的 `damp`）后余音到 -60 dB 的秒数。
+    damp_s: f64,
     voices: usize,
 }
 
@@ -66,6 +68,7 @@ pub(crate) static GUQIN: Profile = Profile {
     ping_s: 0.1,
     knock: 1.0,
     bridge: 0.0,
+    damp_s: DAMP_SECONDS,
     voices: 12,
 };
 
@@ -88,6 +91,7 @@ pub(crate) static GUZHENG: Profile = Profile {
     ping_s: 0.1,
     knock: 1.0,
     bridge: 0.0,
+    damp_s: DAMP_SECONDS,
     voices: 24,
 };
 
@@ -110,6 +114,7 @@ pub(crate) static PIPA: Profile = Profile {
     ping_s: 0.1,
     knock: 1.0,
     bridge: 0.0,
+    damp_s: DAMP_SECONDS,
     voices: 12,
 };
 
@@ -138,6 +143,7 @@ pub(crate) static YANGQIN: Profile = Profile {
     ping_s: 0.3,
     knock: 0.74,
     bridge: 0.072,
+    damp_s: DAMP_SECONDS,
     voices: 24,
 };
 
@@ -171,6 +177,7 @@ pub(crate) fn table_profile(table: &crate::modal::ModalTable) -> &'static Profil
         ping_s: 1.0,
         knock: 1.0,
         bridge: table.resonance,
+        damp_s: table.gestures.damp.unwrap_or(DAMP_SECONDS),
         voices: 32,
     }))
 }
@@ -205,6 +212,8 @@ pub(crate) struct ZitherParams {
     pub damp: bool,
     /// 用户从录音提取的分音表（`yinse:` 乐器）：有它时每个音的分音从表里查，不按公式算。
     pub table: Option<&'static crate::modal::ModalTable>,
+    /// 这个音用表里的哪个演奏法（0 普通，i 是 [`crate::modal::ModalTable::articulations`] 的第 i 个）。
+    pub articulation: u8,
 }
 
 impl Default for ZitherParams {
@@ -227,7 +236,7 @@ impl Default for ZitherParams {
             BodyMode::new(1_100.0, 2.0, 1.4),
             BodyMode::new(1_850.0, 1.5, 0.5),
         ];
-        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false, table: None }
+        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false, table: None, articulation: 0 }
     }
 }
 
@@ -351,11 +360,14 @@ pub(crate) struct NoteTag {
     /// 花舌、滑音（笛箫用，弦乐器不看）。
     pub flutter: bool,
     pub slide: bool,
+    /// 录音提取的乐器的演奏法（见 [`ZitherParams::articulation`]）。
+    pub articulation: u8,
 }
 
 impl ZitherParams {
     fn with_tag(mut self, tag: NoteTag) -> Self {
         self.damp = tag.damp;
+        self.articulation = tag.articulation;
         match tag.technique {
             Some(t) => self.with_note(t),
             None => self,
@@ -562,7 +574,9 @@ impl Tone {
         let pr = p.profile;
         if let Some(table) = p.table {
             // 录音提取的分音：振幅就是录音里的振幅（满幅 1），不再按力度、触弦位置归一。
-            let v = table.voice(pitch, velocity * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 });
+            let names = table.articulations();
+            let art = usize::from(p.articulation).checked_sub(1).and_then(|i| names.get(i)).map_or("", String::as_str);
+            let v = table.voice(pitch, velocity * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 }, art);
             tone.modes = [Mode::default(); MODES];
             for (i, q) in v.partials.iter().take(MODES).enumerate() {
                 let beat = q.beat.clamp(0.0, 0.45);
@@ -681,7 +695,7 @@ impl Tone {
             let f0 = 440.0 * ((self.pitch - 69.0) / 12.0).exp2();
             let sliding = if self.technique == Technique::Pressed { (self.pitch - self.last_pitch).abs() } else { 0.0 };
             let friction_loss = (-0.09 * live.pressure * sliding * self.params.profile.friction).exp();
-            let release = (!self.held).then_some(if self.params.damp { DAMP_SECONDS } else {
+            let release = (!self.held).then_some(if self.params.damp { self.params.profile.damp_s } else {
                 self.params.pluck.string.release * if self.technique == Technique::Pressed { self.params.profile.pressed_release } else { 1.0 }
             });
             self.energy = 0.0;
@@ -1139,8 +1153,8 @@ mod tests {
         q.prepare(&ProcessSpec { sample_rate: 48_000.0, num_channels: 2, max_block_size: 256 });
         let open = NoteRef::new(0, 48);
         let harmonic = NoteRef::new(0, 62);
-        q.playing(open, NoteTag { technique: Some((muser_core::Technique::Open, None)), damp: false, flutter: false, slide: false });
-        q.playing(harmonic, NoteTag { technique: Some((muser_core::Technique::Harmonic, Some(2))), damp: false, flutter: false, slide: false });
+        q.playing(open, NoteTag { technique: Some((muser_core::Technique::Open, None)), damp: false, flutter: false, slide: false, articulation: 0 });
+        q.playing(harmonic, NoteTag { technique: Some((muser_core::Technique::Harmonic, Some(2))), damp: false, flutter: false, slide: false, articulation: 0 });
         q.note_on(open, 0.8, false);
         q.note_on(harmonic, 0.8, false);
         let tones: Vec<_> = q.synth.voices_mut().filter(|v| v.now.active).map(|v| (v.now.key_pitch, v.now.technique)).collect();

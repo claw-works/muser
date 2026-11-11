@@ -341,6 +341,9 @@ impl Project {
                     if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin, yinse.pluck.guzheng and yinse.pluck.pipa accept per-note string techniques")));
                     }
+                    if note.articulation.is_some() && !track.instrument.trim().starts_with("yinse:") {
+                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].articulation: only instruments extracted from recordings (yinse:<file>) have articulations")));
+                    }
                     if !(0.0..=2.0).contains(&note.scoop) || !(0.0..=2.0).contains(&note.fall) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}]: scoop and fall are 0-2 semitones")));
                     }
@@ -728,6 +731,10 @@ pub struct Note {
     /// 泛音的节点分母 2-8（2 = 弦的一半处）；只写 `harmonic` 也就是泛音。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub harmonic: Option<u8>,
+    /// 录音提取的乐器（`yinse:`）的演奏法：录音文件名里带的标记，如 `"mute"`（闷音）、`"back"`（反竹）；
+    /// 这个音用那一组录音提取的音色。没有这个字段就是普通的敲法。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub articulation: Option<String>,
 }
 
 impl Note {
@@ -793,7 +800,7 @@ impl Note {
             breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0,
             bend: Vec::new(),
             lyric: None,
-            technique: None, harmonic: None,
+            technique: None, harmonic: None, articulation: None,
         }
     }
 }
