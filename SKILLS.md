@@ -126,7 +126,7 @@ section content that fills only a short stretch with no `length` written (so it 
 | Audio files (recordings, samples, loops) | [audio.md](skills/audio.md) | `"instrument": "audio"`, with the clip written as `"audio": { "file": "vocal.wav" }` |
 | Helping the user record vocals (how to prepare, record, check timing, mix, add atmosphere, finish, deliver) | [recording.md](skills/recording.md) | `muser view`'s record-vocals panel, `muser takes`, the project's `lyrics` |
 | Live session (starting, how to write a section, the autoplay loop, tempo changes with unchanged BPM, finishing) | [live.md](skills/live.md) | `muser live`, templates in `samples/live/` |
-| Your own instrument from recordings (struck or plucked) | [yinse-extract.md](skills/instruments/yinse-extract.md) | `muser yinse extract <wav files> -o x.yinse.json`, then `yinse:x.yinse.json` |
+| Instruments extracted from recordings: install shared ones, or make your own (struck or plucked) | [yinse-extract.md](skills/instruments/yinse-extract.md) | `muser yinse install strike/grand-piano` then `yinse:strike/grand-piano`; `muser yinse extract <wav files> -o x.yinse.json` |
 | SFZ sound libraries | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz` or a path relative to `MUSER_SFZ_PATH` (built-in sampler, no plugin needed) |
 | External VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 

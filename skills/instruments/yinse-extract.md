@@ -47,9 +47,19 @@ built-in one for techniques the recording does not have, wide slides, or when no
 
 ## Libraries
 
-Extracted instruments can live in a library such as [muser-yinse](https://github.com/claw-works/muser-yinse): put its folder
-on `MUSER_YINSE_PATH` (several with the path separator) and write `yinse:<family>/<name>`, e.g. `yinse:strike/grand-piano`, which
-finds `instruments/strike/grand-piano/grand-piano.yinse.json` there. A plain file path works too. `muser sounds list --kind yinse` (and the sound panel of
+Instruments shared in [muser-yinse](https://github.com/claw-works/muser-yinse) install with one command:
+
+```bash
+muser yinse search piano                 # what the repository has: spec, range, license
+muser yinse install strike/grand-piano   # into this machine's yinse library
+muser yinse list                         # what is installed (and on MUSER_YINSE_PATH)
+muser yinse remove strike/grand-piano
+```
+
+Then write `"instrument": "yinse:strike/grand-piano"`. `install` also takes a `.yinse.json` file or URL (`--as <family>/<name>`),
+and `--repo owner/name[@branch]`, a URL or a folder for another library. A whole library folder (a clone of muser-yinse, your own)
+can be put on `MUSER_YINSE_PATH` instead (several with the path separator); `yinse:<family>/<name>` finds
+`instruments/<family>/<name>/<name>.yinse.json` there, and a plain file path works too. `muser sounds list --kind yinse` (and the sound panel of
 `muser view`) lists what the libraries on this machine have, with each one's source and license.
 
 ## Recordings

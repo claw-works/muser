@@ -411,6 +411,40 @@ enum YinseCommand {
         #[arg(long)]
         name: Option<String>,
     },
+    /// Instruments in a yinse library repository (default claw-works/muser-yinse on GitHub): spec, name, range, license.
+    Search {
+        /// Keywords (all must appear in the spec, name, description or license).
+        query: Vec<String>,
+        /// Library: owner/name[@branch] on GitHub, a URL to its root, or a local folder.
+        #[arg(long, default_value = DEFAULT_YINSE_REPO)]
+        repo: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install an instrument into this machine's yinse library, so "instrument": "yinse:<family>/<name>" finds it:
+    /// a name from the repository (strike/grand-piano), or any .yinse.json file or URL (with --as).
+    Install {
+        /// <family>/<name> from the repository, or a .yinse.json path / URL.
+        what: String,
+        #[arg(long, default_value = DEFAULT_YINSE_REPO)]
+        repo: String,
+        /// For a file or URL: the <family>/<name> to install it as (default local/<file name>).
+        #[arg(long = "as")]
+        as_name: Option<String>,
+        /// Replace an installed instrument of the same name.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Instruments on this machine: this machine's yinse library and the libraries on $MUSER_YINSE_PATH.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove an instrument from this machine's yinse library (not from $MUSER_YINSE_PATH libraries).
+    Remove {
+        /// <family>/<name>
+        name: String,
+    },
     /// Play every recording's pitch and velocity on an extracted instrument and compare: spectral difference, decay and stereo.
     Compare {
         /// The extracted instrument (.yinse.json).
@@ -1215,6 +1249,47 @@ fn audio_files(inputs: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
     files
 }
 
+const DEFAULT_YINSE_REPO: &str = "claw-works/muser-yinse";
+
+/// 音色库里的一个文件：本机文件夹直接读；网址或 GitHub 仓库（owner/name[@分支]）用系统自带的 curl 下载。
+fn library_file(repo: &str, rel: &str) -> Result<Vec<u8>> {
+    let local = std::path::Path::new(repo);
+    if local.is_dir() {
+        return std::fs::read(local.join(rel)).map_err(|e| anyhow::anyhow!("{}: {e}", local.join(rel).display()));
+    }
+    let url = if repo.starts_with("http://") || repo.starts_with("https://") {
+        format!("{}/{rel}", repo.trim_end_matches('/'))
+    } else {
+        let (name, branch) = repo.split_once('@').unwrap_or((repo, "main"));
+        format!("https://raw.githubusercontent.com/{name}/{branch}/{rel}")
+    };
+    fetch_url(&url)
+}
+
+fn fetch_url(url: &str) -> Result<Vec<u8>> {
+    let out = std::process::Command::new("curl").args(["-fsSL", "--max-time", "60", url]).output().context("curl is needed to download instruments")?;
+    if !out.status.success() {
+        anyhow::bail!("could not download {url}: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(out.stdout)
+}
+
+fn library_index(repo: &str) -> Result<Vec<serde_json::Value>> {
+    let text = library_file(repo, "index.json")?;
+    let v: serde_json::Value = serde_json::from_slice(&text).context("index.json of the library is not valid JSON")?;
+    Ok(v["instruments"].as_array().cloned().unwrap_or_default())
+}
+
+/// `<类>/<名>`：只能是字母、数字、`-`、`_`（装进本机音色库的目录名）。
+fn library_name(name: &str) -> Result<(String, String)> {
+    let name = name.trim().trim_start_matches("yinse:");
+    let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    match name.split_once('/') {
+        Some((f, n)) if ok(f) && ok(n) => Ok((f.to_string(), n.to_string())),
+        _ => anyhow::bail!("write the instrument as <family>/<name>, e.g. strike/grand-piano (letters, digits, - and _)"),
+    }
+}
+
 /// "21-108/3" 或 "45,57,69"。
 fn parse_pitches(text: &str) -> Result<Vec<u8>> {
     let bad = || anyhow::anyhow!("--pitches: write \"21-108/3\" (from-to every 3 semitones) or \"45,57,69\"");
@@ -1275,6 +1350,101 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                 output.display(),
                 output.display()
             );
+        }
+        YinseCommand::Search { query, repo, json } => {
+            let terms: Vec<String> = query.iter().map(|q| q.to_lowercase()).collect();
+            let list: Vec<serde_json::Value> = library_index(&repo)?
+                .into_iter()
+                .filter(|e| {
+                    let hay = format!("{} {} {} {} {}", e["spec"], e["name"], e["zh"], e["description"], e["license"]).to_lowercase();
+                    terms.iter().all(|t| hay.contains(t))
+                })
+                .collect();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            let s = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
+            for e in &list {
+                let range = e["range"].as_array().map(|r| format!("{}-{}", r[0], r.get(1).unwrap_or(&r[0]))).unwrap_or_default();
+                let arts = e["articulations"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(",")).unwrap_or_default();
+                println!("{:<28} {:<12} {:<8} {:<12} {} KB  {}{}", s(&e["spec"]), s(&e["zh"]), range, s(&e["license"]), e["kb"], s(&e["description"]), if arts.is_empty() { String::new() } else { format!("  [{arts}]") });
+            }
+            println!("{} in {repo}. Install one with `muser yinse install <family>/<name>`.", list.len());
+        }
+        YinseCommand::Install { what, repo, as_name, force } => {
+            let is_file = what.ends_with(".json") || what.starts_with("http://") || what.starts_with("https://");
+            let (family, name) = match (&as_name, is_file) {
+                (Some(a), _) => library_name(a)?,
+                (None, true) => {
+                    let stem = what.rsplit('/').next().unwrap_or(&what).trim_end_matches(".json").trim_end_matches(".yinse").to_string();
+                    library_name(&format!("local/{stem}"))?
+                }
+                (None, false) => library_name(&what)?,
+            };
+            let dir = modal::user_library().join("instruments").join(&family).join(&name);
+            if dir.join(format!("{name}.yinse.json")).is_file() && !force {
+                anyhow::bail!("yinse:{family}/{name} is already installed in {} (--force to replace it)", dir.display());
+            }
+            // 先全下载、检查，再写进去：下载到一半失败不会留下坏的乐器。
+            let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+            if is_file {
+                let data = if what.starts_with("http") { fetch_url(&what)? } else { std::fs::read(&what).with_context(|| format!("cannot read {what}"))? };
+                files.push((format!("{name}.yinse.json"), data));
+            } else {
+                let (f, n) = library_name(&what)?;
+                let spec = format!("yinse:{f}/{n}");
+                let index = library_index(&repo)?;
+                if !index.iter().any(|e| e["spec"].as_str() == Some(spec.as_str())) {
+                    anyhow::bail!("{spec} is not in {repo} (see `muser yinse search`)");
+                }
+                let base = format!("instruments/{f}/{n}");
+                files.push((format!("{name}.yinse.json"), library_file(&repo, &format!("{base}/{n}.yinse.json"))?));
+                files.push(("meta.json".into(), library_file(&repo, &format!("{base}/meta.json"))?));
+                if let Ok(readme) = library_file(&repo, &format!("{base}/README.md")) {
+                    files.push(("README.md".into(), readme));
+                }
+            }
+            let table: modal::ModalTable = serde_json::from_slice(&files[0].1).context("the downloaded file is not a yinse instrument")?;
+            if table.format != modal::FORMAT || table.notes.is_empty() {
+                anyhow::bail!("the downloaded file is not a yinse instrument (format {})", modal::FORMAT);
+            }
+            std::fs::create_dir_all(&dir)?;
+            for (file, data) in &files {
+                std::fs::write(dir.join(file), data)?;
+            }
+            let (lo, hi) = table.range();
+            println!("installed yinse:{family}/{name} ({}, pitch {lo:.0}-{hi:.0}) -> {}", table.name, dir.display());
+            if let Some(meta) = files.iter().find(|f| f.0 == "meta.json").and_then(|f| serde_json::from_slice::<serde_json::Value>(&f.1).ok()) {
+                let src = &meta["source"];
+                println!("recordings: {} by {} · license {}", src["title"].as_str().unwrap_or("?"), src["author"].as_str().unwrap_or("?"), src["license"].as_str().unwrap_or("?"));
+                if src["license"].as_str().is_some_and(|l| l.starts_with("CC-BY")) {
+                    println!("This license asks for credit: name the recordings' author when you publish music made with it (see README.md in the folder).");
+                }
+            }
+            println!("Use it with \"instrument\": \"yinse:{family}/{name}\".");
+        }
+        YinseCommand::List { json } => {
+            let list = modal::library();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            for e in &list {
+                println!("{:<30} {:<22} {:<12} {}", e.spec, e.name, e.license, e.path.display());
+            }
+            println!("{} on this machine (this machine's library: {}; more with MUSER_YINSE_PATH).", list.len(), modal::user_library().display());
+        }
+        YinseCommand::Remove { name } => {
+            let (family, n) = library_name(&name)?;
+            let dir = modal::user_library().join("instruments").join(&family).join(&n);
+            if !dir.join(format!("{n}.yinse.json")).is_file() {
+                anyhow::bail!("yinse:{family}/{n} is not installed in this machine's library ({}); instruments on MUSER_YINSE_PATH are not removed here", modal::user_library().display());
+            }
+            std::fs::remove_dir_all(&dir)?;
+            // 这一类空了就把类的目录也去掉（不是空的就删不掉，正好）。
+            let _ = std::fs::remove_dir(dir.parent().unwrap_or(&dir));
+            println!("removed yinse:{family}/{n} ({})", dir.display());
         }
         YinseCommand::Compare { instrument, inputs, json } => {
             let list = modal::compare(&instrument, &audio_files(&inputs)).map_err(|e| anyhow::anyhow!(e))?;

@@ -969,9 +969,21 @@ pub struct LibraryEntry {
     pub path: PathBuf,
 }
 
-/// 列出 `$MUSER_YINSE_PATH` 里所有库的乐器（按写法排序；同名的只取前面的库）。
+/// 本机的 yinse 音色库（`muser yinse install` 装到这里）：[`crate::profile::config_dir`] 下的 `yinse`。
+pub fn user_library() -> PathBuf {
+    crate::profile::config_dir().join("yinse")
+}
+
+/// 找乐器的库：先 `$MUSER_YINSE_PATH` 里的（路径分隔符隔开），最后是本机的 [`user_library`]。
+pub fn roots() -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = std::env::var_os("MUSER_YINSE_PATH").map(|v| std::env::split_paths(&v).filter(|r| !r.as_os_str().is_empty()).collect()).unwrap_or_default();
+    roots.push(user_library());
+    roots
+}
+
+/// 列出所有库的乐器（按写法排序；同名的只取前面的库）。
 pub fn library() -> Vec<LibraryEntry> {
-    let roots = std::env::var_os("MUSER_YINSE_PATH").map(|v| std::env::split_paths(&v).collect::<Vec<_>>()).unwrap_or_default();
+    let roots = roots();
     let mut out: Vec<LibraryEntry> = Vec::new();
     let dirs = |p: &Path| -> Vec<PathBuf> {
         let mut v: Vec<PathBuf> = std::fs::read_dir(p).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
@@ -1019,7 +1031,7 @@ pub(crate) fn articulation_index(table: &ModalTable, name: &str) -> u8 {
     table.articulations().iter().position(|a| a == name).map_or(0, |i| (i + 1) as u8)
 }
 
-/// `yinse:` 后面的路径 → 文件。存在的文件（`~/` 展开）原样用；否则在 `$MUSER_YINSE_PATH` 的每个库里找
+/// `yinse:` 后面的路径 → 文件。存在的文件（`~/` 展开）原样用；否则在每个库（[`roots`]）里找
 /// `库/路径`、`库/路径.yinse.json`、`库/instruments/<类>/<名>/<名>.yinse.json`（`yinse:strike/yangqin`，muser-yinse 的目录）。
 /// 都找不到时原样返回（由调用方报"找不到"）。
 pub fn resolve(path: &str) -> PathBuf {
@@ -1031,7 +1043,7 @@ pub fn resolve(path: &str) -> PathBuf {
     if direct.is_absolute() || direct.is_file() {
         return direct;
     }
-    let roots = std::env::var_os("MUSER_YINSE_PATH").map(|v| std::env::split_paths(&v).collect::<Vec<_>>()).unwrap_or_default();
+    let roots = roots();
     let last = direct.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     for root in roots.iter().filter(|r| !r.as_os_str().is_empty()) {
         let candidates = [
@@ -1278,8 +1290,8 @@ mod tests {
         // 只有这个测试读写 MUSER_YINSE_PATH。
         unsafe { std::env::set_var("MUSER_YINSE_PATH", &root) };
         let list = library();
-        assert_eq!(list.len(), 1);
-        assert_eq!((list[0].spec.as_str(), list[0].name.as_str(), list[0].license.as_str(), list[0].source.as_str()), ("yinse:strike/bell", "bell (钟)", "CC0-1.0", "Bells, Someone"));
+        let bell = list.iter().find(|e| e.spec == "yinse:strike/bell").expect("listed");
+        assert_eq!((bell.name.as_str(), bell.license.as_str(), bell.source.as_str()), ("bell (钟)", "CC0-1.0", "Bells, Someone"));
         assert_eq!(resolve("strike/bell"), dir.join("bell.yinse.json"));
         assert_eq!(resolve("instruments/strike/bell/bell.yinse.json"), dir.join("bell.yinse.json"));
         assert_eq!(resolve("strike/none"), PathBuf::from("strike/none"));
