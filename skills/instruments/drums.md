@@ -7,6 +7,7 @@ A note's `pitch` uses the **GM drum key**. Latest list: `muser instruments --fam
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
 | `yinse.strike.luogu` | 36–81 | 48 | Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), small gong 小锣 (rises), cymbals 大钹 (and muted) and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃 |
+| `yinse.strike.drums` | 35–81 | 24 | Acoustic drum kit tuned against a sampled funk kit: a punchy kick, snare with wires, side stick, six toms, hi-hats, cymbals (GM keys); pop / funk / rock |
 | `drums.808` | 35–81 | 24 | TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic |
 | `drums.909` | 35–81 | 24 | TR-909 style: punchy kick and cymbals; house / techno |
 | `drums.606` | 35–81 | 24 | TR-606 style: light and crisp; acid / electro |
@@ -34,7 +35,7 @@ Each drum piece is adjustable (when automating, write `piece.parameter`, such as
 | `tone` | 0 – 1 | next note | Brightness of the strike: 0 soft and dark, 0.5 as designed, 1 bright and hard |
 | `pan` | -1 – 1 | next note | Pan: -1 left to 1 right |
 
-## Adjustable parameters of `drums.808`, `drums.909`, `drums.606`, `drums.cr78`, `drums.acoustic`, `drums.trap`, `drums.techno`, `drums.house`, `drums.dnb`, `drums.lofi`
+## Adjustable parameters of `yinse.strike.drums`, `drums.808`, `drums.909`, `drums.606`, `drums.cr78`, `drums.acoustic`, `drums.trap`, `drums.techno`, `drums.house`, `drums.dnb`, `drums.lofi`
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 

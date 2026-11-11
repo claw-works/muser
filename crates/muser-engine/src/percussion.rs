@@ -91,6 +91,49 @@ pub static LUOGU: &[PieceDef] = &[
     piece("pengling", "碰铃", 81, 2_900.0, BELLS, (0.0, 0.1), (0.1, 3_000.0, 12_000.0, 0.003), 0, 0.94, 0.25),
 ];
 
+/// 重踩底鼓时带出来的、不是底鼓本身的余音：鼓身（150 … 330 Hz 的几个共鸣）和军鼓响弦跟着嗡（1.5 … 10 kHz 的噪声）。
+/// 量自一套放克鼓的采样：重踩时这两段比轻踩响 10 … 15 dB。
+const KICK_SHELL: &[(f64, f64, f64)] = &[(1.0, 1.0, 0.35), (1.17, 0.6, 0.3), (1.31, 0.5, 0.3), (1.57, 0.4, 0.25), (1.95, 0.3, 0.2)];
+pub static KICK_AFTER: &[PieceDef] = &[piece("kick_after", "底鼓重踩的余音", 36, 168.0, KICK_SHELL, (0.0, 0.1), (0.12, 1_500.0, 10_000.0, 0.12), 0, 0.1, 0.0)];
+
+/// 套鼓的踩镲：两片镲的振动模式（量自一套放克鼓的采样）加一片高频噪声；闭镲、踩镲掐断开镲。
+const HAT_CLOSED: &[(f64, f64, f64)] = &[(0.8642, 0.288, 0.09999), (1.0273, 0.2438, 0.08871), (1.0914, 0.3067, 0.1056), (1.1539, 0.2989, 0.1159), (1.1901, 0.6644, 0.08717), (1.2396, 0.4101, 0.1144), (1.3201, 0.4515, 0.1144), (1.3841, 0.3964, 0.09384), (1.5116, 0.5991, 0.08461), (1.5654, 0.6858, 0.1056), (1.6694, 0.9935, 0.0923), (1.8436, 0.6035, 0.1174), (1.893, 0.683, 0.07948), (2.0827, 0.9211, 0.09589), (2.1538, 0.955, 0.1108), (2.485, 1.0, 0.1118), (0.08305, 0.06087, 0.03)];
+const HAT_PEDAL: &[(f64, f64, f64)] = &[(0.86342, 1.0, 0.3085), (0.94105, 0.8553, 0.3215), (1.0103, 0.7593, 0.3272), (1.0533, 0.7288, 0.3346), (1.1277, 0.6641, 0.3272), (1.3555, 0.4452, 0.2683), (1.4352, 0.4126, 0.2299), (1.5558, 0.3918, 0.2234), (2.3982, 0.1666, 0.2542), (10.413, 0.2808, 0.1879), (12.411, 0.2469, 0.2206), (14.269, 0.2872, 0.1898), (15.374, 0.2322, 0.201), (19.146, 0.1326, 0.2066), (20.126, 0.1981, 0.2094), (22.156, 0.4079, 0.2271), (0.99298, 0.02036, 0.03)];
+const HAT_OPEN: &[(f64, f64, f64)] = &[(0.96593, 0.2474, 7.602), (1.1181, 0.5371, 8.293), (1.2514, 1.0, 7.597), (1.3128, 0.6833, 6.527), (1.4009, 0.4812, 6.33), (1.6174, 0.4004, 7.643), (1.7055, 0.289, 7.936), (1.8147, 0.336, 7.196), (1.8907, 0.4161, 6.771), (2.009, 0.2508, 5.792), (2.1348, 0.3193, 7.885), (2.281, 0.179, 7.305), (2.3886, 0.5103, 7.114), (2.5219, 0.2548, 5.77), (2.5843, 0.4106, 6.505), (2.8107, 0.357, 6.534), (0.097338, 0.004609, 0.03)];
+pub static HATS: &[PieceDef] = &[
+    piece("closed_hat", "闭镲", 42, 3612.3, HAT_CLOSED, (0.0, 0.1), (2.4853, 1096.6, 8955.3, 0.026678), 1, 0.055372, 0.25),
+    piece("pedal_hat", "踩镲", 44, 302.12, HAT_PEDAL, (0.0, 0.1), (7.815, 561.2, 8392.7, 0.035455), 1, 0.0088213, 0.25),
+    piece("open_hat", "开镲", 46, 3082.03, HAT_OPEN, (0.0, 0.1), (9.8204, 1998.2, 8010.1, 0.58151), 1, 0.074594, 0.25),
+];
+
+/// shortcut: 拟合时用环境变量 MUSER_FIT_HATS（JSON：PieceDef 的数组）代替 [`HATS`]，定下来就写回并删掉这里。
+fn hats_override() -> Option<&'static [PieceDef]> {
+    let text = std::fs::read_to_string(std::env::var_os("MUSER_FIT_HATS")?).ok()?;
+    let list: Vec<serde_json::Value> = serde_json::from_str(&text).ok()?;
+    let leak = |s: &serde_json::Value| -> &'static str { Box::leak(s.as_str().unwrap_or_default().to_string().into_boxed_str()) };
+    let num = |v: &serde_json::Value| v.as_f64().unwrap_or(0.0);
+    let defs: Vec<PieceDef> = list
+        .iter()
+        .map(|d| PieceDef {
+            name: leak(&d["name"]),
+            zh: leak(&d["zh"]),
+            key: d["key"].as_u64().unwrap_or(0) as u8,
+            f0: num(&d["f0"]),
+            modes: Box::leak(d["modes"].as_array().into_iter().flatten().map(|m| (num(&m[0]), num(&m[1]), num(&m[2]))).collect::<Vec<_>>().into_boxed_slice()),
+            glide: 0.0,
+            glide_s: 0.1,
+            noise: num(&d["noise"]),
+            noise_lo: num(&d["noise_lo"]),
+            noise_hi: num(&d["noise_hi"]),
+            noise_s: num(&d["noise_s"]),
+            choke: 1,
+            gain: num(&d["gain"]),
+            pan: num(&d["pan"]),
+        })
+        .collect();
+    Some(Box::leak(defs.into_boxed_slice()))
+}
+
 /// 一件的设定：响度（倍）、调音（半音）、余音长短（倍）、亮度（0 … 1，0.5 不变）、声像。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PieceSet {
@@ -106,11 +149,26 @@ pub struct PieceSet {
 pub struct KitParams {
     pub defs: &'static [PieceDef],
     pub set: Vec<PieceSet>,
+    /// 噪声用两级的带通（踩镲：12 kHz 以上收得干净）；锣鼓用一级。
+    pub steep: bool,
 }
 
 impl KitParams {
+    /// 底鼓重踩的余音（[`KICK_AFTER`]），`yinse.strike.drums` 跟着底鼓敲，`gain` 是多响。
+    pub fn kick_after(gain: f64) -> Self {
+        let mut k = Self { defs: KICK_AFTER, set: KICK_AFTER.iter().map(|d| PieceSet { level: 1.0, tune: 0.0, decay: 1.0, tone: 0.5, pan: d.pan }).collect(), steep: false };
+        k.set[0].level = gain;
+        k
+    }
+
+    /// 套鼓的踩镲（[`HATS`]）。
+    pub fn hats() -> Self {
+        let defs = hats_override().unwrap_or(HATS);
+        Self { defs, set: defs.iter().map(|d| PieceSet { level: 1.0, tune: 0.0, decay: 1.0, tone: 0.5, pan: d.pan }).collect(), steep: true }
+    }
+
     pub fn luogu() -> Self {
-        Self { defs: LUOGU, set: LUOGU.iter().map(|d| PieceSet { level: 1.0, tune: 0.0, decay: 1.0, tone: 0.5, pan: d.pan }).collect() }
+        Self { defs: LUOGU, set: LUOGU.iter().map(|d| PieceSet { level: 1.0, tune: 0.0, decay: 1.0, tone: 0.5, pan: d.pan }).collect(), steep: false }
     }
 
     /// 名字或 MIDI 键 → 第几件。
@@ -151,6 +209,9 @@ struct Hit {
     noise_k: f64,
     hp: f64,
     lp: f64,
+    hp2: f64,
+    lp2: f64,
+    steep: bool,
     hp_a: f64,
     lp_a: f64,
     gains: [f64; 2],
@@ -189,8 +250,16 @@ impl Hit {
             self.rng ^= self.rng << 17;
             let w = (self.rng >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0;
             self.lp += self.lp_a * (w - self.lp);
-            self.hp += self.hp_a * (self.lp - self.hp);
-            x += (self.lp - self.hp) * self.noise;
+            if self.steep {
+                self.lp2 += self.lp_a * (self.lp - self.lp2);
+                self.hp += self.hp_a * (self.lp2 - self.hp);
+                let band = self.lp2 - self.hp;
+                self.hp2 += self.hp_a * (band - self.hp2);
+                x += (band - self.hp2) * self.noise;
+            } else {
+                self.hp += self.hp_a * (self.lp - self.hp);
+                x += (self.lp - self.hp) * self.noise;
+            }
             self.noise *= self.noise_k;
         }
         self.age += 1;
@@ -267,6 +336,9 @@ impl Kit {
             noise_k: (-1.0 / (def.noise_s.max(0.001) * sr)).exp(),
             hp: 0.0,
             lp: 0.0,
+            hp2: 0.0,
+            lp2: 0.0,
+            steep: self.params.steep,
             hp_a: 1.0 - (-TAU * def.noise_lo / sr).exp(),
             lp_a: 1.0 - (-TAU * def.noise_hi.min(0.45 * sr) / sr).exp(),
             gains: [level * a.cos(), level * a.sin()],
@@ -279,6 +351,13 @@ impl Kit {
     }
 
     pub(crate) fn note_off(&mut self, _note: NoteRef, _velocity: f32) {}
+
+    /// 掐断正在响的（15 ms 收掉）：套鼓的闭镲夹住开镲。
+    pub(crate) fn choke(&mut self) {
+        for h in &mut self.hits {
+            h.life = h.life.min(h.age + (0.015 * self.sr) as u32);
+        }
+    }
 
     pub(crate) fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         let n = buffer.num_frames();

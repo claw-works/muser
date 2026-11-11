@@ -649,7 +649,7 @@ pub enum Technique {
 /// manguebyte 的 `drums.*` 与 yinse 的打击乐。
 pub fn is_drum_kit(instrument: &str) -> bool {
     let i = instrument.trim().to_ascii_lowercase();
-    i.starts_with("drums.") || ["yinse.strike.luogu", "luogu"].contains(&i.as_str())
+    i.starts_with("drums.") || ["yinse.strike.luogu", "luogu", "yinse.strike.drums"].contains(&i.as_str())
 }
 
 /// 接受逐音奏法（`technique` / `harmonic`）、可弯 ±24 半音的乐器（模态弦模型）。
