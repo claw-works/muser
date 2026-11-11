@@ -224,30 +224,6 @@ impl Playable for crate::electric::Electric {
     }
 }
 
-impl Playable for crate::chinese::Courses {
-    fn prepare(&mut self, spec: &ProcessSpec) {
-        crate::chinese::Courses::prepare(self, spec);
-    }
-    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
-        crate::chinese::Courses::note_on(self, note, velocity, accent);
-    }
-    fn note_off(&mut self, note: NoteRef, velocity: f32) {
-        crate::chinese::Courses::note_off(self, note, velocity);
-    }
-    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        crate::chinese::Courses::process(self, buffer);
-    }
-    fn midi(&mut self, message: MidiMessage) {
-        crate::chinese::Courses::midi(self, message);
-    }
-    fn set_param(&mut self, name: &str, value: f64) {
-        crate::chinese::Courses::set_param(self, name, value);
-    }
-    fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
-        crate::chinese::Courses::set_tuning(self, tuning);
-    }
-}
-
 impl Playable for crate::zither::Zither {
     fn technique(&mut self, note: NoteRef, technique: crate::zither::NoteTag) {
         crate::zither::Zither::playing(self, note, technique);
@@ -482,7 +458,6 @@ enum Patch {
     Electric(crate::electric::ElectricParams, usize),
     Accordion(crate::accordion::AccordionParams),
     Zither(crate::zither::ZitherParams),
-    Yangqin(crate::chinese::GuzhengParams),
     Dizi(crate::chinese::DiziParams),
     Erhu(BowedParams),
     Singer(crate::singer::SingerParams),
@@ -515,7 +490,6 @@ impl Patch {
             Patch::String(p, _) => params::apply(params::STRING, p, params),
             Patch::Electric(p, _) => params::apply(params::ELECTRIC, p, params),
             Patch::Accordion(p) => params::apply(params::ACCORDION, p, params),
-            Patch::Yangqin(p) => params::apply(params::GUZHENG, p, params),
             Patch::Zither(p) => params::apply(params::ZITHER, p, params),
             Patch::Dizi(p) => params::apply(params::DIZI, p, params),
             Patch::Erhu(p) => params::apply(params::BOWED, p, params),
@@ -577,9 +551,10 @@ impl Patch {
             ),
             Patch::Erhu(p) => (params::describe(params::BOWED, p, params::NEXT_BOWED), "One note at a time: a note that overlaps the next slides into it under one bow; a small gap is a new bow.".into()),
             Patch::Dizi(p) => (params::describe(params::DIZI, p, params::NEXT_DIZI), "One note at a time. Overlapping notes are slurred (连奏: the fingers change the note at once, no new tongue stroke); a note with `\"slide\": true` glides from the previous one (滑音); a small gap is a new tongued note (断奏, harder with `articulation`). Ornaments are short notes or `trill` / `half_trill`; `flutter` is 花舌, `accent` 剁音; shape the tone over a phrase by automating `breath` and `embouchure`.".into()),
-            Patch::Yangqin(p) => (
-                params::describe(params::GUZHENG, p, params::NEXT_GUZHENG),
-                "Tuned like any pitched instrument (keep to the pentatonic scale for the traditional sound, e.g. D E F# A B); fast runs and alternating octaves suit it; tremolo (轮音) is the note's `tremolo`.".into(),
+            Patch::Zither(p) if p.profile == &crate::zither::YANGQIN => (
+                params::describe(params::ZITHER, p, params::NEXT_ZITHER),
+                "Every pitch has its own course of strings, struck open (no pressing, no bends); keep to the pentatonic scale for the traditional sound (e.g. D E F# A B). \
+                 There are no dampers: a note rings on after it ends, so `length` only matters for tremolo. Fast runs, alternating octaves and tremolo (轮音, the note's `tremolo`) suit it.".into(),
             ),
             Patch::Zither(p) if p.profile == &crate::zither::GUZHENG => (
                 params::describe(params::ZITHER, p, params::NEXT_ZITHER),
@@ -642,7 +617,6 @@ impl Patch {
             Patch::Fm(p) => tunable(Synth::with_voices(16, move || FmVoice::new(p)), p, params::FM, |v, p| v.set_params(p)),
             Patch::String(p, n) => tunable(Synth::with_voices(n, move || PluckedString::new(p)), p, params::STRING, |v, p| v.set_params(p)),
             Patch::Electric(p, n) => TrackInstrument::new(crate::electric::Electric::new(p, n), 0),
-            Patch::Yangqin(p) => TrackInstrument::new(crate::chinese::Courses::new(p, 24), 0),
             Patch::Zither(p) => TrackInstrument::new(crate::zither::Zither::new(p), 0),
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
             Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
@@ -832,7 +806,7 @@ static BUILTINS: &[Builtin] = &[
     b!("yinse.pluck.pipa", [], "chinese", false, (45, 88), 12, "Pipa (琵琶): pear-shaped lute plucked with picks, four strings A2 D3 E3 A3, crisp and bright with about a second of ring; tremolo (轮指, ~16 a second) with the note's `tremolo`, bends (推拉) on fretted notes with `bend`, harmonics with `technique`", || Patch::Zither(crate::zither::ZitherParams::pipa())),
     b!("yinse.pluck.guqin", [], "chinese", false, (36, 84), 12, "Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend`", || Patch::Zither(crate::zither::ZitherParams::default())),
     b!("yinse.pluck.guzheng", [], "chinese", false, (38, 88), 24, "Guzheng (古筝): bright picked strings over a big paulownia soundboard with sympathetic strings; 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique`", || Patch::Zither(crate::zither::ZitherParams::guzheng())),
-    b!("yinse.strike.yangqin", [], "chinese", false, (43, 93), 24, "Yangqin (扬琴): hammered dulcimer, bright and metallic, two strings per note (a lively shimmer); tremolo (轮音) with the note's `tremolo`", || Patch::Yangqin(crate::chinese::GuzhengParams::yangqin())),
+    b!("yinse.strike.yangqin", [], "chinese", false, (43, 93), 24, "Yangqin (扬琴): hammered dulcimer struck with soft bamboo hammers, a crisp attack and a long, undamped ring; each note a slightly detuned course of strings, the other strings ringing along, in stereo; tremolo (轮音) with the note's `tremolo`", || Patch::Zither(crate::zither::ZitherParams::yangqin())),
     b!("yinse.blow.bangdi", ["yinse.blow.dizi"], "chinese", false, (67, 96), 1, "Bangdi (梆笛), the northern dizi (笛子; also yinse.blow.dizi): high bamboo transverse flute with a buzzing membrane (笛膜), bright and lively, made for tongue techniques (吐音、剁音、花舌、滑音); one note at a time, overlapping notes slur (a note with `slide` glides)", || Patch::Dizi(crate::chinese::DiziParams::dizi())),
     b!("yinse.blow.qudi", [], "chinese", false, (64, 91), 1, "Qudi (曲笛): the southern bamboo flute, larger and lower than the dizi, round, mellow and breathier with a lighter membrane; made for finger ornaments (颤音、叠音、打音) and Kunqu / Jiangnan tunes; one note at a time, overlapping notes slur (a note with `slide` glides)", || Patch::Dizi(crate::chinese::DiziParams::qudi())),
     b!("yinse.blow.hulusi", [], "chinese", false, (67, 81), 1, "Hulusi (葫芦丝): the Dai free-reed gourd pipe of Yunnan, soft, round and reedy like a gentle clarinet, its long notes pulsing in the breath; a drone pipe (`drone`) can sound under the melody; one note at a time, overlapping notes slur (a note with `slide` glides)", || Patch::Dizi(crate::chinese::hulusi())),
@@ -1081,7 +1055,6 @@ pub(crate) fn automation_param(
         Patch::String(p, _) => find(params::STRING, p, param, params::NEXT_STRING),
         Patch::Electric(p, _) => find(params::ELECTRIC, p, param, params::NEXT_ELECTRIC),
         Patch::Accordion(p) => find(params::ACCORDION, p, param, params::NEXT_ACCORDION),
-        Patch::Yangqin(p) => find(params::GUZHENG, p, param, params::NEXT_GUZHENG),
         Patch::Zither(p) => find(params::ZITHER, p, param, params::NEXT_ZITHER),
         Patch::Dizi(p) => find(params::DIZI, p, param, params::NEXT_DIZI),
         Patch::Erhu(p) => find(params::BOWED, p, param, params::NEXT_BOWED),

@@ -34,6 +34,17 @@ pub(crate) struct Profile {
     twin_decay: f64,
     /// 琴体辐射的高通：这以下的弦振动放不出来。
     radiation_hz: f64,
+    /// 立体声（0 单声道）：低音在左、高音在右分开多少（-1 … 1 的声像），另一方向的弦摆到对面；
+    /// 两支话筒听到的琴体共鸣也不一样。
+    spread: f64,
+    /// 敲下去那一下"脆"：`ping_hz` 以上的分音多响这么多倍，`ping_s` 秒就衰减 60 dB（竹槌碰钢丝弦那一下）。0 没有。
+    ping: f64,
+    ping_hz: f64,
+    ping_s: f64,
+    /// 槌子（拨片）碰弦那一下的噪声多响（倍数）：宽带的"嗒"，也经过琴码让其余的弦跟着响。
+    knock: f64,
+    /// 一敲琴码就晃，同一个琴码上下一个八度里的弦都跟着响：这些弦的振幅（相对这个音的基音，0 没有）。
+    bridge: f64,
     voices: usize,
 }
 
@@ -49,6 +60,12 @@ pub(crate) static GUQIN: Profile = Profile {
     twin_cents: 0.0,
     twin_decay: 1.0,
     radiation_hz: 220.0,
+    spread: 0.0,
+    ping: 0.0,
+    ping_hz: 2_000.0,
+    ping_s: 0.1,
+    knock: 1.0,
+    bridge: 0.0,
     voices: 12,
 };
 
@@ -65,6 +82,12 @@ pub(crate) static GUZHENG: Profile = Profile {
     twin_cents: 0.0,
     twin_decay: 1.0,
     radiation_hz: 80.0,
+    spread: 0.0,
+    ping: 0.0,
+    ping_hz: 2_000.0,
+    ping_s: 0.1,
+    knock: 1.0,
+    bridge: 0.0,
     voices: 24,
 };
 
@@ -81,7 +104,41 @@ pub(crate) static PIPA: Profile = Profile {
     twin_cents: 1.2,
     twin_decay: 1.6,
     radiation_hz: 80.0,
+    spread: 0.0,
+    ping: 0.0,
+    ping_hz: 2_000.0,
+    ping_s: 0.1,
+    knock: 1.0,
+    bridge: 0.0,
     voices: 12,
+};
+
+/// 扬琴：每个音一组 2 … 5 根同音的钢丝弦，竹槌敲（不按弦，每个音都是"散音"）；一组弦彼此略微走音，拍出起伏。
+/// 小而浅的琴箱放不出低弦的基音（低音区泛音比基音强得多），制音器少，其余弦跟着响。
+pub(crate) static YANGQIN: Profile = Profile {
+    open_keys: &[
+        43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
+        78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93,
+    ],
+    pressed_shortens: false,
+    contact: 0.0,
+    friction: 0.0,
+    pressed_release: 1.0,
+    pressed_stiffness: 0.0006,
+    open_bends: false,
+    // 这一组和 [`ZitherParams::yangqin`] 的弦是对着 Kontakt Yangqin（Default）的 18 个单音自动拟合的
+    // （对数梅尔谱，短窗看起音、长窗看余音），立体声宽度另外按左右相关度定。
+    twin: 0.2,
+    twin_cents: 19.0,
+    twin_decay: 1.8,
+    radiation_hz: 430.0,
+    spread: 0.6,
+    ping: 6.7,
+    ping_hz: 880.0,
+    ping_s: 0.3,
+    knock: 0.74,
+    bridge: 0.072,
+    voices: 24,
 };
 
 /// 用这个模型的乐器各是哪种结构。
@@ -90,6 +147,7 @@ pub(crate) fn profile(instrument: &str) -> Option<&'static Profile> {
         "yinse.pluck.guqin" => Some(&GUQIN),
         "yinse.pluck.guzheng" => Some(&GUZHENG),
         "yinse.pluck.pipa" => Some(&PIPA),
+        "yinse.strike.yangqin" => Some(&YANGQIN),
         _ => None,
     }
 }
@@ -186,6 +244,34 @@ impl ZitherParams {
             BodyMode::new(2_800.0, 2.0, 3.0),
         ];
         Self { pluck, sympathetic: 0.6, profile: &PIPA, ..Default::default() }
+    }
+
+    /// 扬琴：对着 Kontakt 扬琴音源（Default）各音区、各力度的单音：低音区泛音比基音强 10 … 40 dB，高音区以基音为主；
+    /// 各分音衰减得差不多快，松开槌子照样响完；击弦软、敲在靠近琴码处（拟合出来的，见 [`YANGQIN`]）。
+    pub(crate) fn yangqin() -> Self {
+        let mut pluck = GuzhengParams::yangqin();
+        let s = &mut pluck.string;
+        s.decay = 4.8;
+        s.decay_per_octave = 1.2;
+        s.high_decay = 0.51;
+        // 扬琴没有制音器：松开槌子弦照样响完（Kontakt 的录音也是），短音不收。
+        s.release = 10.0;
+        s.pluck_position = 0.052;
+        s.pluck_brightness = 3_900.0;
+        s.velocity_darkening = 1.2;
+        s.velocity_range_db = 17.0;
+        s.stiffness = 0.15;
+        s.strike = 0.4;
+        s.pluck_noise = 0.013;
+        s.tone = 14_900.0;
+        s.body_mix = 0.58;
+        s.body = [
+            BodyMode::new(600.0, 2.0, 1.8),
+            BodyMode::new(1_000.0, 2.5, 1.5),
+            BodyMode::new(1_500.0, 2.5, 0.8),
+            BodyMode::new(2_400.0, 2.0, 0.4),
+        ];
+        Self { pluck, sympathetic: 0.12, profile: &YANGQIN, ..Default::default() }
     }
 
     /// 这个音跟着弯音、揉弦吗。
@@ -303,6 +389,18 @@ struct Tone {
     /// 弦的另一个振动方向（[`Profile::twin`] > 0 时）：频率差一点、衰减慢一点，和主方向拍出"活"的起伏。
     twins: [Mode; MODES],
     twin_on: bool,
+    /// 起音那一下快衰减的高分音（[`Profile::ping`]）。
+    pings: [Mode; MODES],
+    ping_on: bool,
+    /// 跟着响的其余弦（[`Profile::bridge`]），各自的频率；不跟着弯音。
+    strings: [Mode; MODES],
+    strings_hz: [f64; MODES],
+    strings_pan: [[f64; 3]; MODES],
+    strings_on: usize,
+    /// 每个模式（主方向、另一方向）的左右增益（单声道时都是 1）。
+    /// 左边的增益，右边的增益乘上相位差的 cos、sin（两支话筒离琴弦的远近不同）。
+    pan: [[f64; 3]; MODES],
+    twin_pan: [[f64; 3]; MODES],
     params: ZitherParams,
     technique: Technique,
     key_pitch: f64,
@@ -324,7 +422,15 @@ impl Default for Tone {
         Self {
             modes: [Mode::default(); MODES],
             twins: [Mode::default(); MODES],
+            pings: [Mode::default(); MODES],
+            ping_on: false,
+            strings: [Mode::default(); MODES],
+            strings_hz: [0.0; MODES],
+            strings_pan: [[1.0, 1.0, 0.0]; MODES],
+            strings_on: 0,
             twin_on: false,
+            pan: [[1.0, 1.0, 0.0]; MODES],
+            twin_pan: [[1.0, 1.0, 0.0]; MODES],
             params: ZitherParams::default(),
             technique: Technique::Open,
             key_pitch: 60.0,
@@ -401,6 +507,23 @@ impl Tone {
             mode.re *= gain;
         }
         let pr = p.profile;
+        if pr.spread > 0.0 {
+            let at = pr.spread * ((key_pitch - 68.0) / 25.0).clamp(-1.0, 1.0);
+            let gains = |x: f64| {
+                let a = (x.clamp(-1.0, 1.0) + 1.0) * core::f64::consts::FRAC_PI_4;
+                [a.cos() * core::f64::consts::SQRT_2, a.sin() * core::f64::consts::SQRT_2]
+            };
+            // 两支话筒离琴一两米：每个分音的辐射方向不同，左右听到的比例各不一样（同一组的几根弦也是）。
+            // 到两支话筒的路程差（这个音的弦在琴上的位置决定）：每个分音左右的相位差 = 2π f · 时间差。
+            let delay = pr.spread * (0.00025 - 0.00012 * (key_pitch - 68.0) / 25.0);
+            for n in 0..MODES {
+                let h = |salt: u64| ((n as u64 * 2 + salt + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as f64 / (1u64 << 24) as f64 * 2.0 - 1.0;
+                let phase = TAU * f0 * tone.modes[n].ratio * delay;
+                let with_phase = |[l, r]: [f64; 2]| [l, r * phase.cos(), r * phase.sin()];
+                tone.pan[n] = with_phase(gains(at + pr.spread * h(0)));
+                tone.twin_pan[n] = with_phase(gains(at + pr.spread * h(1)));
+            }
+        }
         let w = pr.twin.clamp(0.0, 0.9);
         let (cents, decay) = (pr.twin_cents, pr.twin_decay);
         if w > 0.0 {
@@ -414,6 +537,38 @@ impl Tone {
                 mode.re *= 1.0 - w;
             }
         }
+        if pr.bridge > 0.0 {
+            let base = tone.modes[0].re.abs();
+            for &k in pr.open_keys {
+                let d = i32::from(k) - i32::from(key);
+                if !(-14..=12).contains(&d) || d == 0 || d.abs() == 12 || tone.strings_on + 2 > MODES {
+                    continue;
+                }
+                let hz = tuning.key_frequency(k);
+                let h = ((u64::from(k) + 7).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as f64 / (1u64 << 24) as f64;
+                let t60 = s.decay / s.decay_per_octave.powf((hz / 261.625_565).log2());
+                let pan = tone.pan[(k % 7) as usize];
+                for (n, amp) in [(1.0, 1.0), (2.0, 0.4)] {
+                    let i = tone.strings_on;
+                    // 弦一被晃动就从零起振：振幅放在 re 上（tick 输出 im），没有咔嗒。
+                    tone.strings[i] = Mode { re: base * pr.bridge * amp * (0.3 + 0.7 * h), ratio: 1.0, t60: t60 / n, ..Default::default() };
+                    tone.strings_hz[i] = hz * n;
+                    tone.strings[i].tune(hz * n, sr, None);
+                    tone.strings_pan[i] = pan;
+                    tone.strings_on += 1;
+                }
+            }
+        }
+        if pr.ping > 0.0 {
+            tone.ping_on = true;
+            for (mode, ping) in tone.modes.iter().zip(tone.pings.iter_mut()) {
+                let x = (f0 * mode.ratio / pr.ping_hz).powi(2);
+                // 一个 `ping_hz` 到它的三倍之间的带：竹槌一碰，响的是 2 … 5 kHz 的那些分音。
+                let weight = pr.ping * x / (1.0 + x) / (1.0 + x * x / 81.0);
+                *ping = Mode { re: mode.re * weight, ratio: mode.ratio, t60: pr.ping_s.min(mode.t60), ..Default::default() };
+                ping.tune(f0, sr, None);
+            }
+        }
         tone
     }
 
@@ -424,9 +579,16 @@ impl Tone {
         2.0 * (self.rng >> 11) as f64 / (1u64 << 53) as f64 - 1.0
     }
 
+    #[cfg(test)]
     fn sample(&mut self, sr: f64, bend: f64, live: ZitherParams) -> f64 {
+        let [l, r] = self.sample2(sr, bend, live);
+        0.5 * (l + r)
+    }
+
+    /// 左右两路（单声道的乐器两路相同）。
+    fn sample2(&mut self, sr: f64, bend: f64, live: ZitherParams) -> [f64; 2] {
         if !self.active {
-            return 0.0;
+            return [0.0; 2];
         }
         let target = self.key_pitch + if self.params.bends(self.technique) { bend } else { 0.0 };
         let k = 1.0 - (-1.0 / (live.slide_time.max(0.001) * sr)).exp();
@@ -457,27 +619,54 @@ impl Tone {
                     self.energy += mode.energy();
                 }
             }
+            for (mode, &hz) in self.strings[..self.strings_on].iter_mut().zip(&self.strings_hz) {
+                mode.tune(hz, sr, release);
+                self.energy += mode.energy();
+            }
+            if self.ping_on {
+                self.ping_on = (self.at as f64) < 1.5 * self.params.profile.ping_s * sr;
+                for mode in &mut self.pings {
+                    mode.tune(f0, sr, release);
+                }
+            }
             self.last_pitch = self.pitch;
             if self.energy < 1e-11 && self.at > (0.1 * sr) as u64 {
                 self.active = false;
-                return 0.0;
+                return [0.0; 2];
+            }
+        }
+        let mut out = [0.0; 2];
+        for (mode, g) in self.modes.iter_mut().zip(&self.pan) {
+            let v = mode.tick();
+            out[0] += v * g[0];
+            out[1] += v * g[1] + mode.re * mode.fade * g[2];
+        }
+        if self.twin_on {
+            for (mode, g) in self.twins.iter_mut().zip(&self.twin_pan) {
+                let v = mode.tick();
+                out[0] += v * g[0];
+                out[1] += v * g[1] + mode.re * mode.fade * g[2];
+            }
+        }
+        for (mode, g) in self.strings[..self.strings_on].iter_mut().zip(&self.strings_pan) {
+            let v = mode.tick();
+            out[0] += v * g[0];
+            out[1] += v * g[1] + mode.re * mode.fade * g[2];
+        }
+        if self.ping_on {
+            for (mode, g) in self.pings.iter_mut().zip(&self.pan) {
+                let v = mode.tick();
+                out[0] += v * g[0];
+                out[1] += v * g[1] + mode.re * mode.fade * g[2];
             }
         }
         let mut x = 0.0;
-        for mode in &mut self.modes {
-            x += mode.tick();
-        }
-        if self.twin_on {
-            for mode in &mut self.twins {
-                x += mode.tick();
-            }
-        }
         let t = self.at as f64 / sr;
         let n = self.noise();
         let s: StringParams = self.params.pluck.string;
         let kn = 1.0 - (-TAU * s.pluck_brightness.min(0.4 * sr) / sr).exp();
         self.noise_lp += (n - self.noise_lp) * kn;
-        x += self.noise_lp * s.level * self.strength * s.pluck_noise * 0.035 * (-t / 0.006).exp();
+        x += self.noise_lp * s.level * self.strength * s.pluck_noise * 0.035 * self.params.profile.knock * (-t / 0.006).exp();
         // 走手摩擦随手速和仍在振动的弦能量变化；停止移动后自己收掉，不再拨一次弦。
         let kf = 1.0 - (-TAU * 1_200.0 / sr).exp();
         self.friction_lp += (n - self.friction_lp) * kf;
@@ -486,7 +675,8 @@ impl Tone {
         }
         let attack = (t / 0.0015).clamp(0.0, 1.0);
         self.at += 1;
-        x * attack * attack * (3.0 - 2.0 * attack)
+        let g = attack * attack * (3.0 - 2.0 * attack);
+        out.map(|o| (o + x) * g)
     }
 }
 
@@ -542,14 +732,15 @@ impl Voice<f32> for ZitherVoice {
     }
     fn render(&mut self, buffer: &mut AudioBuffer<f32>) {
         for i in 0..buffer.num_frames() {
-            let mut x = self.now.sample(self.sr, self.bend, self.params);
+            let mut x = self.now.sample2(self.sr, self.bend, self.params);
             if self.fade > 0.0 {
                 // 被偷走的声部保持原音高，10 ms 内退下去，新的弯音不传给它。
-                x += self.old.sample(self.sr, self.old.pitch - self.old.key_pitch, self.old.params) * self.fade;
+                let old = self.old.sample2(self.sr, self.old.pitch - self.old.key_pitch, self.old.params);
+                x = [x[0] + old[0] * self.fade, x[1] + old[1] * self.fade];
                 self.fade = (self.fade - 1.0 / (0.01 * self.sr)).max(0.0);
             }
             for c in 0..buffer.num_channels() {
-                buffer.channel_mut(c)[i] += x as f32;
+                buffer.channel_mut(c)[i] += x[c.min(1)] as f32;
             }
         }
     }
@@ -613,11 +804,12 @@ pub(crate) struct Zither {
     params: ZitherParams,
     sr: f64,
     tuning: Tuning,
-    body: [Resonance; 4],
-    radiation: Resonance,
-    sympathetic: Vec<Resonance>,
-    tilt: f64,
-    dc: f64,
+    /// 左右两支话筒各一套（单声道的乐器只用左边那套）。
+    body: [[Resonance; 4]; 2],
+    radiation: [Resonance; 2],
+    sympathetic: [Vec<Resonance>; 2],
+    tilt: [f64; 2],
+    dc: [f64; 2],
     pending: Vec<(NoteRef, NoteTag)>,
 }
 
@@ -626,27 +818,34 @@ impl Zither {
         let mut synth = Synth::with_voices(params.profile.voices, move || ZitherVoice::new(params));
         synth.set_pitch_bend_range(BEND_RANGE);
         let sympathetic = vec![Resonance::default(); params.profile.open_keys.len() * 3];
-        Self { synth, params, sr: 48_000.0, tuning: Tuning::default(), body: [Resonance::default(); 4], radiation: Resonance::default(), sympathetic, tilt: 0.0, dc: 0.0, pending: Vec::with_capacity(16) }
+        Self {
+            synth, params, sr: 48_000.0, tuning: Tuning::default(), body: [[Resonance::default(); 4]; 2], radiation: [Resonance::default(); 2],
+            sympathetic: [sympathetic.clone(), sympathetic], tilt: [0.0; 2], dc: [0.0; 2], pending: Vec::with_capacity(16),
+        }
     }
     fn configure(&mut self) {
-        self.radiation.highpass(self.params.profile.radiation_hz, self.sr);
-        for (r, mode) in self.body.iter_mut().zip(self.params.pluck.string.body) {
-            r.set(mode.frequency, mode.frequency / mode.q, self.sr);
-        }
-        for (i, &key) in self.params.profile.open_keys.iter().enumerate() {
-            for n in 1..=3 {
-                let hz = self.tuning.key_frequency(key) * n as f64;
-                self.sympathetic[i * 3 + n - 1].set(hz, 3.0 * 10f64.ln() / (PI * 3.5), self.sr);
+        for c in 0..2 {
+            // 右边的话筒对着琴箱另一处：共鸣的位置差一点。
+            let shift = if c == 1 && self.params.profile.spread > 0.0 { 1.07 } else { 1.0 };
+            self.radiation[c].highpass(self.params.profile.radiation_hz, self.sr);
+            for (r, mode) in self.body[c].iter_mut().zip(self.params.pluck.string.body) {
+                r.set(mode.frequency * shift, mode.frequency * shift / mode.q, self.sr);
+            }
+            for (i, &key) in self.params.profile.open_keys.iter().enumerate() {
+                for n in 1..=3 {
+                    let hz = self.tuning.key_frequency(key) * n as f64;
+                    self.sympathetic[c][i * 3 + n - 1].set(hz, 3.0 * 10f64.ln() / (PI * 3.5), self.sr);
+                }
             }
         }
     }
     pub(crate) fn prepare(&mut self, spec: &ProcessSpec) {
         self.sr = spec.sample_rate;
-        self.body = [Resonance::default(); 4];
-        self.radiation = Resonance::default();
-        self.sympathetic.fill(Resonance::default());
-        self.tilt = 0.0;
-        self.dc = 0.0;
+        self.body = [[Resonance::default(); 4]; 2];
+        self.radiation = [Resonance::default(); 2];
+        self.sympathetic.iter_mut().for_each(|v| v.fill(Resonance::default()));
+        self.tilt = [0.0; 2];
+        self.dc = [0.0; 2];
         self.pending.clear();
         self.synth.prepare(spec);
         self.configure();
@@ -686,26 +885,33 @@ impl Zither {
         let s = self.params.pluck.string;
         let kt = 1.0 - (-TAU * s.tone.min(0.4 * self.sr) / self.sr).exp();
         let kd = 1.0 - (-TAU * 20.0 / self.sr).exp();
+        let stereo = self.params.profile.spread > 0.0 && buffer.num_channels() >= 2;
         for i in 0..buffer.num_frames() {
-            let source = f64::from(buffer.channel(0)[i]);
-            // body_mix=0 可听原始弦模型；默认以辐射后的频谱作为直接声，
-            // 而不是在强基音上轻轻叠几个共鸣峰。走手时共鸣位置固定于琴体。
-            let radiated = self.radiation.tick(source);
-            let source = source + (radiated - source) * (s.body_mix / 0.45).clamp(0.0, 1.0);
-            let mut x = source;
-            for (r, mode) in self.body.iter_mut().zip(s.body) {
-                x += r.tick(source) * mode.gain * s.body_mix;
-            }
-            let mut sympathetic = 0.0;
-            for (j, r) in self.sympathetic.iter_mut().enumerate() {
-                sympathetic += r.tick(source) * [1.0, 0.3, 0.14][j % 3];
-            }
-            x += sympathetic * self.params.sympathetic * 0.4;
-            self.tilt += (x - self.tilt) * kt;
-            self.dc += (self.tilt - self.dc) * kd;
-            let out = (self.tilt - self.dc) as f32;
-            for c in 0..buffer.num_channels() {
-                buffer.channel_mut(c)[i] = out;
+            for c in 0..if stereo { 2 } else { 1 } {
+                let source = f64::from(buffer.channel(c)[i]);
+                // body_mix=0 可听原始弦模型；默认以辐射后的频谱作为直接声，
+                // 而不是在强基音上轻轻叠几个共鸣峰。走手时共鸣位置固定于琴体。
+                let radiated = self.radiation[c].tick(source);
+                let source = source + (radiated - source) * (s.body_mix / 0.45).clamp(0.0, 1.0);
+                let mut x = source;
+                for (r, mode) in self.body[c].iter_mut().zip(s.body) {
+                    x += r.tick(source) * mode.gain * s.body_mix;
+                }
+                let mut sympathetic = 0.0;
+                for (j, r) in self.sympathetic[c].iter_mut().enumerate() {
+                    sympathetic += r.tick(source) * [1.0, 0.3, 0.14][j % 3];
+                }
+                x += sympathetic * self.params.sympathetic * 0.4;
+                self.tilt[c] += (x - self.tilt[c]) * kt;
+                self.dc[c] += (self.tilt[c] - self.dc[c]) * kd;
+                let out = (self.tilt[c] - self.dc[c]) as f32;
+                if stereo {
+                    buffer.channel_mut(c)[i] = out;
+                } else {
+                    for ch in 0..buffer.num_channels() {
+                        buffer.channel_mut(ch)[i] = out;
+                    }
+                }
             }
         }
     }
@@ -731,6 +937,22 @@ mod tests {
             im += v * w * angle.sin();
         }
         re * re + im * im
+    }
+
+    #[test]
+    fn yangqin_is_stereo_and_the_other_strings_ring_along() {
+        let p = ZitherParams::yangqin();
+        let sr = 48_000.0;
+        let mut tone = Tone::start(p, &Tuning::default(), 69, 0.0, 0.8, false, sr);
+        let x: Vec<[f64; 2]> = (0..48_000).map(|_| tone.sample2(sr, 0.0, p)).collect();
+        let (l, r): (Vec<f64>, Vec<f64>) = x[24_000..].iter().map(|v| (v[0], v[1])).unzip();
+        let diff: f64 = l.iter().zip(&r).map(|(a, b)| (a - b).powi(2)).sum();
+        let sum: f64 = l.iter().zip(&r).map(|(a, b)| (a + b).powi(2)).sum();
+        assert!(diff > 0.05 * sum, "left and right differ: {diff} vs {sum}");
+        // E5（659 Hz）不是 A4 的泛音，只能是琴码带响的那根弦。
+        let e5 = energy_at(&l, 659.255);
+        let between = energy_at(&l, 640.0);
+        assert!(e5 > 30.0 * between, "E5 string rings along: {e5} vs {between}");
     }
 
     #[test]

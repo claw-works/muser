@@ -571,7 +571,9 @@ CHINESE_PAGES = [
         "**煞音, 止音**: `\"damp\": true` stops a note when it ends (the left hand lifts or the right hand covers the strings), for staccato chords and the clipped notes of martial pieces.",
     ]),
     ("yangqin", "Yangqin (扬琴)", ["yinse.strike.yangqin"], [
-        "Struck, bright and ringing (two strings per note); fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo (轮音, `\"tremolo\": true`).",
+        "Struck with soft bamboo hammers: a crisp attack, then a long ring. Each note is a course of strings a little out of tune with each other (the shimmer), and the other strings on the bridge ring along. It is recorded in stereo, low strings left and high strings right.",
+        "No dampers: a note keeps ringing after it ends, as on the real instrument, so fast runs blur into a halo. `length` only matters for tremolo; to stop the ring early lower `release` (0.2 for a damped, modern style).",
+        "Fast 16th runs of pentatonic notes and alternating octaves suit it; long notes are tremolo (轮音, `\"tremolo\": true`, `tremolo_rate` about 14 a second).",
     ]),
     ("erhu", "Erhu (二胡)", ["yinse.bow.erhu"], [
         "One note at a time. A note that overlaps the next joins it under one bow and the finger slides there (the erhu's portamento); a small gap starts a new bow.",
