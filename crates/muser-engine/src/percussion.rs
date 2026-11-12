@@ -32,6 +32,8 @@ pub struct PieceDef {
     pub gain: f64,
     /// 默认声像。
     pub pan: f64,
+    /// 噪声分几下打出来（拍手：几只手前后差 10 ms 左右），最后一下接着按 `noise_s` 衰减；0 / 1 只有一下。
+    pub bursts: u8,
 }
 
 const MEMBRANE_LOW: &[(f64, f64, f64)] =
@@ -70,7 +72,7 @@ const fn piece(
     name: &'static str, zh: &'static str, key: u8, f0: f64, modes: &'static [(f64, f64, f64)], glide: (f64, f64),
     noise: (f64, f64, f64, f64), choke: u8, gain: f64, pan: f64,
 ) -> PieceDef {
-    PieceDef { name, zh, key, f0, modes, glide: glide.0, glide_s: glide.1, noise: noise.0, noise_lo: noise.1, noise_hi: noise.2, noise_s: noise.3, choke, gain, pan }
+    PieceDef { name, zh, key, f0, modes, glide: glide.0, glide_s: glide.1, noise: noise.0, noise_lo: noise.1, noise_hi: noise.2, noise_s: noise.3, choke, gain, pan, bursts: 0 }
 }
 
 /// 锣鼓（京剧、民间吹打）。键尽量落在 GM 里位置相近的鼓件上：大鼓在底鼓、堂鼓在军鼓、大锣在吊镲……
@@ -105,11 +107,14 @@ const CRASH: &[(f64, f64, f64)] = &[(0.38195, 0.12999, 4.267), (0.48828, 0.3066,
 /// 边击：鼓槌搭在军鼓皮上敲鼓圈。木头的"笃"（1 … 2.5 kHz 一簇短共振，950 / 1050 Hz 拖一点尾巴，400 Hz … 1 kHz 的木头共振），
 /// 鼓腔跟着响的"托"（200 … 250 Hz），一下没有音高的鼓槌声（0.9 … 5.5 kHz 噪声，25 ms）。对着两套采样边击量的；高处不留有音高的共振（会成金属声）。
 const SIDE_STICK: &[(f64, f64, f64)] = &[(1.0, 0.98484, 0.063729), (1.1328, 1.0, 0.062622), (1.442, 0.6646, 0.050262), (1.51, 0.95679, 0.051474), (1.5748, 0.85073, 0.052128), (1.7001, 0.52721, 0.058736), (1.7625, 0.66051, 0.077179), (2.0374, 0.36421, 0.064397), (0.18727, 0.13, 0.15), (0.2128, 0.13, 0.15), (0.28941, 0.07, 0.18), (0.37453, 0.14, 0.2), (0.47667, 0.13, 0.2), (0.54477, 0.14, 0.2), (0.68096, 0.13, 0.2), (0.80865, 0.2, 0.25), (0.89377, 0.15, 0.22), (0.17024, 0.6, 0.03)];
+/// 拍手：几只手前后差 10 ms 拍下去（噪声分 4 下打出来，一下比一下响），0.7 … 4 kHz、没有音高，1 … 2 kHz 几个很短的共振。对着一套采样的多人齐拍量的。
+const CLAP: &[(f64, f64, f64)] = &[(1.0, 0.61333, 0.096229), (1.154, 0.81337, 0.1209), (1.2965, 0.92638, 0.1045), (1.4823, 0.6981, 0.083516), (1.6566, 0.72807, 0.11307), (1.846, 1.0, 0.068813), (1.9858, 0.88434, 0.069245), (2.3221, 0.49017, 0.080565)];
 pub static HATS: &[PieceDef] = &[
     piece("closed_hat", "闭镲", 42, 3612.3, HAT_CLOSED, (0.0, 0.1), (2.4853, 1096.6, 8955.3, 0.026678), 1, 0.055372, 0.25),
     piece("pedal_hat", "踩镲", 44, 302.12, HAT_PEDAL, (0.0, 0.1), (7.815, 561.2, 8392.7, 0.035455), 1, 0.0088213, 0.25),
     piece("open_hat", "开镲", 46, 3082.03, HAT_OPEN, (0.0, 0.1), (9.8204, 1998.2, 8010.1, 0.58151), 1, 0.074594, 0.25),
     piece("side_stick", "边击", 37, 1174.8, SIDE_STICK, (0.0, 0.1), (4.953, 900.0, 5500.0, 0.025), 0, 0.11, 0.0),
+    PieceDef { bursts: 4, ..piece("clap", "拍手", 39, 827.64, CLAP, (0.0, 0.1), (20.086, 700.0, 4000.0, 0.03), 0, 0.054, 0.0) },
     piece("crash", "吊镲", 49, 2641.5, CRASH, (0.0, 0.1), (13.464, 1998.2, 14765.0, 0.44933), 0, 0.0222, -0.3),
 ];
 
@@ -136,6 +141,7 @@ fn hats_override() -> Option<&'static [PieceDef]> {
             choke: d["choke"].as_u64().unwrap_or(1) as u8,
             gain: num(&d["gain"]),
             pan: num(&d["pan"]),
+            bursts: d["bursts"].as_u64().unwrap_or(0) as u8,
         })
         .collect();
     Some(Box::leak(defs.into_boxed_slice()))
@@ -225,6 +231,9 @@ struct Hit {
     life: u32,
     choked: f64,
     rng: u64,
+    /// 几连拍：每下隔多少帧、到第几帧结束（之后噪声正常衰减）。
+    burst_gap: u32,
+    burst_end: u32,
 }
 
 impl Hit {
@@ -257,17 +266,27 @@ impl Hit {
             self.rng ^= self.rng << 17;
             let w = (self.rng >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0;
             self.lp += self.lp_a * (w - self.lp);
+            let g = if self.age < self.burst_end {
+                // 前几下：每下 3.5 ms 收掉，一下比一下响。
+                let k = self.age / self.burst_gap;
+                let a = f64::from(self.age % self.burst_gap) / (0.0035 * sr);
+                self.noise * (0.5 + 0.25 * f64::from(k)) * (-a).exp()
+            } else {
+                self.noise
+            };
             if self.steep {
                 self.lp2 += self.lp_a * (self.lp - self.lp2);
                 self.hp += self.hp_a * (self.lp2 - self.hp);
                 let band = self.lp2 - self.hp;
                 self.hp2 += self.hp_a * (band - self.hp2);
-                x += (band - self.hp2) * self.noise;
+                x += (band - self.hp2) * g;
             } else {
                 self.hp += self.hp_a * (self.lp - self.hp);
-                x += (self.lp - self.hp) * self.noise;
+                x += (self.lp - self.hp) * g;
             }
-            self.noise *= self.noise_k;
+            if self.age >= self.burst_end {
+                self.noise *= self.noise_k;
+            }
         }
         self.age += 1;
         x
@@ -352,6 +371,8 @@ impl Kit {
             life: (longest * 1.1 * sr) as u32 + 64,
             choked: 1.0,
             rng: self.seed | 1,
+            burst_gap: ((0.010 * sr) as u32).max(1),
+            burst_end: u32::from(def.bursts.saturating_sub(1)) * ((0.010 * sr) as u32).max(1),
         };
         hit.retune(sr);
         self.hits.push(hit);
