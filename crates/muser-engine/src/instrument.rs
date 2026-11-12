@@ -674,7 +674,7 @@ const YINSE_DRUMS: &str = r#"{"36":{"tune":4.0,"decay":0.852,"tone":0.0,"snap":1
 fn velocity_curve(key: u8) -> f32 {
     match key {
         35 | 36 => 0.03,
-        37 => 0.7,
+        37 => 1.2,
         38 => 1.0,
         40 => 2.0,
         39 => 0.65,
@@ -688,7 +688,7 @@ fn velocity_curve(key: u8) -> f32 {
 }
 
 /// 军鼓另走一路的键。
-const SNARE_KEYS: [u8; 4] = [37, 38, 39, 40];
+const SNARE_KEYS: [u8; 3] = [38, 39, 40];
 
 /// 军鼓的 EQ：(高通 Hz, 700 Hz 提多少, 5 kHz 以上提多少) dB。shortcut: MUSER_FIT_SNARE_EQ 覆盖，定下来就删掉。
 fn snare_eq() -> (f64, f64, f64) {
@@ -701,8 +701,8 @@ fn snare_eq() -> (f64, f64, f64) {
         .unwrap_or((200.0, -8.0, 4.0))
 }
 
-/// 踩镲与吊镲另走一路的键（各一套模态 + 噪声，各自的 EQ）。
-const HAT_KEYS: [u8; 4] = [42, 44, 46, 49];
+/// 边击、踩镲与吊镲另走一路的键（各一套模态 + 噪声，各自的 EQ）。
+const HAT_KEYS: [u8; 5] = [37, 42, 44, 46, 49];
 
 /// 每件踩镲的 EQ：(2.2 kHz 压多少, 9 kHz 以上提多少, 300 Hz 提多少) dB。shortcut: MUSER_FIT_HAT_EQ_<键> 覆盖，定下来就删掉。
 fn hat_eq(key: u8) -> (f64, f64, f64) {
@@ -715,6 +715,7 @@ fn hat_eq(key: u8) -> (f64, f64, f64) {
         .unwrap_or(match key {
             42 => (-6.05, 2.00, -6.00),
             44 => (0.00, -2.00, 8.00),
+            37 => (0.00, -10.00, 0.00),
             46 => (-16.00, -16.00, 0.00),
             49 => (0.00, 1.00, 4.72),
             _ => (0.0, 0.0, 0.0),
