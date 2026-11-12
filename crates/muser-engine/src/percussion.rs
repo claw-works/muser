@@ -446,3 +446,124 @@ mod tests {
         assert!(pitch(&small, 0.6, 640.0) > pitch(&small, 0.0, 640.0) * 1.05, "小锣往上");
     }
 }
+
+/// 通鼓（41 43 45 47 48 50）：鼓皮的几个模态，打下去音高往下滑（皮先被打紧、再松回来），
+/// 基音先有一下很快的"咚"再拖一个慢的尾巴，起音时鼓槌打在皮上的"嗒"（1.5 … 7 kHz 的噪声，几毫秒）。
+/// 参数对着采样套鼓量：基音占了起音能量的大半，上面的模态低 12 … 20 dB，落地通鼓从 109 Hz 滑到 85 Hz。
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+pub struct TomDef {
+    pub key: u8,
+    /// 滑完以后的基音（Hz）、起音时高出多少（比例，力度 1 时）、滑多快（秒）。
+    pub hz: f64,
+    pub glide: f64,
+    pub glide_s: f64,
+    /// 基音快的那一段（秒）、慢的那一段占多少、慢的 T60（秒）。
+    pub fast_s: f64,
+    pub slow: f64,
+    pub t60: f64,
+    /// 鼓槌声多响（相对基音）、整件多响。
+    pub stick: f64,
+    pub level: f64,
+}
+
+pub static TOMS: &[TomDef] = &[
+    TomDef { key: 50, hz: 141.0, glide: 0.24, glide_s: 0.1, fast_s: 0.12, slow: 0.7, t60: 1.54, stick: 1.3, level: 0.1413 },
+    TomDef { key: 48, hz: 127.0, glide: 0.25, glide_s: 0.11, fast_s: 0.12, slow: 0.7, t60: 1.65, stick: 1.3, level: 0.1622 },
+    TomDef { key: 47, hz: 108.0, glide: 0.3, glide_s: 0.16, fast_s: 0.12, slow: 0.7, t60: 1.87, stick: 1.3, level: 0.0871 },
+    TomDef { key: 45, hz: 98.0, glide: 0.32, glide_s: 0.18, fast_s: 0.12, slow: 0.7, t60: 1.98, stick: 1.3, level: 0.0902 },
+    TomDef { key: 43, hz: 84.0, glide: 0.42, glide_s: 0.12, fast_s: 0.12, slow: 0.7, t60: 2.2, stick: 1.3, level: 0.1059 },
+    TomDef { key: 41, hz: 76.0, glide: 0.44, glide_s: 0.12, fast_s: 0.12, slow: 0.7, t60: 2.31, stick: 1.3, level: 0.0955 },
+];
+
+/// 鼓皮的模态（相对基音的频率比，起音时低多少 dB）：对着采样通鼓的谱峰量的。
+const TOM_MODES: [(f64, f64); 7] = [(1.0, 0.0), (1.5, -14.0), (1.68, -12.0), (2.0, -10.0), (2.2, -17.0), (2.65, -14.0), (3.0, -16.0)];
+
+/// shortcut: MUSER_FIT_TOMS（JSON 文件）覆盖 [`TOMS`]，对着采样调完就删掉。
+fn toms_override() -> Option<&'static [TomDef]> {
+    static O: std::sync::OnceLock<Option<Vec<TomDef>>> = std::sync::OnceLock::new();
+    O.get_or_init(|| std::env::var("MUSER_FIT_TOMS").ok().and_then(|p| serde_json::from_str(&std::fs::read_to_string(p).ok()?).ok())).as_deref()
+}
+
+/// 通鼓那一路软削波的推力。shortcut: MUSER_FIT_TOM_DRIVE 覆盖，定下来就删掉。
+fn tom_drive() -> f64 {
+    static D: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    *D.get_or_init(|| std::env::var("MUSER_FIT_TOM_DRIVE").ok().and_then(|v| v.parse().ok()).unwrap_or(14.0))
+}
+
+struct TomVoice {
+    def: TomDef,
+    vel: f64,
+    age: f64,
+    phase: [f64; 7],
+}
+
+pub struct Toms {
+    voices: Vec<TomVoice>,
+    sr: f64,
+    rng: u64,
+    hp: f64,
+    lp: [f64; 3],
+}
+
+impl Toms {
+    pub fn new() -> Self {
+        Self { voices: Vec::new(), sr: 48_000.0, rng: 0x9e37_79b9, hp: 0.0, lp: [0.0; 3] }
+    }
+    pub fn handles(key: u8) -> bool {
+        TOMS.iter().any(|t| t.key == key)
+    }
+    pub fn prepare(&mut self, spec: &ProcessSpec) {
+        self.sr = spec.sample_rate;
+    }
+    pub fn note_on(&mut self, key: u8, velocity: f32) {
+        let defs = toms_override().unwrap_or(TOMS);
+        let Some(def) = defs.iter().find(|t| t.key == key).copied() else { return };
+        // 同一面鼓再打：前一下被新的一下接管（皮只有一张）。
+        self.voices.retain(|v| v.def.key != key);
+        if self.voices.len() >= 8 {
+            self.voices.remove(0);
+        }
+        self.voices.push(TomVoice { def, vel: f64::from(velocity.clamp(0.0, 1.0)), age: 0.0, phase: [0.0; 7] });
+    }
+    pub fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        let n = buffer.num_frames();
+        let dt = 1.0 / self.sr;
+        let (a_hp, a_lp) = (1.0 - (-TAU * 400.0 * dt).exp(), 1.0 - (-TAU * 4_500.0 * dt).exp());
+        for i in 0..n {
+            self.rng ^= self.rng << 13;
+            self.rng ^= self.rng >> 7;
+            self.rng ^= self.rng << 17;
+            let w = (self.rng >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0;
+            // 鼓槌声的噪声：400 Hz 高通、三级 4.5 kHz 低通。
+            self.hp += a_hp * (w - self.hp);
+            let x = w - self.hp;
+            self.lp[0] += a_lp * (x - self.lp[0]);
+            self.lp[1] += a_lp * (self.lp[0] - self.lp[1]);
+            self.lp[2] += a_lp * (self.lp[1] - self.lp[2]);
+            let mut out = 0.0;
+            for v in &mut self.voices {
+                let d = v.def;
+                let t = v.age;
+                let f = d.hz * (1.0 + d.glide * v.vel * (-t / d.glide_s).exp());
+                let tau = d.t60 / 6.91;
+                let fund = (1.0 - d.slow) * (-t / d.fast_s).exp() + d.slow * (-t / tau).exp();
+                let mut s = 0.0;
+                for (m, &(ratio, db)) in TOM_MODES.iter().enumerate() {
+                    v.phase[m] = (v.phase[m] + f * ratio * dt).fract();
+                    let env = if m == 0 { fund } else { (-t / (tau / ratio.powf(1.5) * 0.5)).exp() * (-t / d.fast_s * 0.5).exp().max(0.3) };
+                    s += 10f64.powf(db / 20.0) * env * (TAU * v.phase[m]).sin();
+                }
+                let stick = d.stick * v.vel * v.vel * (-t / 0.008).exp() * self.lp[2] * 6.0;
+                out += d.level * (v.vel * s + stick);
+                v.age += dt;
+            }
+            // 软削波：采样通鼓是压过的，峰值只比前 50 ms 的均方根高 8 … 11 dB。
+            let drive = tom_drive();
+            let y = if drive > 0.0 { (out * 0.25 * drive).tanh() / drive } else { out * 0.25 };
+            for c in 0..buffer.num_channels() {
+                buffer.channel_mut(c)[i] += y as f32;
+            }
+        }
+        self.voices.retain(|v| v.age < v.def.t60 * 1.5);
+    }
+}

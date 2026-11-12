@@ -678,9 +678,7 @@ fn velocity_curve(key: u8) -> f32 {
         38 => 1.0,
         40 => 2.0,
         39 => 0.65,
-        41 | 43 => 0.4,
-        45 | 47 => 0.57,
-        48 | 50 => 0.28,
+        41 | 43 | 45 | 47 | 48 | 50 => 0.55,
         42 => 0.85,
         44 => 0.55,
         46 => 0.73,
@@ -754,6 +752,8 @@ struct YinseDrums {
     sr: f64,
     /// 重踩底鼓带出来的鼓身与响弦的余音（[`crate::percussion::KICK_AFTER`]），只在重踩时明显。
     after: crate::percussion::Kit,
+    /// 通鼓另走一路（[`crate::percussion::Toms`]）：这个物理模型的通鼓能量在 500 … 1500 Hz，没有鼓槌声，音高也不滑。
+    toms: crate::percussion::Toms,
 }
 
 /// 底鼓：起音保留多久（秒）、之后压低多少（dB）、压下去用多久（秒）。
@@ -829,6 +829,7 @@ impl YinseDrums {
             kick_age: u64::MAX / 2,
             sr: 48_000.0,
             after: crate::percussion::Kit::new(crate::percussion::KitParams::kick_after(kick_after())),
+            toms: crate::percussion::Toms::new(),
         }
     }
     fn part(&mut self, key: u8) -> &mut dyn Playable {
@@ -883,11 +884,16 @@ impl Playable for YinseDrums {
         self.scratch = AudioBuffer::new(spec.num_channels.max(1), spec.max_block_size);
         self.sr = spec.sample_rate;
         Playable::prepare(&mut self.after, spec);
+        self.toms.prepare(spec);
     }
     fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
         // 采样套鼓的力度反应比这个物理模型平得多（底鼓、通鼓轻敲也有劲）：每件按量到的比例压平。
         let raw = velocity.clamp(0.0, 1.0);
         let velocity = raw.powf(velocity_curve(note.key));
+        if crate::percussion::Toms::handles(note.key) {
+            self.toms.note_on(note.key, velocity);
+            return;
+        }
         if note.key == 38 || note.key == 40 {
             self.crack_age = 0;
             self.crack_level = f64::from(raw * raw);
@@ -1010,6 +1016,7 @@ impl Playable for YinseDrums {
                 *y += *x;
             }
         }
+        self.toms.process(buffer);
         // 压缩：峰值包络（快起慢落），超过门限的按比例压下去。
         let (thr_db, ratio, attack, release) = kit_comp();
         if ratio > 1.0 {
