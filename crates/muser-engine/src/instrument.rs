@@ -668,7 +668,7 @@ fn yinse_drums() -> DrumKit {
     kit
 }
 
-const YINSE_DRUMS: &str = r#"{"36":{"tune":4.0,"decay":0.852,"tone":0.0,"snap":1.0,"texture":0.93,"level":1.05},"37":{"tune":-8.723,"decay":0.3633,"tone":0.0073,"snap":0.9952,"texture":0.382,"level":0.6308},"38":{"tune":3.3,"decay":0.6,"tone":0.3,"snap":0.55,"texture":0.3276,"level":1.1},"39":{"tune":-11.799,"decay":2.5995,"tone":0.0078,"snap":0.9599,"texture":0.9957,"level":1.9046},"40":{"tune":-6.398,"decay":0.8525,"tone":0.7967,"snap":0.95,"texture":0.0344,"level":1.265},"41":{"tune":-6.083,"decay":3.4674,"tone":0.1653,"snap":1.0,"texture":0.3728,"level":0.3429},"42":{"tune":-10.65,"decay":2.6952,"tone":0.3175,"snap":0.6453,"texture":0.9952,"level":0.1534},"43":{"tune":-6.119,"decay":3.2556,"tone":0.2629,"snap":0.9974,"texture":0.3484,"level":0.3113},"44":{"tune":-6.334,"decay":3.1418,"tone":0.8249,"snap":0.0632,"texture":0.9952,"level":0.6628},"45":{"tune":-0.895,"decay":2.8685,"tone":0.5505,"snap":0.9973,"texture":0.4516,"level":0.318},"46":{"tune":-7.638,"decay":0.2162,"tone":0.9832,"snap":0.1947,"texture":0.4913,"level":0.7299},"47":{"tune":-5.193,"decay":3.1269,"tone":1.0,"snap":0.9957,"texture":0.3856,"level":0.4311},"48":{"tune":1.481,"decay":1.8786,"tone":0.2739,"snap":0.9951,"texture":0.7409,"level":0.362},"49":{"tune":-6.299,"decay":0.9317,"tone":0.9939,"snap":0.9952,"texture":0.1799,"level":0.4995},"50":{"tune":-0.636,"decay":2.3253,"tone":0.5702,"snap":1.0,"texture":0.3861,"level":0.3744}}"#;
+const YINSE_DRUMS: &str = r#"{"36":{"tune":4.0,"decay":0.852,"tone":0.0,"snap":1.0,"texture":0.93,"level":1.05},"37":{"tune":-8.723,"decay":0.3633,"tone":0.0073,"snap":0.9952,"texture":0.382,"level":0.6308},"38":{"tune":3.3,"decay":0.6,"tone":0.3,"snap":0.55,"texture":0.3276,"level":1.1},"39":{"tune":-11.799,"decay":2.5995,"tone":0.0078,"snap":0.9599,"texture":0.9957,"level":1.9046},"40":{"tune":3.3,"decay":0.5,"tone":0.55,"snap":0.8,"texture":0.15,"level":1.9},"41":{"tune":-6.083,"decay":3.4674,"tone":0.1653,"snap":1.0,"texture":0.3728,"level":0.3429},"42":{"tune":-10.65,"decay":2.6952,"tone":0.3175,"snap":0.6453,"texture":0.9952,"level":0.1534},"43":{"tune":-6.119,"decay":3.2556,"tone":0.2629,"snap":0.9974,"texture":0.3484,"level":0.3113},"44":{"tune":-6.334,"decay":3.1418,"tone":0.8249,"snap":0.0632,"texture":0.9952,"level":0.6628},"45":{"tune":-0.895,"decay":2.8685,"tone":0.5505,"snap":0.9973,"texture":0.4516,"level":0.318},"46":{"tune":-7.638,"decay":0.2162,"tone":0.9832,"snap":0.1947,"texture":0.4913,"level":0.7299},"47":{"tune":-5.193,"decay":3.1269,"tone":1.0,"snap":0.9957,"texture":0.3856,"level":0.4311},"48":{"tune":1.481,"decay":1.8786,"tone":0.2739,"snap":0.9951,"texture":0.7409,"level":0.362},"49":{"tune":-6.299,"decay":0.9317,"tone":0.9939,"snap":0.9952,"texture":0.1799,"level":0.4995},"50":{"tune":-0.636,"decay":2.3253,"tone":0.5702,"snap":1.0,"texture":0.3861,"level":0.3744}}"#;
 
 /// 力度的指数（1 不变，越小轻敲越响）：对着采样套鼓 0.35 / 0.95 两个力度的音量差量的。
 fn velocity_curve(key: u8) -> f32 {
@@ -676,7 +676,7 @@ fn velocity_curve(key: u8) -> f32 {
         35 | 36 => 0.03,
         37 => 1.2,
         38 => 1.0,
-        40 => 2.0,
+        40 => 1.8,
         39 => 0.65,
         41 | 43 | 45 | 47 | 48 | 50 => 0.55,
         42 => 0.85,
@@ -686,6 +686,9 @@ fn velocity_curve(key: u8) -> f32 {
         _ => 0.8,
     }
 }
+
+/// rimshot 的"啪"比普通军鼓响几倍。
+const RIMSHOT_CRACK: f64 = 3.0;
 
 /// 军鼓另走一路的键。
 const SNARE_KEYS: [u8; 2] = [38, 40];
@@ -701,8 +704,8 @@ fn snare_eq() -> (f64, f64, f64) {
         .unwrap_or((200.0, -8.0, 4.0))
 }
 
-/// 边击、拍手、踩镲与吊镲另走一路的键（各一套模态 + 噪声，各自的 EQ）。
-const HAT_KEYS: [u8; 6] = [37, 39, 42, 44, 46, 49];
+/// 边击、拍手、rimshot 的鼓圈（40，叠在军鼓上）、踩镲与吊镲另走一路的键（各一套模态 + 噪声，各自的 EQ）。
+const HAT_KEYS: [u8; 7] = [37, 39, 40, 42, 44, 46, 49];
 
 /// 每件踩镲的 EQ：(2.2 kHz 压多少, 9 kHz 以上提多少, 300 Hz 提多少) dB。shortcut: MUSER_FIT_HAT_EQ_<键> 覆盖，定下来就删掉。
 fn hat_eq(key: u8) -> (f64, f64, f64) {
@@ -900,7 +903,8 @@ impl Playable for YinseDrums {
         }
         if note.key == 38 || note.key == 40 {
             self.crack_age = 0;
-            self.crack_level = f64::from(raw * raw);
+            // rimshot（40）：鼓槌同时打中鼓圈，"啪"更响。
+            self.crack_level = f64::from(raw * raw) * if note.key == 40 { RIMSHOT_CRACK } else { 1.0 };
         }
         if note.key == 42 || note.key == 44 {
             // 踩下去：开着的镲被夹住。
@@ -915,6 +919,12 @@ impl Playable for YinseDrums {
             Playable::note_on(&mut self.after, NoteRef::new(note.channel, 36), raw * raw, accent);
         }
         self.part(note.key).note_on(note, velocity, accent);
+        if note.key == 40 {
+            // rimshot：军鼓那一路出鼓皮与响弦，这里叠上鼓圈的振铃。
+            if let Some(rim) = self.hats.iter_mut().find(|h| h.0 == 40) {
+                Playable::note_on(&mut rim.1, note, velocity, accent);
+            }
+        }
     }
     fn note_off(&mut self, note: NoteRef, velocity: f32) {
         self.part(note.key).note_off(note, velocity);
