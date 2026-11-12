@@ -505,6 +505,12 @@ pub struct Toms {
     lp: [f64; 3],
 }
 
+impl Default for Toms {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Toms {
     pub fn new() -> Self {
         Self { voices: Vec::new(), sr: 48_000.0, rng: 0x9e37_79b9, hp: 0.0, lp: [0.0; 3] }
