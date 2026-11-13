@@ -292,7 +292,7 @@ pub(crate) static ZITHER: &[ParamDef<crate::zither::ZitherParams>] = &[
     num!("vibrato_delay", 0.0, 4.0, "s", "Delay after the pluck before pressed-string vibrato begins", |p| p.pluck.vibrato_delay),
     num!("tremolo_rate", 2.0, 30.0, "Hz", "Repeated plucks per second on notes marked tremolo", |p| p.pluck.tremolo_rate),
     num!("decay", 0.05, 60.0, "s", "Open-string fundamental decay at middle C to -60 dB; pressed-string contact adds damping", |p| p.pluck.string.decay),
-    num!("release", 0.01, 10.0, "s", "Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping", |p| p.pluck.string.release),
+    num!("release", 0.01, 30.0, "s", "Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping", |p| p.pluck.string.release),
     num!("high_decay", 0.01, 1.0, "", "Upper-mode decay at 3 kHz relative to the fundamental; harmonics keep a minimum of 0.2 for a clear ring", |p| p.pluck.string.high_decay),
     num!("pluck_brightness", 100.0, 20000.0, "Hz", "Brightness of the initial excitation; softer velocity also darkens the pluck", |p| p.pluck.string.pluck_brightness),
     num!("pluck_position", 0.02, 0.5, "", "Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length", |p| p.pluck.string.pluck_position),

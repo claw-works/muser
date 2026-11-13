@@ -1,8 +1,8 @@
 //! 用户自己的模态乐器：从一组单音录音（一个文件一个音）里提取每个音的分音表——频率、起始音量、先快后慢两段衰减、
-//! 一组弦之间的拍频、左右声道的比例与相位差、起音噪声、其余弦跟着响多少——存成一个很小的 JSON（`muser yinse extract`），
+//! 一组弦之间的拍频、左右声道的比例与相位差、起音那一刻的相位、分频段的起音噪声、其余弦跟着响多少——存成一个很小的 JSON（`muser yinse extract`），
 //! 再用模态弦模型演奏（`"instrument": "yinse:/path/x.yinse.json"`，见 [`crate::zither`]）。表里没有任何音频数据。
 //!
-//! 适合敲一下就自己衰减的乐器（扬琴、古筝、钢琴、钟……）；吹管、拉弦这类持续发声的不适合。
+//! 适合敲一下就自己衰减的乐器（扬琴、古筝、钢琴，以及分音不成整数倍的钟、木琴、鼓……）；吹管、拉弦这类持续发声的不适合。
 
 use std::collections::HashMap;
 use std::f64::consts::TAU;
@@ -13,13 +13,30 @@ use manguebyte::dsp::fft::{Complex, RealFft};
 use serde::{Deserialize, Serialize};
 
 pub const FORMAT: &str = "muser-yinse-modal";
+/// 表的版本。2：分音带泛音序号与起始相位，起音噪声分频段（[`NoiseBand`]），不成整数倍的分音也收。
+/// 1 的表（只有一个低通的起音噪声、分音不带序号）照样能演奏。
+pub const VERSION: u32 = 2;
 /// 每个音最多提取多少个分音（与模态弦模型的模式数相同；钢琴的低音要上百个）。
 pub const MAX_PARTIALS: usize = 128;
-/// 起音噪声的衰减时间常数（秒），提取和演奏用同一个。
+/// 版本 1 的起音噪声的衰减时间常数（秒）。
 pub const NOISE_SECONDS: f64 = 0.006;
-/// 分析每个音的前几秒。
-const ANALYSIS_SECONDS: f64 = 6.0;
+/// 起音噪声分成几个倍频程的频段（中心 31.25 Hz 起，每个高一倍）。
+pub const NOISE_BANDS: usize = 10;
+/// 分析每个音的前几秒（录音没这么长就到末尾）。
+const ANALYSIS_SECONDS: f64 = 20.0;
 const HOP_SECONDS: f64 = 0.01;
+/// 噪声只看起音后的这几秒。
+const NOISE_ANALYSIS_SECONDS: f64 = 3.0;
+/// 起音时每个分音从零升到位的时间（秒），和演奏时的一样（[`crate::zither`]）。
+pub(crate) const ATTACK_SECONDS: f64 = 0.0015;
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
 
 /// 一件乐器。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -81,13 +98,19 @@ pub struct NoteTable {
     pub pitch: f64,
     pub velocity: f64,
     pub partials: Vec<Partial>,
+    /// 版本 1 的起音噪声（版本 2 用 `bands`）。
+    #[serde(default, skip_serializing_if = "Noise::is_none")]
     pub noise: Noise,
+    /// 起音噪声，一个频段一项。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bands: Vec<NoiseBand>,
     /// 余音里不在这个音泛音上的能量占多少（0 … 1）：其余弦的共振。
     pub off_harmonic: f64,
 }
 
 /// 一个分音：频率比（相对基频）、振幅（录音满幅为 1）与到 -60 dB 的秒数；起音时多出来、很快衰减的那一段；
-/// 一组弦之间的拍（另一根弦占的比例、差几音分）；左右声道的增益与右边落后的相位（弧度）。
+/// 一组弦之间的拍（另一根弦占的比例、差几音分）；左右声道的增益与右边落后的相位（弧度）；
+/// 是第几次泛音（0 = 不在泛音列上的分音，或版本 1 的表）；起音那一刻左声道的相位（弧度，sin 起算）。
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
 pub struct Partial {
     pub ratio: f64,
@@ -100,13 +123,72 @@ pub struct Partial {
     pub left: f64,
     pub right: f64,
     pub phase: f64,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub n: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub start: f64,
 }
 
-/// 起音噪声：振幅、低通频率（Hz）。衰减时间常数固定为 [`NOISE_SECONDS`]。
+/// 版本 1 的起音噪声：振幅、低通频率（Hz）。衰减时间常数固定为 [`NOISE_SECONDS`]。
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
 pub struct Noise {
     pub amp: f64,
     pub hz: f64,
+}
+
+impl Noise {
+    fn is_none(&self) -> bool {
+        self.amp == 0.0
+    }
+}
+
+/// 起音噪声的一个频段（一个倍频程宽）：中心频率、起音时的均方根（录音满幅为 1）与到 -60 dB 的秒数；
+/// 后面拖着的慢的一段（没有就是 0）；左右声道各多响、左右有多像（相关度，1 = 一样，0 = 各是各的）。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct NoiseBand {
+    pub hz: f64,
+    pub amp: f64,
+    pub t60: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tail: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tail_t60: f64,
+    pub left: f64,
+    pub right: f64,
+    pub corr: f64,
+}
+
+/// 一个噪声频段的带通（两级同样的二阶带通串起来；演奏和这里算响度用同一个）：`[b0, b1, b2, a1, a2]`。
+pub(crate) fn band_filter(hz: f64, sr: f64) -> [f64; 5] {
+    let w = TAU * hz.min(0.42 * sr) / sr;
+    let alpha = w.sin() / (2.0 * core::f64::consts::SQRT_2);
+    let a0 = 1.0 + alpha;
+    [alpha / a0, 0.0, -alpha / a0, -2.0 * w.cos() / a0, (1.0 - alpha) / a0]
+}
+
+/// -1 … 1 的均匀白噪声过 [`band_filter`] 两级之后的均方根（对频率响应积分；算过的记下来）。
+pub(crate) fn band_unit_rms(hz: f64, sr: f64) -> f64 {
+    static CACHE: Mutex<Vec<(u64, u64, f64)>> = Mutex::new(Vec::new());
+    let key = (hz.to_bits(), sr.to_bits());
+    let mut cache = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(&(_, _, v)) = cache.iter().find(|c| (c.0, c.1) == key) {
+        return v;
+    }
+    let [b0, _, b2, a1, a2] = band_filter(hz, sr);
+    let points = 1 << 15;
+    let mut sum = 0.0;
+    for k in 0..points {
+        let w = core::f64::consts::PI * (k as f64 + 0.5) / points as f64;
+        let (c1, s1, c2, s2) = (w.cos(), w.sin(), (2.0 * w).cos(), (2.0 * w).sin());
+        let num = (b0 + b2 * c2).powi(2) + (b2 * s2).powi(2);
+        let den = (1.0 + a1 * c1 + a2 * c2).powi(2) + (a1 * s1 + a2 * s2).powi(2);
+        sum += (num / den).powi(2);
+    }
+    let v = (sum / points as f64 / 3.0).sqrt();
+    if cache.len() < 256 {
+        cache.push((key.0, key.1, v));
+    }
+    v
 }
 
 // ---------------------------------------------------------------------------
@@ -265,14 +347,13 @@ fn fundamental(mag: &[f64], bin_hz: f64, hint: Option<f64>) -> f64 {
     if den > 0.0 { num / den } else { f }
 }
 
-/// 一个频率在每一帧上的复振幅（左、右）：滑动汉宁窗解调。
-fn demodulate(x: &[f64], hz: f64, window: usize, hop: usize, sr: f64) -> Vec<Complex<f64>> {
+/// 一个频率在给定的各帧（起点 `starts`，窗长 `window`）上的复振幅：加汉宁窗解调。放不下一整窗的帧不算。
+fn demodulate_at(x: &[f64], hz: f64, window: usize, starts: &[usize], sr: f64) -> Vec<Complex<f64>> {
     let w = hann(window);
     let norm: f64 = w.iter().sum();
     let step = Complex::<f64>::from_polar(1.0, -TAU * hz / sr);
-    let mut out = Vec::new();
-    let mut start = 0;
-    while start + window <= x.len() {
+    let mut out = Vec::with_capacity(starts.len());
+    for &start in starts.iter().filter(|&&s| s + window <= x.len()) {
         let mut ph = Complex::<f64>::from_polar(1.0, -TAU * hz * start as f64 / sr);
         let (mut re, mut im) = (0.0, 0.0);
         for (v, w) in x[start..start + window].iter().zip(&w) {
@@ -282,9 +363,35 @@ fn demodulate(x: &[f64], hz: f64, window: usize, hop: usize, sr: f64) -> Vec<Com
             ph = Complex::new(ph.re * step.re - ph.im * step.im, ph.re * step.im + ph.im * step.re);
         }
         out.push(Complex::new(2.0 * re / norm, 2.0 * im / norm));
-        start += hop;
     }
     out
+}
+
+/// 等间隔的帧上的复振幅。
+fn demodulate(x: &[f64], hz: f64, window: usize, hop: usize, sr: f64) -> Vec<Complex<f64>> {
+    let starts: Vec<usize> = (0..).map(|k| k * hop.max(1)).take_while(|s| s + window <= x.len()).collect();
+    demodulate_at(x, hz, window, &starts, sr)
+}
+
+/// 分析用的帧：前 2 秒每 10 ms 一帧，之后每 40 ms 一帧（余音变化慢，长录音不必那么密）。
+fn frame_starts(len: usize, window: usize, sr: f64) -> Vec<usize> {
+    let hop = ((HOP_SECONDS * sr) as usize).max(1);
+    let dense = (2.0 * sr) as usize;
+    let mut out = Vec::new();
+    let mut s = 0;
+    while s + window <= len {
+        out.push(s);
+        s += if s < dense { hop } else { 4 * hop };
+    }
+    out
+}
+
+fn median(mut v: Vec<f64>) -> f64 {
+    if v.is_empty() {
+        return 0.0;
+    }
+    v.sort_by(f64::total_cmp);
+    v[v.len() / 2]
 }
 
 /// 最小二乘直线 y = a + b·x。
@@ -299,15 +406,33 @@ fn line(points: &[(f64, f64)]) -> Option<(f64, f64)> {
     (sxx > 1e-12).then(|| (my - sxy / sxx * mx, sxy / sxx))
 }
 
-/// 一个分音的包络 → 慢衰减（振幅、t60）、起音多出的快衰减、拍。
-fn fit_envelope(t: &[f64], amp: &[f64], hz: f64) -> Partial {
+/// 一条包络拟合成的两段衰减：慢的一段在峰值处的振幅和斜率（dB/秒）、起音多出来的快的一段；
+/// 用的是第 `kp` 帧（峰值）到第 `end` 帧之前，一共 `span` 秒。
+struct Decay {
+    amp: f64,
+    slope: f64,
+    fast_amp: f64,
+    fast_t60: f64,
+    kp: usize,
+    end: usize,
+    span: f64,
+}
+
+/// 包络 `amp[k]`（时刻 `t[k]`）→ 先快后慢两段。峰值在前 `early` 秒里找；只用峰值之后还在底噪 `floor` 以上
+///（并且没掉过 60 dB）的那一段：掉进底噪的部分是平的，拟合进去余音就长得离谱。
+/// 两段的分界在哪里因乐器而异：`splits` 里的几个都试（不早于峰值后 `lead` 秒），取整条包络（dB）拟合得最好的；
+/// 分界之后至少要剩 `min_after` 秒。
+fn fit_decay(t: &[f64], amp: &[f64], floor: f64, early: f64, lead: f64, splits: &[f64], min_after: f64) -> Option<Decay> {
     let db: Vec<f64> = amp.iter().map(|a| 20.0 * a.max(1e-12).log10()).collect();
-    let early = t.iter().take_while(|&&x| x < 0.08).count().max(1);
-    let kp = (0..early).max_by(|&a, &b| db[a].total_cmp(&db[b])).unwrap_or(0);
+    let first = t.iter().take_while(|&&x| x < early).count().clamp(1, t.len());
+    let kp = (0..first).max_by(|&a, &b| db[a].total_cmp(&db[b])).unwrap_or(0);
     let top = db[kp];
-    let end = (kp..db.len()).find(|&k| db[k] < top - 60.0).unwrap_or(db.len());
-    // 两段衰减：先快后慢（钢琴的"击发声"与"余音"、扬琴竹槌那一下）。分界在哪里因乐器而异，几个分界都试，
-    // 取整条包络（dB）拟合得最好的：分界以后拟合慢的一段，分界以前比慢的多出来的拟合快的一段。
+    let gate = 2.5 * floor;
+    let end = (kp..db.len()).find(|&k| db[k] < top - 60.0 || (amp[k] < gate && amp.get(k + 1).is_none_or(|&a| a < gate))).unwrap_or(db.len());
+    if end < kp + 3 {
+        return None;
+    }
+    // 分界以后拟合慢的一段，分界以前比慢的多出来的拟合快的一段。
     let fit = |from: f64| -> Option<(f64, f64, f64, f64, f64)> {
         let slow: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= from).map(|k| (t[k] - t[kp], db[k])).collect();
         let (b, m) = line(&slow)?;
@@ -324,49 +449,198 @@ fn fit_envelope(t: &[f64], amp: &[f64], hz: f64) -> Partial {
         if let Some((c, d)) = line(&excess) {
             if d < -0.5 && amp[kp] - slow_at(t[kp]) > 0.15 * slow_at(t[kp]) {
                 fa = c.exp().min(amp[kp]);
-                ft = (1000f64.ln() / -d).clamp(0.01, 3.0);
+                ft = (1000f64.ln() / -d).clamp(0.003, 3.0);
             }
         }
         let total = |x: f64| slow_at(x) + fa * (-(x - t[kp]) * 1000f64.ln() / ft).exp();
-        let err = (kp..end).map(|k| (db[k] - 20.0 * total(t[k]).max(1e-12).log10()).powi(2)).sum::<f64>() / (end - kp).max(1) as f64;
+        // 响的地方差一点比快听不见的地方差一点要紧：按振幅加权。
+        let err = (kp..end).map(|k| amp[k] * (db[k] - 20.0 * total(t[k]).max(1e-12).log10()).powi(2)).sum::<f64>() / (kp..end).map(|k| amp[k]).sum::<f64>().max(1e-30);
         Some((err, b, m, fa, ft))
     };
-    let t_end = t[end.saturating_sub(1)];
-    let best = [0.3, 0.6, 1.0, 1.5, 2.0]
+    let t_end = t[end - 1];
+    let base = t[kp] + lead;
+    let best = splits
         .iter()
-        .map(|&s| (t[kp] + 0.25).max(s))
-        .filter(|&from| t_end - from >= 0.8 || from <= (t[kp] + 0.25).max(0.3))
+        .map(|&s| base.max(s))
+        .filter(|&from| t_end - from >= min_after || from <= base.max(splits[0]))
         .filter_map(fit)
         .min_by(|a, b| a.0.total_cmp(&b.0));
-    let Some((_, b, m, fast_amp, fast_t60)) = best.or_else(|| fit(t[kp] + 0.05)) else {
-        return Partial { ratio: 1.0, amp: amp[kp], t60: 1.0, left: 1.0, right: 1.0, ..Default::default() };
+    let (_, b, m, fast_amp, fast_t60) = best.or_else(|| fit(t[kp] + 0.2 * lead))?;
+    Some(Decay { amp: 10f64.powf(b / 20.0), slope: m, fast_amp, fast_t60, kp, end, span: t_end - t[kp] })
+}
+
+/// 一个分音的包络 → 慢衰减（振幅、t60）、起音多出的快衰减、拍。第二个返回值：衰减量得可靠吗
+///（底噪以上那一段够长；不可靠的由 [`analyze`] 按这个音其余分音的规律补）。
+fn fit_envelope(t: &[f64], amp: &[f64], hz: f64, floor: f64) -> (Partial, bool) {
+    let Some(d) = fit_decay(t, amp, floor, 0.08, 0.06, &[0.1, 0.2, 0.3, 0.6, 1.0, 1.5, 2.0], 0.8) else {
+        let first = t.iter().take_while(|&&x| x < 0.08).count().clamp(1, amp.len());
+        let peak = amp[..first].iter().copied().fold(0.0, f64::max);
+        return (Partial { ratio: 1.0, amp: peak, t60: 1.0, left: 1.0, right: 1.0, ..Default::default() }, false);
     };
-    let t60 = if m < -0.5 { -60.0 / m } else { 30.0 }.clamp(0.05, 30.0);
+    let (kp, end) = (d.kp, d.end);
+    // 斜率几乎是平的：量了 1.5 秒以上才信它真的这么长。
+    let reliable = d.span >= 0.3 && end - kp >= 8 && (d.slope < -0.5 || d.span >= 1.5);
+    let t60 = if d.slope < -0.5 { -60.0 / d.slope } else { 30.0 }.clamp(0.05, 30.0);
+    let fast_t60 = d.fast_t60.max(0.01);
     // 演奏时从起音那一刻（峰值）开始：振幅取拟合线在峰值处的值。
-    let a0 = 10f64.powf(b / 20.0);
-    let model_db = |x: f64| 20.0 * (a0 * 10f64.powf(m * (x - t[kp]) / 20.0) + fast_amp * (-(x - t[kp]) * 1000f64.ln() / fast_t60).exp()).max(1e-12).log10();
-    // 拍：残差（dB）里最强的周期起伏。
-    let res: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= 0.1).map(|k| (t[k], db[k] - model_db(t[k]))).collect();
+    let model_db = |x: f64| 20.0 * (d.amp * 10f64.powf(d.slope * (x - t[kp]) / 20.0) + d.fast_amp * (-(x - t[kp]) * 1000f64.ln() / fast_t60).exp()).max(1e-12).log10();
+    // 拍：残差（dB）里最强的周期起伏。要它真的是一个周期起伏（占残差的一半以上、看到两个周期以上、起伏 1 dB 以上），
+    // 而且两根弦差得不离谱（25 音分以内）：否则只是包络上的毛刺。
+    let res: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= 0.1).map(|k| (t[k], 20.0 * amp[k].max(1e-12).log10() - model_db(t[k]))).collect();
     let (mut beat, mut beat_cents) = (0.0, 0.0);
     if res.len() > 40 && res[res.len() - 1].0 - res[0].0 > 0.5 {
         let n = res.len() as f64;
+        let span = res[res.len() - 1].0 - res[0].0;
+        let mean = res.iter().map(|r| r.1).sum::<f64>() / n;
+        let var = res.iter().map(|r| (r.1 - mean).powi(2)).sum::<f64>() / n;
         let mut best = (0.0, 0.0);
         let mut f = 0.3;
         while f < 12.0 {
-            let (re, im) = res.iter().fold((0.0, 0.0), |(a, c), &(x, y)| (a + y * (TAU * f * x).cos(), c + y * (TAU * f * x).sin()));
+            let (re, im) = res.iter().fold((0.0, 0.0), |(a, c), &(x, y)| (a + (y - mean) * (TAU * f * x).cos(), c + (y - mean) * (TAU * f * x).sin()));
             let a = 2.0 * (re * re + im * im).sqrt() / n;
             if a > best.0 {
                 best = (a, f);
             }
             f += 0.05;
         }
-        if best.0 > 0.4 {
+        let cents = 1200.0 * (1.0 + best.1 / hz).log2();
+        if best.0 >= 1.0 && best.0 * best.0 / 2.0 >= 0.5 * var && span * best.1 >= 2.0 && cents <= 25.0 {
             // 主弦占 1-w、另一根占 w：合起来在 1 与 1-2w 之间起伏，峰峰值 2A dB。
             beat = ((1.0 - 10f64.powf(-2.0 * best.0 / 20.0)) / 2.0).clamp(0.0, 0.45);
-            beat_cents = 1200.0 * (1.0 + best.1 / hz).log2();
+            beat_cents = cents;
         }
     }
-    Partial { ratio: 1.0, amp: a0, t60, fast_amp, fast_t60, beat, beat_cents, left: 1.0, right: 1.0, phase: 0.0 }
+    (Partial { ratio: 1.0, amp: d.amp, t60, fast_amp: d.fast_amp, fast_t60, beat, beat_cents, left: 1.0, right: 1.0, ..Default::default() }, reliable)
+}
+
+/// 量到的一个分音在各帧上的复振幅（左、右）：用来从录音里减掉它，剩下的就是噪声。
+struct Track {
+    hz: f64,
+    zl: Vec<Complex<f64>>,
+    zr: Vec<Complex<f64>>,
+    centers: Vec<usize>,
+    /// 解调窗的等效噪声带宽（Hz）：减掉这个分音时一起减掉的噪声。
+    width: f64,
+}
+
+/// 从 `x` 里减掉一个跟踪到的分音（帧之间线性插值；`on` 之前没有，之后和演奏时一样在 [`ATTACK_SECONDS`] 里升起来）。
+fn subtract_track(x: &mut [f64], z: &[Complex<f64>], centers: &[usize], hz: f64, sr: f64, on: usize) {
+    if z.is_empty() {
+        return;
+    }
+    let ramp = (ATTACK_SECONDS * sr).max(1.0);
+    let step = Complex::<f64>::from_polar(1.0, TAU * hz / sr);
+    let mut ph = Complex::<f64>::from_polar(1.0, 0.0);
+    let mut j = 0;
+    let last = z.len() - 1;
+    for (i, sample) in x.iter_mut().enumerate().skip(on) {
+        if (i - on).is_multiple_of(4096) {
+            ph = Complex::<f64>::from_polar(1.0, TAU * hz * i as f64 / sr);
+        }
+        while j < last && centers[j + 1] <= i {
+            j += 1;
+        }
+        let (re, im) = if i <= centers[0] {
+            (z[0].re, z[0].im)
+        } else if j >= last {
+            (z[last].re, z[last].im)
+        } else {
+            let f = (i - centers[j]) as f64 / (centers[j + 1] - centers[j]) as f64;
+            (z[j].re + (z[j + 1].re - z[j].re) * f, z[j].im + (z[j + 1].im - z[j].im) * f)
+        };
+        let a = ((i - on) as f64 / ramp).min(1.0);
+        *sample -= a * a * (3.0 - 2.0 * a) * (re * ph.re - im * ph.im);
+        ph = Complex::new(ph.re * step.re - ph.im * step.im, ph.re * step.im + ph.im * step.re);
+    }
+}
+
+/// 减掉分音以后剩下的声音（左、右）→ 每个倍频程一个频段的噪声：起音时多响、多快收掉、后面拖不拖一段。
+/// `on` 是起音的样本；`tracks` 是减掉的分音（它们的窗一起减掉了一点噪声，按比例补回来）。
+fn noise_bands(l: &[f64], r: &[f64], sr: f64, on: usize, tracks: &[Track]) -> Vec<NoiseBand> {
+    let n = l.len();
+    let size = next_pow2(n);
+    let mut fft = RealFft::<f64>::new(size);
+    let fade = ((0.02 * sr) as usize).min(n / 4).max(1);
+    let mut transform = |x: &[f64]| {
+        let mut input = vec![0.0; size];
+        input[..n].copy_from_slice(x);
+        // 截断的地方渐出：不然那个台阶会散到所有频段里。
+        for k in 0..fade {
+            input[n - 1 - k] *= k as f64 / fade as f64;
+        }
+        let mut out = vec![Complex::ZERO; size / 2 + 1];
+        fft.forward(&input, &mut out);
+        out
+    };
+    let (sl, sr_) = (transform(l), transform(r));
+    let bin = sr / size as f64;
+    let mut out = Vec::new();
+    for i in 0..NOISE_BANDS {
+        let c = 31.25 * (i as f64).exp2();
+        let (lo, hi) = (c / core::f64::consts::SQRT_2, (c * core::f64::consts::SQRT_2).min(0.48 * sr));
+        if lo >= 0.45 * sr {
+            break;
+        }
+        let mut band = |s: &[Complex<f64>]| {
+            let mut b = vec![Complex::ZERO; s.len()];
+            let (a, z) = ((lo / bin).ceil() as usize, ((hi / bin).floor() as usize).min(s.len() - 1));
+            b[a..=z.max(a)].copy_from_slice(&s[a..=z.max(a)]);
+            let mut y = vec![0.0; size];
+            fft.inverse(&b, &mut y);
+            y.truncate(n);
+            y
+        };
+        let (bl, br) = (band(&sl), band(&sr_));
+        // 每帧至少三个周期。
+        let frame = (((3.0 / c).clamp(0.003, 0.04)) * sr) as usize;
+        let count = (n - on) / frame.max(1);
+        if count < 4 {
+            continue;
+        }
+        let power = |x: &[f64], k: usize| x[on + k * frame..on + (k + 1) * frame].iter().map(|v| v * v).sum::<f64>() / frame as f64;
+        // 减分音时一起减掉的噪声补回来。
+        let removed: f64 = tracks.iter().filter(|t| (lo..hi).contains(&t.hz)).map(|t| t.width).sum::<f64>() / (hi - lo);
+        let gain = 1.0 / (1.0 - removed.min(0.6)).sqrt();
+        let t: Vec<f64> = (0..count).map(|k| (k as f64 + 0.5) * frame as f64 / sr).collect();
+        let e: Vec<f64> = (0..count).map(|k| gain * (0.5 * (power(&bl, k) + power(&br, k))).sqrt()).collect();
+        // 底：这几秒的最后五分之一（没减干净的分音、房间的声音、录音的底噪都在里面）。
+        let floor = if n as f64 >= sr { median(e[count - count / 5 - 1..].to_vec()) } else { 0.0 };
+        let first = t.iter().take_while(|&&x| x < 0.08).count().clamp(1, count);
+        let kp = (0..first).max_by(|&a, &b| e[a].total_cmp(&e[b])).unwrap_or(0);
+        let peak = e[kp];
+        if peak < 4.0 * floor || peak < 3e-6 {
+            continue;
+        }
+        let (amp, t60, tail, tail_t60) = match fit_decay(&t, &e, floor, 0.08, 0.0, &[0.03, 0.06, 0.12, 0.25, 0.5], 0.1) {
+            // 一两帧就没了：按第一帧掉了多少算。
+            None => {
+                let drop = 20.0 * (peak / e.get(kp + 1).copied().unwrap_or(floor).max(peak * 1e-3)).log10();
+                (peak, (60.0 * frame as f64 / sr / drop.max(1.0)).clamp(0.003, 0.5), 0.0, 0.0)
+            }
+            Some(d) => {
+                // 拖得比 4 秒还长的不是敲击的噪声（是没减干净的分音、别的弦）：不要。
+                let slow = if d.slope < -15.0 { Some((-60.0 / d.slope).max(0.003)) } else { None };
+                match (d.fast_amp > 0.0, slow) {
+                    (true, Some(s)) => (d.fast_amp, d.fast_t60, d.amp, s),
+                    (true, None) => (d.fast_amp, d.fast_t60, 0.0, 0.0),
+                    (false, Some(s)) => (d.amp, s, 0.0, 0.0),
+                    (false, None) => continue,
+                }
+            }
+        };
+        // 左右：峰值起 50 ms（低的频段两帧）。
+        let a = on + kp * frame;
+        let b = (a + (2 * frame).max((0.05 * sr) as usize)).min(n);
+        let (mut ll, mut rr, mut lr) = (0.0, 0.0, 0.0);
+        for k in a..b {
+            ll += bl[k] * bl[k];
+            rr += br[k] * br[k];
+            lr += bl[k] * br[k];
+        }
+        let mid = (0.5 * (ll + rr)).max(1e-30);
+        out.push(NoiseBand { hz: c, amp, t60, tail, tail_t60, left: (ll / mid).sqrt(), right: (rr / mid).sqrt(), corr: (lr / (ll * rr).sqrt().max(1e-30)).clamp(-1.0, 1.0) });
+    }
+    out
 }
 
 /// 分析一个单音录音。`pitch` 为 None 时从声音里测。
@@ -384,7 +658,10 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
     if peak < 1e-4 {
         return Err(format!("'{}' is silent", path.display()));
     }
-    let onset = mid.iter().position(|v| v.abs() > 0.05 * peak).unwrap_or(0).saturating_sub((0.002 * sr) as usize);
+    let crossing = mid.iter().position(|v| v.abs() > 0.05 * peak).unwrap_or(0);
+    let onset = crossing.saturating_sub((0.002 * sr) as usize);
+    // 起音在这一段里的第几个样本（演奏时分音从这里开始）。
+    let on = crossing - onset;
     let len = (mid.len() - onset).min((ANALYSIS_SECONDS * sr) as usize);
     let (l, r, x) = (&left[onset..onset + len], &right[onset..onset + len], &mid[onset..onset + len]);
     if len < (0.3 * sr) as usize {
@@ -396,7 +673,8 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
     let size = next_pow2(4 * (b - a)).max(65_536);
     let (mag, bin_hz) = spectrum(&x[a..b], size, sr);
     let f0 = fundamental(&mag, bin_hz, pitch);
-    let mut freqs = Vec::new();
+    // 泛音列上的分音：(频率, 第几次)。
+    let mut found: Vec<(f64, u32)> = Vec::new();
     let (mut stretch, mut misses) = (1.0, 0);
     for n in 1..=MAX_PARTIALS {
         let expect = f0 * n as f64 * stretch;
@@ -408,11 +686,9 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
         let (hz, m) = peak_near(&mag, bin_hz, expect, width.max(2.0 * bin_hz));
         let lo = ((expect - f0 * 0.5) / bin_hz).max(1.0) as usize;
         let hi = (((expect + f0 * 0.5) / bin_hz) as usize).min(mag.len() - 1);
-        let mut around: Vec<f64> = mag[lo..hi].to_vec();
-        around.sort_by(f64::total_cmp);
-        let floor = around.get(around.len() / 2).copied().unwrap_or(0.0);
+        let floor = median(mag[lo..hi].to_vec());
         if m > 3.0 * floor && m > 1e-7 * size as f64 {
-            freqs.push(hz);
+            found.push((hz, n as u32));
             stretch = hz / (f0 * n as f64);
             misses = 0;
         } else {
@@ -422,28 +698,94 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
             }
         }
     }
-    if freqs.is_empty() {
+    let harmonics: Vec<f64> = found.iter().map(|f| f.0).collect();
+    // 不在泛音列上的分音（钟、木琴、鼓的各个振动模式，弦乐器琴体的共鸣）：谱上其余的峰，从最响的收起。
+    // 要明显高出周围（8 倍）、不比最响的峰低 50 dB 以上，并且离已经收的分音够远（离得近的是同一个分音的拍）。
+    {
+        let block = ((f0.max(100.0) / bin_hz) as usize).max(8);
+        let floors: Vec<f64> = mag.chunks(block).map(|c| median(c.to_vec())).collect();
+        let top = mag.iter().copied().fold(0.0, f64::max);
+        let (lo, hi) = ((30.0 / bin_hz) as usize + 1, ((0.45 * sr / bin_hz) as usize).min(mag.len() - 2));
+        let mut peaks: Vec<(f64, usize)> = (lo..hi)
+            .filter(|&k| mag[k] > mag[k - 1] && mag[k] >= mag[k + 1] && mag[k] > 8.0 * floors[k / block] && mag[k] > top * 10f64.powf(-50.0 / 20.0) && mag[k] > 1e-7 * size as f64)
+            .map(|k| (mag[k], k))
+            .collect();
+        peaks.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let apart = (0.3 * f0).max(8.0);
+        let mut free = 0;
+        for (_, k) in peaks {
+            if found.len() >= MAX_PARTIALS || free >= MAX_PARTIALS / 2 {
+                break;
+            }
+            let (hz, _) = peak_near(&mag, bin_hz, k as f64 * bin_hz, bin_hz);
+            if found.iter().all(|f| (f.0 - hz).abs() >= apart) {
+                found.push((hz, 0));
+                free += 1;
+            }
+        }
+    }
+    if found.is_empty() {
         return Err(format!("no partials found in '{}'", path.display()));
     }
-    // 每个分音的包络：窗要够长才分得开相邻的分音。
-    let window = ((4.5 / f0).max(0.02) * sr) as usize;
+    found.sort_by(|a, b| a.0.total_cmp(&b.0));
     // 文件名给了音高：分音的频率比就相对那个音高（录音本身偏了多少音分也照样还原）；没给就相对量到的基频。
     let base = pitch.map_or(f0, |p| 440.0 * ((p - 69.0) / 12.0).exp2());
-    let hop = (HOP_SECONDS * sr) as usize;
+    let hop = ((HOP_SECONDS * sr) as usize).max(1);
+    let wrap = |a: f64| (a + core::f64::consts::PI).rem_euclid(TAU) - core::f64::consts::PI;
     let mut partials = Vec::new();
-    for &hz in &freqs {
-        let zl = demodulate(l, hz, window, hop, sr);
-        let zr = demodulate(r, hz, window, hop, sr);
-        let t: Vec<f64> = (0..zl.len()).map(|k| (k * hop + window / 2) as f64 / sr).collect();
-        let amp: Vec<f64> = zl.iter().zip(&zr).map(|(a, b)| 0.5 * (a.norm_sqr().sqrt() + b.norm_sqr().sqrt())).collect();
-        if amp.len() < 5 {
+    let mut reliable = Vec::new();
+    let mut tracks = Vec::new();
+    for &(hz0, n) in &found {
+        // 每个分音的包络：窗要够长才分得开相邻的分音（比基频还低的分音至少四个周期）。
+        let window = ((4.5 / f0).max(0.02).max(4.0 / hz0) * sr) as usize;
+        let starts = frame_starts(len, window, sr);
+        let zl = demodulate_at(l, hz0, window, &starts, sr);
+        let zr = demodulate_at(r, hz0, window, &starts, sr);
+        if zl.len() < 5 {
             continue;
         }
-        let mut p = fit_envelope(&t, &amp, hz);
+        let t: Vec<f64> = starts.iter().take(zl.len()).map(|s| (s + window / 2) as f64 / sr).collect();
+        let amp: Vec<f64> = zl.iter().zip(&zr).map(|(a, b)| 0.5 * (a.norm_sqr().sqrt() + b.norm_sqr().sqrt())).collect();
+        // 这个频率上的底噪：录音最后一秒里，它上下各偏开一点（解调窗的两格多：泛音列上正好是两个分音之间）量到的。
+        let aside = 2.25 * sr / window as f64;
+        let from = len - ((sr as usize).min(len / 4).max(window)).min(len);
+        let tail: Vec<usize> = (from..).step_by((window / 2).max(1)).take_while(|s| s + window <= len).collect();
+        let level = |f: f64| {
+            if !(20.0..0.45 * sr).contains(&f) || tail.is_empty() {
+                return f64::INFINITY;
+            }
+            let (a, b) = (demodulate_at(l, f, window, &tail, sr), demodulate_at(r, f, window, &tail, sr));
+            median(a.iter().zip(&b).map(|(a, b)| 0.5 * (a.norm_sqr().sqrt() + b.norm_sqr().sqrt())).collect())
+        };
+        let floor = level(hz0 - aside).min(level(hz0 + aside));
+        let floor = if floor.is_finite() { floor } else { 0.0 };
+        let (mut p, ok) = fit_envelope(&t, &amp, hz0, floor);
+        // 不在泛音列上、又一直不衰减的不是这个音的一部分（电源的哼声、房间里一直响着的东西）：不收。
+        // 起音时在它上面多出来、很快收掉的那一段是（琴键、琴槌"咚"的一下）：只留这一段。
+        if n == 0 && p.t60 >= 30.0 {
+            if p.fast_amp <= 0.0 {
+                continue;
+            }
+            (p.amp, p.t60, p.fast_amp, p.beat, p.beat_cents) = (p.fast_amp, p.fast_t60, 0.0, 0.0, 0.0);
+        }
+        // 频率定准：前 0.6 秒里相邻两帧的相位差（谱峰只准到零点几 Hz，起始相位要更准）。
+        let (mut cr, mut ci) = (0.0, 0.0);
+        for k in 0..zl.len() - 1 {
+            if t[k] >= 0.03 && t[k + 1] <= 0.6 && starts[k + 1] - starts[k] == hop && amp[k] > 2.5 * floor {
+                for z in [&zl, &zr] {
+                    cr += z[k + 1].re * z[k].re + z[k + 1].im * z[k].im;
+                    ci += z[k + 1].im * z[k].re - z[k + 1].re * z[k].im;
+                }
+            }
+        }
+        let shift = if cr != 0.0 || ci != 0.0 { ci.atan2(cr) / (TAU * hop as f64 / sr) } else { 0.0 };
+        let hz = hz0 + if shift.abs() <= 2.0 { shift } else { 0.0 };
         p.ratio = hz / base;
+        p.n = n;
         // 立体声：起音后 20 … 600 ms 的左右平均振幅与右边相对左边的相位。
         let (mut sl, mut sr_, mut cr, mut ci) = (0.0, 0.0, 0.0, 0.0);
-        for k in (0..t.len()).filter(|&k| (0.02..0.6).contains(&t[k])) {
+        let early = t.iter().any(|&x| (0.02..0.6).contains(&x));
+        for k in (0..t.len()).filter(|&k| !early || (0.02..0.6).contains(&t[k])) {
             sl += zl[k].norm_sqr().sqrt();
             sr_ += zr[k].norm_sqr().sqrt();
             // zr · conj(zl)
@@ -454,45 +796,58 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
         if g > 1e-12 {
             p.left = sl / g;
             p.right = sr_ / g;
-            // 解调用的是 e^{-iωt}：右边的相位比左边大 φ，就是右边超前 φ。
-            p.phase = -ci.atan2(cr);
+            // 右边的相位比左边大多少（右边超前）。
+            p.phase = ci.atan2(cr);
         }
+        // 起音那一刻的相位：第一帧量到的相位（cos 起算，相对解调的频率）按定准的频率推回到起音。
+        let (z0, lag) = if sl >= 0.1 * sr_ { (zl[0], 0.0) } else { (zr[0], p.phase) };
+        let at = z0.im.atan2(z0.re) + TAU * hz0 * t[0] - TAU * hz * (t[0] - on as f64 / sr) - lag;
+        p.start = wrap(at + core::f64::consts::FRAC_PI_2);
         partials.push(p);
+        reliable.push(ok);
+        tracks.push(Track { hz: hz0, centers: starts.iter().take(zl.len()).map(|s| s + window / 2).collect(), zl, zr, width: 1.5 * sr / window as f64 });
     }
-    // 起音噪声：前 15 ms 里不在分音上的能量。
-    let w15 = (0.015 * sr) as usize;
-    let size15 = next_pow2(w15 * 8);
-    let (m15, b15) = spectrum(&x[..w15.min(len)], size15, sr);
-    let near = |f: f64| freqs.iter().any(|&h| (f - h).abs() < 25.0 + 0.015 * h);
-    let (mut total, mut rest, mut moment) = (0.0, 0.0, 0.0);
-    for (k, m) in m15.iter().enumerate().skip(1) {
-        let f = k as f64 * b15;
-        let e = m * m;
-        total += e;
-        if !near(f) && f > 40.0 {
-            rest += e;
-            moment += e * f;
+    if partials.is_empty() {
+        return Err(format!("'{}' is too short to measure", path.display()));
+    }
+    // 衰减量不出来的分音（太弱，一起音就掉进底噪）：按这个音量得出来的那些分音"频率越高衰减越快"的规律补。
+    let known: Vec<(f64, f64)> = partials.iter().zip(&reliable).filter(|(_, ok)| **ok).map(|(p, _)| (p.ratio.ln(), p.t60.ln())).collect();
+    if !known.is_empty() {
+        let longest = known.iter().map(|k| k.1).fold(f64::NEG_INFINITY, f64::max);
+        let law = line(&known).filter(|l| known.len() >= 4 && l.1 <= 0.0);
+        let middle = median(known.iter().map(|k| k.1).collect());
+        for (p, _) in partials.iter_mut().zip(&reliable).filter(|(_, ok)| !**ok) {
+            let guess = law.map_or(middle, |(a, b)| a + b * p.ratio.ln());
+            p.t60 = guess.min(longest).exp().clamp(0.05, 30.0);
+            p.fast_amp = 0.0;
+            p.beat = 0.0;
+            p.beat_cents = 0.0;
         }
     }
-    let rms = (x[..w15.min(len)].iter().map(|v| v * v).sum::<f64>() / w15 as f64).sqrt();
-    let hz = if rest > 0.0 { (moment / rest).clamp(200.0, 0.4 * sr) } else { 4_000.0 };
-    let unit = unit_noise_rms(hz, sr, w15);
-    let noise = Noise { amp: if total > 0.0 { rms * (rest / total).sqrt() / unit.max(1e-9) } else { 0.0 }, hz };
-    // 共振：1 … 2 秒的余音里不在这个音泛音上的能量。
+    // 起音的噪声：前几秒里把量到的分音都减掉，剩下的按频段量。
+    let span = len.min((NOISE_ANALYSIS_SECONDS * sr) as usize);
+    let (mut rl, mut rr) = (l[..span].to_vec(), r[..span].to_vec());
+    for t in &tracks {
+        subtract_track(&mut rl, &t.zl, &t.centers, t.hz, sr, on);
+        subtract_track(&mut rr, &t.zr, &t.centers, t.hz, sr, on);
+    }
+    let bands = noise_bands(&rl, &rr, sr, on, &tracks);
+    // 共振：1 … 2 秒的余音里不在这个音泛音上的能量（只看量到泛音的那一段频率）。
     let mut off_harmonic = 0.0;
-    if len as f64 > 2.2 * sr {
+    if len as f64 > 2.2 * sr && !harmonics.is_empty() {
         let (mt, bt) = spectrum(&x[(1.0 * sr) as usize..(2.0 * sr) as usize], next_pow2((sr * 2.0) as usize), sr);
-        let stretch_at = |n: usize| freqs.get(n - 1).copied().unwrap_or(f0 * n as f64 * freqs.last().map_or(1.0, |&h| h / (f0 * freqs.len() as f64)));
+        let top = (harmonics[harmonics.len() - 1] + 0.5 * f0).min(8_000.0);
         let (mut all, mut harm) = (0.0, 0.0);
         for (k, m) in mt.iter().enumerate().skip(1) {
             let f = k as f64 * bt;
-            if !(60.0..8_000.0).contains(&f) {
+            if !(60.0..top).contains(&f) {
                 continue;
             }
             let e = m * m;
             all += e;
-            let n = (f / f0).round().max(1.0) as usize;
-            if (f - stretch_at(n)).abs() < 3.0 + 0.03 * f0 {
+            let i = harmonics.partition_point(|&h| h < f);
+            let near = [i.checked_sub(1), Some(i)].into_iter().flatten().filter_map(|i| harmonics.get(i)).map(|h| (h - f).abs()).fold(f64::INFINITY, f64::min);
+            if near < 3.0 + 0.03 * f0 {
                 harm += e;
             }
         }
@@ -505,28 +860,11 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
         pitch: pitch.unwrap_or(69.0 + 12.0 * (f0 / 440.0).log2()),
         velocity,
         partials,
-        noise,
+        noise: Noise::default(),
+        bands,
         off_harmonic,
         articulation: String::new(),
     })
-}
-
-/// 演奏时的起音噪声（均匀白噪声过两级一阶低通、按 [`NOISE_SECONDS`] 衰减，见 [`crate::zither`]）振幅为 1 时，
-/// 前 `n` 个样本的均方根：模拟一遍。
-fn unit_noise_rms(hz: f64, sr: f64, n: usize) -> f64 {
-    let k = 1.0 - (-TAU * hz.min(0.4 * sr) / sr).exp();
-    let (mut rng, mut a, mut b, mut sum) = (0x9E37_79B9_7F4A_7C15u64, 0.0, 0.0, 0.0);
-    for i in 0..n {
-        rng ^= rng << 13;
-        rng ^= rng >> 7;
-        rng ^= rng << 17;
-        let w = 2.0 * (rng >> 11) as f64 / (1u64 << 53) as f64 - 1.0;
-        a += (w - a) * k;
-        b += (a - b) * k;
-        let v = b * (-(i as f64) / sr / NOISE_SECONDS).exp();
-        sum += v * v;
-    }
-    (sum / n.max(1) as f64).sqrt()
 }
 
 /// 从一组文件（或文件夹里的 .wav / .flac / .aif …）提取一件乐器。`on_note` 每分析完一个音调用一次（报告进度）。
@@ -629,9 +967,13 @@ pub fn extract(inputs: &[PathBuf], name: &str, mut on_note: impl FnMut(&NoteTabl
     for n in &mut notes {
         n.pitch = r(n.pitch);
         n.off_harmonic = r(n.off_harmonic);
-        n.noise = Noise { amp: r(n.noise.amp), hz: r(n.noise.hz) };
+        for b in &mut n.bands {
+            for v in [&mut b.hz, &mut b.amp, &mut b.t60, &mut b.tail, &mut b.tail_t60, &mut b.left, &mut b.right, &mut b.corr] {
+                *v = r(*v);
+            }
+        }
         for p in &mut n.partials {
-            for v in [&mut p.ratio, &mut p.amp, &mut p.t60, &mut p.fast_amp, &mut p.fast_t60, &mut p.beat, &mut p.beat_cents, &mut p.left, &mut p.right, &mut p.phase] {
+            for v in [&mut p.ratio, &mut p.amp, &mut p.t60, &mut p.fast_amp, &mut p.fast_t60, &mut p.beat, &mut p.beat_cents, &mut p.left, &mut p.right, &mut p.phase, &mut p.start] {
                 *v = r(*v);
             }
         }
@@ -641,7 +983,242 @@ pub fn extract(inputs: &[PathBuf], name: &str, mut on_note: impl FnMut(&NoteTabl
         vibrato: gestures.vibrato.map(|v| Vibrato { depth: r(v.depth), rate: r(v.rate), delay: r(v.delay) }),
         damp: gestures.damp.map(r),
     };
-    Ok(ModalTable { format: FORMAT.into(), version: 1, name: name.into(), resonance: r(resonance), notes, gestures, release: None })
+    Ok(ModalTable { format: FORMAT.into(), version: VERSION, name: name.into(), resonance: r(resonance), notes, gestures, release: None })
+}
+
+/// 一整条录音里找到的一个音：从第几秒起、多长、量到的音高（MIDI）、起音时多响（dBFS）；留下了（存成的文件）还是为什么没用。
+#[derive(Debug, Clone, Serialize)]
+pub struct Segment {
+    pub source: String,
+    pub start: f64,
+    pub seconds: f64,
+    pub pitch: Option<f64>,
+    pub level_db: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<&'static str>,
+}
+
+/// 一段声音的音高（MIDI）和它有多像一个单音（泛音上的能量占 50 Hz 到第 8 次泛音这一段的多少）。
+fn measure_pitch(x: &[f64], sr: f64) -> Option<(f64, f64)> {
+    let a = ((0.02 * sr) as usize).min(x.len() / 4);
+    let b = x.len().min(sr as usize);
+    if b - a < (0.2 * sr) as usize {
+        return None;
+    }
+    let size = next_pow2(4 * (b - a)).max(65_536);
+    let (mag, bin) = spectrum(&x[a..b], size, sr);
+    let mut f0 = fundamental(&mag, bin, None);
+    // 低了一个八度的也凑得出一列泛音，但它的单数次泛音上什么都没有：那就是高一个八度的音。
+    for _ in 0..2 {
+        let power = |n: usize| peak_near(&mag, bin, f0 * n as f64, (0.03 * f0 * n as f64).max(2.0 * bin)).1.powi(2);
+        let (odd, even) = ([1, 3, 5, 7].map(power).iter().sum::<f64>(), [2, 4, 6, 8].map(power).iter().sum::<f64>());
+        if odd < 0.01 * even {
+            f0 *= 2.0;
+        }
+    }
+    let peaks: Vec<f64> = (1..=8).map(|n| peak_near(&mag, bin, f0 * n as f64, (0.03 * f0 * n as f64).max(2.0 * bin)).0).collect();
+    let (mut all, mut on) = (0.0, 0.0);
+    for (k, m) in mag.iter().enumerate().skip(1) {
+        let f = k as f64 * bin;
+        if !(50.0..8.5 * f0).contains(&f) {
+            continue;
+        }
+        all += m * m;
+        if peaks.iter().any(|p| (p - f).abs() < 4.0 + 0.01 * f) {
+            on += m * m;
+        }
+    }
+    (all > 0.0).then(|| (69.0 + 12.0 * (f0 / 440.0).log2(), on / all))
+}
+
+/// 把一整条录音（一次只弹一个音，一个接一个）切成一个音一个文件，存进 `dir`（文件名带量到的音高），交给 [`extract`]。
+/// 只留干净的单音：起音之前上一个音已经收下去（比这个音低 20 dB 以上）、到下一个音之前至少响了半秒、
+/// 听得出一个音高（不是和弦、杂音）。同一个音高弹了好几遍的，留最长的那几遍里轻、中、重各一个（响度差不到 3 dB 的算同一种力度）。
+/// `on_segment` 每找到一个音调用一次（留下的和没用的都报）。
+pub fn split_notes(inputs: &[PathBuf], dir: &Path, mut on_segment: impl FnMut(&Segment)) -> Result<Vec<PathBuf>, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create '{}': {e}", dir.display()))?;
+    let names = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"];
+    let mut files = Vec::new();
+    for (index, path) in inputs.iter().enumerate() {
+        let file = manguebyte::formats::read_file(path).map_err(|e| format!("cannot read '{}': {e}", path.display()))?;
+        let sr = f64::from(file.sample_rate);
+        let buf = &file.buffer;
+        if buf.num_channels() == 0 || buf.num_frames() == 0 {
+            return Err(format!("'{}' is empty", path.display()));
+        }
+        let last = buf.num_channels().min(2) - 1;
+        let mid: Vec<f64> = buf.channel(0).iter().zip(buf.channel(last)).map(|(&a, &b)| 0.5 * (f64::from(a) + f64::from(b))).collect();
+        let source = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        // 每 5 ms 一帧的电平：整个声音的（往回 30 ms 的窗，先滤掉 40 Hz 以下：录音里的低频隆隆声在短窗里忽大忽小），
+        // 和强调高频的（一阶差分，往回 10 ms 的窗：新的一拨在余音上面也看得出来）。
+        let hop = ((0.005 * sr) as usize).max(1);
+        let frames = mid.len() / hop;
+        if frames < 40 {
+            return Err(format!("'{}' is too short to split into notes", path.display()));
+        }
+        let k40 = 1.0 - (-TAU * 40.0 / sr).exp();
+        let (mut low, mut prev) = (0.0, 0.0);
+        let (mut e_full, mut e_high) = (vec![0.0; frames], vec![0.0; frames]);
+        for (i, &v) in mid.iter().enumerate().take(frames * hop) {
+            low += (v - low) * k40;
+            e_full[i / hop] += (v - low).powi(2);
+            e_high[i / hop] += (v - prev).powi(2);
+            prev = v;
+        }
+        let level = |e: &[f64], back: usize| -> Vec<f64> {
+            (0..frames).map(|k| 10.0 * (e[k.saturating_sub(back - 1)..=k].iter().sum::<f64>() / (back * hop) as f64).max(1e-14).log10()).collect()
+        };
+        let (full, high) = (level(&e_full, 6), level(&e_high, 2));
+        // 150 Hz 以上各个三分之一倍频程频段的电平（往回 20 ms 的窗）：新的音落在差不多响的余音上，整体电平几乎不动，
+        // 但它的分音所在的频段里会突然多出东西来。
+        let window = next_pow2((0.02 * sr) as usize);
+        let centers: Vec<f64> = (0..40).map(|i| 150.0 * 2f64.powf(i as f64 / 3.0)).take_while(|&c| c * 1.13 < 0.45 * sr).collect();
+        let edges: Vec<(usize, usize)> = centers.iter().map(|&c| (((c / 1.122) * window as f64 / sr).floor() as usize, ((c * 1.122) * window as f64 / sr).ceil() as usize)).collect();
+        let (taper, mut fft, mut spec, mut input) = (hann(window), RealFft::<f64>::new(window), vec![Complex::ZERO; window / 2 + 1], vec![0.0; window]);
+        let mut bands: Vec<Vec<f64>> = vec![vec![-140.0; frames]; centers.len()];
+        for k in (window / hop)..frames {
+            let end = (k + 1) * hop;
+            for (i, v) in input.iter_mut().enumerate() {
+                *v = mid[end - window + i] * taper[i];
+            }
+            fft.forward(&input, &mut spec);
+            for (band, &(lo, hi)) in bands.iter_mut().zip(&edges) {
+                let e: f64 = spec[lo.max(1)..=hi.min(window / 2)].iter().map(|c| c.norm_sqr()).sum();
+                band[k] = 10.0 * (e / (window * window) as f64).max(1e-14).log10();
+            }
+        }
+        let band_top = bands.iter().flat_map(|b| b.iter().copied()).fold(f64::NEG_INFINITY, f64::max);
+        let top = full.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        if top < -80.0 {
+            return Err(format!("'{}' is silent", path.display()));
+        }
+        // 起音：15 ms 里比前 30 ms 的最低处高出一截，而且比前 150 ms 里最响的时候还响（整个声音升 6 dB、超出 3 dB；
+        // 或高频升 10 dB、超出 6 dB；或哪一个频段里多出 10 dB）。余音里两根弦的拍从谷底回升得也快，
+        // 但回不到之前那么响，不算。挨着的（80 ms 内）算一个。
+        let mut onsets: Vec<usize> = Vec::new();
+        for k in 0..frames.saturating_sub(8) {
+            let struck = |l: &[f64], rise: f64, over: f64| {
+                let low = l[k.saturating_sub(6)..=k].iter().copied().fold(f64::INFINITY, f64::min);
+                let before = l[k.saturating_sub(30)..k].iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let after = l[k + 1..k + 8].iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                (k == 0 || l[k + 3] - low >= rise) && after - before >= over
+            };
+            // 多出来的要站得住（之后 40 ms 的平均比之前 150 ms 里最响的还高 8 dB）：安静处一两帧的起伏不算。
+            let appears = || {
+                bands.iter().any(|l| {
+                    let before = l[k.saturating_sub(30)..k].iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                    let after = l[k + 2..(k + 10).min(frames)].iter().sum::<f64>() / ((k + 10).min(frames) - k - 2) as f64;
+                    k > 0 && after - before >= 8.0 && after > band_top - 50.0
+                })
+            };
+            if (struck(&full, 6.0, 3.0) || struck(&high, 10.0, 6.0) || appears()) && full[k + 3] > top - 45.0 && onsets.last().is_none_or(|&o| k > o + 16) {
+                // 往回找到开始升的那一帧。
+                let mut at = k;
+                while at > 0 && at + 6 > k && full[at] > full[at - 1] {
+                    at -= 1;
+                }
+                if onsets.last().is_none_or(|&o| at > o + 16) {
+                    onsets.push(at);
+                }
+            }
+        }
+        struct Found {
+            seg: Segment,
+            from: usize,
+            to: usize,
+        }
+        let mut found: Vec<Found> = Vec::new();
+        for (i, &at) in onsets.iter().enumerate() {
+            let from = (at * hop).saturating_sub((0.01 * sr) as usize);
+            let next = onsets.get(i + 1).map_or(mid.len(), |&n| (n * hop).saturating_sub((0.01 * sr) as usize));
+            let to = next.min(from + (ANALYSIS_SECONDS * sr) as usize);
+            let peak = full[at..(at + 20).min(frames)].iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            let before = if at >= 8 { full[at - 8..at - 1].iter().sum::<f64>() / 7.0 } else { -140.0 };
+            let mut seg = Segment { source: source.clone(), start: from as f64 / sr, seconds: (to - from) as f64 / sr, pitch: None, level_db: peak, file: None, skipped: None };
+            if seg.seconds < 0.5 {
+                seg.skipped = Some("shorter than 0.5 s before the next note");
+            } else if before > peak - 20.0 {
+                seg.skipped = Some("the note before it is still ringing (less than 20 dB below this one)");
+            } else {
+                match measure_pitch(&mid[from..to], sr) {
+                    Some((p, clear)) if clear >= 0.4 && (20.0..=110.0).contains(&p) => seg.pitch = Some(p),
+                    Some((p, _)) => {
+                        seg.pitch = Some(p);
+                        seg.skipped = Some("no single clear pitch (a chord, noise, or partials that are not harmonics)");
+                    }
+                    None => seg.skipped = Some("no pitch found"),
+                }
+            }
+            found.push(Found { seg, from, to });
+        }
+        // 同一个音高的几遍：比最长的短一半以上的不要；剩下的按响度排，差不到 3 dB 的留长的；多于三个留轻、中、重。
+        let key = |f: &Found| f.seg.pitch.map_or(0, |p| p.round() as i64);
+        let mut pitches: Vec<i64> = found.iter().filter(|f| f.seg.skipped.is_none()).map(key).collect();
+        pitches.sort_unstable();
+        pitches.dedup();
+        for p in pitches {
+            let mut same: Vec<usize> = (0..found.len()).filter(|&i| found[i].seg.skipped.is_none() && key(&found[i]) == p).collect();
+            let longest = same.iter().map(|&i| found[i].seg.seconds).fold(0.0, f64::max);
+            let short: Vec<usize> = same.iter().copied().filter(|&i| found[i].seg.seconds < 0.5 * longest).collect();
+            for i in short {
+                found[i].seg.skipped = Some("much shorter than another take of this pitch");
+            }
+            same.retain(|&i| found[i].seg.skipped.is_none());
+            same.sort_by(|&a, &b| found[a].seg.level_db.total_cmp(&found[b].seg.level_db));
+            let mut kept: Vec<usize> = Vec::new();
+            for i in same {
+                match kept.last().copied() {
+                    Some(j) if found[i].seg.level_db - found[j].seg.level_db < 3.0 => {
+                        let (drop, keep) = if found[i].seg.seconds > found[j].seg.seconds { (j, i) } else { (i, j) };
+                        found[drop].seg.skipped = Some("as loud as another take of this pitch (within 3 dB): the longer one is used");
+                        if let Some(last) = kept.last_mut() {
+                            *last = keep;
+                        }
+                    }
+                    _ => kept.push(i),
+                }
+            }
+            if kept.len() > 3 {
+                for &i in &kept[1..kept.len() - 1] {
+                    if i != kept[kept.len() / 2] {
+                        found[i].seg.skipped = Some("more than three loudness levels of this pitch: the softest, middle and loudest are used");
+                    }
+                }
+            }
+        }
+        for f in &mut found {
+            if let (None, Some(p)) = (f.seg.skipped, f.seg.pitch) {
+                let n = p.round() as i32;
+                let name = format!("{}{}_f{}t{:.2}.wav", names[n.rem_euclid(12) as usize], n / 12 - 1, index + 1, f.seg.start);
+                let len = f.to - f.from;
+                let mut out = manguebyte::prelude::AudioBuffer::<f32>::new(2, len);
+                // 末尾 5 ms 渐出（下一个音之前剪断的地方）。
+                let fade = ((0.005 * sr) as usize).min(len);
+                for (c, ch) in [0, last].into_iter().enumerate() {
+                    let dst = out.channel_mut(c);
+                    dst.copy_from_slice(&buf.channel(ch)[f.from..f.to]);
+                    for k in 0..fade {
+                        dst[len - 1 - k] *= k as f32 / fade as f32;
+                    }
+                }
+                let file = dir.join(name);
+                manguebyte::prelude::wav::write_file(&file, &out, file_rate(sr), manguebyte::prelude::WavFormat::Float32).map_err(|e| format!("cannot write '{}': {e:?}", file.display()))?;
+                files.push(file.clone());
+                f.seg.file = Some(file);
+            }
+            on_segment(&f.seg);
+        }
+    }
+    if files.is_empty() {
+        return Err("no clean single notes found: play one note at a time and let each ring before the next (see `muser yinse extract --help`)".into());
+    }
+    Ok(files)
+}
+
+fn file_rate(sr: f64) -> u32 {
+    sr.round() as u32
 }
 
 /// 用 muser 的一个乐器（`sfz:` 音色库、`plugin:`、内置乐器）演奏每个音高、力度，各存成一个文件（文件名带音高、力度），
@@ -832,6 +1409,7 @@ const RESONANCE_SCALE: f64 = 0.25;
 pub struct Voice {
     pub partials: Vec<Partial>,
     pub noise: Noise,
+    pub bands: Vec<NoiseBand>,
 }
 
 impl ModalTable {
@@ -891,10 +1469,30 @@ impl ModalTable {
                 }
             }
         }
-        let count = weights.iter().map(|&(i, _, _)| self.notes[i].partials.len()).max().unwrap_or(0);
-        let mut partials = Vec::with_capacity(count);
-        for k in 0..count {
-            let present: Vec<(&Partial, f64, f64)> = weights.iter().filter_map(|&(i, w, g)| self.notes[i].partials.get(k).map(|p| (p, w, g))).collect();
+        // 把几个录音的分音对齐：有泛音序号的按序号（哪个录音漏了一个也不会错位），没有序号的（不在泛音列上的分音、
+        // 版本 1 的表）按频率比最近的对。最响的录音先排。
+        let mut order: Vec<usize> = (0..weights.len()).collect();
+        order.sort_by(|&a, &b| weights[b].1.total_cmp(&weights[a].1));
+        let mut slots: Vec<(u32, f64, Vec<(usize, &Partial)>)> = Vec::new();
+        for &wi in &order {
+            for p in &self.notes[weights[wi].0].partials {
+                let near = (0.02 * p.ratio).clamp(0.03, 0.45);
+                let hit = slots
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| !s.2.iter().any(|q| q.0 == wi))
+                    .filter(|(_, s)| if p.n > 0 { s.0 == p.n } else { s.0 == 0 && (s.1 - p.ratio).abs() <= near })
+                    .min_by(|a, b| (a.1.1 - p.ratio).abs().total_cmp(&(b.1.1 - p.ratio).abs()))
+                    .map(|(k, _)| k);
+                match hit {
+                    Some(k) => slots[k].2.push((wi, p)),
+                    None => slots.push((p.n, p.ratio, vec![(wi, p)])),
+                }
+            }
+        }
+        let mut partials = Vec::with_capacity(slots.len());
+        for (n, _, parts) in &slots {
+            let present: Vec<(&Partial, f64, f64)> = parts.iter().map(|&(wi, p)| (p, weights[wi].1, weights[wi].2)).collect();
             let wsum: f64 = present.iter().map(|&(_, w, _)| w).sum();
             if wsum <= 0.0 {
                 continue;
@@ -902,6 +1500,7 @@ impl ModalTable {
             let avg = |f: &dyn Fn(&Partial) -> f64| present.iter().map(|&(p, w, _)| f(p) * w).sum::<f64>() / wsum;
             let geo = |f: &dyn Fn(&Partial) -> f64| (present.iter().map(|&(p, w, _)| f(p).max(1e-9).ln() * w).sum::<f64>() / wsum).exp();
             let (pr, pi) = present.iter().fold((0.0, 0.0), |(a, b), &(p, w, _)| (a + p.phase.cos() * w, b + p.phase.sin() * w));
+            let (sr, si) = present.iter().fold((0.0, 0.0), |(a, b), &(p, w, _)| (a + p.start.cos() * w * (p.amp + p.fast_amp), b + p.start.sin() * w * (p.amp + p.fast_amp)));
             partials.push(Partial {
                 ratio: avg(&|p| p.ratio),
                 // 振幅按全部权重加（缺这个分音的录音算 0），其余按有这个分音的录音平均。
@@ -914,13 +1513,46 @@ impl ModalTable {
                 left: avg(&|p| p.left),
                 right: avg(&|p| p.right),
                 phase: pi.atan2(pr),
+                n: *n,
+                start: if sr == 0.0 && si == 0.0 { 0.0 } else { si.atan2(sr) },
             });
         }
+        // 对出来比能演奏的多：留最响的。
+        if partials.len() > MAX_PARTIALS {
+            partials.sort_by(|a, b| (b.amp + b.fast_amp).total_cmp(&(a.amp + a.fast_amp)));
+            partials.truncate(MAX_PARTIALS);
+        }
+        partials.sort_by(|a, b| a.ratio.total_cmp(&b.ratio));
         let noise = Noise {
             amp: weights.iter().map(|&(i, w, g)| self.notes[i].noise.amp * w * g).sum(),
             hz: (weights.iter().map(|&(i, w, _)| self.notes[i].noise.hz.max(1.0).ln() * w).sum::<f64>() / weights.iter().map(|w| w.1).sum::<f64>().max(1e-9)).exp(),
         };
-        Voice { partials, noise }
+        // 噪声的频段：各录音同一个频段的加权（没有这个频段的录音算 0）。
+        let mut bands = Vec::new();
+        for k in 0..NOISE_BANDS {
+            let hz = 31.25 * (k as f64).exp2();
+            let present: Vec<(&NoiseBand, f64, f64)> = weights.iter().filter_map(|&(i, w, g)| self.notes[i].bands.iter().find(|b| (b.hz / hz - 1.0).abs() < 0.02).map(|b| (b, w, g))).collect();
+            let wsum: f64 = present.iter().map(|p| p.1).sum();
+            if wsum <= 0.0 {
+                continue;
+            }
+            let avg = |f: &dyn Fn(&NoiseBand) -> f64| present.iter().map(|&(b, w, _)| f(b) * w).sum::<f64>() / wsum;
+            let geo = |f: &dyn Fn(&NoiseBand) -> f64, has: &dyn Fn(&NoiseBand) -> bool| {
+                let w: f64 = present.iter().filter(|p| has(p.0)).map(|p| p.1).sum();
+                if w <= 0.0 { 0.0 } else { (present.iter().filter(|p| has(p.0)).map(|&(b, w, _)| f(b).max(1e-9).ln() * w).sum::<f64>() / w).exp() }
+            };
+            bands.push(NoiseBand {
+                hz,
+                amp: present.iter().map(|&(b, w, g)| b.amp * w * g).sum(),
+                t60: geo(&|b| b.t60, &|_| true),
+                tail: present.iter().map(|&(b, w, g)| b.tail * w * g).sum(),
+                tail_t60: geo(&|b| b.tail_t60, &|b| b.tail > 0.0),
+                left: avg(&|b| b.left),
+                right: avg(&|b| b.right),
+                corr: avg(&|b| b.corr),
+            });
+        }
+        Voice { partials, noise, bands }
     }
 }
 
@@ -945,6 +1577,9 @@ pub(crate) fn load(path: &str) -> Result<(&'static ModalTable, &'static crate::z
     }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("cannot read yinse instrument '{}': {e}", path.display()))?;
     let table: ModalTable = serde_json::from_str(&text).map_err(|e| format!("'{}' is not a yinse instrument: {e}", path.display()))?;
+    if table.format == FORMAT && table.version > VERSION {
+        return Err(format!("'{}' was extracted by a newer muser (table version {}, this muser reads up to {VERSION}): update muser", path.display(), table.version));
+    }
     if table.format != FORMAT || table.notes.is_empty() || table.notes.iter().any(|n| n.partials.is_empty()) {
         return Err(format!("'{}' is not a yinse instrument (format {FORMAT}, at least one note with partials)", path.display()));
     }
@@ -1019,6 +1654,28 @@ pub fn library() -> Vec<LibraryEntry> {
 }
 
 /// `yinse:<文件>` 这条音轨的表（不是录音提取的乐器、读不到都是 None）。
+/// 内置古琴（`yinse.pluck.guqin`）的分音表：从古琴独奏录音里挑出来的单音量的（散音、按音一组，泛音一组）。
+/// shortcut: 选定录音之前可用环境变量 MUSER_FIT_GUQIN（一个 .yinse.json）换一张表试听，定下来就删掉。
+pub(crate) fn builtin_guqin() -> &'static ModalTable {
+    static TABLE: std::sync::OnceLock<ModalTable> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        let text = std::env::var_os("MUSER_FIT_GUQIN").and_then(|p| std::fs::read_to_string(p).ok());
+        let text = text.as_deref().unwrap_or(include_str!("data/guqin.yinse.json"));
+        serde_json::from_str(text).expect("valid built-in guqin table")
+    })
+}
+
+/// 内置古筝（`yinse.pluck.guzheng`）的分音表：从古筝独奏录音里挑出来的单音量的。
+/// shortcut: 选定录音之前可用环境变量 MUSER_FIT_GUZHENG（一个 .yinse.json）换一张表试听，定下来就删掉。
+pub(crate) fn builtin_guzheng() -> &'static ModalTable {
+    static TABLE: std::sync::OnceLock<ModalTable> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        let text = std::env::var_os("MUSER_FIT_GUZHENG").and_then(|p| std::fs::read_to_string(p).ok());
+        let text = text.as_deref().unwrap_or(include_str!("data/guzheng.yinse.json"));
+        serde_json::from_str(text).expect("valid built-in guzheng table")
+    })
+}
+
 pub(crate) fn table_of(instrument: &str) -> Option<&'static ModalTable> {
     load(instrument.trim().strip_prefix("yinse:")?).ok().map(|(t, _)| t)
 }
@@ -1071,6 +1728,12 @@ pub struct Comparison {
     pub velocity: f64,
     /// 三分之一倍频程、20 ms 一帧，前 2 秒里各格的平均差（dB，两边先拉到一样响）。
     pub spectral_db: f64,
+    /// 前 2 秒的响度：提取的比原录音响多少（dB，不拉平）。
+    pub level_db: f64,
+    /// 把这个音高的录音从乐器里拿掉、用两边相邻的音高插值出来，再和这个录音比的频谱差（dB）：
+    /// 没录的音高演奏起来差多少。没让算、或者它是最低最高的音高，就没有。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub between_db: Option<f64>,
     /// 0.1 / 0.5 / 1 / 2 秒时比峰值低多少（dB）：原录音、提取的。
     pub decay_ref: [f64; 4],
     pub decay_ours: [f64; 4],
@@ -1091,7 +1754,8 @@ fn onset_of(x: &[f64]) -> usize {
     x.iter().position(|v| v.abs() > 0.05 * peak).unwrap_or(0)
 }
 
-fn features(lr: &[Vec<f64>; 2], sr: f64) -> (Vec<Vec<f64>>, [f64; 4], f64) {
+/// 起音起 2 秒：各帧各频段的电平（dB，先按均方根拉平）、衰减、左右相关度、均方根。
+fn features(lr: &[Vec<f64>; 2], sr: f64) -> (Vec<Vec<f64>>, [f64; 4], f64, f64) {
     let mid: Vec<f64> = lr[0].iter().zip(&lr[1]).map(|(a, b)| 0.5 * (a + b)).collect();
     let on = onset_of(&mid).saturating_sub((0.002 * sr) as usize);
     let n = ((2.1 * sr) as usize).min(mid.len().saturating_sub(on));
@@ -1137,48 +1801,80 @@ fn features(lr: &[Vec<f64>; 2], sr: f64) -> (Vec<Vec<f64>>, [f64; 4], f64) {
         saa += (x - ma).powi(2);
         sbb += (y - mb).powi(2);
     }
-    (grid, decay, sab / (saa * sbb).sqrt().max(1e-12))
+    (grid, decay, sab / (saa * sbb).sqrt().max(1e-12), rms)
 }
 
-/// 把每个原录音在提取的乐器上用同样的音高、力度演奏一遍，比较。
-pub fn compare(table_path: &str, files: &[PathBuf]) -> Result<Vec<Comparison>, String> {
+/// 把每个原录音在提取的乐器上用同样的音高、力度（和演奏法）演奏一遍，比较。
+/// `between`：再把每个音高的录音拿掉、让相邻的音高插值出它来比一遍（看没录的音高差多少）。
+pub fn compare(table_path: &str, files: &[PathBuf], between: bool) -> Result<Vec<Comparison>, String> {
     let (table, _) = load(table_path)?;
     let spec = format!("yinse:{}", resolve(table_path).display());
     let sr = 48_000u32;
+    let play = |spec: &str, pitch: f64, velocity: f64, articulation: &str| -> Result<[Vec<f64>; 2], String> {
+        let mut project = muser_core::Project::new("compare", 60.0);
+        let mut track = muser_core::Track::new("t", spec);
+        // 居中的音轨两声道各 -3 dB（等功率声像）：补回来，响度才能直接和录音比。
+        track.gain_db = 20.0 * core::f64::consts::SQRT_2.log10();
+        let mut clip = muser_core::Clip::new(0.0, 3.0);
+        let mut note = muser_core::Note::new(pitch.round().clamp(0.0, 127.0) as u8, 0.0, 2.5);
+        note.velocity = velocity as f32;
+        note.articulation = (!articulation.is_empty()).then(|| articulation.to_string());
+        clip.notes.push(note);
+        track.clips.push(clip);
+        project.tracks.push(track);
+        let audio = crate::render::render(&project, crate::render::RenderSettings { tail_seconds: 1.0, ..Default::default() }).map_err(|e| e.to_string())?;
+        Ok([audio.channel(0).iter().map(|&v| f64::from(v)).collect(), audio.channel(1).iter().map(|&v| f64::from(v)).collect()])
+    };
+    let difference = |a: &[Vec<f64>], b: &[Vec<f64>]| {
+        let cells: Vec<f64> = a.iter().zip(b).flat_map(|(a, b)| a.iter().zip(b).map(|(x, y)| (x - y).abs())).collect();
+        cells.iter().sum::<f64>() / cells.len().max(1) as f64
+    };
+    let dir = std::env::temp_dir().join(format!("muser-yinse-between-{}", std::process::id()));
     let mut out = Vec::new();
     for f in files {
         let name = f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let stem = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let known = table.notes.iter().find(|n| n.source == name);
         let info = parse_name(&stem);
+        // 动作的录音（轮音、揉音、止音）不是单音：不比。
+        if info.articulation.as_deref().is_some_and(|a| GESTURES.contains(&a)) {
+            continue;
+        }
         let (p, v) = (info.pitch, info.velocity);
         let pitch = p.or(known.map(|n| n.pitch.round())).ok_or_else(|| format!("'{name}': no pitch in the file name and not one of the instrument's notes"))?;
         let velocity = v.or(known.map(|n| n.velocity)).unwrap_or(0.8);
+        let articulation = info.articulation.clone().or(known.map(|n| n.articulation.clone())).unwrap_or_default();
         let reference = read_stereo(f, sr)?;
-        let mut project = muser_core::Project::new("compare", 60.0);
-        let mut track = muser_core::Track::new("t", &spec);
-        let mut clip = muser_core::Clip::new(0.0, 3.0);
-        let mut note = muser_core::Note::new(pitch.round().clamp(0.0, 127.0) as u8, 0.0, 2.5);
-        note.velocity = velocity as f32;
-        clip.notes.push(note);
-        track.clips.push(clip);
-        project.tracks.push(track);
-        let audio = crate::render::render(&project, crate::render::RenderSettings { tail_seconds: 1.0, ..Default::default() }).map_err(|e| e.to_string())?;
-        let ours = [audio.channel(0).iter().map(|&v| f64::from(v)).collect(), audio.channel(1).iter().map(|&v| f64::from(v)).collect()];
-        let (ga, da, sa) = features(&reference, f64::from(sr));
-        let (gb, db, sb) = features(&ours, f64::from(sr));
-        let cells: Vec<f64> = ga.iter().zip(&gb).flat_map(|(a, b)| a.iter().zip(b).map(|(x, y)| (x - y).abs())).collect();
+        let ours = play(&spec, pitch, velocity, &articulation)?;
+        let (ga, da, sa, la) = features(&reference, f64::from(sr));
+        let (gb, db, sb, lb) = features(&ours, f64::from(sr));
+        let mut between_db = None;
+        let same = |n: &&NoteTable| n.articulation == articulation;
+        if between && table.notes.iter().filter(same).any(|n| n.pitch < pitch - 0.5) && table.notes.iter().filter(same).any(|n| n.pitch > pitch + 0.5) {
+            let file = dir.join(format!("{}-{articulation}.yinse.json", pitch.round()));
+            if !file.is_file() {
+                let mut without = table.clone();
+                without.notes.retain(|n| n.articulation != articulation || (n.pitch - pitch).abs() > 0.5);
+                std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create '{}': {e}", dir.display()))?;
+                std::fs::write(&file, serde_json::to_string(&without).map_err(|e| e.to_string())?).map_err(|e| format!("cannot write '{}': {e}", file.display()))?;
+            }
+            let (gc, ..) = features(&play(&format!("yinse:{}", file.display()), pitch, velocity, &articulation)?, f64::from(sr));
+            between_db = Some(difference(&ga, &gc));
+        }
         out.push(Comparison {
             source: name,
             pitch,
             velocity,
-            spectral_db: cells.iter().sum::<f64>() / cells.len().max(1) as f64,
+            spectral_db: difference(&ga, &gb),
+            level_db: 20.0 * (lb / la).log10(),
+            between_db,
             decay_ref: da,
             decay_ours: db,
             stereo_ref: sa,
             stereo_ours: sb,
         });
     }
+    let _ = std::fs::remove_dir_all(&dir);
     Ok(out)
 }
 
@@ -1231,9 +1927,156 @@ mod tests {
         assert!((p1.t60 - 2.0).abs() < 0.3, "slow t60 {}", p1.t60);
         assert!((p1.amp - 0.3).abs() < 0.06, "slow amp {}", p1.amp);
         assert!(p1.fast_amp > 0.1 && p1.fast_t60 < 0.3, "fast {} {}", p1.fast_amp, p1.fast_t60);
-        assert!(p1.left > p1.right && (p1.phase.abs() - 0.5).abs() < 0.1, "stereo {} {} {}", p1.left, p1.right, p1.phase);
+        // 右边落后 0.5 弧度。
+        assert!(p1.left > p1.right && (p1.phase + 0.5).abs() < 0.1, "stereo {} {} {}", p1.left, p1.right, p1.phase);
+        assert_eq!(p1.n, 1);
         let p2 = note.partials.iter().find(|p| (p.ratio - 2.01).abs() < 0.01).expect("second partial");
         assert!((p2.t60 - 1.0).abs() < 0.2, "p2 t60 {}", p2.t60);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 写一个测试用的录音：`f(t)` 给左右两路，前面留 10 ms 空白。
+    fn write_note(dir: &Path, name: &str, seconds: f64, f: impl Fn(f64, usize) -> (f64, f64)) -> PathBuf {
+        let sr = 48_000.0;
+        let n = (seconds * sr) as usize;
+        let mut buf = manguebyte::prelude::AudioBuffer::<f32>::new(2, n + 480);
+        for i in 0..n {
+            let (l, r) = f(i as f64 / sr, i);
+            buf.channel_mut(0)[i + 480] = l as f32;
+            buf.channel_mut(1)[i + 480] = r as f32;
+        }
+        std::fs::create_dir_all(dir).unwrap();
+        let path = dir.join(name);
+        manguebyte::prelude::wav::write_file(&path, &buf, 48_000, manguebyte::prelude::WavFormat::Float32).unwrap();
+        path
+    }
+
+    fn white(i: usize, salt: u64) -> f64 {
+        let mut x = (i as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ salt.wrapping_mul(0xD1B5_4A32_D192_ED03);
+        x ^= x >> 29;
+        x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        x ^= x >> 32;
+        (x >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
+    }
+
+    /// 录音有底噪：很快掉进底噪的分音不能量成"余音很长"。
+    #[test]
+    fn a_partial_that_sinks_into_the_noise_floor_keeps_its_decay() {
+        let dir = std::env::temp_dir().join(format!("muser-modal-floor-{}", std::process::id()));
+        let path = write_note(&dir, "A3_v90.wav", 6.0, |t, i| {
+            let s = 0.3 * (TAU * 220.0 * t).sin() * 10f64.powf(-3.0 * t / 4.0) + 0.03 * (TAU * 1320.0 * t).sin() * 10f64.powf(-3.0 * t / 0.6);
+            (s + 0.001 * white(i, 1), s + 0.001 * white(i, 2))
+        });
+        let note = analyze(&path, Some(57.0), 0.7).unwrap();
+        let p6 = note.partials.iter().find(|p| p.n == 6).expect("sixth partial");
+        assert!((p6.t60 - 0.6).abs() < 0.15, "t60 {} (the envelope is flat in the noise after 0.5 s)", p6.t60);
+        let p1 = note.partials.iter().find(|p| p.n == 1).unwrap();
+        assert!((p1.t60 - 4.0).abs() < 0.5 && p1.beat == 0.0, "t60 {} beat {}", p1.t60, p1.beat);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 钟、木琴的分音不成整数倍：也收，而且标成不在泛音列上（n = 0）。
+    #[test]
+    fn partials_off_the_harmonic_series_are_found() {
+        let dir = std::env::temp_dir().join(format!("muser-modal-bell-{}", std::process::id()));
+        let path = write_note(&dir, "A4_v90.wav", 3.0, |t, _| {
+            let s = 0.3 * (TAU * 440.0 * t).sin() * 10f64.powf(-3.0 * t / 2.0)
+                + 0.2 * (TAU * 440.0 * 2.76 * t).sin() * 10f64.powf(-3.0 * t / 1.0)
+                + 0.1 * (TAU * 440.0 * 5.4 * t).sin() * 10f64.powf(-3.0 * t / 0.5);
+            (s, s)
+        });
+        let note = analyze(&path, Some(69.0), 0.7).unwrap();
+        for (ratio, amp, t60) in [(2.76, 0.2, 1.0), (5.4, 0.1, 0.5)] {
+            let p = note.partials.iter().find(|p| (p.ratio - ratio).abs() < 0.01).unwrap_or_else(|| panic!("partial at {ratio}: {:?}", note.partials.iter().map(|p| p.ratio).collect::<Vec<_>>()));
+            assert!(p.n == 0 && (p.amp - amp).abs() < 0.03 && (p.t60 - t60).abs() < 0.15, "{p:?}");
+        }
+        assert_eq!(note.partials.len(), 3, "{:?}", note.partials.iter().map(|p| p.ratio).collect::<Vec<_>>());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 起音的一下噪声：量出来在对的频段、对的快慢；提取的乐器演奏出来，波形和录音对得上（分音的起始相位）。
+    #[test]
+    fn attack_noise_and_start_phases_are_played_back() {
+        let dir = std::env::temp_dir().join(format!("muser-modal-play-{}", std::process::id()));
+        // 分音在 3 ms 里升起来（真的乐器不会从半截波形突然开始）。
+        let rise = |t: f64| 0.5 - 0.5 * (core::f64::consts::PI * (t / 0.003).min(1.0)).cos();
+        let tone = |t: f64| rise(t) * (0.3 * (TAU * 220.0 * t + 0.7).sin() * 10f64.powf(-3.0 * t / 3.0) + 0.1 * (TAU * 440.0 * t - 1.0).sin() * 10f64.powf(-3.0 * t / 1.5));
+        // 2 … 8 kHz 的一下噪声（白噪声的二阶差分近似高通），60 ms 到 -60 dB。
+        let burst = |t: f64, i: usize| 0.05 * (white(i, 3) - white(i + 1, 3)) * 10f64.powf(-3.0 * t / 0.06);
+        let path = write_note(&dir, "A3_v100.wav", 4.0, |t, i| (tone(t) + burst(t, i), tone(t) + burst(t, i)));
+        let table = extract(std::slice::from_ref(&path), "test", |_| {}).unwrap();
+        assert_eq!(table.version, VERSION);
+        let note = &table.notes[0];
+        let high: f64 = note.bands.iter().filter(|b| b.hz >= 4_000.0).map(|b| b.amp * b.amp).sum::<f64>().sqrt();
+        assert!(high > 0.02 && high < 0.12, "bands {:?}", note.bands);
+        let top = note.bands.iter().find(|b| b.hz == 16_000.0).expect("16 kHz band");
+        assert!(top.t60 > 0.03 && top.t60 < 0.1 && top.corr > 0.9, "{top:?}");
+        // 低的频段里只有分音起音那几毫秒没对上的一点（演奏时分音升起来的快慢是固定的），比分音轻得多。
+        assert!(note.bands.iter().filter(|b| b.hz <= 500.0).all(|b| b.amp < 0.1 * 0.3), "bands {:?}", note.bands);
+        // 演奏出来和录音比：一样响，1 kHz 以下（分音）的波形对得上。
+        let file = dir.join("t.yinse.json");
+        std::fs::write(&file, serde_json::to_string(&table).unwrap()).unwrap();
+        let list = compare(&file.to_string_lossy(), &[path], false).unwrap();
+        assert!(list[0].level_db.abs() < 0.7 && list[0].spectral_db < 1.5, "{:?}", list[0]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 一个录音漏了一次泛音：和别的录音插值时按泛音序号对齐，不会把第 3 次和第 4 次平均成 3.5 次。
+    #[test]
+    fn partials_are_aligned_by_harmonic_number() {
+        let partial = |n: u32| Partial { ratio: f64::from(n), amp: 0.1, t60: 2.0, left: 1.0, right: 1.0, n, ..Default::default() };
+        let note = |velocity: f64, harmonics: &[u32]| NoteTable {
+            source: String::new(),
+            pitch: 60.0,
+            velocity,
+            partials: harmonics.iter().map(|&n| partial(n)).collect(),
+            noise: Noise::default(),
+            bands: Vec::new(),
+            off_harmonic: 0.0,
+            articulation: String::new(),
+        };
+        let mut t = ModalTable {
+            format: FORMAT.into(), version: VERSION, name: String::new(), resonance: 0.0,
+            notes: vec![note(0.4, &[1, 2, 4, 5]), note(0.8, &[1, 2, 3, 4, 5])], gestures: Gestures::default(), release: None,
+        };
+        let v = t.voice(60.0, 0.6, "");
+        let ratios = |v: &Voice| v.partials.iter().map(|p| (p.ratio * 1e6).round() / 1e6).collect::<Vec<_>>();
+        assert_eq!(ratios(&v), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert!((v.partials[2].amp - 0.05).abs() < 1e-9 && (v.partials[3].amp - 0.1).abs() < 1e-9, "{:?}", v.partials);
+        // 版本 1 的表没有序号：按频率比最近的对。
+        for n in &mut t.notes {
+            n.partials.iter_mut().for_each(|p| p.n = 0);
+        }
+        assert_eq!(ratios(&t.voice(60.0, 0.6, "")), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    /// 一整条录音：一个接一个的音切开来，各自量出音高；压在上一个音余音上的、太短的不用；同一个音高轻重两遍是两层力度。
+    #[test]
+    fn a_take_is_split_into_its_clean_notes() {
+        let dir = std::env::temp_dir().join(format!("muser-modal-split-{}", std::process::id()));
+        // (第几秒起, 频率, 振幅, 余音 t60)：A3 轻、A3 重、E4（还响着的时候 1 秒后来了个差不多响的 C5：E4 用到 C5 之前，C5 不干净不用）、最后 D4 只有 0.3 秒。
+        let notes = [(0.2, 220.0, 0.1, 1.0), (3.2, 220.0, 0.4, 1.0), (6.2, 329.63, 0.3, 3.0), (7.2, 523.25, 0.3, 1.0), (9.5, 293.66, 0.3, 1.0)];
+        let path = write_note(&dir, "take.wav", 9.8, |t, i| {
+            let mut s = 0.0005 * white(i, 5);
+            for &(at, hz, amp, t60) in &notes {
+                if t >= at {
+                    let x = t - at;
+                    let rise = 0.5 - 0.5 * (core::f64::consts::PI * (x / 0.003).min(1.0)).cos();
+                    s += rise * amp * 10f64.powf(-3.0 * x / t60) * ((TAU * hz * x).sin() + 0.4 * (TAU * 2.0 * hz * x).sin() + 0.2 * (TAU * 3.0 * hz * x).sin());
+                }
+            }
+            (s, s)
+        });
+        let mut all = Vec::new();
+        let files = split_notes(&[path], &dir.join("notes"), |s| all.push(s.clone())).unwrap();
+        let used: Vec<i64> = all.iter().filter(|s| s.skipped.is_none()).map(|s| s.pitch.unwrap().round() as i64).collect();
+        assert_eq!(used, vec![57, 57, 64], "{all:#?}");
+        assert_eq!(all.len(), 5, "{all:#?}");
+        assert!(all[3].skipped.is_some_and(|why| why.contains("still ringing")) && all[4].skipped.is_some_and(|why| why.contains("shorter")), "{all:#?}");
+        let table = extract(&files, "take", |_| {}).unwrap();
+        let a3: Vec<&NoteTable> = table.notes.iter().filter(|n| n.pitch == 57.0).collect();
+        assert_eq!(a3.len(), 2);
+        assert!(a3[0].velocity < a3[1].velocity && (a3[1].partials[0].amp / a3[0].partials[0].amp - 4.0).abs() < 0.4, "{:?} {:?}", a3[0].partials[0], a3[1].partials[0]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1307,6 +2150,7 @@ mod tests {
             velocity,
             partials: vec![Partial { ratio: 1.0, amp, t60: 2.0, left: 1.0, right: 1.0, ..Default::default() }],
             noise: Noise::default(),
+            bands: Vec::new(),
             off_harmonic: 0.0,
             articulation: String::new(),
         };

@@ -546,20 +546,23 @@ CHINESE_PAGES = [
         "Harmonics (泛音) take `\"technique\": \"harmonic\", \"harmonic\": 2`.",
         "A glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is `\"tremolo\": true` on a long note; "
         "大撮 is the note with its octave below; 勾托 alternates a note and its octave in eighths.",
-        "It shares its modal string model with the guqin (see [guqin.md](guqin.md)).",
+        "Like the guqin (see [guqin.md](guqin.md)) it plays partial tables measured from single notes in a solo recording (each partial's level, a fast and a slow decay). "
+        "`decay` lengthens or shortens every partial (9 is as measured), `release` is how fast a note stops after it ends, `sympathetic` the other strings ringing along, `tone` a final low-pass; "
+        "`pluck_brightness`, `pluck_position`, `strike` and `high_decay` do not change it, and `body_mix` is 0 by default. Harmonics are derived from the string an octave (or the node's interval) below: only the partials that have a node at the touch stay.",
     ]),
     ("guqin", "Guqin (古琴)", ["yinse.pluck.guqin"], [
         "Low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes.",
-        "The guqin has a modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
+        "The guqin plays partial tables measured from single notes in a solo recording (each partial's level and decay; open / pressed notes and touched harmonics measured separately), "
+        "with separate open (散音), pressed (按音) and harmonic (泛音) techniques. "
         "Set the track's `technique`, or override a note with `\"technique\": \"harmonic\", \"harmonic\": 2` (`\"open\"`, `\"pressed\"`, `\"harmonic\"`, `\"auto\"`).",
-        "`pitch` is always the sounding pitch: C4 with harmonic=2 models a C3 string touched halfway along it. "
-        "Node denominators 2-8 suppress the modes that do not have a node there; this is not just an octave shift or a low-pass preset.",
+        "`pitch` is always the sounding pitch: a harmonic at C4 sounds C4. Harmonics use their own measured partials (from the recording's harmonic passage: bell-like, the fundamental ringing ten seconds and more, also after the note ends); the node denominator (`harmonic`) no longer changes the guqin's sound.",
         "Pressed notes support `bend` up to ±24 semitones, with continuous mode phase, contact damping and motion noise (`slide_noise`). "
         "Open and harmonic notes do not take pitch bends or automatic vibrato. Auto chooses open notes at C2 D2 F2 G2 A2 C3 D3 (正调) and pressed elsewhere; "
         "open notes at other pitches extend the model beyond that seven-string tuning.",
-        "For a softer touch try `{\"strike\": 0.25, \"pluck_brightness\": 2800, \"pluck_noise\": 0.1, \"high_decay\": 0.08}`; "
-        "`body_mix` and `sympathetic` control the shared body and unplayed-string resonance.",
-        "This is a synthesis approximation rather than a measured replica of a particular qin. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.",
+        "`decay` lengthens or shortens every partial (9 is as measured), `pressure` shortens and darkens pressed notes, `sympathetic` is the unplayed strings ringing along, `tone` a final low-pass. "
+        "The measured tables already carry the string, the pluck and the body: `pluck_brightness`, `pluck_position`, `strike` and `high_decay` do not change the guqin, and `body_mix` is 0 by default (raising it adds the old body resonances on top).",
+        "The tables come from notes picked out of a performance, not from single-note samples: pitches in between are blended from the nearest measured ones, and above the highest measured note (F#4 for open / pressed notes, G#5 for harmonics) that note's partials are used. "
+        "See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.",
     ]),
     ("pipa", "Pipa (琵琶)", ["yinse.pluck.pipa"], [
         "Four strings tuned A2 D3 E3 A3, played with picks near the bridge: a crisp, bright attack (the 3 kHz \"zing\" of the soundboard) and a ring of about a second (in solo recordings the low partials fade about 20 dB a second, the high ones about 60). "
@@ -1491,10 +1494,12 @@ def validate_presets():
 YINSE_EXTRACT_PAGE = HEADER + """# Instruments: make your own from recordings (`yinse:`)
 
 Turn a set of single-note recordings into a small instrument muser plays like a built-in one. muser measures each note's
-partials (frequency, starting level, a fast and a slow decay, the beating between the strings of a course, left/right
-level and phase) and its attack noise, and how much the other strings ring along. The result is a JSON of numbers
-(about 150 KB for 40 notes), not audio. It suits sounds that are struck or plucked and ring away by themselves:
-yangqin, guzheng, piano, harp, bells, mallets. Not blown or bowed sounds that are held.
+partials (frequency, starting level and phase, a fast and a slow decay, the beating between the strings of a course,
+left/right level and phase), its attack noise in ten octave bands (how loud, how fast it dies, left/right), and how much
+the other strings ring along. Partials need not be harmonics: the modes of a bell, a bar or a drum that are not whole
+multiples of the pitch are measured too. The result is a JSON of numbers (about 200 KB for 40 notes), not audio. It suits
+sounds that are struck or plucked and ring away by themselves: yangqin, guzheng, piano, harp, bells, mallets, drums.
+Not blown or bowed sounds that are held.
 
 ```bash
 muser yinse extract ~/samples/yangqin/ -o yangqin.yinse.json --name "my yangqin"
@@ -1553,11 +1558,62 @@ can be put on `MUSER_YINSE_PATH` instead (several with the path separator); `yin
 ## Recordings
 
 - One note per file (wav, flac, aiff, ogg or mp3), starting at the attack, ringing until it has died away (at least 2-3 s).
-  Dry is best: reverb in the recording ends up in the decays.
+  Dry is best: reverb in the recording ends up in the decays. Up to 20 s of each note are analysed; where a partial sinks
+  into the recording's noise floor its decay is taken from the part above it (weak partials that are in the noise almost
+  at once follow the note's other partials), so a noisy recording does not turn into endless ringing.
 - Pitch from the file name (`A4`, `Eb3`, `C#5`, `Cs5`, or a MIDI number such as `69`), otherwise it is measured from the sound.
 - Velocity from the file name (`v80` and `vel100` on 0-127, `v0.7`, or `pp p mp mf f ff`); otherwise the files of one pitch are
   ordered from soft to loud. One recording every 3-5 semitones and 2-3 velocities is enough: notes in between are blended
   from the nearest recorded pitches and velocities.
+
+## How many notes to record
+
+Not every key at every velocity: notes in between are blended. Extracting a piano from parts of its 90 recordings
+(every 3 semitones × 3 velocities) and comparing against all of them:
+
+| recorded | notes | spectral difference | level difference (mean) |
+|---|---|---|---|
+| every 3 semitones × 3 velocities | 90 | 2.66 dB | 1.2 dB |
+| every 3 semitones × 2 velocities | 60 | 2.87 dB | 2.0 dB |
+| every 3 semitones × 1 velocity | 30 | 3.10 dB | 3.8 dB |
+| every 6 semitones × 3 velocities | 45 | 3.46 dB | 2.1 dB |
+| every 12 semitones × 1 velocity | 8 | 4.12 dB | 4.3 dB |
+
+More pitches make the timbre right, more velocities make the loudness right (with one velocity, soft and loud are the
+same sound turned down and up). Advice: a pitch every 3 semitones at 2-3 velocities (at least 3 dB apart) on wide
+instruments like the piano; every string or bar on instruments with few (guzheng, guqin, yangqin, marimba); always the
+lowest and highest note. Then `muser yinse compare --between`: if its "between" number is much worse than the spectral
+difference, record more pitches next to the worst ones. The full guide is in the muser-yinse repository
+([docs/sampling.md](https://github.com/claw-works/muser-yinse/blob/main/docs/sampling.md)).
+
+## From one take (`--split`)
+
+Instead of cutting the notes apart yourself, record the whole sampling session as one file and let muser find the notes:
+
+```bash
+muser yinse extract take.wav --split --notes-dir take-notes -o guzheng.yinse.json --name "my guzheng"
+muser yinse compare --between guzheng.yinse.json take-notes/
+```
+
+It prints every note it found (time, length, measured pitch, level) and whether it was used or why not. What the take needs:
+
+- A sampling take, not a piece of music: one note at a time, one after another, in any order. No chords, nothing played
+  over a note that is still ringing.
+- Let each note ring until it has died away before the next. A note is used only when the one before it has fallen 20 dB
+  below it and it rings at least 0.5 s before the next; what is left of its decay after the next note starts is not
+  measured, so longer is better (up to 20 s). Do not stop the strings by hand: that would be measured as the decay.
+- A clear pitch between C1 and E7: the pitch is measured, not named. Bells, bars and drums (partials that are not harmonics)
+  need one file per note with the pitch in the name instead.
+- For velocity layers play each pitch two or three times: soft, medium, loud, at least 3 dB apart. Takes of a pitch within
+  3 dB of each other count as one velocity (the longer is used); of more than three, the softest, middle and loudest are used.
+- Quiet between the notes: a cough or a chair is taken for a note (it is skipped for having no pitch, but it cuts the note
+  before it short). A steady hum or hiss is fine.
+- Several takes can be given at once (same microphones and gain), e.g. one per register.
+
+`--notes-dir` keeps the cut notes, named by pitch (`A3_f1t12.34.wav`: file 1, 12.34 s in). Listen to a few; delete a bad one,
+rename a wrong pitch, add `_mute` or `_v40` to a name, drop in tremolo / vibrato / damp recordings, then run `extract` on
+that folder (without `--split`) to rebuild. A solo performance mostly fails the rules above (in two solo recordings tried,
+about 1 note in 100 passed and the result was poor): record a sampling take.
 
 ## Articulations (演奏法)
 
@@ -1582,10 +1638,15 @@ A4_v80.wav  A4_v80_mute.wav  D5_tremolo.wav  A4_vibrato.wav  E4_damp.wav
 
 - Notes ring on after they end (no dampers); set `"release": 0.3` in `instrument_params` to damp them.
 - `"tremolo": true` on a note plays it as a tremolo (`tremolo_rate` strokes a second); `bend` works on every note.
-- It is not level-calibrated: it plays as loud as the recordings. Check with `muser mix-report`.
-- `compare` plays every recording's pitch and velocity on the extracted instrument and prints the spectral difference
-  (third-octave bands, first 2 s, loudness matched; around 2-3 dB is close), the decay at 0.1 / 0.5 / 1 / 2 s and the stereo
-  correlation, beside the recording's.
+- It is not level-calibrated: it plays as loud as the recordings would on an audio track. Check with `muser mix-report`.
+- `compare` plays every recording's pitch, velocity and articulation on the extracted instrument and prints the spectral
+  difference (third-octave bands, first 2 s, loudness matched; around 2-3 dB is close), the level difference (extracted
+  minus recording, not matched: a velocity layer that is too loud or soft shows here), the decay at 0.1 / 0.5 / 1 / 2 s and
+  the stereo correlation, beside the recording's. `--between` also takes each recorded pitch out of the instrument, plays
+  it blended from its neighbours and compares that with the recording: how far off the pitches you did not record are.
+  If that is much worse than the first number, record more pitches.
+- Tables are version 2 (harmonic numbers, start phases, noise bands). Version 1 files still play; a muser older than the
+  file's version asks to be updated.
 """
 
 

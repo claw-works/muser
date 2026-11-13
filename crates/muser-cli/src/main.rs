@@ -378,7 +378,7 @@ enum ClipCommand {
 
 #[derive(Subcommand)]
 enum YinseCommand {
-    /// Extract an instrument from single-note recordings (one note per file; struck or plucked sounds that ring away by themselves).
+    /// Extract an instrument from single-note recordings (one note per file, or whole takes with --split; struck or plucked sounds that ring away by themselves).
     /// Pitch comes from the file name (A4, Eb3, C#5 or a MIDI number) or is measured; velocity from the name (v80, vel100, v0.7, pp ... ff)
     /// or, per pitch, from the loudness order. The result is a small JSON of partial tables (no audio): play it as "instrument": "yinse:<file>".
     Extract {
@@ -401,7 +401,13 @@ enum YinseCommand {
         /// With --from: how long each note is held (seconds); only that part is analysed.
         #[arg(long, default_value_t = 5.0)]
         hold: f64,
-        /// With --from: keep the played notes in this folder (to `compare` against later); otherwise they are deleted.
+        /// The inputs are whole takes, not single notes: find the notes in each (one note played at a time, one after another)
+        /// and extract from the clean ones. A note is used when the one before it has died down (20 dB below it), it rings
+        /// at least 0.5 s before the next and has one clear pitch; the pitch is measured. Of several takes of a pitch the
+        /// long ones are used, one each for soft, medium and loud (takes within 3 dB count as the same velocity).
+        #[arg(long, conflicts_with = "from")]
+        split: bool,
+        /// With --from or --split: keep the single notes in this folder (to `compare` against later); otherwise they are deleted.
         #[arg(long)]
         notes_dir: Option<std::path::PathBuf>,
         /// Output file (suggested extension .yinse.json).
@@ -452,6 +458,10 @@ enum YinseCommand {
         /// The recordings (files or folders).
         #[arg(required = true)]
         inputs: Vec<std::path::PathBuf>,
+        /// Also take each recorded pitch out of the instrument, play it blended from its neighbours and compare:
+        /// how far off the pitches that were not recorded are.
+        #[arg(long)]
+        between: bool,
         #[arg(long)]
         json: bool,
     },
@@ -1305,7 +1315,7 @@ fn parse_pitches(text: &str) -> Result<Vec<u8>> {
 fn cmd_yinse(command: YinseCommand) -> Result<()> {
     use muser_engine::modal;
     match command {
-        YinseCommand::Extract { inputs, output, name, from, params, pitches, velocities, hold, notes_dir } => {
+        YinseCommand::Extract { inputs, output, name, from, params, pitches, velocities, hold, split, notes_dir } => {
             let name = name.unwrap_or_else(|| output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default());
             let (mut files, mut release, mut temp) = (audio_files(&inputs), None, None);
             if let Some(spec) = &from {
@@ -1323,6 +1333,26 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                 let (rendered, damper) = modal::render_notes(spec, &params, &pitches, &velocities, hold, &dir).map_err(|e| anyhow::anyhow!(e))?;
                 files = rendered;
                 release = damper;
+            }
+            if split {
+                let dir = notes_dir.clone().unwrap_or_else(|| std::env::temp_dir().join(format!("muser-yinse-{}", std::process::id())));
+                if notes_dir.is_none() {
+                    temp = Some(dir.clone());
+                }
+                let (mut used, mut skipped) = (0, 0);
+                let found = modal::split_notes(&files, &dir, |s| {
+                    let pitch = s.pitch.map_or("   -".to_string(), |p| format!("{p:>6.2}"));
+                    match s.skipped {
+                        None => used += 1,
+                        Some(_) => skipped += 1,
+                    }
+                    eprintln!("  {} {:>8.2} s  {:>5.1} s  pitch {pitch}  {:>6.1} dB  {}", s.source, s.start, s.seconds, s.level_db, s.skipped.map_or("used".to_string(), |why| format!("skipped: {why}")));
+                });
+                if let (Err(_), Some(dir)) = (&found, &temp) {
+                    let _ = std::fs::remove_dir_all(dir);
+                }
+                files = found.map_err(|e| anyhow::anyhow!(e))?;
+                eprintln!("found {} notes, using {used} ({skipped} skipped)", used + skipped);
             }
             let result = modal::extract(&files, &name, |n| {
                 eprintln!("  {}: pitch {:.2}, {} partials, slowest {:.1} s", n.source, n.pitch, n.partials.len(), n.partials.iter().map(|p| p.t60).fold(0.0, f64::max));
@@ -1446,18 +1476,25 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
             let _ = std::fs::remove_dir(dir.parent().unwrap_or(&dir));
             println!("removed yinse:{family}/{n} ({})", dir.display());
         }
-        YinseCommand::Compare { instrument, inputs, json } => {
-            let list = modal::compare(&instrument, &audio_files(&inputs)).map_err(|e| anyhow::anyhow!(e))?;
+        YinseCommand::Compare { instrument, inputs, between, json } => {
+            let list = modal::compare(&instrument, &audio_files(&inputs), between).map_err(|e| anyhow::anyhow!(e))?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&list)?);
                 return Ok(());
             }
-            println!("{:<28} {:>5} {:>4} {:>9}  {:<26} {:<26} {:>11}", "recording", "pitch", "vel", "spectral", "decay @0.1/0.5/1/2 s (rec)", "(extracted)", "stereo r/e");
+            println!("{:<28} {:>5} {:>4} {:>9} {:>8} {:>8}  {:<26} {:<26} {:>11}", "recording", "pitch", "vel", "spectral", "level", "between", "decay @0.1/0.5/1/2 s (rec)", "(extracted)", "stereo r/e");
             let f = |d: [f64; 4]| d.iter().map(|v| if v.is_nan() { "  -".into() } else { format!("{v:>4.0}") }).collect::<Vec<_>>().join(" ");
             for c in &list {
-                println!("{:<28} {:>5.1} {:>4.2} {:>7.1}dB  {:<26} {:<26} {:>5.2}/{:<5.2}", c.source, c.pitch, c.velocity, c.spectral_db, f(c.decay_ref), f(c.decay_ours), c.stereo_ref, c.stereo_ours);
+                let b = c.between_db.map_or("-".to_string(), |b| format!("{b:.1}dB"));
+                println!("{:<28} {:>5.1} {:>4.2} {:>7.1}dB {:>+6.1}dB {:>8}  {:<26} {:<26} {:>5.2}/{:<5.2}", c.source, c.pitch, c.velocity, c.spectral_db, c.level_db, b, f(c.decay_ref), f(c.decay_ours), c.stereo_ref, c.stereo_ours);
             }
-            let mean = list.iter().map(|c| c.spectral_db).sum::<f64>() / list.len().max(1) as f64;
+            let n = list.len().max(1) as f64;
+            let mean = list.iter().map(|c| c.spectral_db).sum::<f64>() / n;
+            println!("mean level difference {:.2} dB, largest {:+.1} dB (extracted minus recording, first 2 s, not matched)", list.iter().map(|c| c.level_db.abs()).sum::<f64>() / n, list.iter().map(|c| c.level_db).fold(0.0, |m: f64, v| if v.abs() > m.abs() { v } else { m }));
+            let b: Vec<f64> = list.iter().filter_map(|c| c.between_db).collect();
+            if !b.is_empty() {
+                println!("mean spectral difference of pitches blended from their neighbours {:.2} dB ({} notes; how far off pitches that were not recorded are)", b.iter().sum::<f64>() / b.len() as f64, b.len());
+            }
             println!("mean spectral difference {mean:.2} dB (third-octave bands, 20 ms frames, first 2 s, loudness matched; lower is closer)");
         }
     }

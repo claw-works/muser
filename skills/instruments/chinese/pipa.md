@@ -25,7 +25,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `vibrato_delay` | 0 – 4 s | next note | Delay after the pluck before pressed-string vibrato begins |
 | `tremolo_rate` | 2 – 30 Hz | ✓ | Repeated plucks per second on notes marked tremolo |
 | `decay` | 0.05 – 60 s | next note | Open-string fundamental decay at middle C to -60 dB; pressed-string contact adds damping |
-| `release` | 0.01 – 10 s | next note | Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping |
+| `release` | 0.01 – 30 s | next note | Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping |
 | `high_decay` | 0.01 – 1 | next note | Upper-mode decay at 3 kHz relative to the fundamental; harmonics keep a minimum of 0.2 for a clear ring |
 | `pluck_brightness` | 100 – 20000 Hz | next note | Brightness of the initial excitation; softer velocity also darkens the pluck |
 | `pluck_position` | 0.02 – 0.5 | next note | Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length |

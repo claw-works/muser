@@ -6,7 +6,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. The other Chinese inst
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.pluck.guzheng` | 38–88 | 24 | Guzheng (古筝): bright picked strings over a big paulownia soundboard with sympathetic strings; 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique` |
+| `yinse.pluck.guzheng` | 38–88 | 24 | Guzheng (古筝): picked strings with partials measured from a solo recording, sympathetic strings; 21 strings tuned to D pentatonic D2-D6; other pitches are pressed (按音) from the string below; every plucked or pressed note follows bends and the left-hand vibrato (揉弦); harmonics (泛音) with `technique` |
 
 ## Adjustable parameters (instrument_params)
 
@@ -25,7 +25,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `vibrato_delay` | 0 – 4 s | next note | Delay after the pluck before pressed-string vibrato begins |
 | `tremolo_rate` | 2 – 30 Hz | ✓ | Repeated plucks per second on notes marked tremolo |
 | `decay` | 0.05 – 60 s | next note | Open-string fundamental decay at middle C to -60 dB; pressed-string contact adds damping |
-| `release` | 0.01 – 10 s | next note | Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping |
+| `release` | 0.01 – 30 s | next note | Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping |
 | `high_decay` | 0.01 – 1 | next note | Upper-mode decay at 3 kHz relative to the fundamental; harmonics keep a minimum of 0.2 for a clear ring |
 | `pluck_brightness` | 100 – 20000 Hz | next note | Brightness of the initial excitation; softer velocity also darkens the pluck |
 | `pluck_position` | 0.02 – 0.5 | next note | Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length |
@@ -40,7 +40,7 @@ Preset values of each instrument:
 
 | instrument | `technique` | `harmonic` | `pressure` | `slide_time` | `slide_noise` | `sympathetic` | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `high_decay` | `pluck_brightness` | `pluck_position` | `strike` | `pluck_noise` | `body_mix` | `tone` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.pluck.guzheng` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.6 | 10 | 5.5 | 0.3 | 10 | 9 | 1.2 | 0.12 | 9000 | 0.12 | 0.6 | 0.3 | 0.6 | 12000 |
+| `yinse.pluck.guzheng` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.3 | 10 | 5.5 | 0.3 | 10 | 9 | 1.2 | 0.12 | 9000 | 0.12 | 0.6 | 0.3 | 0 | 20000 |
 
 ### Tuning examples
 
@@ -65,4 +65,4 @@ Preset values of each instrument:
 - Every note follows its `bend` (up to ±24 semitones, phase-continuous): a slide up after the pluck (上滑音) is `[[0, 0], [0.15, 0], [0.4, 3]]` from 3 to 5 or 6 to 1; a slide down into the note (下滑音) `[[0, 2], [0.2, 2], [0.45, 0]]`; a return slide (回滑音) on one pluck goes up, back and up again; pressing three times (重颤) is three small humps.
 - Harmonics (泛音) take `"technique": "harmonic", "harmonic": 2`.
 - A glissando (刮奏) is a fast run of pentatonic notes (12-16 in one beat, rising velocity) into the first note of a phrase; tremolo (摇指) is `"tremolo": true` on a long note; 大撮 is the note with its octave below; 勾托 alternates a note and its octave in eighths.
-- It shares its modal string model with the guqin (see [guqin.md](guqin.md)).
+- Like the guqin (see [guqin.md](guqin.md)) it plays partial tables measured from single notes in a solo recording (each partial's level, a fast and a slow decay). `decay` lengthens or shortens every partial (9 is as measured), `release` is how fast a note stops after it ends, `sympathetic` the other strings ringing along, `tone` a final low-pass; `pluck_brightness`, `pluck_position`, `strike` and `high_decay` do not change it, and `body_mix` is 0 by default. Harmonics are derived from the string an octave (or the node's interval) below: only the partials that have a node at the touch stay.

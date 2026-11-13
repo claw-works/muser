@@ -6,7 +6,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. The other Chinese inst
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): modal strings with distinct open (散音), stopped (按音) and node-touched harmonic (泛音) techniques, shared body and sympathetic strings; continuous stopped-string slides (走手音) with `bend` |
+| `yinse.pluck.guqin` | 36–84 | 12 | Guqin (古琴): partials measured from a solo recording, with distinct open (散音), stopped (按音) and harmonic (泛音) techniques, sympathetic strings; continuous stopped-string slides (走手音) with `bend` |
 
 ## Adjustable parameters (instrument_params)
 
@@ -25,7 +25,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `vibrato_delay` | 0 – 4 s | next note | Delay after the pluck before pressed-string vibrato begins |
 | `tremolo_rate` | 2 – 30 Hz | ✓ | Repeated plucks per second on notes marked tremolo |
 | `decay` | 0.05 – 60 s | next note | Open-string fundamental decay at middle C to -60 dB; pressed-string contact adds damping |
-| `release` | 0.01 – 10 s | next note | Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping |
+| `release` | 0.01 – 30 s | next note | Decay after note end: open and harmonic strings keep ringing; pressed strings retain more contact damping |
 | `high_decay` | 0.01 – 1 | next note | Upper-mode decay at 3 kHz relative to the fundamental; harmonics keep a minimum of 0.2 for a clear ring |
 | `pluck_brightness` | 100 – 20000 Hz | next note | Brightness of the initial excitation; softer velocity also darkens the pluck |
 | `pluck_position` | 0.02 – 0.5 | next note | Right-hand plucking position from the bridge; pressed strings account for their shorter vibrating length |
@@ -40,13 +40,13 @@ Preset values of each instrument:
 
 | instrument | `technique` | `harmonic` | `pressure` | `slide_time` | `slide_noise` | `sympathetic` | `vibrato` | `vibrato_rate` | `vibrato_delay` | `tremolo_rate` | `decay` | `release` | `high_decay` | `pluck_brightness` | `pluck_position` | `strike` | `pluck_noise` | `body_mix` | `tone` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.pluck.guqin` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.18 | 18 | 3.5 | 0.5 | 8 | 9 | 6 | 0.08 | 5000 | 0.12 | 0.35 | 0.15 | 0.45 | 7000 |
+| `yinse.pluck.guqin` | 0 | 4 | 0.65 | 0.008 | 0.35 | 0.18 | 18 | 3.5 | 0.5 | 8 | 9 | 15 | 0.08 | 5000 | 0.12 | 0.35 | 0.15 | 0 | 20000 |
 
 ## Tips and common mistakes
 
 - Low (C2-C5), slow and quiet; pluck and then slide the stopped note (走手音: a `bend` that starts after the first half of the note); leave space between notes.
-- The guqin has a modal string model with separate open (散音), pressed (按音) and harmonic (泛音) techniques. Set the track's `technique`, or override a note with `"technique": "harmonic", "harmonic": 2` (`"open"`, `"pressed"`, `"harmonic"`, `"auto"`).
-- `pitch` is always the sounding pitch: C4 with harmonic=2 models a C3 string touched halfway along it. Node denominators 2-8 suppress the modes that do not have a node there; this is not just an octave shift or a low-pass preset.
+- The guqin plays partial tables measured from single notes in a solo recording (each partial's level and decay; open / pressed notes and touched harmonics measured separately), with separate open (散音), pressed (按音) and harmonic (泛音) techniques. Set the track's `technique`, or override a note with `"technique": "harmonic", "harmonic": 2` (`"open"`, `"pressed"`, `"harmonic"`, `"auto"`).
+- `pitch` is always the sounding pitch: a harmonic at C4 sounds C4. Harmonics use their own measured partials (from the recording's harmonic passage: bell-like, the fundamental ringing ten seconds and more, also after the note ends); the node denominator (`harmonic`) no longer changes the guqin's sound.
 - Pressed notes support `bend` up to ±24 semitones, with continuous mode phase, contact damping and motion noise (`slide_noise`). Open and harmonic notes do not take pitch bends or automatic vibrato. Auto chooses open notes at C2 D2 F2 G2 A2 C3 D3 (正调) and pressed elsewhere; open notes at other pitches extend the model beyond that seven-string tuning.
-- For a softer touch try `{"strike": 0.25, "pluck_brightness": 2800, "pluck_noise": 0.1, "high_decay": 0.08}`; `body_mix` and `sympathetic` control the shared body and unplayed-string resonance.
-- This is a synthesis approximation rather than a measured replica of a particular qin. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.
+- `decay` lengthens or shortens every partial (9 is as measured), `pressure` shortens and darkens pressed notes, `sympathetic` is the unplayed strings ringing along, `tone` a final low-pass. The measured tables already carry the string, the pluck and the body: `pluck_brightness`, `pluck_position`, `strike` and `high_decay` do not change the guqin, and `body_mix` is 0 by default (raising it adds the old body resonances on top).
+- The tables come from notes picked out of a performance, not from single-note samples: pitches in between are blended from the nearest measured ones, and above the highest measured note (F#4 for open / pressed notes, G#5 for harmonics) that note's partials are used. See `samples/instruments/guqin-techniques.muser.json` for a single-track demonstration.

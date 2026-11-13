@@ -57,7 +57,7 @@ pub(crate) static GUQIN: Profile = Profile {
     pressed_shortens: true,
     contact: 0.55,
     friction: 1.0,
-    pressed_release: 0.35,
+    pressed_release: 0.14,
     pressed_stiffness: 0.001,
     open_bends: false,
     twin: 0.0,
@@ -67,7 +67,8 @@ pub(crate) static GUQIN: Profile = Profile {
     spread: 0.0,
     ping: 0.0,
     ping_hz: 2_000.0,
-    ping_s: 0.1,
+    // 表里起音那一下快的一段最长 1.5 秒。
+    ping_s: 1.5,
     knock: 1.0,
     bridge: 0.0,
     damp_s: DAMP_SECONDS,
@@ -90,7 +91,8 @@ pub(crate) static GUZHENG: Profile = Profile {
     spread: 0.0,
     ping: 0.0,
     ping_hz: 2_000.0,
-    ping_s: 0.1,
+    // 表里起音那一下快的一段最长 3 秒。
+    ping_s: 3.0,
     knock: 1.0,
     bridge: 0.0,
     damp_s: DAMP_SECONDS,
@@ -223,7 +225,8 @@ impl Default for ZitherParams {
         let mut pluck = GuzhengParams::guqin();
         pluck.string.decay = 9.0;
         pluck.string.decay_per_octave = 1.15;
-        pluck.string.release = 6.0;
+        // 散音、泛音松手以后弦照样响完（录音里泛音的基音要响十来秒）；按音抬指后两秒左右收掉（见 [`GUQIN`] 的 pressed_release）。
+        pluck.string.release = 15.0;
         pluck.string.high_decay = 0.08;
         pluck.string.pluck_position = 0.12;
         pluck.string.pluck_brightness = 5_000.0;
@@ -238,7 +241,14 @@ impl Default for ZitherParams {
             BodyMode::new(1_100.0, 2.0, 1.4),
             BodyMode::new(1_850.0, 1.5, 0.5),
         ];
-        Self { pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false, table: None, articulation: 0 }
+        // 弦的声音（各分音多响、响多久、拨弦那一下的噪声）取自录音量出来的表（[`crate::modal::builtin_guqin`]），琴体的颜色已经在里面：
+        // 不再另加辐射高通与共鸣峰（`body_mix` 默认 0，仍可以调）。
+        pluck.string.body_mix = 0.0;
+        pluck.string.tone = 20_000.0;
+        Self {
+            pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false,
+            table: Some(crate::modal::builtin_guqin()), articulation: 0,
+        }
     }
 }
 
@@ -263,7 +273,11 @@ impl ZitherParams {
             BodyMode::new(260.0, 5.0, 1.0),
             BodyMode::new(430.0, 5.0, 0.8),
         ];
-        Self { pluck, sympathetic: 0.6, profile: &GUZHENG, ..Default::default() }
+        // 弦的声音取自录音量出来的表（[`crate::modal::builtin_guzheng`]），面板的颜色、别的弦跟着响的那一层已经在里面：
+        // 不再另加辐射高通与共鸣峰（`body_mix` 默认 0，仍可以调），其余弦的共鸣减半。
+        s.body_mix = 0.0;
+        s.tone = 20_000.0;
+        Self { pluck, sympathetic: 0.3, profile: &GUZHENG, table: Some(crate::modal::builtin_guzheng()), ..Default::default() }
     }
 
     /// 琵琶：对着五段独奏录音（十面埋伏、阳春白雪、平湖秋月、金蛇狂舞、步步高）的单音：低频每秒衰减约 20 dB、
@@ -290,7 +304,7 @@ impl ZitherParams {
             BodyMode::new(560.0, 4.0, 2.1),
             BodyMode::new(2_800.0, 2.0, 3.0),
         ];
-        Self { pluck, sympathetic: 0.6, profile: &PIPA, ..Default::default() }
+        Self { pluck, sympathetic: 0.6, profile: &PIPA, table: None, ..Default::default() }
     }
 
     /// 扬琴：对着 Kontakt 扬琴音源（Default）各音区、各力度的单音：低音区泛音比基音强 10 … 40 dB，高音区以基音为主；
@@ -318,7 +332,7 @@ impl ZitherParams {
             BodyMode::new(1_500.0, 2.5, 0.8),
             BodyMode::new(2_400.0, 2.0, 0.4),
         ];
-        Self { pluck, sympathetic: 0.12, profile: &YANGQIN, ..Default::default() }
+        Self { pluck, sympathetic: 0.12, profile: &YANGQIN, table: None, ..Default::default() }
     }
 
     /// 从录音提取的乐器：声音全在表里，琴体、共鸣、低通都不再加；表里量到制音器（钢琴）就按它止音，否则弦自己响完。
@@ -450,6 +464,75 @@ impl Mode {
     }
 }
 
+/// 录音提取的乐器起音噪声的一个频段（[`crate::modal::NoiseBand`]）：白噪声过两级带通，先快后慢两段衰减；
+/// 左右各一路噪声，按量到的相关度混。
+#[derive(Clone, Copy, Default)]
+struct Band {
+    c: [f64; 5],
+    /// 两级带通的状态：左（两级）、右自己那一路（两级）。
+    s: [[f64; 2]; 4],
+    fast: f64,
+    tail: f64,
+    t60: f64,
+    tail_t60: f64,
+    k_fast: f64,
+    k_tail: f64,
+    /// 左的增益；右：和左同一路噪声的份、自己那一路的份。
+    gain: [f64; 3],
+}
+
+impl Band {
+    fn new(b: &crate::modal::NoiseBand, sr: f64) -> Self {
+        let unit = crate::modal::band_unit_rms(b.hz, sr).max(1e-9);
+        let corr = b.corr.clamp(-1.0, 1.0);
+        let mut band = Self {
+            c: crate::modal::band_filter(b.hz, sr),
+            fast: b.amp,
+            tail: b.tail,
+            t60: b.t60.max(0.002),
+            tail_t60: b.tail_t60.max(0.002),
+            gain: [b.left / unit, b.right * corr / unit, b.right * (1.0 - corr * corr).sqrt() / unit],
+            ..Default::default()
+        };
+        band.decay(sr, None);
+        band
+    }
+
+    /// 每个样本衰减多少；松开以后（`released` 秒到 -60 dB）不比它慢。
+    fn decay(&mut self, sr: f64, released: Option<f64>) {
+        let k = |t60: f64| (-3.0 * 10f64.ln() / (released.map_or(t60, |r| t60.min(r)).max(0.002) * sr)).exp();
+        self.k_fast = k(self.t60);
+        self.k_tail = k(self.tail_t60);
+    }
+
+    fn level(&self) -> f64 {
+        self.fast + self.tail
+    }
+
+    fn tick(&mut self, a: f64, b: f64) -> [f64; 2] {
+        let [b0, b1, b2, a1, a2] = self.c;
+        let pass = |x: f64, s: &mut [f64; 2]| {
+            let y = b0 * x + s[0];
+            s[0] = b1 * x - a1 * y + s[1];
+            s[1] = b2 * x - a2 * y;
+            y
+        };
+        let [s0, s1, s2, s3] = &mut self.s;
+        let first = pass(a, s0);
+        let l = pass(first, s1);
+        let r = if self.gain[2] != 0.0 {
+            let first = pass(b, s2);
+            pass(first, s3)
+        } else {
+            0.0
+        };
+        let e = self.fast + self.tail;
+        self.fast *= self.k_fast;
+        self.tail *= self.k_tail;
+        [l * self.gain[0] * e, (l * self.gain[1] + r * self.gain[2]) * e]
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Tone {
     modes: [Mode; MODES],
@@ -483,6 +566,9 @@ struct Tone {
     /// 录音提取的乐器：这个音自己的噪声低通频率（Hz），两级低通（0 = 用乐器的 pluck_brightness、一级）。
     noise_hz: f64,
     noise_lp2: f64,
+    /// 录音提取的乐器（版本 2）：分频段的起音噪声。
+    bands: [Band; crate::modal::NOISE_BANDS],
+    bands_on: usize,
     friction_lp: f64,
     motion: f64,
     strength: f64,
@@ -516,6 +602,8 @@ impl Default for Tone {
             noise_lp: 0.0,
             noise_hz: 0.0,
             noise_lp2: 0.0,
+            bands: [Band::default(); crate::modal::NOISE_BANDS],
+            bands_on: 0,
             friction_lp: 0.0,
             motion: 0.0,
             strength: 0.0,
@@ -586,13 +674,38 @@ impl Tone {
             // 录音提取的分音：振幅就是录音里的振幅（满幅 1），不再按力度、触弦位置归一。
             let names = table.articulations();
             let art = usize::from(p.articulation).checked_sub(1).and_then(|i| names.get(i)).map_or("", String::as_str);
-            let v = table.voice(pitch, velocity * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 }, art);
+            // 没指定演奏法的泛音用表里量的泛音那一组（没有就还是普通的）。
+            let art = if art.is_empty() && technique == Technique::Harmonic { "harmonic" } else { art };
+            let loudness = velocity * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 };
+            let v = if technique == Technique::Harmonic && !names.iter().any(|n| n == "harmonic") {
+                // 表里没有量过泛音（古筝）：按触弦的道理从低的那根弦推出来——在 1/node 处轻触，只有 node 的整数倍次分音留下。
+                let node = p.harmonic.round().clamp(2.0, 8.0);
+                let mut low = table.voice(pitch - 12.0 * node.log2(), loudness, "");
+                let kept: Vec<crate::modal::Partial> =
+                    low.partials.iter().enumerate().filter(|(i, _)| (i + 1) % node as usize == 0).map(|(_, q)| crate::modal::Partial { ratio: q.ratio / node, ..*q }).collect();
+                // 低弦的那几个分音本来不强：整体补到和这个音高的普通音差不多响，略轻。
+                let level = |list: &[crate::modal::Partial]| list.iter().map(|q| (q.amp + q.fast_amp).powi(2)).sum::<f64>().sqrt();
+                let gain = 0.7 * level(&table.voice(pitch, loudness, "").partials) / level(&kept).max(1e-9);
+                low.partials = kept.into_iter().map(|q| crate::modal::Partial { amp: q.amp * gain, fast_amp: q.fast_amp * gain, ..q }).collect();
+                low
+            } else {
+                table.voice(pitch, loudness, art)
+            };
+            // 内置的乐器（古琴、古筝）：表是散音、按音的平均状态；`decay` 相对默认值整体拉长缩短，按音按 `pressure` 多耗掉一些
+            //（按得重，余音短而暗：高的分音耗得更多；按得轻，余音长一些）。
+            let built_in = core::ptr::eq(pr, &GUQIN) || core::ptr::eq(pr, &GUZHENG);
+            let stretch = if built_in { (s.decay / 9.0).clamp(0.05, 8.0) } else { 1.0 };
+            // 表里不在空弦上的音本来就是按着弹的（按音的损耗已经量在里面）：`pressure` 只算比默认（0.65）多按、少按的那一点。
+            let press = if built_in && technique == Technique::Pressed { p.profile.contact * (p.pressure - 0.65) } else { 0.0 };
             tone.modes = [Mode::default(); MODES];
             tone.count = v.partials.len().clamp(1, MODES);
             for (i, q) in v.partials.iter().take(MODES).enumerate() {
                 let beat = q.beat.clamp(0.0, 0.45);
                 // 表里的振幅是包络的对数平均；主弦 1 份、另一根 w/(1-w) 份合起来的对数平均正好是 1。
-                tone.modes[i] = Mode { re: q.amp, ratio: q.ratio, t60: q.t60, ..Default::default() };
+                let t60 = q.t60 * stretch * (1.0 - press) / (1.0 + press.max(0.0) * (q.ratio - 1.0).max(0.0) / 6.0);
+                // 起音那一刻的相位（版本 2 的表量了；没量的是 0，从零起振）。
+                let (cos, sin) = (q.start.cos(), q.start.sin());
+                tone.modes[i] = Mode { re: q.amp * cos, im: q.amp * sin, ratio: q.ratio, t60, ..Default::default() };
                 tone.modes[i].tune(f0, sr, None);
                 let pan = [q.left, q.right * q.phase.cos(), q.right * q.phase.sin()];
                 tone.pan[i] = pan;
@@ -600,18 +713,23 @@ impl Tone {
                 if beat > 0.0 {
                     tone.twin_on = true;
                     let c = q.beat_cents * if i % 2 == 0 { 1.0 } else { -1.0 };
-                    tone.twins[i] = Mode { re: q.amp * beat / (1.0 - beat), ratio: q.ratio * (c / 1200.0).exp2(), t60: q.t60, ..Default::default() };
+                    let twin = q.amp * beat / (1.0 - beat);
+                    tone.twins[i] = Mode { re: twin * cos, im: twin * sin, ratio: q.ratio * (c / 1200.0).exp2(), t60, ..Default::default() };
                     tone.twins[i].tune(f0, sr, None);
                 }
                 if q.fast_amp > 0.0 {
                     tone.ping_on = true;
-                    tone.pings[i] = Mode { re: q.fast_amp, ratio: q.ratio, t60: q.fast_t60.min(q.t60), ..Default::default() };
+                    tone.pings[i] = Mode { re: q.fast_amp * cos, im: q.fast_amp * sin, ratio: q.ratio, t60: q.fast_t60.min(t60), ..Default::default() };
                     tone.pings[i].tune(f0, sr, None);
                 }
             }
             // 噪声的式子是 level · strength · pluck_noise · 0.035 · knock：倒推出 strength。
             tone.strength = v.noise.amp / (s.level * s.pluck_noise * 0.035 * pr.knock).max(1e-9);
             tone.noise_hz = v.noise.hz.max(50.0);
+            for b in v.bands.iter().filter(|b| b.amp + b.tail > 0.0).take(tone.bands.len()) {
+                tone.bands[tone.bands_on] = Band::new(b, sr);
+                tone.bands_on += 1;
+            }
         }
         if pr.spread > 0.0 {
             let at = pr.spread * ((key_pitch - 68.0) / 25.0).clamp(-1.0, 1.0);
@@ -729,6 +847,17 @@ impl Tone {
                 mode.tune(hz, sr, release);
                 self.energy += mode.energy();
             }
+            if self.bands_on > 0 {
+                let mut level = 0.0;
+                for band in &mut self.bands[..self.bands_on] {
+                    band.decay(sr, release);
+                    level += band.level();
+                }
+                self.energy += level * level;
+                if level < 1e-7 {
+                    self.bands_on = 0;
+                }
+            }
             if self.ping_on {
                 self.ping_on = (self.at as f64) < 1.5 * self.params.profile.ping_s * sr;
                 for mode in &mut self.pings[..self.count] {
@@ -769,6 +898,14 @@ impl Tone {
         let mut x = 0.0;
         let t = self.at as f64 / sr;
         let n = self.noise();
+        if self.bands_on > 0 {
+            let other = self.noise();
+            for band in &mut self.bands[..self.bands_on] {
+                let [l, r] = band.tick(n, other);
+                out[0] += l;
+                out[1] += r;
+            }
+        }
         let s: StringParams = self.params.pluck.string;
         let hz = if self.noise_hz > 0.0 { self.noise_hz } else { s.pluck_brightness };
         let kn = 1.0 - (-TAU * hz.min(0.4 * sr) / sr).exp();
@@ -787,7 +924,7 @@ impl Tone {
         if self.technique == Technique::Pressed {
             x += self.friction_lp * self.energy.sqrt() * live.slide_noise * 0.16 * (self.motion / 8.0).sqrt().min(2.0) * self.params.profile.friction;
         }
-        let attack = (t / 0.0015).clamp(0.0, 1.0);
+        let attack = (t / crate::modal::ATTACK_SECONDS).clamp(0.0, 1.0);
         self.at += 1;
         let g = attack * attack * (3.0 - 2.0 * attack);
         out.map(|o| (o + x) * g)
@@ -1087,12 +1224,16 @@ mod tests {
 
     #[test]
     fn open_pressed_and_harmonic_notes_have_different_spectra() {
-        let open = samples(ZitherParams { technique: 1.0, ..Default::default() }, 57, 0.4);
-        let pressed = samples(ZitherParams { technique: 2.0, ..Default::default() }, 57, 0.4);
-        let harmonic = samples(ZitherParams { technique: 3.0, harmonic: 2.0, ..Default::default() }, 57, 0.4);
-        let ratio = |x: &[f64]| energy_at(&x[4_800..], 660.0) / energy_at(&x[4_800..], 220.0);
-        assert!(ratio(&harmonic) < ratio(&open) * 0.5, "harmonics should have fewer upper partials");
-        assert!((ratio(&pressed) - ratio(&open)).abs() > 0.005, "stopping changes the effective pluck position and damping");
+        let open = samples(ZitherParams { technique: 1.0, ..Default::default() }, 57, 1.5);
+        let pressed = samples(ZitherParams { technique: 2.0, pressure: 1.0, ..Default::default() }, 57, 1.5);
+        let harmonic = samples(ZitherParams { technique: 3.0, harmonic: 2.0, ..Default::default() }, 57, 1.5);
+        // 古琴的分音是录音里量的：泛音用自己那一组（和散音的谱不一样）、响得久；按得重的按音比散音、泛音耗得快。
+        let ratio = |x: &[f64]| energy_at(&x[2_400..24_000], 440.0) / energy_at(&x[2_400..24_000], 220.0);
+        let (o, h) = (ratio(&open), ratio(&harmonic));
+        assert!(h < o * 0.7 || h > o * 1.4, "harmonics have their own partials: {h} vs {o}");
+        let left = |x: &[f64]| x[48_000..].iter().map(|v| v * v).sum::<f64>() / x[..4_800].iter().map(|v| v * v).sum::<f64>();
+        assert!(left(&pressed) < left(&open) * 0.8, "a stopped string loses its ring sooner");
+        assert!(left(&harmonic) > left(&pressed) * 2.0, "a harmonic rings on: {} vs {}", left(&harmonic), left(&pressed));
     }
 
     #[test]
