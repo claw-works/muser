@@ -402,7 +402,6 @@ muser/
 │  ├─ muser-engine/   引擎适配：编译成 manguebyte 乐器，流式渲染（WAV / 播放页 / 本机声卡）
 │  ├─ muser-cli/      CLI 可执行文件 `muser`
 │  └─ muser-mcp/      MCP server（stdio）
-├─ vendor/manguebyte/ 上游音频引擎（git submodule）
 ├─ samples/           示范工程（songs/instruments/params/effects/automation/routing/plugins 分组）
 ├─ ARCHITECTURE.zh-CN.md 架构、分层、工程 JSON schema、路线图
 ├─ SKILLS.md          给 AI 的编曲操作手册（总入口）

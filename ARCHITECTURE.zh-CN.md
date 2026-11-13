@@ -29,9 +29,9 @@ muser 是一个**面向 AI 的无头（headless）编曲引擎**：用数据而�
 │     - 全 serde：JSON 就是 AI 读写工程的格式                    │
 │     - 时间以「拍 (beats)」表示，与 tempo/采样率解耦            │
 ├─────────────────────────────────────────────────────────────┤
-│  0. 音频引擎 (vendored: vendor/manguebyte)                    │
+│  0. 音频引擎 (manguebyte，来自 crates.io)                     │
 │     - DSP、乐器/鼓组、音频图、插件宿主、音频文件格式           │
-│     - 上游独立 workspace，MIT/Apache，通过 path 依赖引入       │
+│     - 上游项目，MIT/Apache，crates.io 依赖                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -47,22 +47,20 @@ AI 只需理解**第 1 层的 JSON 格式**和**第 3 层的命令**；第 0、2
 | `muser-engine` | 2 | 把 core 模型编译成 manguebyte 乐器，流式渲染（离线 WAV、边渲染边播、本机声卡）。 | muser-core, manguebyte |
 | `muser-cli` | 3 | CLI 可执行文件 `muser`。 | muser-core, muser-engine, clap |
 | `muser-mcp` | 3 | MCP server（stdio），把能力暴露为 agent tools。 | muser-core, muser-engine, rmcp |
-| `vendor/manguebyte` | 0 | 上游音频引擎（vendored）。 | — |
+| `manguebyte`（crates.io） | 0 | 上游音频引擎。 | — |
 
-### 为什么 vendored（git submodule）而非 crates.io 依赖
+### 为什么用 crates.io 依赖（以前是 git submodule）
 
-- **可控**：以 git submodule 固定在仓库内的某个提交，上游若断更可切到自己的 fork 接管维护（许可为 MIT/Apache，允许 fork）。
-- **隔离**：`vendor/manguebyte` 是它自己的 Cargo workspace；muser 顶层 workspace 用
-  `exclude = ["vendor"]` 排除它，再以 `path` 依赖指向 `vendor/manguebyte/crates/manguebyte`。
-  （Cargo 不允许 workspace 嵌套，这是唯一正确的接法。）
+- **上游发布了版本**：manguebyte 0.2.0 已经在 crates.io（MIT/Apache）；锁定版本号和锁定提交一样可复现，而且 clone 不用 `--recursive`。
 - **按需开设备**：依赖时 `default-features = false`，只用渲染所需的部分；本机声卡播放（`muser view --device`）
   通过 muser-engine 的 `devices` 特性打开 manguebyte 的 `devices`（CoreAudio / WASAPI / ALSA，Linux 需 libasound2-dev）。
+- **要改 manguebyte 本身**：把它 clone 到 muser 旁边，临时把依赖指过去（见根 `Cargo.toml` 里的注释）。
 
 ### 同步上游
 
 ```bash
-# 在 vendor/manguebyte 内拉取上游更新
-cd vendor/manguebyte && git pull
+# 改根 Cargo.toml 里的版本号，然后
+cargo update -p manguebyte
 # 若上游 API 变化，只需调整 muser-engine 这一层（唯一与 manguebyte 耦合的 crate）
 ```
 

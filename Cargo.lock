@@ -747,7 +747,9 @@ checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
 name = "manguebyte"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9651c34bcf7c4e05a9da8597e93f3b1ca43dc939f4bd650cfc7b4d3ba1f9f90e"
 dependencies = [
  "manguebyte-analysis",
  "manguebyte-clap",
@@ -767,7 +769,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-analysis"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "580c02e90a3e64cde08095c04647bd3778154631000e87bf302c564109af67b2"
 dependencies = [
  "manguebyte-core",
  "manguebyte-dsp",
@@ -775,7 +779,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-au"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5570c13e3f099aa3b11c374bf5f6c90cb91ae5bcb066350174dc3c7fbcf28810"
 dependencies = [
  "manguebyte-core",
  "manguebyte-dsp",
@@ -786,7 +792,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-clap"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66297a59b5d261adeabbb90bbe5b93be2aea49e358220145c038aa26073da9aa"
 dependencies = [
  "clap-sys",
  "manguebyte-core",
@@ -798,11 +806,15 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-core"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c931d451061c6f0edfc0eff5bb71bc4fc98658f07d57f3fabfd7e7edfa3f9c3e"
 
 [[package]]
 name = "manguebyte-devices"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8529b028a1c4e95be50ab7d96fae0a435d6a1b1432efb70c04780df105a8d660"
 dependencies = [
  "cpal",
  "manguebyte-core",
@@ -814,7 +826,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-dsp"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "954b2fd22c0f8c6edc47a59cb5a1f74bd7f6eb8dde4df27c590e5feb2f31dc9c"
 dependencies = [
  "manguebyte-core",
  "manguebyte-midi",
@@ -822,7 +836,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-formats"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d976f613cb1f2e75aa6fc29f18389e07897dd22a8a7348284e2d68e322313499"
 dependencies = [
  "manguebyte-core",
  "windows-sys 0.61.2",
@@ -830,7 +846,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-graph"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d00e7e773cb4c7bbca2640fa25536fe6ec142890a133efcd5566722e96fda604"
 dependencies = [
  "manguebyte-core",
  "manguebyte-dsp",
@@ -838,7 +856,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-host"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f3e3d2c1a93e0c4535183d2e61f474be7fb03a5bc47b317017a899ab7188b92"
 dependencies = [
  "clap-sys",
  "libloading 0.8.9",
@@ -852,7 +872,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-lv2"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e043ce47978459ff018ec2fa6a643991eedeb367e6d24efa260253c1673271ef"
 dependencies = [
  "manguebyte-core",
  "manguebyte-dsp",
@@ -863,18 +885,24 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-midi"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "587e12267c8755f31eed405e6e92e8d164be612b2b7922bf40efdea5d0ee0cfd"
 
 [[package]]
 name = "manguebyte-params"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2752b9c74730106ff80ec7b31c7e1278224bc3bbb4a2b2234f3aed2a1b895ab8"
 dependencies = [
  "manguebyte-core",
 ]
 
 [[package]]
 name = "manguebyte-plugin"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d00821586214957d529afe52e3ecc7b9be2315f9fb102f1f066ffc5543bc697"
 dependencies = [
  "manguebyte-core",
  "manguebyte-dsp",
@@ -884,7 +912,9 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-sampler"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "174d33c7118b8728e8b407b8b0fbd6200c8ea18a9340a2dcb564e8d8500d260a"
 dependencies = [
  "manguebyte-core",
  "manguebyte-dsp",
@@ -894,14 +924,18 @@ dependencies = [
 
 [[package]]
 name = "manguebyte-ump-io"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6880c39a7f1aee276e00da641385e5a77e9a109fd191b04f6029792597c214d6"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "manguebyte-vst3"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cef310b1e7759374abc3ceeabc31c2154688faad5ffa61acbbf9369718406155"
 dependencies = [
  "manguebyte-core",
  "manguebyte-dsp",

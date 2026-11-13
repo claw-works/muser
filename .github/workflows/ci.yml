@@ -26,8 +26,6 @@ jobs:
         os: [ubuntu-22.04, ubuntu-22.04-arm, macos-latest, windows-2022]
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       # 声卡播放（muser-cli 的 device 特性，默认启用）在 Linux 上需要 ALSA 开发包。
       - name: Install ALSA headers

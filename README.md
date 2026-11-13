@@ -401,7 +401,6 @@ muser/
 │  ├─ muser-engine/   Engine adapter: builds manguebyte instruments, streaming render (WAV / player page / sound card)
 │  ├─ muser-cli/      CLI executable `muser`
 │  └─ muser-mcp/      MCP server (stdio)
-├─ vendor/manguebyte/ Upstream audio engine (git submodule)
 ├─ samples/           Sample projects (grouped: songs/instruments/params/effects/automation/routing/plugins)
 ├─ ARCHITECTURE.md    Architecture, layers, project JSON schema, roadmap
 ├─ SKILLS.md          Arrangement handbook for the AI (main entry point)

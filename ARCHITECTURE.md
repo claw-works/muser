@@ -33,11 +33,10 @@ Design principle: **the engine owns the deterministic "audio truth", the AI owns
 │       writes projects in                                      │
 │     - time is in beats, independent of tempo and sample rate  │
 ├─────────────────────────────────────────────────────────────┤
-│  0. Audio engine (vendored: vendor/manguebyte)                │
+│  0. Audio engine (manguebyte, from crates.io)                 │
 │     - DSP, instruments / drum kits, audio graph, plugin host, │
 │       audio file formats                                      │
-│     - its own upstream workspace, MIT/Apache, used through a  │
-│       path dependency                                         │
+│     - upstream project, MIT/Apache, a crates.io dependency    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,22 +52,20 @@ The AI only needs to understand **the JSON format of layer 1** and **the command
 | `muser-engine` | 2 | Compiles the core model into manguebyte instruments; streaming render (offline WAV, play while rendering, local sound card). | muser-core, manguebyte |
 | `muser-cli` | 3 | The `muser` CLI executable. | muser-core, muser-engine, clap |
 | `muser-mcp` | 3 | MCP server (stdio) exposing the capabilities as agent tools. | muser-core, muser-engine, rmcp |
-| `vendor/manguebyte` | 0 | The upstream audio engine (vendored). | — |
+| `manguebyte` (crates.io) | 0 | The upstream audio engine. | — |
 
-### Why vendored (a git submodule) instead of a crates.io dependency
+### Why a crates.io dependency (it used to be a git submodule)
 
-- **Control**: the submodule pins a commit inside the repository; if upstream stops being maintained we can switch to our own fork (the MIT/Apache license allows forking).
-- **Isolation**: `vendor/manguebyte` is its own Cargo workspace; the top-level muser workspace leaves it out with
-  `exclude = ["vendor"]` and points a `path` dependency at `vendor/manguebyte/crates/manguebyte`.
-  (Cargo does not allow nested workspaces, so this is the only correct way to wire it.)
+- **Upstream publishes releases**: manguebyte 0.2.0 is on crates.io (MIT/Apache); pinning a version gives the same reproducibility as pinning a commit, and nobody has to clone with `--recursive`.
 - **Devices only when needed**: the dependency uses `default-features = false`, only what rendering needs; local sound-card playback (`muser view --device`)
   turns on manguebyte's `devices` through muser-engine's `devices` feature (CoreAudio / WASAPI / ALSA; Linux needs libasound2-dev).
+- **Changing manguebyte itself**: clone it next to muser and temporarily point the dependency at it (see the comment in the root `Cargo.toml`).
 
 ### Updating upstream
 
 ```bash
-# pull upstream changes inside vendor/manguebyte
-cd vendor/manguebyte && git pull
+# bump the version in the root Cargo.toml, then
+cargo update -p manguebyte
 # if the upstream API changed, only muser-engine needs adjusting (the only crate coupled to manguebyte)
 ```
 
