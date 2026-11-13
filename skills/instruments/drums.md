@@ -7,7 +7,7 @@ A note's `pitch` uses the **GM drum key**. Latest list: `muser instruments --fam
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
 | `yinse.strike.luogu` | 36–81 | 48 | Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), small gong 小锣 (rises), cymbals 大钹 (and muted) and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃 |
-| `yinse.strike.drums` | 35–81 | 24 | Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell (GM keys; percussion above 59 is the plain acoustic model); pop / funk / rock / jazz |
+| `yinse.strike.drums` | 35–81 | 24 | Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys; Chinese cymbal (52) and percussion above 59 are the plain acoustic model); pop / funk / rock / jazz |
 | `drums.808` | 35–81 | 24 | TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic |
 | `drums.909` | 35–81 | 24 | TR-909 style: punchy kick and cymbals; house / techno |
 | `drums.606` | 35–81 | 24 | TR-606 style: light and crisp; acid / electro |

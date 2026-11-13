@@ -679,6 +679,9 @@ fn velocity_curve(key: u8) -> f32 {
         46 => 0.73,
         55 => 0.15,
         51 => 0.9,
+        54 => 0.35,
+        56 => 1.6,
+        59 => 0.7,
         _ => 0.8,
     }
 }
@@ -747,12 +750,14 @@ fn measured_velocity(points: &[(f64, f64)], raw: f32) -> f32 {
 }
 
 /// 边击、拍手、踩镲、吊镲与 ride（51，钟面 53）另走一路的键（各一套模态 + 噪声，各自的 EQ）。
-const HAT_KEYS: [u8; 10] = [37, 39, 42, 44, 46, 49, 51, 53, 55, 57];
+const HAT_KEYS: [u8; 14] = [37, 39, 42, 44, 46, 49, 51, 53, 54, 55, 56, 57, 58, 59];
 
 /// 镲那一路每件的 EQ：(2.2 kHz 压多少, 9 kHz 以上提多少, 300 Hz 提多少) dB。
 fn hat_eq(key: u8) -> (f64, f64, f64) {
     match key {
         39 => (0.00, -6.00, 0.00),
+        // 铃鼓：铃片的声音几乎都在 3 kHz 以上，高处那几层噪声的下沿漏下来的压掉。
+        54 => (-15.00, 0.00, -20.00),
         55 | 57 => (0.00, 1.00, 4.72),
         _ => (0.0, 0.0, 0.0),
     }
@@ -843,7 +848,7 @@ impl YinseDrums {
         if let Some(i) = self.hats.iter().position(|h| h.0 == key) {
             &mut self.hats[i].1
         } else {
-            // 未调教（原始音色）：52 54 56 58 59、60 … 81 还是 manguebyte 原声鼓组的声音，没有对着采样量过。
+            // 未调教（原始音色）：52、60 … 81 还是 manguebyte 原声鼓组的声音，没有对着采样量过。
             &mut self.drums
         }
     }
@@ -1105,7 +1110,7 @@ static BUILTINS: &[Builtin] = &[
     // —— 鼓组 ——
     // —— muser 自己的打击乐（yinse）——
     b!("yinse.strike.luogu", ["luogu"], "drums", true, (36, 81), 48, "Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), small gong 小锣 (rises), cymbals 大钹 (and muted) and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃", || Patch::Kit(crate::percussion::KitParams::luogu())),
-    b!("yinse.strike.drums", [], "drums", true, DRUM_RANGE, 24, "Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell (GM keys; percussion above 59 is the plain acoustic model); pop / funk / rock / jazz", || Patch::YinseDrums(yinse_drums())),
+    b!("yinse.strike.drums", [], "drums", true, DRUM_RANGE, 24, "Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys; Chinese cymbal (52) and percussion above 59 are the plain acoustic model); pop / funk / rock / jazz", || Patch::YinseDrums(yinse_drums())),
     b!("drums.808", ["808"], "drums", true, DRUM_RANGE, 24, "TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic", || Patch::Drums(DrumKit::style_808())),
     b!("drums.909", ["909"], "drums", true, DRUM_RANGE, 24, "TR-909 style: punchy kick and cymbals; house / techno", || Patch::Drums(DrumKit::style_909())),
     b!("drums.606", ["606"], "drums", true, DRUM_RANGE, 24, "TR-606 style: light and crisp; acid / electro", || Patch::Drums(DrumKit::style_606())),

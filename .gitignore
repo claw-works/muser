@@ -17,3 +17,6 @@ samples/**/*.wav
 # muser view 生成的播放页（内嵌音频，体积大）
 samples/**/*.html
 TODO.md
+
+# Playwright MCP 截图与快照（本机调试用）
+.playwright-mcp/
