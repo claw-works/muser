@@ -596,9 +596,15 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
     let rebuild = |p: &Project, at: usize| -> Result<Renderer, String> {
         sh.seeking.store(true, Ordering::Release);
         flush(&sh);
+        crate::trace(|| "player: rebuild enter".to_string());
+        // 只拿锁复制一份缓存（Arc 克隆），插件实例化在锁外做：载采样要几秒，
+        // 攥着锁会让页面的渲染线程堵在 store_instruments 上。
+        let snapshot = cache.lock().unwrap().snapshot();
+        crate::trace(|| "player: cache snapshot taken".to_string());
         let result = {
-            let c = cache.lock().unwrap();
-            Renderer::new_at(p, settings, Some(&c), true, at).map_err(|e| format!("{e:#}"))
+            let r = Renderer::new_at(p, settings, Some(&snapshot), true, at).map_err(|e| format!("{e:#}"));
+            crate::trace(|| format!("player: renderer built ok={}", r.is_ok()));
+            r
         };
         match &result {
             // 队列填满后才清除 seeking（见下面的填充），刚跳转时的空队列不算欠载。
@@ -647,6 +653,9 @@ fn run(settings: RenderSettings, cache: Arc<Mutex<RenderCache>>, sh: Arc<Shared>
             }
             Some(Cmd::Load(p)) => {
                 let at = sh.position.load(Ordering::Acquire);
+                // 先放掉旧的渲染器（连带插件实例），再建新的：插件实例化可能要几秒，
+                // 新旧两份实例同时活着时，Kontakt 这类单实例插件会卡死。
+                renderer = None;
                 match rebuild(&p, at) {
                     Ok(r) => {
                         renderer = Some(r);

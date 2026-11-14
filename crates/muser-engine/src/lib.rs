@@ -152,6 +152,17 @@ pub mod transport {
 }
 pub mod live_client;
 pub mod render;
+
+/// 诊断用阶段日志：设置 `MUSER_TRACE=1` 时打印（带秒级时间戳），平时零开销。
+pub fn trace(msg: impl FnOnce() -> String) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ON.get_or_init(|| std::env::var_os("MUSER_TRACE").is_some()) {
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        let th = std::thread::current();
+        eprintln!("[trace {t:.3} {}] {}", th.name().unwrap_or("?"), msg());
+    }
+}
+
 pub mod sfz;
 pub mod presets;
 mod electric;

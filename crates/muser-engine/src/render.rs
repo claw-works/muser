@@ -526,7 +526,9 @@ impl LiveInstrument {
     /// 从第 `start` 帧开始演奏。`start` 之前按下、到这时还没松开的音（以及踩着的踏板）在 `start` 补发（chase）。
     fn new(project: &Project, ti: usize, cx: &Ctx, beats: f64, start: usize) -> Result<Self, EngineError> {
         let track = &project.tracks[ti];
+        crate::trace(|| format!("instrument: building '{}' ({})", track.name, track.instrument));
         let inst = build_instrument(project, ti, cx)?;
+        crate::trace(|| format!("instrument: built '{}'", track.name));
         let lanes = automate::compile_track(project, ti, beats).map_err(invalid)?.instrument;
         let acts = chase(schedule(project, ti, cx), start);
         let sings = acts.iter().any(|a| matches!(a.1, Act::Sing { .. }));
@@ -864,6 +866,12 @@ struct Cached {
 impl RenderCache {
     pub fn new() -> Self {
         Self::default()
+    }
+    /// 复制一份缓存（条目是 `Arc`，克隆很便宜）。
+    /// 建渲染器时克隆一份在锁外构建：插件的实例化可能要几秒（Kontakt 载采样），
+    /// 不能攥着共享的 cache 锁做——另一个线程（声卡播放）会被卡住。
+    pub fn snapshot(&self) -> RenderCache {
+        RenderCache { map: self.map.clone() }
     }
     /// 条目数。
     pub fn len(&self) -> usize {
@@ -1348,6 +1356,7 @@ impl Renderer {
             let source = match (node, active) {
                 (Node::Track(i), true) => {
                     let cached = cache.zip(cache_key).and_then(|(c, k)| c.map.get(&k));
+                    crate::trace(|| format!("source: track {} cached={}", project.tracks[i].name, cached.is_some()));
                     Some(match cached {
                         Some(c) => Source::Cached(c.clone()),
                         // 音频音轨：整轨干声一次铺好（同一工程再次渲染时取自缓存，不再解码）。

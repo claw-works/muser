@@ -663,8 +663,15 @@ impl Shared {
                 // 免得声卡线程现场载入乐器而卡顿。
                 st.player_shape = Some(shape);
                 st.player_pending = Some(p);
+            } else if p.tracks.iter().any(|t| t.instrument.trim().starts_with("plugin:")) {
+                // 第一次载入 / 没在播放，但工程里有插件乐器：也先挂着，等这一版渲染完、
+                // 乐器输出进了缓存再交（见 render_loop）。声卡线程自己建渲染器会另起一个插件实例，
+                // 而 Kontakt 这类插件在第二个实例上会永久卡在载入采样，且它握着 cache 锁，
+                // 会把页面渲染线程一起拖死在 store_instruments 上。
+                st.player_shape = Some(shape);
+                st.player_pending = Some(p);
             } else {
-                // 没在播放（或第一次载入）：立刻交给声卡，边渲染边播。
+                // 没在播放（或第一次载入）且只有内置乐器：立刻交给声卡，边渲染边播。
                 st.player_shape = Some(shape);
                 st.player_pending = None;
                 player.load(p);
@@ -737,7 +744,16 @@ impl Shared {
                 continue;
             };
             let t0 = std::time::Instant::now();
-            let renderer = Renderer::new(&project, self.settings, Some(&self.cache.lock().unwrap()), false).map(|r| r.with_meters().recording());
+            muser_engine::trace(|| "view: render start".to_string());
+            // 复制一份缓存（Arc 克隆）在锁外建渲染器：插件实例化要几秒，不能攥着共享锁。
+            let snapshot = self.cache.lock().unwrap().snapshot();
+            muser_engine::trace(|| "view: cache snapshot taken".to_string());
+            let renderer = {
+                let r = Renderer::new(&project, self.settings, Some(&snapshot), false);
+                muser_engine::trace(|| format!("view: renderer built ok={}", r.is_ok()));
+                r
+            }
+            .map(|r| r.with_meters().recording());
             let mut r = match renderer {
                 Ok(r) => r,
                 Err(e) => {
@@ -746,6 +762,7 @@ impl Shared {
                 }
             };
             let total = r.total_frames();
+            muser_engine::trace(|| format!("view: process loop start, total={total}"));
             let v = Arc::new(Version {
                 frames: total,
                 summary,
@@ -774,6 +791,7 @@ impl Shared {
                     pr.rendered = at + n;
                     // 节点电平每秒更新一次（复制有代价）。
                     if pr.rendered / 48_000 != at / 48_000 {
+                        muser_engine::trace(|| format!("view: rendered {}/{} frames", pr.rendered, total));
                         for m in r.meters() {
                             pr.meters.insert(node_id(m.node), m.peaks);
                         }
@@ -809,19 +827,24 @@ impl Shared {
                     if !published {
                         self.publish(&v);
                     }
+                    muser_engine::trace(|| "view: render done, storing instruments".to_string());
                     let mut cache = self.cache.lock().unwrap();
+                    muser_engine::trace(|| "view: instrument cache locked".to_string());
                     r.store_instruments(&mut cache);
+                    muser_engine::trace(|| "view: instruments stored".to_string());
+                    let entries = cache.len();
+                    let bytes = cache.bytes() as f64 / 1e6;
+                    // 先把这一版的渲染器（含插件实例）放掉，再把工程交给声卡线程：
+                    // 万一声卡那边要自己建乐器（比如带直接输出的插件不在缓存里），
+                    // 也不会和这一份实例同时存在。
+                    drop(cache);
+                    drop(r);
+                    muser_engine::trace(|| "view: renderer dropped, handing to player".to_string());
                     let mut st = self.state.lock().unwrap();
                     self.hand_to_player(&mut st);
                     st.rendering = st.requested;
                     st.error = None;
-                    eprintln!(
-                        "[view] version {}: rendered {:.1}s (instrument cache {} entries, {:.0} MB)",
-                        st.version,
-                        t0.elapsed().as_secs_f64(),
-                        cache.len(),
-                        cache.bytes() as f64 / 1e6
-                    );
+                    eprintln!("[view] version {}: rendered {:.1}s (instrument cache {entries} entries, {bytes:.0} MB)", st.version, t0.elapsed().as_secs_f64());
                 }
                 Ok(false) => {}
                 Err(e) => self.fail(e),
