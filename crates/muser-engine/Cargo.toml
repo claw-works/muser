@@ -22,6 +22,10 @@ ruzstd = "0.9.1"
 libc = "0.2"
 
 # 插件界面窗口（`muser plugin edit`，只在 macOS 上）。
+[target.'cfg(windows)'.dependencies]
+# 插件界面的窗口（muser plugin edit / view 里打开插件）。
+windows-sys = { version = "0.61", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_UI_WindowsAndMessaging"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", optional = true }
 objc2-foundation = { version = "0.3", optional = true }
@@ -31,7 +35,7 @@ objc2-app-kit = { version = "0.3", optional = true }
 default = []
 ## 插件宿主：加载第三方 CLAP/VST3/LV2 作为效果器。
 ## 开启后需要相应格式的系统环境，编译也更重，故默认关闭。
-host = ["manguebyte/host", "manguebyte/clap", "manguebyte/vst3", "manguebyte/lv2", "dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit"]
+host = ["manguebyte/host", "manguebyte/clap", "manguebyte/vst3", "manguebyte/lv2", "dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit", "dep:windows-sys"]
 ## 本机声卡播放（muser view --device）。Linux 上需要 ALSA 开发包（libasound2-dev）。
 devices = ["manguebyte/devices"]
 

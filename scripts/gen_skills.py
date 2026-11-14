@@ -1255,7 +1255,7 @@ Load it in a project: `"instrument_params": { "@state": "pad.muserstate" }` (for
 Application order: `@state` -> state rewrites (`@wavetable` / `@modulations`) -> `selector` (such as `effect`) -> profile `setup` -> `@preset` -> remaining parameters. The state file records the plugin id, and loading it into a different plugin is rejected;
 it is tied to the plugin version and platform and suits use on this machine; to share experience, use a profile. MCP: `save_plugin_state`.
 
-### Letting a person pick the sound in the plugin UI (macOS)
+### Letting a person pick the sound in the plugin UI (macOS, Windows)
 
 For some plugins (such as Kontakt) the sound can only be loaded in their own UI, and neither parameters nor profiles can select it. In that case let a person pick:
 

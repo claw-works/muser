@@ -511,7 +511,7 @@ enum SoundsCommand {
         /// State file (.muserstate).
         state: String,
     },
-    /// Capture (macOS): open the plugin window and load this sound in it (with the plugin's own browser / search box);
+    /// Capture (macOS, Windows): open the plugin window and load this sound in it (with the plugin's own browser / search box);
     /// after the window is closed the state is saved to the local sound library and `sounds state` can use it directly. A person clicks, or the agent uses computer use.
     Capture {
         plugin: String,
@@ -605,7 +605,7 @@ enum PluginCommand {
         #[arg(short, long)]
         output: String,
     },
-    /// Open the plugin's own UI (macOS, VST3), pick a sound and adjust parameters in it; the state is saved to a file when the window is closed.
+    /// Open the plugin's own UI (macOS, Windows; VST3, CLAP), pick a sound and adjust parameters in it; the state is saved to a file when the window is closed.
     Edit {
         /// Plugin path, optionally with #plugin-id.
         plugin: String,
@@ -1567,7 +1567,7 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
             }
         }
         SoundsCommand::Capture { plugin, preset } => {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             {
                 use muser_engine::presets;
                 let p = presets::plugin_ref(&plugin).map_err(|e| anyhow::anyhow!(e))?;
@@ -1610,10 +1610,10 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                     muser_engine::plugin_edit::Outcome::Unchanged => println!("No changes in the window; nothing captured."),
                 }
             }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", windows)))]
             {
                 let _ = (plugin, preset);
-                return Err(anyhow::anyhow!("capture needs to open the plugin window, which is currently supported on macOS only"));
+                return Err(anyhow::anyhow!("capture needs to open the plugin window, which is currently supported on macOS and Windows only"));
             }
         }
         SoundsCommand::Describe { sound, params, keys: true, from, to, tempo, hold, refresh, json, .. } => {
@@ -1722,7 +1722,7 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
             println!("In the project write \"instrument_params\": {{ \"@state\": \"{output}\" }} (for an effect, put it in params).");
         }
         PluginCommand::Edit { plugin: spec, params, output, title, serve } => {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             {
                 use muser_engine::plugin_edit::{run, Cmd, Outcome};
                 let base = parse_map(params.as_deref())?;
@@ -1759,10 +1759,10 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
                     _ => {}
                 }
             }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", windows)))]
             {
                 let _ = (spec, params, output, title, serve);
-                return Err(anyhow::anyhow!("the plugin UI is currently supported on macOS only"));
+                return Err(anyhow::anyhow!("the plugin UI is currently supported on macOS and Windows only"));
             }
         }
         PluginCommand::Profile { command } => cmd_profile(command)?,

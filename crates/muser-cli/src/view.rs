@@ -938,7 +938,7 @@ impl Shared {
             let description = [e.description, source].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" — ");
             json!({ "spec": e.spec, "name": e.name, "vendor": e.family, "description": description, "format": "yinse" })
         }));
-        if cfg!(all(target_os = "macos", feature = "host")) {
+        if cfg!(all(any(target_os = "macos", windows), feature = "host")) {
             if let Ok((list, _)) = muser_engine::plugin::scan(false) {
                 out.extend(
                     list.into_iter()
@@ -982,7 +982,7 @@ impl Shared {
     }
 
     /// 插件的一个内置音色：能直接换成状态的（自动 / 已采集）写进工程；要在插件窗口里载入的开一个采集窗口
-    /// （在 Finder 里选中音色文件，人或 agent 把它载入后点完成），状态存进本机音色库，下次直接用。
+    /// （在 Finder / 资源管理器里选中音色文件，人或 agent 把它载入后点完成），状态存进本机音色库，下次直接用。
     fn preset_use(self: &Arc<Self>, ti: usize, spec: &str, file: &str) -> Result<&'static str, String> {
         use muser_engine::presets;
         let p = presets::plugin_ref(spec)?;
@@ -1024,8 +1024,8 @@ impl Shared {
 
     fn edit_open_with(self: &Arc<Self>, ti: usize, spec: &str, label: &str, capture: Option<(muser_engine::presets::PluginRef, String)>, fresh: bool) -> Result<(), String> {
         let spec = spec.strip_prefix("plugin:").unwrap_or(spec);
-        if !cfg!(target_os = "macos") {
-            return Err("the plugin UI is currently supported on macOS only".into());
+        if !cfg!(any(target_os = "macos", windows)) {
+            return Err("the plugin UI is currently supported on macOS and Windows only".into());
         }
         let mut edit = self.edit.lock().unwrap();
         if let Some(e) = edit.as_mut().filter(|e| e.open) {
@@ -1107,8 +1107,8 @@ impl Shared {
     /// 打开一个插件效果器的窗口（`node` 的效果链第 `index` 格）：人在窗口里调，状态随时存进
     /// `<工程名>.<节点>.fx<index>.muserstate`，写进那一格的 `params."@state"`。
     fn fx_open(self: &Arc<Self>, node: &str, index: usize) -> Result<(), String> {
-        if !cfg!(target_os = "macos") {
-            return Err("the plugin UI is currently supported on macOS only".into());
+        if !cfg!(any(target_os = "macos", windows)) {
+            return Err("the plugin UI is currently supported on macOS and Windows only".into());
         }
         let mut edit = self.edit.lock().unwrap();
         if let Some(e) = edit.as_mut().filter(|e| e.open) {
@@ -1511,7 +1511,7 @@ impl Shared {
         out["karaoke"] = json!(st.file.as_ref().map(muser_engine::lyric::karaoke).unwrap_or_default());
         out["solo"] = json!(st.solo);
         out["project_path"] = json!(self.path.display().to_string());
-        out["sound_edit"] = json!(cfg!(all(target_os = "macos", feature = "host")));
+        out["sound_edit"] = json!(cfg!(all(any(target_os = "macos", windows), feature = "host")));
         out
     }
 

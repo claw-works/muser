@@ -35,6 +35,7 @@ muser's own instruments live under **`yinse.`** (*yīnsè*, "tone colour"), name
 - **Serum 2 FX effect chains load directly**: on the Serum 2 FX plugin, `sounds presets` lists the `.SerumFX` (one effect) and `.SerumFXRack` (a whole chain) files, and `sounds state` gives the entry to put in `effects`. The chain goes into Serum 2 FX's own initial state, which muser reads once by opening the plugin without a window and keeps in the sound library (again after a plugin update). The 9 factory chains still in the oldest format are not read.
 - **Sound tools over MCP**: `list_sounds`, `list_plugin_presets`, `get_preset_state` and `describe_sound` do what `muser sounds list / presets / state / describe` do, so agents no longer need the shell to pick a plugin's sound.
 - **Sound cards suggest a gain**: `sounds describe` / `describe_sound` give `suggested_gain_db`, the `gain_db` that makes a sound about as loud as the built-in instruments (cards already cached get it without listening again).
+- **Plugin windows on Windows**: `muser plugin edit`, `sounds capture` and the 🎛 sound drawer of `muser view` now open a plugin's own editor on Windows too (a Win32 window, VST3 and CLAP), with live audio and the state saved as on macOS.
 
 ### Fixes
 

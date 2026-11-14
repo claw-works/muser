@@ -53,7 +53,7 @@ Error messages give the exact location, e.g. `tracks[0].effects[0]: reverb.mix =
 - `profile list|show|draft|check|path`: plugin profiles (data files holding common parameter aliases, presets, setup, and experience notes).
   `show <plugin|profile.json> [--markdown]`; `draft <plugin> [--audition] [--save | -o file]`; `check <profile.json> [--plugin <plugin>]`.
 - `save-state <plugin> [--params JSON] -o <file>`: save the plugin's full state; load it in a project with `"@state": "<file>"`.
-- `edit <plugin> [--params JSON] -o <file>` (macOS): open the plugin's own UI so a person can pick a sound, and save the state when the window closes; the 🎛 panel of `muser view` uses this.
+- `edit <plugin> [--params JSON] -o <file>` (macOS, Windows): open the plugin's own UI so a person can pick a sound, and save the state when the window closes; the 🎛 panel of `muser view` uses this.
 - `<plugin>` is a path and may carry `#plugin-id`. All support `--json`.
 
 ### `muser sounds list|describe`
@@ -66,7 +66,7 @@ Error messages give the exact location, e.g. `tracks[0].effects[0]: reverb.mix =
 - `describe <sound> --keys [--from 36 --to 96 --tempo 120 --hold 4]`: key map card - hold each key for a few bars and measure whether it sounds, whether it is a loop that follows the tempo,
   how many bars per cycle, onsets per bar, loudness, brightness (loop kits, drum kits, multi-zone sounds).
 - `identify <plugin> <state-file>`: identify which built-in sound the state has loaded (compares the sound file's raw bytes).
-- `capture <plugin> <sound>` (macOS): open the plugin window and select the sound file in Finder; a person or an agent (computer use) loads it and closes the window, and the state is saved into the sound library.
+- `capture <plugin> <sound>` (macOS, Windows): open the plugin window and select the sound file in Finder / Explorer; a person or an agent (computer use) loads it and closes the window, and the state is saved into the sound library.
 - `describe <sound> [--params JSON] [--drums] [--refresh] [--json]`: "listen" to a sound: render probe notes and measure brightness, attack, sustain, decay, range, velocity response, stereo, and pitch,
   write them as a text card, and cache it on this machine (`~/Library/Caches/muser/sounds`, `~/.cache/muser/sounds`). For plugins, use `--params '{"@state": …}'` to specify the sound.
 

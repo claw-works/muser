@@ -1,4 +1,4 @@
-//! 插件音色编辑会话（macOS）：插件自己的界面放在一个原生窗口里，插件同时接到声卡（能在插件的屏幕键盘上
+//! 插件音色编辑会话（macOS、Windows）：插件自己的界面放在一个原生窗口里，插件同时接到声卡（能在插件的屏幕键盘上
 //! 弹、能循环试听一段音符），状态一有变化就自动存盘。窗口关闭即结束（保存）。
 //!
 //! 由 `muser plugin edit` 运行；`muser view` 以子进程方式启动它，经 [`Cmd`] 驱动、经 `on_saved` 得知同步。
@@ -112,6 +112,199 @@ mod audition {
     }
 }
 
+/// 装插件界面的原生窗口：建窗口、处理系统事件、跟着插件改大小、改标题、关掉。各平台一份，会话的其余部分共用。
+#[cfg(target_os = "macos")]
+mod window {
+    use manguebyte::host::editor::{EditorSize, ParentWindow};
+    use objc2::rc::Retained;
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSEventMask, NSWindow, NSWindowStyleMask};
+    use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize, NSString};
+    use std::time::Instant;
+
+    pub struct Window {
+        app: Retained<NSApplication>,
+        window: Retained<NSWindow>,
+    }
+
+    impl Window {
+        pub fn open(title: &str) -> Result<(Self, ParentWindow), String> {
+            let mtm = MainThreadMarker::new().ok_or("the plugin editor must be opened on the main thread")?;
+            let app = NSApplication::sharedApplication(mtm);
+            app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+            app.finishLaunching();
+            let style = NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable;
+            let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(800.0, 600.0));
+            // SAFETY: 主线程上新建窗口；关窗口后不释放（还要读它是否可见）。
+            let window = unsafe { NSWindow::initWithContentRect_styleMask_backing_defer(mtm.alloc(), rect, style, NSBackingStoreType::Buffered, false) };
+            unsafe { window.setReleasedWhenClosed(false) };
+            window.setTitle(&NSString::from_str(title));
+            let view = window.contentView().ok_or("the window has no content view")?;
+            let parent = ParentWindow::cocoa(Retained::as_ptr(&view) as usize).ok_or("invalid view")?;
+            Ok((Self { app, window }, parent))
+        }
+        pub fn fit(&self, s: EditorSize) {
+            self.window.setContentSize(NSSize::new(f64::from(s.width), f64::from(s.height)));
+        }
+        /// 第一次显示：居中、提到最前。
+        pub fn show(&self) {
+            self.window.center();
+            self.front();
+        }
+        pub fn front(&self) {
+            self.window.makeKeyAndOrderFront(None);
+            #[allow(deprecated)]
+            self.app.activateIgnoringOtherApps(true);
+        }
+        pub fn is_open(&self) -> bool {
+            self.window.isVisible()
+        }
+        /// 处理一轮系统事件（最多等 10 ms）；人在窗口里松开鼠标、按键，记到 `touched`。
+        pub fn pump(&self, touched: &mut Option<Instant>) {
+            // SAFETY: AppKit 的默认运行循环模式常量。
+            let mode = unsafe { NSDefaultRunLoopMode };
+            let until = NSDate::dateWithTimeIntervalSinceNow(0.01);
+            while let Some(ev) = self.app.nextEventMatchingMask_untilDate_inMode_dequeue(NSEventMask::Any, Some(&until), mode, true) {
+                use objc2_app_kit::NSEventType as T;
+                if matches!(ev.r#type(), T::LeftMouseUp | T::RightMouseUp | T::OtherMouseUp | T::KeyUp) {
+                    *touched = Some(Instant::now());
+                }
+                self.app.sendEvent(&ev);
+            }
+        }
+        pub fn set_title(&self, title: &str) {
+            self.window.setTitle(&NSString::from_str(title));
+        }
+        /// 关掉（之后 `is_open` 为假）；插件界面在 [`destroy`](Self::destroy) 之前拆下来。
+        pub fn close(&self) {
+            self.window.close();
+        }
+        pub fn destroy(self) {}
+    }
+}
+
+#[cfg(windows)]
+mod window {
+    use manguebyte::host::editor::{EditorSize, ParentWindow};
+    use std::cell::Cell;
+    use std::time::{Duration, Instant};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging as w;
+
+    thread_local! {
+        /// 窗口被人关掉（点了关闭按钮）：先藏起来，等插件界面拆下来再销毁窗口。
+        static CLOSED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    const STYLE: w::WINDOW_STYLE = w::WS_OVERLAPPED | w::WS_CAPTION | w::WS_SYSMENU | w::WS_MINIMIZEBOX;
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if msg == w::WM_CLOSE {
+            CLOSED.with(|c| c.set(true));
+            // SAFETY: 本线程建的窗口。
+            unsafe { w::ShowWindow(hwnd, w::SW_HIDE) };
+            return 0;
+        }
+        // SAFETY: 其余消息交给系统的默认处理。
+        unsafe { w::DefWindowProcW(hwnd, msg, wparam, lparam) }
+    }
+
+    pub struct Window {
+        hwnd: HWND,
+        /// 这个线程的 OLE 是我们初始化的（结束时还原）。
+        ole: bool,
+    }
+
+    impl Window {
+        pub fn open(title: &str) -> Result<(Self, ParentWindow), String> {
+            CLOSED.with(|c| c.set(false));
+            // 插件界面（拖放、剪贴板）要求所在线程是 OLE 的单线程套间；已经初始化成别的套间就算了。
+            // SAFETY: 这个线程上第一次、也是唯一一次初始化，成功了才在 destroy 里还原。
+            let ole = unsafe { windows_sys::Win32::System::Ole::OleInitialize(std::ptr::null()) } >= 0;
+            let class = wide("muser.plugin.editor");
+            let title = wide(title);
+            // SAFETY: 标准的 Win32 建窗口流程；字符串在调用期间都活着。重复注册同一个类会失败，不碍事。
+            let hwnd = unsafe {
+                let instance = GetModuleHandleW(std::ptr::null());
+                let wc = w::WNDCLASSW {
+                    lpfnWndProc: Some(proc),
+                    hInstance: instance,
+                    hCursor: w::LoadCursorW(std::ptr::null_mut(), w::IDC_ARROW),
+                    lpszClassName: class.as_ptr(),
+                    ..Default::default()
+                };
+                w::RegisterClassW(&wc);
+                w::CreateWindowExW(0, class.as_ptr(), title.as_ptr(), STYLE, w::CW_USEDEFAULT, w::CW_USEDEFAULT, 800, 600, std::ptr::null_mut(), std::ptr::null_mut(), instance, std::ptr::null())
+            };
+            let parent = ParentWindow::win32(hwnd as usize).ok_or("cannot create the plugin window")?;
+            Ok((Self { hwnd, ole }, parent))
+        }
+        /// 窗口的客户区正好是插件界面的大小，放在屏幕中间。
+        pub fn fit(&self, s: EditorSize) {
+            let mut r = RECT { left: 0, top: 0, right: s.width as i32, bottom: s.height as i32 };
+            // SAFETY: 本线程的窗口，`r` 活着。
+            unsafe {
+                w::AdjustWindowRectEx(&mut r, STYLE, 0, 0);
+                let (cx, cy) = (r.right - r.left, r.bottom - r.top);
+                let (sw, sh) = (w::GetSystemMetrics(w::SM_CXSCREEN), w::GetSystemMetrics(w::SM_CYSCREEN));
+                w::SetWindowPos(self.hwnd, std::ptr::null_mut(), ((sw - cx) / 2).max(0), ((sh - cy) / 2).max(0), cx, cy, w::SWP_NOZORDER | w::SWP_NOACTIVATE);
+            }
+        }
+        pub fn show(&self) {
+            self.front();
+        }
+        pub fn front(&self) {
+            // SAFETY: 本线程的窗口。
+            unsafe {
+                w::ShowWindow(self.hwnd, w::SW_SHOWNORMAL);
+                w::SetForegroundWindow(self.hwnd);
+            }
+        }
+        pub fn is_open(&self) -> bool {
+            !CLOSED.with(Cell::get)
+        }
+        /// 处理一轮系统消息，再歇 10 ms；人在窗口里（包括插件界面）松开鼠标、按键，记到 `touched`。
+        pub fn pump(&self, touched: &mut Option<Instant>) {
+            // SAFETY: 标准的消息循环。
+            unsafe {
+                let mut msg: w::MSG = std::mem::zeroed();
+                while w::PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, w::PM_REMOVE) != 0 {
+                    if matches!(msg.message, w::WM_LBUTTONUP | w::WM_RBUTTONUP | w::WM_MBUTTONUP | w::WM_KEYUP) {
+                        *touched = Some(Instant::now());
+                    }
+                    w::TranslateMessage(&msg);
+                    w::DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        pub fn set_title(&self, title: &str) {
+            let t = wide(title);
+            // SAFETY: 本线程的窗口，字符串活着。
+            unsafe { w::SetWindowTextW(self.hwnd, t.as_ptr()) };
+        }
+        pub fn close(&self) {
+            CLOSED.with(|c| c.set(true));
+            // SAFETY: 本线程的窗口。
+            unsafe { w::ShowWindow(self.hwnd, w::SW_HIDE) };
+        }
+        /// 插件界面拆下来以后再销毁窗口。
+        pub fn destroy(self) {
+            // SAFETY: 本线程的窗口，之后不再用。
+            unsafe { w::DestroyWindow(self.hwnd) };
+            if self.ole {
+                // SAFETY: 与 open 里成功的 OleInitialize 配对。
+                unsafe { windows_sys::Win32::System::Ole::OleUninitialize() };
+            }
+        }
+    }
+}
+
 /// 运行一次编辑会话，直到窗口关闭或收到 [`Cmd::Done`] / [`Cmd::Cancel`]。必须在主线程调用。
 /// `on_saved` 在每次存盘（自动同步、结束）后调用。
 pub fn run(
@@ -122,12 +315,8 @@ pub fn run(
     cmds: mpsc::Receiver<Cmd>,
     mut on_saved: impl FnMut(),
 ) -> Result<Outcome, String> {
-    use manguebyte::host::editor::{EditorRequest, EditorSize, ParentWindow};
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSEventMask, NSWindow, NSWindowStyleMask};
-    use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize, NSString};
+    use manguebyte::host::editor::EditorRequest;
 
-    let mtm = MainThreadMarker::new().ok_or("the plugin editor must be opened on the main thread")?;
     let mut o = Opened::open_spec(spec)?;
     o.apply(params)?;
 
@@ -155,17 +344,7 @@ pub fn run(
     #[cfg(not(feature = "devices"))]
     let _proc = proc;
 
-    let app = NSApplication::sharedApplication(mtm);
-    app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-    app.finishLaunching();
-    let style = NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable;
-    let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(800.0, 600.0));
-    // SAFETY: 主线程上新建窗口；关窗口后不释放（还要读它是否可见）。
-    let window = unsafe { NSWindow::initWithContentRect_styleMask_backing_defer(mtm.alloc(), rect, style, NSBackingStoreType::Buffered, false) };
-    unsafe { window.setReleasedWhenClosed(false) };
-    window.setTitle(&NSString::from_str(title));
-    let view = window.contentView().ok_or("the window has no content view")?;
-    let parent = ParentWindow::cocoa(objc2::rc::Retained::as_ptr(&view) as usize).ok_or("invalid view")?;
+    let (window, parent) = window::Window::open(title)?;
     let size = if let Some(p) = o.plugin.as_vst3_mut() {
         p.open_editor(parent, None).map_err(|e| format!("cannot open the plugin editor: {e:?}"))?
     } else if let Some(p) = o.plugin.as_clap_mut() {
@@ -173,12 +352,8 @@ pub fn run(
     } else {
         return Err("only VST3 / CLAP plugin editors are supported".into());
     };
-    let fit = |s: EditorSize| window.setContentSize(NSSize::new(f64::from(s.width), f64::from(s.height)));
-    fit(size);
-    window.center();
-    window.makeKeyAndOrderFront(None);
-    #[allow(deprecated)]
-    app.activateIgnoringOtherApps(true);
+    window.fit(size);
+    window.show();
 
     let header = || {
         let e = o.plugin.entry();
@@ -191,17 +366,8 @@ pub fn run(
     // 刚载入时插件自己报的改动（载入音色、重建参数表）不算。
     let settled = Instant::now() + Duration::from_secs(3);
     let mut cancel = false;
-    while window.isVisible() {
-        // SAFETY: AppKit 的默认运行循环模式常量。
-        let mode = unsafe { NSDefaultRunLoopMode };
-        let until = NSDate::dateWithTimeIntervalSinceNow(0.01);
-        while let Some(ev) = app.nextEventMatchingMask_untilDate_inMode_dequeue(NSEventMask::Any, Some(&until), mode, true) {
-            use objc2_app_kit::NSEventType as T;
-            if matches!(ev.r#type(), T::LeftMouseUp | T::RightMouseUp | T::OtherMouseUp | T::KeyUp) {
-                touched = Some(Instant::now());
-            }
-            app.sendEvent(&ev);
-        }
+    while window.is_open() {
+        window.pump(&mut touched);
         // 插件界面的请求：改窗口大小、自己关掉。
         let mut requests = Vec::new();
         if let Some(p) = o.plugin.as_vst3_mut() {
@@ -234,7 +400,7 @@ pub fn run(
                         o.plugin.as_clap_mut().and_then(|p| p.set_editor_size(want).ok())
                     };
                     if let Some(s) = got {
-                        fit(s);
+                        window.fit(s);
                     }
                 }
                 EditorRequest::Closed => window.close(),
@@ -268,12 +434,8 @@ pub fn run(
                     let _ = to_audio.send(audition::ToAudio::Stop);
                 }
                 Cmd::Done => window.close(),
-                Cmd::Title { title } => window.setTitle(&NSString::from_str(&title)),
-                Cmd::Front => {
-                    window.makeKeyAndOrderFront(None);
-                    #[allow(deprecated)]
-                    app.activateIgnoringOtherApps(true);
-                }
+                Cmd::Title { title } => window.set_title(&title),
+                Cmd::Front => window.front(),
                 Cmd::Cancel => {
                     cancel = true;
                     window.close();
@@ -305,5 +467,6 @@ pub fn run(
     } else if let Some(p) = o.plugin.as_clap_mut() {
         p.close_editor();
     }
+    window.destroy();
     Ok(if saved && !cancel { Outcome::Saved(read_state_file(out)?.0) } else { Outcome::Unchanged })
 }
