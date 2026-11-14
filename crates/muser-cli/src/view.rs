@@ -178,6 +178,12 @@ struct MixBody {
 }
 
 /// 已经开着一个插件窗口时又点了"打开"：是同一个就把它提到最前面；是别的就说清楚是哪个。
+/// 插件在窗口标题里的名字：文件名去掉 `.vst3` / `.clap`（`/` 与 Windows 的 `\\` 都当分隔符）。
+fn plugin_display_name(spec: &str) -> String {
+    let path = muser_engine::plugin::split_spec(spec).0;
+    path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or(path).trim_end_matches(".vst3").trim_end_matches(".clap").to_string()
+}
+
 fn front_or_busy(e: &mut EditSession, same: bool) -> Result<(), String> {
     use std::io::Write;
     if same {
@@ -185,7 +191,7 @@ fn front_or_busy(e: &mut EditSession, same: bool) -> Result<(), String> {
     }
     let what = match &e.fx {
         Some((node, i)) => format!("{} ({node} effect {})", e.label, i + 1),
-        None => format!("{} (track {})", e.label, e.track + 1),
+        None => format!("{} (tracks[{}])", e.label, e.track),
     };
     Err(format!("the window of {what} is still open (maybe behind other windows): close it first"))
 }
@@ -958,7 +964,7 @@ impl Shared {
         let write = || -> Result<()> {
             let text = std::fs::read_to_string(&self.path)?;
             let mut v: Value = serde_json::from_str(&text)?;
-            let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no track #{ti}"))?;
+            let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no tracks[{ti}]"))?;
             if t.get("instrument").and_then(Value::as_str) != Some(instrument) {
                 switch_instrument(t, instrument);
             }
@@ -992,7 +998,7 @@ impl Shared {
             let write = || -> Result<()> {
                 let text = std::fs::read_to_string(&self.path)?;
                 let mut v: Value = serde_json::from_str(&text)?;
-                let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no track #{ti}"))?;
+                let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no tracks[{ti}]"))?;
                 let same = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &p.spec()[7..]));
                 if !same {
                     switch_instrument(t, &p.spec());
@@ -1035,7 +1041,7 @@ impl Shared {
         let (name, current, mut params) = {
             let st = self.state.lock().unwrap();
             let file = st.file.as_ref().ok_or("the project has not loaded successfully")?;
-            let t = file.tracks.get(ti).ok_or_else(|| format!("no track #{ti}"))?;
+            let t = file.tracks.get(ti).ok_or_else(|| format!("no tracks[{ti}]"))?;
             if t.instrument == "audio" {
                 return Err("an audio track has no instrument".into());
             }
@@ -1065,7 +1071,7 @@ impl Shared {
             // 换插件 / 重新采集 / 新音色：旧的状态文件不能沿用（放弃时从 backup 恢复）。
             let _ = std::fs::remove_file(&out);
         }
-        let plugin_name = muser_engine::plugin::split_spec(spec).0.rsplit('/').next().unwrap_or(spec).trim_end_matches(".vst3").trim_end_matches(".clap").to_string();
+        let plugin_name = plugin_display_name(spec);
         let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
             .args(["plugin", "edit", spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &match &capture {
                 Some(_) => format!("{plugin_name} - load '{label}', then click Done in muser · {name}"),
@@ -1081,7 +1087,7 @@ impl Shared {
         let stdin = child.stdin.take().ok_or("the child process has no stdin")?;
         let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
-        eprintln!("[view] opened the UI of {spec} (track {ti}); state syncs to {}", out.display());
+        eprintln!("[view] opened the UI of {spec} (tracks[{ti}]); state syncs to {}", out.display());
         *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None, notice: None, fx: None });
         drop(edit);
         self.watch_editor(child, stdout);
@@ -1134,7 +1140,7 @@ impl Shared {
         let safe: String = node.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-').to_string();
         let out = dir.join(format!("{stem}.{safe}.fx{index}.muserstate"));
         let backup = (slot, std::fs::read(&out).ok());
-        let plugin_name = muser_engine::plugin::split_spec(&spec).0.rsplit('/').next().unwrap_or(&spec).trim_end_matches(".vst3").trim_end_matches(".clap").to_string();
+        let plugin_name = plugin_display_name(&spec);
         let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
             .args(["plugin", "edit", &spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &format!("{plugin_name} — {node} effect {} · muser", index + 1), "-o"])
             .arg(&out)
@@ -1188,7 +1194,7 @@ impl Shared {
 ")?;
             return Ok(());
         }
-        let t = v.get_mut("tracks").and_then(|t| t.get_mut(e.track)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no track #{}", e.track))?;
+        let t = v.get_mut("tracks").and_then(|t| t.get_mut(e.track)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no tracks[{}]", e.track))?;
         let keep = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &e.spec));
         if !keep {
             switch_instrument(t, &format!("plugin:{}", e.spec));
@@ -2124,5 +2130,18 @@ mod tests {
         add_meter(&mut m2, &tail, half, total - half);
         assert_eq!(m1, m2);
         assert_eq!(m1.len(), total.div_ceil(METER_WINDOW));
+    }
+}
+
+#[cfg(test)]
+mod plugin_name_tests {
+    use super::plugin_display_name;
+
+    #[test]
+    fn window_titles_use_the_plugin_name_on_every_platform() {
+        assert_eq!(plugin_display_name("/Library/Audio/Plug-Ins/VST3/Kontakt 8.vst3#abc"), "Kontakt 8");
+        assert_eq!(plugin_display_name(r"C:\Program Files\Common Files\VST3\Kontakt 8 Portable\Kontakt 8.vst3"), "Kontakt 8");
+        assert_eq!(plugin_display_name(r"C:\Program Files\Common Files\CLAP\Surge XT.clap#org.surge"), "Surge XT");
+        assert_eq!(plugin_display_name("/usr/lib/vst3/Vital.vst3/"), "Vital");
     }
 }

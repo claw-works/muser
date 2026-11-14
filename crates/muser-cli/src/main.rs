@@ -1742,7 +1742,11 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
                 } else {
                     std::mem::forget(tx);
                 }
-                let title = title.unwrap_or_else(|| format!("{} · muser", plugin::split_spec(&spec).0.rsplit('/').next().unwrap_or(&spec)));
+                let title = title.unwrap_or_else(|| {
+                    let path = plugin::split_spec(&spec).0;
+                    let name = path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or(path).trim_end_matches(".vst3").trim_end_matches(".clap");
+                    format!("{name} · muser")
+                });
                 let saved = || {
                     if serve {
                         use std::io::Write;
