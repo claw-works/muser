@@ -25,11 +25,16 @@ pub fn find_port(port: Option<u16>) -> Result<u16, String> {
 pub fn request(port: Option<u16>, method: &str, path: &str, body: Option<&str>) -> Result<Value, String> {
     use std::io::{Read, Write};
     let port = find_port(port)?;
-    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|_| format!("cannot connect to muser live (127.0.0.1:{port}): is it still running?"))?;
+    let mut s =
+        std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|_| format!("cannot connect to muser live (127.0.0.1:{port}): is it still running?"))?;
     s.set_read_timeout(Some(Duration::from_secs(45))).map_err(|e| e.to_string())?;
     let body = body.unwrap_or("");
-    write!(s, "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
-        .map_err(|e| e.to_string())?;
+    write!(
+        s,
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .map_err(|e| e.to_string())?;
     let mut out = String::new();
     s.read_to_string(&mut out).map_err(|e| e.to_string())?;
     let (head, rest) = out.split_once("\r\n\r\n").ok_or("incomplete response from muser live")?;

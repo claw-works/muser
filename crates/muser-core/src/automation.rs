@@ -130,9 +130,7 @@ pub enum Target {
 impl Target {
     pub fn parse(s: &str) -> Option<Target> {
         let s = s.trim();
-        let index = |prefix: &str| -> Option<usize> {
-            s.strip_prefix(prefix)?.strip_prefix('[')?.strip_suffix(']')?.trim().parse().ok()
-        };
+        let index = |prefix: &str| -> Option<usize> { s.strip_prefix(prefix)?.strip_prefix('[')?.strip_suffix(']')?.trim().parse().ok() };
         Some(match s {
             "instrument" => Target::Instrument,
             "gain_db" => Target::Gain,
@@ -213,18 +211,8 @@ impl Automation {
     /// `default_seed` 在自动化没写 `seed` 时使用；`total_beats` 用于随机游走预计算。
     pub fn compile(&self, values: &[f64], default_seed: u64, total_beats: f64) -> CompiledCurve {
         let kind = match &self.shape {
-            Shape::Points { points, curve } => CurveKind::Points {
-                times: points.iter().map(|(t, _)| *t).collect(),
-                values: values.to_vec(),
-                curve: *curve,
-            },
-            Shape::Lfo { wave, period_beats, min, max, phase } => CurveKind::Lfo {
-                wave: *wave,
-                period: *period_beats,
-                min: *min,
-                max: *max,
-                phase: *phase,
-            },
+            Shape::Points { points, curve } => CurveKind::Points { times: points.iter().map(|(t, _)| *t).collect(), values: values.to_vec(), curve: *curve },
+            Shape::Lfo { wave, period_beats, min, max, phase } => CurveKind::Lfo { wave: *wave, period: *period_beats, min: *min, max: *max, phase: *phase },
             Shape::Random { style, step_beats, min, max, max_step, seed } => {
                 let seed = seed.unwrap_or(default_seed);
                 let steps = ((total_beats.max(0.0) / step_beats).ceil() as usize + 2).min(1_000_000);
@@ -243,11 +231,7 @@ impl Automation {
                 CurveKind::Random { style: *style, step: *step_beats, min: *min, max: *max, targets }
             }
         };
-        CompiledCurve {
-            kind,
-            start: self.start.map(|b| b.0),
-            end: self.end.map(|b| b.0),
-        }
+        CompiledCurve { kind, start: self.start.map(|b| b.0), end: self.end.map(|b| b.0) }
     }
 }
 
@@ -348,9 +332,7 @@ impl CompiledCurve {
                 let x = (pos - k as f64).clamp(0.0, 1.0);
                 let u = match style {
                     RandomStyle::Jump => targets[k],
-                    RandomStyle::Glide | RandomStyle::Walk => {
-                        targets[k] + (targets[k + 1] - targets[k]) * smoothstep(x)
-                    }
+                    RandomStyle::Glide | RandomStyle::Walk => targets[k] + (targets[k + 1] - targets[k]) * smoothstep(x),
                 };
                 min + (max - min) * u
             }

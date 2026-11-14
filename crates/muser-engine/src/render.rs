@@ -24,7 +24,7 @@ use muser_core::routing::{self, Node, Plan};
 use muser_core::{Beats, Project};
 
 use manguebyte::analysis::LoudnessMeter;
-use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, WavFormat, decibels, wav};
+use manguebyte::prelude::{decibels, wav, AudioBuffer, NoteRef, ProcessSpec, WavFormat};
 
 use crate::automate::{self, MasterLanes, TrackLanes};
 use crate::effects::{self, Fx};
@@ -41,11 +41,7 @@ pub struct RenderSettings {
 
 impl Default for RenderSettings {
     fn default() -> Self {
-        Self {
-            sample_rate: 48_000,
-            block_size: 256,
-            tail_seconds: 2.0,
-        }
+        Self { sample_rate: 48_000, block_size: 256, tail_seconds: 2.0 }
     }
 }
 
@@ -68,21 +64,54 @@ pub enum EngineError {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Act {
     /// `ch`：带弯音的音符各占一个通道（弯音轮是整个通道的），其余为 None（乐器的通道）。
-    On { key: u8, velocity: f32, accent: bool, mute: bool, ch: Option<u8> },
+    On {
+        key: u8,
+        velocity: f32,
+        accent: bool,
+        mute: bool,
+        ch: Option<u8>,
+    },
     /// 唱一个音节（`choir.*` 的音符写了 `lyric`）：在辅音开始的帧发，`lead` 帧后元音落在拍上，音符长 `len` 帧。
-    Sing { syl: crate::lyric::Syl, text: crate::lyric::Text, lead: u32, len: u32, velocity: f32 },
-    Off { key: u8, ch: Option<u8> },
-    Pedal { down: bool },
+    Sing {
+        syl: crate::lyric::Syl,
+        text: crate::lyric::Text,
+        lead: u32,
+        len: u32,
+        velocity: f32,
+    },
+    Off {
+        key: u8,
+        ch: Option<u8>,
+    },
+    Pedal {
+        down: bool,
+    },
     /// 弯音轮，-8192 – 8191（通常 ±2 半音，古琴走手 ±24）。
-    Bend { value: i16, ch: Option<u8> },
+    Bend {
+        value: i16,
+        ch: Option<u8>,
+    },
     /// 下一个音唱的字（`yinse.voice.*`）：在起音的同一帧、起音之前发，`len` 是这个音有多长（帧）。
-    Lyric { text: crate::lyric::Text, len: u32, lead: u32 },
+    Lyric {
+        text: crate::lyric::Text,
+        len: u32,
+        lead: u32,
+    },
     /// 滑音（`yinse.voice.*`）：从这一帧起，用 `frames` 帧滑到 `key` 的音高（滑进刚起的这个音）。
-    Slide { key: u8, frames: u32 },
+    Slide {
+        key: u8,
+        frames: u32,
+    },
     /// 换气（`yinse.voice.*`）：从这一帧起，`frames` 帧的一声吸气。
-    Inhale { frames: u32 },
+    Inhale {
+        frames: u32,
+    },
     /// 逐音古琴奏法，在同帧起音之前按键位与通道投递，和弦中的各音互不覆盖。
-    Technique { key: u8, ch: Option<u8>, technique: crate::zither::NoteTag },
+    Technique {
+        key: u8,
+        ch: Option<u8>,
+        technique: crate::zither::NoteTag,
+    },
     /// 换成第 `i` 个调律（[`crate::tuning::changes`] 的顺序）：之后起音的音按它，已经在响的不变。
     Tuning(u16),
 }
@@ -194,11 +223,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
         let mut inhales: Vec<(f64, f64)> = Vec::new();
         if singer && all.iter().any(|n| n.breath) {
             let bps = tm.bpm_at(clip.start.0) / 60.0;
-            let starts: Vec<(f64, f64)> = all
-                .iter()
-                .filter(|n| n.breath)
-                .map(|n| (n.start.0, n.lyric.as_deref().map_or(0.0, crate::singer::lead_seconds) * bps))
-                .collect();
+            let starts: Vec<(f64, f64)> =
+                all.iter().filter(|n| n.breath).map(|n| (n.start.0, n.lyric.as_deref().map_or(0.0, crate::singer::lead_seconds) * bps)).collect();
             for (at, lead) in starts {
                 let gap = 0.22 * bps;
                 let mut end = None;
@@ -283,10 +309,12 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 (Some("vibrato"), Some(t)) => t.gestures.vibrato.map(|v| (v.depth, v.rate, v.delay)).or(vibrato),
                 _ => vibrato,
             };
-            let auto = match (note.bend.is_empty() && crate::zither::bends(&track.instrument, &track.instrument_params, note.pitch, note.string_technique()), vibrato) {
-                (true, Some(v)) => crate::chinese::vibrato_bend(lengths[ni].0, bps, v),
-                _ => Vec::new(),
-            };
+            let auto =
+                match (note.bend.is_empty() && crate::zither::bends(&track.instrument, &track.instrument_params, note.pitch, note.string_technique()), vibrato)
+                {
+                    (true, Some(v)) => crate::chinese::vibrato_bend(lengths[ni].0, bps, v),
+                    _ => Vec::new(),
+                };
             let bend: &[(f64, f64)] = if note.bend.is_empty() { &auto } else { &note.bend };
             let ch = (!bend.is_empty()).then(|| {
                 bent += 1;
@@ -313,8 +341,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             if let Some(text) = note.lyric.as_deref().filter(|_| sings) {
                 let mut syl = crate::lyric::parse(text);
                 // 连奏里紧接着上一个音的音节不发辅音，元音直接滑过去。
-                let tied = clip.legato
-                    && notes.iter().any(|m| m.start.0 < note.start.0 - 1e-9 && note.start.0 - (m.start.0 + m.length.0) <= 0.25 + 1e-9);
+                let tied = clip.legato && notes.iter().any(|m| m.start.0 < note.start.0 - 1e-9 && note.start.0 - (m.start.0 + m.length.0) <= 0.25 + 1e-9);
                 if tied || !consonants {
                     syl.onset = crate::lyric::Onset::None;
                 }
@@ -337,7 +364,10 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                     let next = notes
                         .iter()
                         .filter(|m| m.start.0 > note.start.0 + 1e-9)
-                        .map(|m| ((clip_start + rel(m.start.0) * sr) as usize).saturating_sub((m.lyric.as_deref().map_or(0.0, crate::singer::lead_seconds) * sr) as usize))
+                        .map(|m| {
+                            ((clip_start + rel(m.start.0) * sr) as usize)
+                                .saturating_sub((m.lyric.as_deref().map_or(0.0, crate::singer::lead_seconds) * sr) as usize)
+                        })
                         .min();
                     let len = next.map_or(off - on, |n| off.min(n).saturating_sub(on).max((0.05 * sr) as usize));
                     acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: len as u32, lead: lead as u32 }));
@@ -475,9 +505,13 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
         out.push((start, Act::Pedal { down: true }));
     }
     out.extend(wheels.into_iter().map(|a| (start, a)));
-    out.extend(guqin.into_iter().map(|(_, g)| g).filter(|g| {
-        matches!(g, Act::Technique { key, ch, .. } if held.iter().any(|a| matches!(a, Act::On { key: k, ch: c, .. } if k == key && c == ch)))
-    }).map(|a| (start, a)));
+    out.extend(
+        guqin
+            .into_iter()
+            .map(|(_, g)| g)
+            .filter(|g| matches!(g, Act::Technique { key, ch, .. } if held.iter().any(|a| matches!(a, Act::On { key: k, ch: c, .. } if k == key && c == ch))))
+            .map(|a| (start, a)),
+    );
     out.extend(held.into_iter().map(|a| (start, a)));
     out.extend(rest);
     out
@@ -597,7 +631,9 @@ impl LiveInstrument {
                     break;
                 }
                 match act {
-                    Act::On { key, velocity, accent, mute, ch } => self.inst.note_on_muted(NoteRef::new(ch.unwrap_or(self.channel), key), velocity, accent, mute),
+                    Act::On { key, velocity, accent, mute, ch } => {
+                        self.inst.note_on_muted(NoteRef::new(ch.unwrap_or(self.channel), key), velocity, accent, mute)
+                    }
                     Act::Off { key, ch } => self.inst.note_off(NoteRef::new(ch.unwrap_or(self.channel), key), 0.0),
                     Act::Pedal { down } => {
                         self.inst.pedal(None, down);
@@ -811,7 +847,11 @@ impl Source {
 }
 
 fn gcd(a: usize, b: usize) -> usize {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 /// 等功率声像（音轨）：居中时两声道各 -3 dB。
@@ -924,8 +964,7 @@ fn instrument_key(project: &Project, ti: usize, cx: &Ctx) -> u64 {
     use std::hash::{Hash, Hasher};
     let t = &project.tracks[ti];
     // 乐器自动化：随机形状的默认种子与音轨下标、自动化序号有关，一并计入。
-    let autos: Vec<(usize, &muser_core::Automation)> =
-        t.automation.iter().enumerate().filter(|(_, a)| a.target.trim() == "instrument").collect();
+    let autos: Vec<(usize, &muser_core::Automation)> = t.automation.iter().enumerate().filter(|(_, a)| a.target.trim() == "instrument").collect();
     // 状态文件内容可能变化：计入修改时间。
     let state_mtime = t
         .instrument_params
@@ -1231,7 +1270,6 @@ impl Renderer {
     /// 新工程必须是在旧工程上"往后加"：已经演奏过的部分不变（改的只是还没演奏的音符与自动化）；音轨、效果器只加不删
     /// （撤下用 `until`，停奏就是不再写片段）；不加总线、不换已有音轨的乐器；中途加的效果器不能带延迟（如限幅器）。
     pub fn reconcile(&mut self, project: &Project) -> Result<(), EngineError> {
-
         if !self.live {
             return Err(invalid("only a live-mode renderer can swap projects".into()));
         }
@@ -1265,10 +1303,14 @@ impl Renderer {
         for (id, list) in &lists {
             let Some(o) = old.get(id.as_str()) else { continue };
             if list.len() < o.slots.len() || !o.slots.iter().zip(list.iter()).all(|(a, b)| same_slot(a, b)) {
-                return Err(invalid(format!("the effect chain of {} can only be appended to (remove an effect with until, change parameters with automation)", if id.is_empty() { "the master" } else { &id[2..] })));
+                return Err(invalid(format!(
+                    "the effect chain of {} can only be appended to (remove an effect with until, change parameters with automation)",
+                    if id.is_empty() { "the master" } else { &id[2..] }
+                )));
             }
             // shortcut: 插件效果器的延迟要打开才知道，这里不查（带延迟的插件中途加进来，那一轨会错开几毫秒）；要查时把这里建好的链传给 build 复用。
-            let builtin: Vec<muser_core::EffectSlot> = list[o.slots.len()..].iter().filter(|e| !matches!(e.effect, muser_core::Effect::Plugin { .. })).cloned().collect();
+            let builtin: Vec<muser_core::EffectSlot> =
+                list[o.slots.len()..].iter().filter(|e| !matches!(e.effect, muser_core::Effect::Plugin { .. })).cloned().collect();
             let tail = effects::build_chain(&builtin, &self.cx.spec)?;
             if effects::chain_latency(&tail) > 0 {
                 return Err(invalid("an effect added mid-session cannot have latency (e.g. a limiter): put it in the template".into()));
@@ -1337,20 +1379,20 @@ impl Renderer {
         // 演奏线程共用的一份工程。
         let mut shared: Option<Arc<Project>> = None;
         for &node in &plan.order {
-            let (muted, effects_list, gain_db, pan, lanes, law): (bool, &[muser_core::EffectSlot], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) = match node {
-                Node::Track(i) => {
-                    let t = &project.tracks[i];
-                    (t.muted, &t.effects, t.gain_db, t.pan, automate::compile_track(project, i, beats).map_err(invalid)?, pan_gains)
-                }
-                Node::Bus(i) => {
-                    let b = &project.buses[i];
-                    (b.muted, &b.effects, b.gain_db, b.pan, automate::compile_bus(project, i, beats).map_err(invalid)?, balance_gains)
-                }
-            };
+            let (muted, effects_list, gain_db, pan, lanes, law): (bool, &[muser_core::EffectSlot], f64, f64, TrackLanes, fn(f64, f64) -> (f32, f32)) =
+                match node {
+                    Node::Track(i) => {
+                        let t = &project.tracks[i];
+                        (t.muted, &t.effects, t.gain_db, t.pan, automate::compile_track(project, i, beats).map_err(invalid)?, pan_gains)
+                    }
+                    Node::Bus(i) => {
+                        let b = &project.buses[i];
+                        (b.muted, &b.effects, b.gain_db, b.pan, automate::compile_bus(project, i, beats).map_err(invalid)?, balance_gains)
+                    }
+                };
             let active = all_nodes || !muted || key_nodes.contains(&node);
-            let keys: Vec<Option<usize>> = (0..effects_list.len())
-                .map(|ei| plan.sidechains.iter().find(|s| s.node == node && s.effect == ei).map(|s| index[&s.key]))
-                .collect();
+            let keys: Vec<Option<usize>> =
+                (0..effects_list.len()).map(|ei| plan.sidechains.iter().find(|s| s.node == node && s.effect == ei).map(|s| index[&s.key])).collect();
             let id = ident(project, Some(node));
             if let Some(mut o) = reuse.as_mut().and_then(|r| r.strips.remove(&id)) {
                 if let (Some(Source::Live(l)), Node::Track(i)) = (o.source.as_mut(), node) {
@@ -1383,7 +1425,12 @@ impl Renderer {
                         None if live || project.tracks[i].instrument.trim().starts_with("plugin:") => {
                             let mut live = LiveInstrument::new(project, i, &cx, beats, start)?;
                             live.may_rest = live_mode;
-                            live.taps = plan.taps.iter().filter(|t| t.track == i).map(|_| Arc::new(std::sync::Mutex::new(Tape { start, ..Default::default() }))).collect();
+                            live.taps = plan
+                                .taps
+                                .iter()
+                                .filter(|t| t.track == i)
+                                .map(|_| Arc::new(std::sync::Mutex::new(Tape { start, ..Default::default() })))
+                                .collect();
                             Source::Live(Box::new(live))
                         }
                         None => Source::Worker(Worker::spawn(Arc::clone(shared.get_or_insert_with(|| Arc::new(project.clone()))), i, cx.clone(), beats, start)),
@@ -1430,41 +1477,42 @@ impl Renderer {
         if let Some(mut o) = reuse.as_mut().and_then(|r| r.strips.remove("")) {
             let tail = effects::build_chain(&project.master_effects[o.chain.len()..], &cx.spec)?;
             o.chain.extend(tail);
-            (o.gain_db, o.lanes, o.keys, o.windows, o.slots) = (project.master_gain_db, master_lanes, master_keys, cx.windows(&project.master_effects), project.master_effects.clone());
+            (o.gain_db, o.lanes, o.keys, o.windows, o.slots) =
+                (project.master_gain_db, master_lanes, master_keys, cx.windows(&project.master_effects), project.master_effects.clone());
             (o.inputs, o.tap_inputs, o.readers) = (Vec::new(), Vec::new(), Vec::new());
             strips.push(o);
         } else {
-        let chain = effects::build_chain(&project.master_effects, &cx.spec)?;
-        strips.push(Strip {
-            node: None,
-            ident: String::new(),
-            slots: project.master_effects.clone(),
-            active: true,
-            muted: false,
-            source: None,
-            latency: effects::chain_latency(&chain),
-            chain,
-            windows: cx.windows(&project.master_effects),
-            lanes: master_lanes,
-            gain_db: project.master_gain_db,
-            pan: 0.0,
-            law: master_gains,
-            keys: master_keys,
-            inputs: Vec::new(),
-            tap_inputs: Vec::new(),
-            readers: Vec::new(),
-            pos: start,
-            wet: Tape { start, ..Default::default() },
-            out: Tape { start, ..Default::default() },
-            meter: Vec::new(),
-            rank: (usize::MAX, usize::MAX),
-            cache_key: None,
-            record: None,
-            loud: None,
-            busy: Default::default(),
-            quiet: 0,
-            ms: 0.0,
-        });
+            let chain = effects::build_chain(&project.master_effects, &cx.spec)?;
+            strips.push(Strip {
+                node: None,
+                ident: String::new(),
+                slots: project.master_effects.clone(),
+                active: true,
+                muted: false,
+                source: None,
+                latency: effects::chain_latency(&chain),
+                chain,
+                windows: cx.windows(&project.master_effects),
+                lanes: master_lanes,
+                gain_db: project.master_gain_db,
+                pan: 0.0,
+                law: master_gains,
+                keys: master_keys,
+                inputs: Vec::new(),
+                tap_inputs: Vec::new(),
+                readers: Vec::new(),
+                pos: start,
+                wet: Tape { start, ..Default::default() },
+                out: Tape { start, ..Default::default() },
+                meter: Vec::new(),
+                rank: (usize::MAX, usize::MAX),
+                cache_key: None,
+                record: None,
+                loud: None,
+                busy: Default::default(),
+                quiet: 0,
+                ms: 0.0,
+            });
         }
 
         let master = strips.len() - 1;
@@ -1490,18 +1538,7 @@ impl Renderer {
             }
         }
 
-        Ok(Renderer {
-            align,
-            cx,
-            plan,
-            strips,
-            pos: start,
-            tempo_map: crate::transport::current(),
-            beats,
-            meters,
-            settings,
-            live,
-        })
+        Ok(Renderer { align, cx, plan, strips, pos: start, tempo_map: crate::transport::current(), beats, meters, settings, live })
     }
 
     /// 总帧数（含结尾余响）。
@@ -1537,7 +1574,11 @@ impl Renderer {
         // 输出要覆盖到 `need` 时，效果链（输入侧）要处理到哪：多算 latency 帧，并对齐到段边界。
         let chain_target = |need: usize, latency: usize| -> usize {
             let n = need + latency;
-            if n >= total { total } else { (n.div_ceil(g) * g).min(total) }
+            if n >= total {
+                total
+            } else {
+                (n.div_ceil(g) * g).min(total)
+            }
         };
         let count = self.strips.len();
         let mut need = vec![t; count];
@@ -1721,18 +1762,12 @@ impl Renderer {
     // shortcut: 电平从头记到尾，现场演奏一小时每个节点约 1.4 MB；更长时改成只留最近一段。
     pub fn levels(&self, frame: usize) -> Vec<(String, f32)> {
         let w = frame / METER_WINDOW;
-        self.strips
-            .iter()
-            .map(|s| (s.ident.get(2..).unwrap_or("").to_string(), s.meter.get(w).map_or(0.0, |p| p[0].max(p[1]))))
-            .collect()
+        self.strips.iter().map(|s| (s.ident.get(2..).unwrap_or("").to_string(), s.meter.get(w).map_or(0.0, |p| p[0].max(p[1])))).collect()
     }
 
     /// 现场模式：各节点（轨名 / 总线名，主总线是空串）推子后约 1.5 秒的响度（RMS，dBFS；没声音时 None）。
     pub fn loudness_now(&self) -> Vec<(String, Option<f64>)> {
-        self.strips
-            .iter()
-            .map(|s| (s.ident.get(2..).unwrap_or("").to_string(), (s.ms > 1e-10).then(|| 10.0 * s.ms.log10())))
-            .collect()
+        self.strips.iter().map(|s| (s.ident.get(2..).unwrap_or("").to_string(), (s.ms > 1e-10).then(|| 10.0 * s.ms.log10()))).collect()
     }
 
     /// 各节点（轨名 / 总线名，主总线是空串）的乐器与效果链到目前为止一共用了多少时间：找出最耗资源的轨。
@@ -1825,11 +1860,7 @@ pub fn mp3_bytes(project: &Project, audio: &AudioBuffer<f32>, sample_rate: u32) 
 }
 
 /// 渲染工程并写出 WAV 文件（`path` 以 `.mp3` 结尾时写 MP3）。返回 (时长秒, 峰值 dBFS)。
-pub fn render_to_wav(
-    project: &Project,
-    path: &str,
-    settings: RenderSettings,
-) -> Result<(f64, f64), EngineError> {
+pub fn render_to_wav(project: &Project, path: &str, settings: RenderSettings) -> Result<(f64, f64), EngineError> {
     render_to_wav_with_progress(project, path, settings, &mut |_, _| {})
 }
 
@@ -1913,7 +1944,8 @@ pub fn render_stems(
         let mut meta = wav_metadata(project, settings.sample_rate);
         meta.title = Some(name.clone());
         let file = std::fs::File::create(&path).map_err(|e| EngineError::Wav(format!("cannot write {}: {e}", path.display())))?;
-        wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int24, &meta).map_err(|e| EngineError::Wav(format!("{e:?}")))?;
+        wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int24, &meta)
+            .map_err(|e| EngineError::Wav(format!("{e:?}")))?;
         out.push(Stem { track: name, path, peak_db: decibels::gain_to_db(f64::from(audio.peak())) });
     }
     Ok(out)
@@ -1932,7 +1964,8 @@ mod tests {
                 {"pitch":62,"start":0,"length":3,"technique":"harmonic","harmonic":2},
                 {"pitch":57,"start":0,"length":3,"technique":"pressed","bend":[[0,0],[1,12],[2,12]]}
             ]}]}]
-        })).unwrap();
+        }))
+        .unwrap();
         let acts = schedule(&p, 0, &Ctx::new(&p, RenderSettings::default()));
         assert_eq!(acts.iter().filter(|(_, a)| matches!(a, Act::Technique { .. })).count(), 3);
         assert!(acts.iter().any(|(at, a)| *at == 48_000 && matches!(a, Act::Bend { value: 4096, .. })));
@@ -1990,14 +2023,19 @@ mod tests {
         let k = 60.0 / (8.0 / 3.0);
         let want = 288_000.0 + (-60.0 + (3600.0f64 + 2.0 * k * 60.0).sqrt()) / k * 48_000.0;
         let ons: Vec<usize> = schedule(&crate::arrange::arranged(&p).unwrap(), 0, &Ctx::new(&p, RenderSettings::default()))
-            .into_iter().filter_map(|(f, a)| matches!(a, Act::On { .. }).then_some(f)).collect();
+            .into_iter()
+            .filter_map(|(f, a)| matches!(a, Act::On { .. }).then_some(f))
+            .collect();
         assert!(ons.iter().any(|&f| (f as f64 - want).abs() < 2.0), "{ons:?} vs {want}");
         let midi = crate::midi::export(&p).unwrap();
         let tempos = midi.bytes.windows(3).filter(|w| w == &[0xFF, 0x51, 0x03]).count();
         assert_eq!(tempos, 1 + 1 + 4 + 1, "开头、60、渐变 4 拍、120");
         let mut p = p;
-        p.tracks.push(serde_json::from_value(serde_json::json!({ "name": "pad", "instrument": "synth.poly",
-            "clips": [{ "start": 0, "length": 16, "notes": [{ "pitch": 60, "start": 0, "length": 16 }] }] })).unwrap());
+        p.tracks.push(
+            serde_json::from_value(serde_json::json!({ "name": "pad", "instrument": "synth.poly",
+            "clips": [{ "start": 0, "length": 16, "notes": [{ "pitch": 60, "start": 0, "length": 16 }] }] }))
+            .unwrap(),
+        );
         let abc = crate::abc_export::export(&p, &crate::abc_export::AbcOptions::new(crate::abc_export::Dialect::Standard)).unwrap().text;
         assert!(abc.contains("[Q:1/4=60]") && abc.contains("[Q:1/4=120]"), "{abc}");
     }
@@ -2035,8 +2073,10 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
         // 16 位量化与非线性的总线效果器（limiter、侧链压缩）会差一点，整体应吻合。
-        let err: f64 = (0..2).flat_map(|ch| mix.channel(ch).iter().enumerate().map(move |(k, x)| (ch, k, *x)))
-            .map(|(ch, k, x)| f64::from((sum[ch * mix.num_frames() + k] - x).abs())).fold(0.0, f64::max);
+        let err: f64 = (0..2)
+            .flat_map(|ch| mix.channel(ch).iter().enumerate().map(move |(k, x)| (ch, k, *x)))
+            .map(|(ch, k, x)| f64::from((sum[ch * mix.num_frames() + k] - x).abs()))
+            .fold(0.0, f64::max);
         assert!(err < 0.25, "分轨相加与整首差太多：{err}");
     }
 
@@ -2090,7 +2130,8 @@ mod tests {
             { "name": "keys", "instrument": "poly.wurly", "effects": [{ "type": "reverb", "mix": 0.5, "decay_seconds": 1.0 }],
               "clips": [{ "start": 0, "length": 1, "notes": [{ "pitch": 60, "start": 0, "length": 0.5 }] },
                         { "start": 16, "length": 2, "notes": [{ "pitch": 64, "start": 0, "length": 1 }] }] },
-            { "name": "drums", "instrument": "drums.909", "clips": [{ "start": 0, "length": 18, "grid": { "kick": "x..." } }] } ] })).unwrap();
+            { "name": "drums", "instrument": "drums.909", "clips": [{ "start": 0, "length": 18, "grid": { "kick": "x..." } }] } ] }))
+        .unwrap();
         let settings = RenderSettings::default();
         let want = render(&p, settings).unwrap();
         let mut r = Renderer::live(&p, settings).unwrap();
@@ -2116,9 +2157,15 @@ mod tests {
         p2.tracks[0].clips.push(serde_json::from_value(more(36)).unwrap());
         p2.tracks[1].clips.push(serde_json::from_value(more(40)).unwrap());
         p2.tracks[1].effects.push(serde_json::from_value(serde_json::json!({ "type": "eq", "shape": "lowpass", "frequency": 900, "from": 2 })).unwrap());
-        p2.tracks[1].automation.push(serde_json::from_value(serde_json::json!({ "target": "effects[1]", "param": "frequency", "shape": "points", "points": [[2, 900], [4, 3000]] })).unwrap());
-        p2.tracks.push(serde_json::from_value(serde_json::json!({ "name": "lead", "instrument": "synth.poly", "output": "grp",
-            "clips": [more(64)] })).unwrap());
+        p2.tracks[1].automation.push(
+            serde_json::from_value(serde_json::json!({ "target": "effects[1]", "param": "frequency", "shape": "points", "points": [[2, 900], [4, 3000]] }))
+                .unwrap(),
+        );
+        p2.tracks.push(
+            serde_json::from_value(serde_json::json!({ "name": "lead", "instrument": "synth.poly", "output": "grp",
+            "clips": [more(64)] }))
+            .unwrap(),
+        );
         let settings = RenderSettings::default();
         let want = render(&p2, settings).unwrap();
         let mut r = Renderer::live(&p1, settings).unwrap();
@@ -2162,8 +2209,11 @@ mod tests {
             v
         })
         .unwrap();
-        p2.tracks[1].clips.push(serde_json::from_value(serde_json::json!({ "start": 4, "length": 4,
-            "notes": (0..16).map(|i| serde_json::json!({ "pitch": 40 + (i % 5) as u8, "start": i as f64 * 0.25, "length": 0.2 })).collect::<Vec<_>>() })).unwrap());
+        p2.tracks[1].clips.push(
+            serde_json::from_value(serde_json::json!({ "start": 4, "length": 4,
+            "notes": (0..16).map(|i| serde_json::json!({ "pitch": 40 + (i % 5) as u8, "start": i as f64 * 0.25, "length": 0.2 })).collect::<Vec<_>>() }))
+            .unwrap(),
+        );
         let settings = RenderSettings { tail_seconds: 0.3, ..Default::default() };
         let want = render(&p2, settings).unwrap();
         let mut r = Renderer::live(&p1, settings).unwrap();
@@ -2203,7 +2253,10 @@ mod tests {
         r.process(&mut b).unwrap();
         assert!(b.peak() < 1e-3, "静音后仍有声音: {}", b.peak());
         // 取消静音、推子拉低 12 dB：恢复出声。
-        q.tracks.iter_mut().for_each(|t| { t.muted = false; t.gain_db -= 12.0; });
+        q.tracks.iter_mut().for_each(|t| {
+            t.muted = false;
+            t.gain_db -= 12.0;
+        });
         q.buses.iter_mut().for_each(|b| b.muted = false);
         r.set_mix(&q).unwrap();
         r.process(&mut b).unwrap();
@@ -2238,7 +2291,8 @@ mod tests {
     fn start_mid_song() {
         let settings = RenderSettings { tail_seconds: 0.3, ..Default::default() };
         let p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [
-            { "name": "pad", "instrument": "synth.poly", "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 4 }] }] }] })).unwrap();
+            { "name": "pad", "instrument": "synth.poly", "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 4 }] }] }] }))
+        .unwrap();
         let mut cache = RenderCache::new();
         let offline = render_cached(&p, settings, &mut cache).unwrap();
         let mut r = Renderer::new_at(&p, settings, Some(&cache), false, 30_000).unwrap();
@@ -2261,7 +2315,8 @@ mod tests {
         let base = || {
             let hits: Vec<_> = (0..8).map(|i| serde_json::json!({ "pitch": 42, "start": i as f64 * 0.5, "length": 0.1 })).collect();
             serde_json::from_value::<Project>(serde_json::json!({ "tempo": 120,
-                "tracks": [{ "instrument": "drums.909", "clips": [{ "start": 0, "length": 4, "notes": hits }] }] })).unwrap()
+                "tracks": [{ "instrument": "drums.909", "clips": [{ "start": 0, "length": 4, "notes": hits }] }] }))
+            .unwrap()
         };
         let render_with = |h: Option<muser_core::humanize::Humanize>, seed: u64| {
             let mut p = base();

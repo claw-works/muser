@@ -195,7 +195,11 @@ pub fn run_loop(command: LoopCommand) -> Result<()> {
             for e in &all {
                 let l = &e.item;
                 let tempo = l.tempo.map_or(String::new(), |[a, b]| format!("{a:.0}–{b:.0} BPM"));
-                let mark = match e.source { "project" => " +", "user" => " *", _ => "" };
+                let mark = match e.source {
+                    "project" => " +",
+                    "user" => " *",
+                    _ => "",
+                };
                 let kind = if l.is_drums() { "drums" } else { "melody" };
                 println!("{:<18} {:<6} {:<10} {:>12}  {} bars  {}{mark}", l.name, kind, l.style, tempo, l.bars, l.description);
             }
@@ -257,7 +261,8 @@ pub fn run_loop(command: LoopCommand) -> Result<()> {
                 notes: if drums { Vec::new() } else { notes.into_iter().filter(|n| n.start.0 < f64::from(bars) * 4.0).collect() },
                 humanize: muser_core::humanize::Humanize::merged(t.humanize.as_ref(), c.humanize.as_ref()),
             };
-            let path = if global { loop_library::save(&l, overwrite) } else { loop_library::save_project(&l, p.base_dir.as_deref(), overwrite) }.map_err(fail)?;
+            let path =
+                if global { loop_library::save(&l, overwrite) } else { loop_library::save_project(&l, p.base_dir.as_deref(), overwrite) }.map_err(fail)?;
             println!("saved loop '{}' -> {}", l.name, path.display());
             Ok(())
         }
@@ -275,7 +280,14 @@ pub fn run_loop(command: LoopCommand) -> Result<()> {
             let l = loop_library::Loop::melody(&name, r.bars, tempo, Some(instrument.unwrap_or_else(|| "poly.juno_keys".into())), Some(r.key.clone()), r.notes);
             let base = base_of(&project);
             let saved = if global { loop_library::save(&l, overwrite) } else { loop_library::save_project(&l, base.as_deref(), overwrite) }.map_err(fail)?;
-            println!("transcribed {} notes, {} bars, key {} (pitch was {:+} cents off overall; corrected) -> {}", l.notes.len(), l.bars, r.key, r.tuning_cents, saved.display());
+            println!(
+                "transcribed {} notes, {} bars, key {} (pitch was {:+} cents off overall; corrected) -> {}",
+                l.notes.len(),
+                l.bars,
+                r.key,
+                r.tuning_cents,
+                saved.display()
+            );
             let p = l.project(None, None, 1).map_err(fail)?;
             let mut opts = muser_engine::abc_export::AbcOptions::new(muser_engine::abc_export::Dialect::Standard);
             opts.key = Some(r.key);

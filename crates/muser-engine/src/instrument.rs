@@ -14,12 +14,11 @@
 //! 校验都从这里取数据。
 
 use manguebyte::dsp::instruments::{
-    poly, AcidParams, AcidVoice, BowedParams, BowedString, ChoirParams, ChoirVoice, DrumKit,
-    DrumKitVoice, FmParams, FmVoice, MalletParams, MalletVoice, OrganParams, OrganVoice,
-    PluckedString, PolySynthParams, PolySynthVoice, StringParams, WindParams, WindVoice,
+    poly, AcidParams, AcidVoice, BowedParams, BowedString, ChoirParams, ChoirVoice, DrumKit, DrumKitVoice, FmParams, FmVoice, MalletParams, MalletVoice,
+    OrganParams, OrganVoice, PluckedString, PolySynthParams, PolySynthVoice, StringParams, WindParams, WindVoice,
 };
 use manguebyte::midi::MidiMessage;
-use manguebyte::prelude::{AudioBuffer, Filter, FilterShape, NoteRef, ProcessSpec, Processor, Synth, Voice, decibels};
+use manguebyte::prelude::{decibels, AudioBuffer, Filter, FilterShape, NoteRef, ProcessSpec, Processor, Synth, Voice};
 use serde::Serialize;
 
 use crate::params::{self, ParamInfo};
@@ -598,10 +597,7 @@ impl Patch {
     fn instantiate(self) -> Result<TrackInstrument, String> {
         Ok(match self {
             Patch::Kit(kit) => TrackInstrument::new(crate::percussion::Kit::new(kit), 9),
-            Patch::Drums(kit) => TrackInstrument::new(
-                DrumsTunable { synth: Synth::new(DrumKitVoice::voices(24, kit)), kit },
-                9,
-            ),
+            Patch::Drums(kit) => TrackInstrument::new(DrumsTunable { synth: Synth::new(DrumKitVoice::voices(24, kit)), kit }, 9),
             Patch::YinseDrums(kit) => TrackInstrument::new(YinseDrums::new(kit), 9),
             Patch::Poly(p) => tunable(Synth::with_voices(16, move || PolySynthVoice::new(p)), p, params::POLY, |v, p| v.set_params(p)),
             Patch::Fm(p) => tunable(Synth::with_voices(16, move || FmVoice::new(p)), p, params::FM, |v, p| v.set_params(p)),
@@ -611,7 +607,9 @@ impl Patch {
             Patch::Dizi(p) => TrackInstrument::new(crate::chinese::Dizi::new(p), 0),
             Patch::Erhu(p) => TrackInstrument::new(crate::chinese::Erhu::new(p), 0),
             Patch::Singer(p) => TrackInstrument::new(Singer { voice: crate::singer::SingerVoice::new(p), params: p, key: None, downs: 0 }, 0),
-            Patch::Accordion(p) => tunable(Synth::with_voices(16, move || crate::accordion::AccordionVoice::new(p)), p, params::ACCORDION, |v, p| v.set_params(p)),
+            Patch::Accordion(p) => {
+                tunable(Synth::with_voices(16, move || crate::accordion::AccordionVoice::new(p)), p, params::ACCORDION, |v, p| v.set_params(p))
+            }
             Patch::Acid(p) => {
                 let mut s = Synth::with_voices(1, move || AcidVoice::new(p));
                 s.set_legato(true);
@@ -649,7 +647,10 @@ pub fn drum_kit_keys(name: &str) -> Option<Vec<u8>> {
 fn apply_drum_params(kit: &mut DrumKit, params: &InstrumentParams) -> Result<(), String> {
     for (piece, value) in params {
         let key = params::piece_key(piece).ok_or_else(|| {
-            format!("unknown drum piece '{piece}': use a GM drum key number or an alias ({})", params::PIECE_ALIASES.iter().map(|(a, _)| *a).collect::<Vec<_>>().join(" "))
+            format!(
+                "unknown drum piece '{piece}': use a GM drum key number or an alias ({})",
+                params::PIECE_ALIASES.iter().map(|(a, _)| *a).collect::<Vec<_>>().join(" ")
+            )
         })?;
         let mut p = *kit.piece(key).ok_or_else(|| format!("this kit has no drum key {key} ({piece}), supported: {}", kit_keys(kit)))?;
         let obj = value.as_object().ok_or_else(|| format!("{piece}: expected an object, e.g. {{ \"tune\": -2 }}"))?;
@@ -688,17 +689,24 @@ fn velocity_curve(key: u8) -> f32 {
 
 /// 军鼓随力度差多少（dB，相对力度 1.0）：采样军鼓八个力度量出来的，中间连直线、两头顺着延出去；
 /// 换成 [`crate::percussion::Kit`] 的力度（它的音量是力度的 1.4 次方）。鼓皮（320 Hz 以下）轻敲时掉得比响弦快。
-const SNARE_BODY_DB: &[(f64, f64)] = &[(0.126, -31.9), (0.252, -26.0), (0.378, -20.7), (0.5039, -17.1), (0.6299, -10.4), (0.7559, -5.4), (0.8819, -1.5), (1.0, 0.0)];
+const SNARE_BODY_DB: &[(f64, f64)] =
+    &[(0.126, -31.9), (0.252, -26.0), (0.378, -20.7), (0.5039, -17.1), (0.6299, -10.4), (0.7559, -5.4), (0.8819, -1.5), (1.0, 0.0)];
 /// 鼓腔的余音（600 Hz … 2 kHz 的那一圈"嗡"）：轻敲时掉得最少。
-const SNARE_RING_DB: &[(f64, f64)] = &[(0.126, -41.9), (0.252, -31.4), (0.378, -21.7), (0.5039, -16.1), (0.6299, -12.4), (0.7559, -7.4), (0.8819, -1.6), (1.0, 0.0)];
+const SNARE_RING_DB: &[(f64, f64)] =
+    &[(0.126, -41.9), (0.252, -31.4), (0.378, -21.7), (0.5039, -16.1), (0.6299, -12.4), (0.7559, -7.4), (0.8819, -1.6), (1.0, 0.0)];
 /// 响弦头二十毫秒的"唰"，2.8 kHz 以下与以上：轻敲时中频掉得多，高频掉得少。
-const SNARE_TOP_LOW_DB: &[(f64, f64)] = &[(0.126, -29.1), (0.252, -23.7), (0.378, -19.9), (0.5039, -14.1), (0.6299, -10.8), (0.7559, -6.9), (0.8819, -2.0), (1.0, 0.0)];
-const SNARE_TOP_HIGH_DB: &[(f64, f64)] = &[(0.126, -14.1), (0.252, -11.3), (0.378, -7.8), (0.5039, -7.8), (0.6299, -7.8), (0.7559, -7.8), (0.8819, 0.0), (1.0, 0.0)];
+const SNARE_TOP_LOW_DB: &[(f64, f64)] =
+    &[(0.126, -29.1), (0.252, -23.7), (0.378, -19.9), (0.5039, -14.1), (0.6299, -10.8), (0.7559, -6.9), (0.8819, -2.0), (1.0, 0.0)];
+const SNARE_TOP_HIGH_DB: &[(f64, f64)] =
+    &[(0.126, -14.1), (0.252, -11.3), (0.378, -7.8), (0.5039, -7.8), (0.6299, -7.8), (0.7559, -7.8), (0.8819, 0.0), (1.0, 0.0)];
 /// 响弦的尾巴（50 ms 以后），同样分两段：轻敲时掉得更多。
-const SNARE_TAIL_LOW_DB: &[(f64, f64)] = &[(0.126, -50.0), (0.252, -43.2), (0.378, -38.2), (0.5039, -38.2), (0.6299, -26.0), (0.7559, -26.0), (0.8819, -26.0), (1.0, 0.0)];
-const SNARE_TAIL_HIGH_DB: &[(f64, f64)] = &[(0.126, -49.2), (0.252, -34.3), (0.378, -16.8), (0.5039, -12.6), (0.6299, -4.4), (0.7559, -2.0), (0.8819, -0.9), (1.0, 0.0)];
+const SNARE_TAIL_LOW_DB: &[(f64, f64)] =
+    &[(0.126, -50.0), (0.252, -43.2), (0.378, -38.2), (0.5039, -38.2), (0.6299, -26.0), (0.7559, -26.0), (0.8819, -26.0), (1.0, 0.0)];
+const SNARE_TAIL_HIGH_DB: &[(f64, f64)] =
+    &[(0.126, -49.2), (0.252, -34.3), (0.378, -16.8), (0.5039, -12.6), (0.6299, -4.4), (0.7559, -2.0), (0.8819, -0.9), (1.0, 0.0)];
 /// 鼓槌那一下"啪"（头 2 ms）：重击才有，力度 0.75 以下几乎没有（鬼音是软的）。
-const SNARE_CLICK_DB: &[(f64, f64)] = &[(0.126, -50.0), (0.252, -50.0), (0.378, -50.0), (0.5039, -50.0), (0.6299, -50.0), (0.7559, -45.0), (0.8819, 0.0), (1.0, 0.0)];
+const SNARE_CLICK_DB: &[(f64, f64)] =
+    &[(0.126, -50.0), (0.252, -50.0), (0.378, -50.0), (0.5039, -50.0), (0.6299, -50.0), (0.7559, -45.0), (0.8819, 0.0), (1.0, 0.0)];
 
 /// 军鼓的七套与各自的力度表。
 const SNARE_PARTS: [(&[crate::percussion::PieceDef], &[(f64, f64)]); 7] = [
@@ -1000,11 +1008,13 @@ fn kit_keys(kit: &DrumKit) -> String {
 /// SFZ 采样器乐器（内置，manguebyte-sampler）。
 /// `muser instruments sfz:…` 的说明：列出 .sfz 声明的控制器。
 fn sfz_controls_note(path: &std::path::Path) -> String {
-    let base = "The sound is defined by the .sfz file. Set controller values with instrument_params \"cc\" (applied at load), e.g. { \"cc\": { \"105\": 127 } }.";
+    let base =
+        "The sound is defined by the .sfz file. Set controller values with instrument_params \"cc\" (applied at load), e.g. { \"cc\": { \"105\": 127 } }.";
     let mut out = base.to_string();
     if let Ok(c) = crate::sfz::read_controls(path) {
         if !c.is_empty() {
-            let list: Vec<String> = c.iter().map(|(n, (label, v))| format!("cc{n}{} = {v}", if label.is_empty() { String::new() } else { format!(" ({label})") })).collect();
+            let list: Vec<String> =
+                c.iter().map(|(n, (label, v))| format!("cc{n}{} = {v}", if label.is_empty() { String::new() } else { format!(" ({label})") })).collect();
             out.push_str(&format!("This sound declares these controllers (default values): {}.", list.join(", ")));
         }
     }
@@ -1299,11 +1309,7 @@ fn preset_info(preset: &poly::Preset) -> InstrumentInfo {
 
 /// 所有内置乐器（含 68 个 poly 预设）的描述，不含参数详情。
 pub fn catalog() -> Vec<InstrumentInfo> {
-    BUILTINS
-        .iter()
-        .map(builtin_info)
-        .chain(poly::PRESETS.iter().map(preset_info))
-        .collect()
+    BUILTINS.iter().map(builtin_info).chain(poly::PRESETS.iter().map(preset_info)).collect()
 }
 
 /// 按名称查描述（大小写不敏感，支持别名），含可调参数及当前取值。插件乐器返回 `None`。
@@ -1344,7 +1350,9 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
     if trimmed == muser_core::audio::INSTRUMENT {
         return match params.is_empty() {
             true => Ok(()),
-            false => Err(InstrumentError::Param { detail: "an audio track has no instrument parameters (set volume with gain_db or the clip's audio.gain_db)".into() }),
+            false => Err(InstrumentError::Param {
+                detail: "an audio track has no instrument parameters (set volume with gain_db or the clip's audio.gain_db)".into(),
+            }),
         };
     }
     if let Some(rest) = trimmed.strip_prefix("plugin:") {
@@ -1360,7 +1368,11 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     if let Patch::Sfz(path, _) = &patch {
         if !path.is_file() {
-            let hint = if path.is_relative() { "(relative paths are searched in the sound library directories of MUSER_SFZ_PATH and two levels of subdirectories)" } else { "" };
+            let hint = if path.is_relative() {
+                "(relative paths are searched in the sound library directories of MUSER_SFZ_PATH and two levels of subdirectories)"
+            } else {
+                ""
+            };
             return Err(InstrumentError::Load { detail: format!("cannot find SFZ file '{}'{hint}", path.display()) });
         }
     }
@@ -1386,30 +1398,14 @@ pub(crate) fn automation_param(
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| format!("unknown instrument '{name}'"))?;
     patch.apply(instrument_params)?;
 
-    fn find<P>(
-        defs: &[params::ParamDef<P>],
-        p: &P,
-        param: &str,
-        next: &[&str],
-    ) -> Result<(params::InstParamSpec, params::Automatable, f64), String> {
-        let list = || {
-            defs.iter()
-                .filter(|d| params::automatable(&d.spec, next) != params::Automatable::No)
-                .map(|d| d.spec.name)
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        let d = defs
-            .iter()
-            .find(|d| d.spec.name == param)
-            .ok_or_else(|| format!("unknown parameter '{param}', automatable: {}", list()))?;
+    fn find<P>(defs: &[params::ParamDef<P>], p: &P, param: &str, next: &[&str]) -> Result<(params::InstParamSpec, params::Automatable, f64), String> {
+        let list = || defs.iter().filter(|d| params::automatable(&d.spec, next) != params::Automatable::No).map(|d| d.spec.name).collect::<Vec<_>>().join(", ");
+        let d = defs.iter().find(|d| d.spec.name == param).ok_or_else(|| format!("unknown parameter '{param}', automatable: {}", list()))?;
         let a = params::automatable(&d.spec, next);
         if a == params::Automatable::No {
             return Err(format!("parameter '{param}' cannot be automated (switches, choices, integers); automatable: {}", list()));
         }
-        let base = (d.get)(p)
-            .as_f64()
-            .ok_or_else(|| format!("parameter '{param}' has no effect on this sound (no filter enabled)"))?;
+        let base = (d.get)(p).as_f64().ok_or_else(|| format!("parameter '{param}' has no effect on this sound (no filter enabled)"))?;
         Ok((d.spec, a, base))
     }
 
@@ -1430,16 +1426,14 @@ pub(crate) fn automation_param(
         Patch::Wind(p, _) => find(params::WIND, p, param, &[]),
         Patch::Choir(p, _) => find(params::CHOIR, p, param, &[]),
         Patch::Kit(kit) => {
-            let (piece, field) = param
-                .split_once('.')
-                .ok_or_else(|| format!("percussion parameters are written as `piece.param`, e.g. \"daluo.tune\", got '{param}'"))?;
+            let (piece, field) =
+                param.split_once('.').ok_or_else(|| format!("percussion parameters are written as `piece.param`, e.g. \"daluo.tune\", got '{param}'"))?;
             let i = kit.index(piece).ok_or_else(|| format!("unknown piece '{piece}'"))?;
             find(params::KIT_PIECE, &kit.set[i], field, params::NEXT_KIT_PIECE)
         }
         Patch::Drums(kit) | Patch::YinseDrums(kit) => {
-            let (piece, field) = param
-                .split_once('.')
-                .ok_or_else(|| format!("drum kit parameters are written as `piece.param`, e.g. \"kick.tune\", got '{param}'"))?;
+            let (piece, field) =
+                param.split_once('.').ok_or_else(|| format!("drum kit parameters are written as `piece.param`, e.g. \"kick.tune\", got '{param}'"))?;
             let key = params::piece_key(piece).ok_or_else(|| format!("unknown drum piece '{piece}'"))?;
             let p = kit.piece(key).ok_or_else(|| format!("this kit has no drum key {key} ({piece})"))?;
             find(params::PIECE, p, field, params::NEXT_PIECE)
@@ -1456,7 +1450,6 @@ pub fn check_name(name: &str) -> Result<(), InstrumentError> {
 // ---------------------------------------------------------------------------
 // 解析
 // ---------------------------------------------------------------------------
-
 
 /// 解析失败。
 #[derive(Debug, thiserror::Error)]

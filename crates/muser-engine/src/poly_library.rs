@@ -54,9 +54,7 @@ impl Sound {
 /// 名字是否可用：1–64 个小写字母、数字、`_`、`-`，以字母或数字开头（也保证不会写到目录外）。
 pub fn valid_name(name: &str) -> bool {
     let b = name.as_bytes();
-    (1..=64).contains(&b.len())
-        && b[0].is_ascii_alphanumeric()
-        && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_' || *c == b'-')
+    (1..=64).contains(&b.len()) && b[0].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_' || *c == b'-')
 }
 
 fn check_name(name: &str) -> Result<(), String> {

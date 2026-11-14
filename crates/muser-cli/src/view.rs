@@ -15,11 +15,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime};
 
-use anyhow::{Result, anyhow, bail};
-use muser_core::Project;
+use anyhow::{anyhow, bail, Result};
 use muser_core::routing::{self, Node};
-use muser_engine::{AudioBuffer, METER_WINDOW, RenderCache, RenderSettings, Renderer};
-use serde_json::{Value, json};
+use muser_core::Project;
+use muser_engine::{AudioBuffer, RenderCache, RenderSettings, Renderer, METER_WINDOW};
+use serde_json::{json, Value};
 
 use crate::web::{header, host_allowed, query, read_body, respond_json};
 
@@ -61,7 +61,8 @@ fn wav16(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
 /// 下载用的 Content-Disposition：ASCII 文件名兜底，`filename*` 给出 UTF-8 原名。
 fn attachment(name: &str) -> String {
     let ascii: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
-    let encoded: String = name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
+    let encoded: String =
+        name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
     format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
 }
 
@@ -203,7 +204,14 @@ fn forward_stderr(child: &mut std::process::Child) {
         use std::io::BufRead;
         for line in std::io::BufReader::new(err).lines().map_while(Result::ok) {
             let l = line.trim();
-            let noise = l.is_empty() || l.starts_with("qrc:") || l.contains("QML") || l.starts_with('^') || l.starts_with("Rectangle {") || l.starts_with("model:") || l.starts_with("QFileSystemWatcher") || l.starts_with("Requested MSAA");
+            let noise = l.is_empty()
+                || l.starts_with("qrc:")
+                || l.contains("QML")
+                || l.starts_with('^')
+                || l.starts_with("Rectangle {")
+                || l.starts_with("model:")
+                || l.starts_with("QFileSystemWatcher")
+                || l.starts_with("Requested MSAA");
             if !noise {
                 eprintln!("[plugin] {l}");
             }
@@ -359,11 +367,7 @@ fn apply_to_json(v: &mut Value, changes: &[Change], working: &Project) -> Result
         }
         let autos = fields(&mut working, &c.node).map_err(|e| anyhow!(e))?.2.clone();
         let (kind, i) = parse_node(&c.node).ok_or_else(|| anyhow!("invalid node '{}'", c.node))?;
-        let obj = v
-            .get_mut(kind)
-            .and_then(|a| a.get_mut(i))
-            .and_then(Value::as_object_mut)
-            .ok_or_else(|| anyhow!("the project file has no {}", c.node))?;
+        let obj = v.get_mut(kind).and_then(|a| a.get_mut(i)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no {}", c.node))?;
         if let Some(g) = c.gain_db {
             obj.insert("gain_db".into(), json!(g));
             if has_gain_automation(&autos) {
@@ -474,7 +478,8 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
             .iter()
             .enumerate()
             .map(|(ci, c)| {
-                let notes: Vec<Value> = muser_engine::clip_notes(working, i, ci).unwrap_or_default().iter().map(|n| json!([n.start.0, n.length.0, n.pitch])).collect();
+                let notes: Vec<Value> =
+                    muser_engine::clip_notes(working, i, ci).unwrap_or_default().iter().map(|n| json!([n.start.0, n.length.0, n.pitch])).collect();
                 let mut v = json!({ "start": c.start.0, "length": c.length.0, "notes": notes });
                 if let Some(a) = &c.audio {
                     let name = std::path::Path::new(&a.file).file_name().map_or(a.file.clone(), |n| n.to_string_lossy().into_owned());
@@ -506,7 +511,8 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
     // 每小节从第几拍开始（段落可以各有拍号）；多给 16 小节盖住结尾的余响。
     let map = working.bar_map();
     let tm = working.tempo_map();
-    let beat_secs: Option<Vec<f64>> = (!tm.is_constant()).then(|| (0..working.duration_beats().0 as usize + 64).map(|b| (tm.secs_at(b as f64) * 1e4).round() / 1e4).collect());
+    let beat_secs: Option<Vec<f64>> =
+        (!tm.is_constant()).then(|| (0..working.duration_beats().0 as usize + 64).map(|b| (tm.secs_at(b as f64) * 1e4).round() / 1e4).collect());
     let bar_starts: Vec<f64> = (0..map.bars_until(working.duration_beats().0) + 16).map(|b| map.bar_start(b)).collect();
     json!({
         "name": working.name, "tempo": working.tempo,
@@ -955,13 +961,11 @@ impl Shared {
             .into_iter()
             .map(|i| json!({ "spec": i.name, "name": i.name, "vendor": i.family, "description": i.description, "format": "builtin" }))
             .collect();
-        out.extend(muser_engine::sfz::library()
-            .into_iter()
-            .map(|(rel, path)| {
-                let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| rel.clone());
-                let group = rel.split('/').next().filter(|g| *g != rel).unwrap_or("").to_string();
-                json!({ "spec": format!("sfz:{rel}"), "name": name, "vendor": group, "format": "sfz" })
-            }));
+        out.extend(muser_engine::sfz::library().into_iter().map(|(rel, path)| {
+            let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| rel.clone());
+            let group = rel.split('/').next().filter(|g| *g != rel).unwrap_or("").to_string();
+            json!({ "spec": format!("sfz:{rel}"), "name": name, "vendor": group, "format": "sfz" })
+        }));
         out.extend(muser_engine::modal::library().into_iter().map(|e| {
             let source = [e.source, e.license].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
             let description = [e.description, source].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" — ");
@@ -987,7 +991,11 @@ impl Shared {
         let write = || -> Result<()> {
             let text = std::fs::read_to_string(&self.path)?;
             let mut v: Value = serde_json::from_str(&text)?;
-            let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no tracks[{ti}]"))?;
+            let t = v
+                .get_mut("tracks")
+                .and_then(|t| t.get_mut(ti))
+                .and_then(Value::as_object_mut)
+                .ok_or_else(|| anyhow!("the project file has no tracks[{ti}]"))?;
             if t.get("instrument").and_then(Value::as_str) != Some(instrument) {
                 switch_instrument(t, instrument);
             }
@@ -1021,7 +1029,11 @@ impl Shared {
             let write = || -> Result<()> {
                 let text = std::fs::read_to_string(&self.path)?;
                 let mut v: Value = serde_json::from_str(&text)?;
-                let t = v.get_mut("tracks").and_then(|t| t.get_mut(ti)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no tracks[{ti}]"))?;
+                let t = v
+                    .get_mut("tracks")
+                    .and_then(|t| t.get_mut(ti))
+                    .and_then(Value::as_object_mut)
+                    .ok_or_else(|| anyhow!("the project file has no tracks[{ti}]"))?;
                 let same = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &p.spec()[7..]));
                 if !same {
                     switch_instrument(t, &p.spec());
@@ -1051,7 +1063,14 @@ impl Shared {
         Ok("capture")
     }
 
-    fn edit_open_with(self: &Arc<Self>, ti: usize, spec: &str, label: &str, capture: Option<(muser_engine::presets::PluginRef, String)>, fresh: bool) -> Result<(), String> {
+    fn edit_open_with(
+        self: &Arc<Self>,
+        ti: usize,
+        spec: &str,
+        label: &str,
+        capture: Option<(muser_engine::presets::PluginRef, String)>,
+        fresh: bool,
+    ) -> Result<(), String> {
         let spec = spec.strip_prefix("plugin:").unwrap_or(spec);
         if !cfg!(any(target_os = "macos", windows)) {
             return Err("the plugin UI is currently supported on macOS and Windows only".into());
@@ -1096,10 +1115,20 @@ impl Shared {
         }
         let plugin_name = plugin_display_name(spec);
         let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
-            .args(["plugin", "edit", spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &match &capture {
-                Some(_) => format!("{plugin_name} - load '{label}', then click Done in muser · {name}"),
-                None => format!("{plugin_name} — {name} · muser"),
-            }, "-o"])
+            .args([
+                "plugin",
+                "edit",
+                spec,
+                "--serve",
+                "--params",
+                &Value::Object(params).to_string(),
+                "--title",
+                &match &capture {
+                    Some(_) => format!("{plugin_name} - load '{label}', then click Done in muser · {name}"),
+                    None => format!("{plugin_name} — {name} · muser"),
+                },
+                "-o",
+            ])
             .arg(&out)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -1111,7 +1140,21 @@ impl Shared {
         let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
         let label = if label.trim().is_empty() { plugin_name } else { label.trim().to_string() };
         eprintln!("[view] opened the UI of {spec} (tracks[{ti}]); state syncs to {}", out.display());
-        *edit = Some(EditSession { track: ti, spec: spec.to_string(), label, stdin, open: true, synced: None, wrote: false, out, backup, capture, error: None, notice: None, fx: None });
+        *edit = Some(EditSession {
+            track: ti,
+            spec: spec.to_string(),
+            label,
+            stdin,
+            open: true,
+            synced: None,
+            wrote: false,
+            out,
+            backup,
+            capture,
+            error: None,
+            notice: None,
+            fx: None,
+        });
         drop(edit);
         self.watch_editor(child, stdout);
         Ok(())
@@ -1151,7 +1194,10 @@ impl Shared {
             return Err("only plugin effects have their own window; built-in effects are adjusted on the page".into());
         }
         let path = slot["path"].as_str().ok_or("the plugin effect has no path")?;
-        let spec = match slot["id"].as_str() { Some(id) => format!("{path}#{id}"), None => path.to_string() };
+        let spec = match slot["id"].as_str() {
+            Some(id) => format!("{path}#{id}"),
+            None => path.to_string(),
+        };
         let mut params = slot["params"].as_object().cloned().unwrap_or_default();
         // 状态文件是相对工程的：交给子进程前换成绝对路径。
         let dir = self.path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
@@ -1165,7 +1211,17 @@ impl Shared {
         let backup = (slot, std::fs::read(&out).ok());
         let plugin_name = plugin_display_name(&spec);
         let mut child = std::process::Command::new(std::env::current_exe().map_err(|e| format!("{e}"))?)
-            .args(["plugin", "edit", &spec, "--serve", "--params", &Value::Object(params).to_string(), "--title", &format!("{plugin_name} — {node} effect {} · muser", index + 1), "-o"])
+            .args([
+                "plugin",
+                "edit",
+                &spec,
+                "--serve",
+                "--params",
+                &Value::Object(params).to_string(),
+                "--title",
+                &format!("{plugin_name} — {node} effect {} · muser", index + 1),
+                "-o",
+            ])
             .arg(&out)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -1177,7 +1233,18 @@ impl Shared {
         let stdout = child.stdout.take().ok_or("the child process has no stdout")?;
         eprintln!("[view] opened the UI of effect {spec} ({node} #{index}); state syncs to {}", out.display());
         *edit = Some(EditSession {
-            track: 0, spec, label: plugin_name, stdin, open: true, synced: None, wrote: false, out, backup, capture: None, error: None, notice: None,
+            track: 0,
+            spec,
+            label: plugin_name,
+            stdin,
+            open: true,
+            synced: None,
+            wrote: false,
+            out,
+            backup,
+            capture: None,
+            error: None,
+            notice: None,
             fx: Some((node.to_string(), index)),
         });
         drop(edit);
@@ -1207,17 +1274,28 @@ impl Shared {
         let text = std::fs::read_to_string(&self.path)?;
         let mut v: Value = serde_json::from_str(&text)?;
         if let Some((node, i)) = &e.fx {
-            let slot = fx_pointer(node, *i).and_then(|p| v.pointer_mut(&p)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no {node} effect #{i}"))?;
+            let slot = fx_pointer(node, *i)
+                .and_then(|p| v.pointer_mut(&p))
+                .and_then(Value::as_object_mut)
+                .ok_or_else(|| anyhow!("the project file has no {node} effect #{i}"))?;
             // 打开窗口就是要听它：旁通着的打开（放弃时连同旁通一起恢复）。
             slot.remove("bypass");
             let p = slot.entry("params").or_insert_with(|| json!({}));
             let p = p.as_object_mut().ok_or_else(|| anyhow!("params is not an object"))?;
             p.insert("@state".into(), json!(e.out.display().to_string()));
-            std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "
-")?;
+            std::fs::write(
+                &self.path,
+                serde_json::to_string_pretty(&v)?
+                    + "
+",
+            )?;
             return Ok(());
         }
-        let t = v.get_mut("tracks").and_then(|t| t.get_mut(e.track)).and_then(Value::as_object_mut).ok_or_else(|| anyhow!("the project file has no tracks[{}]", e.track))?;
+        let t = v
+            .get_mut("tracks")
+            .and_then(|t| t.get_mut(e.track))
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| anyhow!("the project file has no tracks[{}]", e.track))?;
         let keep = t.get("instrument").and_then(Value::as_str).and_then(|i| i.strip_prefix("plugin:")).is_some_and(|c| same_plugin(c, &e.spec));
         if !keep {
             switch_instrument(t, &format!("plugin:{}", e.spec));
@@ -1280,7 +1358,13 @@ impl Shared {
     /// 自己调的存一份进音色库的"我的音色"。听与认要几秒，不拿着锁做。
     fn edit_finish(&self) {
         use muser_engine::presets;
-        let job = self.edit.lock().unwrap().as_ref().filter(|e| e.wrote && e.out.is_file()).map(|e| (e.spec.clone(), e.capture.clone(), e.out.clone(), e.label.clone(), e.fx.is_some()));
+        let job = self
+            .edit
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|e| e.wrote && e.out.is_file())
+            .map(|e| (e.spec.clone(), e.capture.clone(), e.out.clone(), e.label.clone(), e.fx.is_some()));
         let outcome: Option<Result<(String, PathBuf, Option<String>), String>> = job.map(|(spec, capture, out, label, fx)| {
             let p = presets::plugin_ref(&spec)?;
             let Some((_, target)) = capture else {
@@ -1482,7 +1566,11 @@ impl Shared {
         let st = self.state.lock().unwrap();
         let progress = st.current.as_ref().map_or(0.0, |v| {
             let pr = v.progress.lock().unwrap();
-            if pr.done { 1.0 } else { pr.rendered as f64 / v.frames.max(1) as f64 }
+            if pr.done {
+                1.0
+            } else {
+                pr.rendered as f64 / v.frames.max(1) as f64
+            }
         });
         json!({ "version": st.version, "rendering": st.rendering || st.requested, "progress": progress, "error": st.error, "device": self.device_status() })
     }
@@ -1646,7 +1734,11 @@ impl Shared {
     /// 导入 DAW 用的包（MIDI、整首混音、每轨分轨、说明），打成一个 zip。要从头渲染一遍（含分轨）。
     fn export_daw(&self) -> Result<Vec<u8>, String> {
         let working = self.state.lock().unwrap().working.clone().ok_or("the project has not been loaded yet")?;
-        let dir = std::env::temp_dir().join(format!("muser-daw-{}-{}", std::process::id(), SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_nanos())));
+        let dir = std::env::temp_dir().join(format!(
+            "muser-daw-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+        ));
         let r = muser_engine::daw::export_daw(&working, &dir, self.settings, &mut |_, _, _| {}).map_err(|e| e.to_string()).and_then(|_| {
             let mut files = Vec::new();
             let mut stack = vec![dir.clone()];
@@ -1697,10 +1789,7 @@ impl Shared {
         st.fetching_at = from;
         drop(st);
         let from = from.min(v.frames);
-        let (pr, _) = v
-            .grown
-            .wait_timeout_while(v.progress.lock().unwrap(), Duration::from_secs(2), |pr| pr.rendered <= from && !pr.done)
-            .unwrap();
+        let (pr, _) = v.grown.wait_timeout_while(v.progress.lock().unwrap(), Duration::from_secs(2), |pr| pr.rendered <= from && !pr.done).unwrap();
         // 播放头跑到还没渲染到的地方（比如重启 view 后页面还在原来的位置）：返回空的，页面过会儿再取。
         let have = pr.rendered.min(pr.pcm.len() / 4);
         let from = from.min(have);
@@ -1746,7 +1835,16 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
                 None => respond_json(req, 410, &json!({ "error": "version expired" })),
             }
         }
-        (Method::Get, "/api/export.mid" | "/api/export.wav" | "/api/export.mp3" | "/api/export.daw.zip" | "/api/export.data.json" | "/api/export.abc" | "/api/export.yue2.abc") => {
+        (
+            Method::Get,
+            "/api/export.mid"
+            | "/api/export.wav"
+            | "/api/export.mp3"
+            | "/api/export.daw.zip"
+            | "/api/export.data.json"
+            | "/api/export.abc"
+            | "/api/export.yue2.abc",
+        ) => {
             let (result, suffix, mime) = match path.as_str() {
                 "/api/export.wav" => (shared.export_wav(), "wav", "audio/wav"),
                 "/api/export.mp3" => (shared.export_mp3(), "mp3", "audio/mpeg"),
@@ -1817,7 +1915,11 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             let spec = query(&url).get("spec").map(|s| crate::poly::percent_decode(s)).unwrap_or_default();
             match muser_engine::presets::plugin_ref(&spec) {
                 // 抽屉里只列能直接用的（我的音色、已采集、能自动转换的预设）；要在插件里载入的去插件自己的浏览器里选。
-                Ok(p) => respond_json(req, 200, &json!(muser_engine::presets::presets(&p).into_iter().filter(|x| x.load != muser_engine::presets::Load::Manual).collect::<Vec<_>>())),
+                Ok(p) => respond_json(
+                    req,
+                    200,
+                    &json!(muser_engine::presets::presets(&p).into_iter().filter(|x| x.load != muser_engine::presets::Load::Manual).collect::<Vec<_>>()),
+                ),
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
             }
         }
@@ -1853,7 +1955,9 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             }
         }
         (Method::Post, "/api/transpose") => {
-            let r = read_body::<Value>(&mut req).and_then(|b| b.get("semitones").and_then(Value::as_i64).ok_or_else(|| "semitones is required".to_string())).and_then(|n| shared.set_transpose(n));
+            let r = read_body::<Value>(&mut req)
+                .and_then(|b| b.get("semitones").and_then(Value::as_i64).ok_or_else(|| "semitones is required".to_string()))
+                .and_then(|n| shared.set_transpose(n));
             match r {
                 Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
@@ -1888,16 +1992,14 @@ fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < b.len() {
         match b[i] {
-            b'%' if i + 2 < b.len() => {
-                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
-                    Ok(v) => {
-                        out.push(v);
-                        i += 3;
-                        continue;
-                    }
-                    Err(_) => out.push(b'%'),
+            b'%' if i + 2 < b.len() => match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
+                Ok(v) => {
+                    out.push(v);
+                    i += 3;
+                    continue;
                 }
-            }
+                Err(_) => out.push(b'%'),
+            },
             b'+' => out.push(b' '),
             c => out.push(c),
         }
@@ -1970,15 +2072,13 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
     }
     {
         let watcher = Arc::clone(&shared);
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(Duration::from_millis(500));
-                let now = mtime(&watcher.path);
-                let changed = now.is_some() && now != watcher.state.lock().unwrap().file_mtime;
-                if changed {
-                    eprintln!("[view] the project file changed; re-rendering");
-                    watcher.reload();
-                }
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(500));
+            let now = mtime(&watcher.path);
+            let changed = now.is_some() && now != watcher.state.lock().unwrap().file_mtime;
+            if changed {
+                eprintln!("[view] the project file changed; re-rendering");
+                watcher.reload();
             }
         });
     }
@@ -2065,8 +2165,15 @@ mod tests {
         let text = r#"{ "tempo": 120, "tracks": [{ "name": "g", "instrument": "guitar.steel", "clips": [], "effects": [{ "type": "distortion", "cabinet": "guitar" }] }] }"#;
         let file = Project::from_json(text).unwrap();
         let mut p = file.clone();
-        let edit = |k: &str, v: Value| vec![Change { node: "tracks[0]".into(), gain_db: None, muted: None, bypass: None,
-            fx: Some(BTreeMap::from([(0, serde_json::Map::from_iter([(k.to_string(), v)]))])) }];
+        let edit = |k: &str, v: Value| {
+            vec![Change {
+                node: "tracks[0]".into(),
+                gain_db: None,
+                muted: None,
+                bypass: None,
+                fx: Some(BTreeMap::from([(0, serde_json::Map::from_iter([(k.to_string(), v)]))])),
+            }]
+        };
         apply_to_project(&mut p, &edit("drive_db", json!(30))).unwrap();
         let d = diff(&file, &p);
         assert_eq!(d.len(), 1);
@@ -2103,7 +2210,14 @@ mod tests {
         q.tracks[0].clips = serde_json::from_value(json!([{ "start": 0, "length": 8, "notes": [{ "pitch": 60, "start": 0, "length": 8 }] }])).unwrap();
         let mut louder = q.clone();
         apply_to_project(&mut louder, &[Change { node: "tracks[0]".into(), gain_db: Some(0.0), muted: None, bypass: None, fx: None }]).unwrap();
-        let e = |p: &Project| muser_engine::render(p, RenderSettings { tail_seconds: 0.1, ..Default::default() }).unwrap().channel(0).iter().map(|s| f64::from(*s).powi(2)).sum::<f64>();
+        let e = |p: &Project| {
+            muser_engine::render(p, RenderSettings { tail_seconds: 0.1, ..Default::default() })
+                .unwrap()
+                .channel(0)
+                .iter()
+                .map(|s| f64::from(*s).powi(2))
+                .sum::<f64>()
+        };
         assert!(e(&louder) > e(&q) * 5.0);
     }
 

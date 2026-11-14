@@ -740,14 +740,7 @@ pub struct EffectSpec {
     pub example: &'static str,
 }
 
-const fn p(
-    name: &'static str,
-    min: f64,
-    max: f64,
-    default: f64,
-    unit: &'static str,
-    description: &'static str,
-) -> ParamSpec {
+const fn p(name: &'static str, min: f64, max: f64, default: f64, unit: &'static str, description: &'static str) -> ParamSpec {
     ParamSpec { name, min, max, default, unit, description }
 }
 
@@ -1090,22 +1083,13 @@ impl Effect {
     /// 数值参数（字段名, 当前值），与描述表中的 `params` 一一对应。
     pub fn numeric_params(&self) -> Vec<(&'static str, f64)> {
         match *self {
-            Effect::Reverb { mix, decay_seconds, damping, size } => vec![
-                ("mix", mix),
-                ("decay_seconds", decay_seconds),
-                ("damping", damping),
-                ("size", size),
-            ],
+            Effect::Reverb { mix, decay_seconds, damping, size } => vec![("mix", mix), ("decay_seconds", decay_seconds), ("damping", damping), ("size", size)],
             Effect::Delay { time_seconds, feedback, mix } => {
                 vec![("time_seconds", time_seconds), ("feedback", feedback), ("mix", mix)]
             }
-            Effect::Compressor { threshold_db, ratio, attack_ms, release_ms, makeup_db, .. } => vec![
-                ("threshold_db", threshold_db),
-                ("ratio", ratio),
-                ("attack_ms", attack_ms),
-                ("release_ms", release_ms),
-                ("makeup_db", makeup_db),
-            ],
+            Effect::Compressor { threshold_db, ratio, attack_ms, release_ms, makeup_db, .. } => {
+                vec![("threshold_db", threshold_db), ("ratio", ratio), ("attack_ms", attack_ms), ("release_ms", release_ms), ("makeup_db", makeup_db)]
+            }
             Effect::Chorus { rate_hz, depth_ms, mix } => {
                 vec![("rate_hz", rate_hz), ("depth_ms", depth_ms), ("mix", mix)]
             }
@@ -1124,12 +1108,47 @@ impl Effect {
             Effect::RingMod { frequency_hz, mix, .. } => vec![("frequency_hz", frequency_hz), ("mix", mix)],
             Effect::FrequencyShifter { shift_hz, feedback, mix, .. } => vec![("shift_hz", shift_hz), ("feedback", feedback), ("mix", mix)],
             Effect::Widener { width, bass_mono_hz, .. } => vec![("width", width), ("bass_mono_hz", bass_mono_hz)],
-            Effect::TransientShaper { attack_db, sustain_db, attack_ms, sustain_ms, .. } => vec![("attack_db", attack_db), ("sustain_db", sustain_db), ("attack_ms", attack_ms), ("sustain_ms", sustain_ms)],
-            Effect::MultibandCompressor { low_hz, high_hz, threshold_db, ratio, attack_ms, release_ms, low_db, mid_db, high_db, .. } => vec![("low_hz", low_hz), ("high_hz", high_hz), ("threshold_db", threshold_db), ("ratio", ratio), ("attack_ms", attack_ms), ("release_ms", release_ms), ("low_db", low_db), ("mid_db", mid_db), ("high_db", high_db)],
-            Effect::Distortion { drive_db, tone_hz, low_cut_hz, output_db, mix, .. } => vec![("drive_db", drive_db), ("tone_hz", tone_hz), ("low_cut_hz", low_cut_hz), ("output_db", output_db), ("mix", mix)],
-            Effect::Tape { drive_db, asymmetry, wow_cents, flutter_cents, mix, .. } => vec![("drive_db", drive_db), ("asymmetry", asymmetry), ("wow_cents", wow_cents), ("flutter_cents", flutter_cents), ("mix", mix)],
-            Effect::Vocoder { bands, low_hz, high_hz, formant_shift, attack_ms, release_ms, gain_db, mix, .. } => vec![("bands", bands), ("low_hz", low_hz), ("high_hz", high_hz), ("formant_shift", formant_shift), ("attack_ms", attack_ms), ("release_ms", release_ms), ("gain_db", gain_db), ("mix", mix)],
-            Effect::GranularDelay { position_ms, spray_ms, grain_ms, density_hz, pitch_semitones, pitch_spray, stereo_spread, feedback, mix, .. } => vec![("position_ms", position_ms), ("spray_ms", spray_ms), ("grain_ms", grain_ms), ("density_hz", density_hz), ("pitch_semitones", pitch_semitones), ("pitch_spray", pitch_spray), ("stereo_spread", stereo_spread), ("feedback", feedback), ("mix", mix)],
+            Effect::TransientShaper { attack_db, sustain_db, attack_ms, sustain_ms, .. } => {
+                vec![("attack_db", attack_db), ("sustain_db", sustain_db), ("attack_ms", attack_ms), ("sustain_ms", sustain_ms)]
+            }
+            Effect::MultibandCompressor { low_hz, high_hz, threshold_db, ratio, attack_ms, release_ms, low_db, mid_db, high_db, .. } => vec![
+                ("low_hz", low_hz),
+                ("high_hz", high_hz),
+                ("threshold_db", threshold_db),
+                ("ratio", ratio),
+                ("attack_ms", attack_ms),
+                ("release_ms", release_ms),
+                ("low_db", low_db),
+                ("mid_db", mid_db),
+                ("high_db", high_db),
+            ],
+            Effect::Distortion { drive_db, tone_hz, low_cut_hz, output_db, mix, .. } => {
+                vec![("drive_db", drive_db), ("tone_hz", tone_hz), ("low_cut_hz", low_cut_hz), ("output_db", output_db), ("mix", mix)]
+            }
+            Effect::Tape { drive_db, asymmetry, wow_cents, flutter_cents, mix, .. } => {
+                vec![("drive_db", drive_db), ("asymmetry", asymmetry), ("wow_cents", wow_cents), ("flutter_cents", flutter_cents), ("mix", mix)]
+            }
+            Effect::Vocoder { bands, low_hz, high_hz, formant_shift, attack_ms, release_ms, gain_db, mix, .. } => vec![
+                ("bands", bands),
+                ("low_hz", low_hz),
+                ("high_hz", high_hz),
+                ("formant_shift", formant_shift),
+                ("attack_ms", attack_ms),
+                ("release_ms", release_ms),
+                ("gain_db", gain_db),
+                ("mix", mix),
+            ],
+            Effect::GranularDelay { position_ms, spray_ms, grain_ms, density_hz, pitch_semitones, pitch_spray, stereo_spread, feedback, mix, .. } => vec![
+                ("position_ms", position_ms),
+                ("spray_ms", spray_ms),
+                ("grain_ms", grain_ms),
+                ("density_hz", density_hz),
+                ("pitch_semitones", pitch_semitones),
+                ("pitch_spray", pitch_spray),
+                ("stereo_spread", stereo_spread),
+                ("feedback", feedback),
+                ("mix", mix),
+            ],
             Effect::FormantFilter { vowel, shift, gain_db, mix, .. } => vec![("vowel", vowel), ("shift", shift), ("gain_db", gain_db), ("mix", mix)],
             Effect::Plugin { .. } => Vec::new(),
         }
@@ -1140,11 +1159,7 @@ impl Effect {
         let name = self.type_name();
         let spec = effect_spec(name).expect("每个 Effect 变体都应有描述");
         for (field, value) in self.numeric_params() {
-            let ps = spec
-                .params
-                .iter()
-                .find(|p| p.name == field)
-                .expect("numeric_params 字段应在描述表中");
+            let ps = spec.params.iter().find(|p| p.name == field).expect("numeric_params 字段应在描述表中");
             if !value.is_finite() || value < ps.min || value > ps.max {
                 return Err(format!(
                     "{name}.{field} = {value} is out of range [{}, {}]{}",
@@ -1159,10 +1174,7 @@ impl Effect {
                 let cs = &spec.choices[0];
                 let s = shape.trim().to_ascii_lowercase();
                 if !cs.choices.contains(&s.as_str()) {
-                    return Err(format!(
-                        "eq.shape = '{shape}' is invalid; choose one of: {}",
-                        cs.choices.join(" / ")
-                    ));
+                    return Err(format!("eq.shape = '{shape}' is invalid; choose one of: {}", cs.choices.join(" / ")));
                 }
             }
             Effect::Distortion { mode, cabinet, .. } => {
@@ -1204,8 +1216,8 @@ mod tests {
             if spec.name == "plugin" {
                 continue;
             }
-            let e: Effect = serde_json::from_str(&format!(r#"{{ "type": "{}" }}"#, spec.name))
-                .unwrap_or_else(|err| panic!("{} 应能用最小 JSON 解析: {err}", spec.name));
+            let e: Effect =
+                serde_json::from_str(&format!(r#"{{ "type": "{}" }}"#, spec.name)).unwrap_or_else(|err| panic!("{} 应能用最小 JSON 解析: {err}", spec.name));
             assert_eq!(e.type_name(), spec.name);
             let actual = e.numeric_params();
             assert_eq!(actual.len(), spec.params.len(), "{} 参数个数不一致", spec.name);
@@ -1246,11 +1258,7 @@ mod tests {
 
     #[test]
     fn delay_roundtrip() {
-        let e = Effect::Delay {
-            time_seconds: 0.25,
-            feedback: 0.5,
-            mix: 0.4,
-        };
+        let e = Effect::Delay { time_seconds: 0.25, feedback: 0.5, mix: 0.4 };
         let json = serde_json::to_string(&e).unwrap();
         let back: Effect = serde_json::from_str(&json).unwrap();
         assert_eq!(e, back);
@@ -1259,8 +1267,7 @@ mod tests {
 
     #[test]
     fn compressor_partial_json() {
-        let e: Effect =
-            serde_json::from_str(r#"{ "type": "compressor", "ratio": 8 }"#).unwrap();
+        let e: Effect = serde_json::from_str(r#"{ "type": "compressor", "ratio": 8 }"#).unwrap();
         match e {
             Effect::Compressor { ratio, threshold_db, .. } => {
                 assert_eq!(ratio, 8.0);
@@ -1275,9 +1282,7 @@ mod tests {
         let chorus: Effect = serde_json::from_str(r#"{ "type": "chorus" }"#).unwrap();
         assert!(matches!(chorus, Effect::Chorus { .. }));
 
-        let eq: Effect =
-            serde_json::from_str(r#"{ "type": "eq", "shape": "high_shelf", "frequency": 8000, "gain_db": 3 }"#)
-                .unwrap();
+        let eq: Effect = serde_json::from_str(r#"{ "type": "eq", "shape": "high_shelf", "frequency": 8000, "gain_db": 3 }"#).unwrap();
         match eq {
             Effect::Eq { shape, frequency, gain_db, .. } => {
                 assert_eq!(shape, "high_shelf");

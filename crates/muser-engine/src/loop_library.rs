@@ -133,7 +133,11 @@ impl Loop {
         if let Some(c) = &self.chords {
             muser_core::chord::progression(c, self.bars, 4.0).map_err(|e| format!("chords: {e}"))?;
         }
-        if self.grid.rows.is_empty() { Ok(()) } else { self.grid.expand(self.beats()).map(|_| ()) }
+        if self.grid.rows.is_empty() {
+            Ok(())
+        } else {
+            self.grid.expand(self.beats()).map(|_| ())
+        }
     }
 
     /// 是鼓的节奏型（只有 grid）。
@@ -151,7 +155,9 @@ impl Loop {
         if !self.notes.is_empty() {
             // 音符不会自己循环：按遍数铺开。
             let notes: Vec<muser_core::Note> = (0..reps)
-                .flat_map(|k| self.notes.iter().map(move |n| muser_core::Note { start: muser_core::Beats(n.start.0 + f64::from(k) * self.beats()), ..n.clone() }))
+                .flat_map(|k| {
+                    self.notes.iter().map(move |n| muser_core::Note { start: muser_core::Beats(n.start.0 + f64::from(k) * self.beats()), ..n.clone() })
+                })
                 .collect();
             clip["notes"] = json!(notes);
         }
@@ -166,9 +172,22 @@ impl Loop {
     /// 一个旋律 loop（哼唱转谱、编辑器新建用）。
     pub fn melody(name: &str, bars: u32, tempo: f64, instrument: Option<String>, key: Option<String>, notes: Vec<muser_core::Note>) -> Loop {
         Loop {
-            format: FORMAT.into(), version: VERSION, name: name.into(), style: String::new(), description: String::new(), tags: Vec::new(),
-            tempo: Some([tempo, tempo]), bars, meter: "4/4".into(), kit: None, instrument, key, chords: None,
-            grid: Grid::default(), notes, humanize: None,
+            format: FORMAT.into(),
+            version: VERSION,
+            name: name.into(),
+            style: String::new(),
+            description: String::new(),
+            tags: Vec::new(),
+            tempo: Some([tempo, tempo]),
+            bars,
+            meter: "4/4".into(),
+            kit: None,
+            instrument,
+            key,
+            chords: None,
+            grid: Grid::default(),
+            notes,
+            humanize: None,
         }
     }
 
@@ -270,7 +289,10 @@ pub fn save_project(l: &Loop, base: Option<&Path>, overwrite: bool) -> Result<Pa
 
 /// 把项目里的 loop 复制到全局。
 pub fn share(name: &str, base: Option<&Path>, overwrite: bool) -> Result<PathBuf, String> {
-    let l = user_in(&project_dir(base)).into_iter().find(|l| l.name == name.trim()).ok_or_else(|| format!("no loop named '{name}' in the project ({})", project_dir(base).display()))?;
+    let l = user_in(&project_dir(base))
+        .into_iter()
+        .find(|l| l.name == name.trim())
+        .ok_or_else(|| format!("no loop named '{name}' in the project ({})", project_dir(base).display()))?;
     save(&l, overwrite)
 }
 
@@ -316,13 +338,8 @@ pub fn grid_from_notes(notes: &[muser_core::Note], length: f64, step: f64) -> Re
             'x'
         };
     }
-    let name = |p: u8| {
-        muser_core::grid::DRUM_PIECES.iter().find(|(_, k)| *k == p).map_or_else(|| p.to_string(), |(a, _)| a.to_string())
-    };
-    Ok(Grid {
-        step: (step != 0.25).then_some(step),
-        rows: rows.into_iter().map(|(p, cells)| (name(p), cells.into_iter().collect())).collect(),
-    })
+    let name = |p: u8| muser_core::grid::DRUM_PIECES.iter().find(|(_, k)| *k == p).map_or_else(|| p.to_string(), |(a, _)| a.to_string());
+    Ok(Grid { step: (step != 0.25).then_some(step), rows: rows.into_iter().map(|(p, cells)| (name(p), cells.into_iter().collect())).collect() })
 }
 
 #[cfg(test)]
@@ -345,8 +362,7 @@ mod tests {
             let tempo = l.tempo.map_or(120.0, |[a, b]| (a + b) / 2.0);
             let mut clip = l.clip(0.0, 1);
             clip["length"] = json!(l.beats().min(4.0));
-            let p: muser_core::Project =
-                serde_json::from_value(json!({ "tempo": tempo, "tracks": [{ "instrument": kit, "clips": [clip] }] })).unwrap();
+            let p: muser_core::Project = serde_json::from_value(json!({ "tempo": tempo, "tracks": [{ "instrument": kit, "clips": [clip] }] })).unwrap();
             let audio = crate::render(&p, crate::RenderSettings { tail_seconds: 0.1, ..Default::default() }).unwrap();
             assert!(audio.peak() > 0.01, "{} 应出声", l.name);
         }
@@ -368,8 +384,10 @@ mod tests {
         let mut m = l.clone();
         m.description = "项目版".into();
         save_in(&proj, &m, false).unwrap();
-        let motif: Loop = serde_json::from_value(json!({ "format": FORMAT, "version": VERSION, "name": "motif", "bars": 1, "instrument": "wind.flute", "key": "Am",
-            "notes": [{ "pitch": 69, "start": 0, "length": 1 }, { "pitch": 72, "start": 2, "length": 2 }] })).unwrap();
+        let motif: Loop =
+            serde_json::from_value(json!({ "format": FORMAT, "version": VERSION, "name": "motif", "bars": 1, "instrument": "wind.flute", "key": "Am",
+            "notes": [{ "pitch": 69, "start": 0, "length": 1 }, { "pitch": 72, "start": 2, "length": 2 }] }))
+            .unwrap();
         save_in(&proj, &motif, false).unwrap();
         let list = list_in(&dir, Some(&proj));
         let house: Vec<_> = list.iter().filter(|e| e.item.name == "house_basic").collect();
@@ -389,7 +407,29 @@ mod tests {
         let g = grid_from_notes(&notes, l.beats(), 0.25).unwrap();
         let back = g.expand(l.beats()).unwrap();
         assert_eq!(back.iter().map(|n| (n.pitch, n.start.0)).collect::<Vec<_>>(), notes.iter().map(|n| (n.pitch, n.start.0)).collect::<Vec<_>>());
-        let off = [muser_core::Note { pitch: 36, start: muser_core::Beats(0.1), length: muser_core::Beats(0.1), velocity: 0.8, accent: false, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0, bend: Vec::new(), lyric: None, technique: None, harmonic: None, articulation: None }];
+        let off = [muser_core::Note {
+            pitch: 36,
+            start: muser_core::Beats(0.1),
+            length: muser_core::Beats(0.1),
+            velocity: 0.8,
+            accent: false,
+            mute: false,
+            tremolo: false,
+            slide: false,
+            slide_out: false,
+            breath: false,
+            damp: false,
+            flutter: false,
+            trill: 0,
+            half_trill: false,
+            scoop: 0.0,
+            fall: 0.0,
+            bend: Vec::new(),
+            lyric: None,
+            technique: None,
+            harmonic: None,
+            articulation: None,
+        }];
         assert!(grid_from_notes(&off, 1.0, 0.25).unwrap_err().contains("grid"));
     }
 }

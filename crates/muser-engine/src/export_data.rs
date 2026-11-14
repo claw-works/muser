@@ -5,9 +5,9 @@
 
 use muser_core::automation::Shape;
 use muser_core::{Automation, Project};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use crate::render::{Act, EngineError, RenderSettings, schedule_ticks};
+use crate::render::{schedule_ticks, Act, EngineError, RenderSettings};
 
 const TPQ: u16 = 960;
 

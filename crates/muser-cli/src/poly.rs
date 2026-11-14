@@ -181,7 +181,8 @@ fn handle(mut req: tiny_http::Request, port: u16, sample_rate: u32) {
             respond_json(req, 200, &json!(list));
         }
         (Method::Get, "/api/library") => {
-            let list: Vec<Value> = poly_library::list().iter().map(|s| json!({ "name": s.name, "description": s.description, "tags": s.tags, "base": s.base })).collect();
+            let list: Vec<Value> =
+                poly_library::list().iter().map(|s| json!({ "name": s.name, "description": s.description, "tags": s.tags, "base": s.base })).collect();
             respond_json(req, 200, &json!({ "dir": poly_library::dir().display().to_string(), "sounds": list }));
         }
         (Method::Get, "/api/sound") => match query(&url).get("name").map(|n| percent_decode(n)) {
@@ -258,9 +259,7 @@ pub(crate) fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        let hex = (b[i] == b'%' && i + 2 < b.len())
-            .then(|| std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()))
-            .flatten();
+        let hex = (b[i] == b'%' && i + 2 < b.len()).then(|| std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok())).flatten();
         match (hex, b[i]) {
             (Some(v), _) => {
                 out.push(v);

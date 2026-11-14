@@ -79,7 +79,11 @@ pub fn run(project_path: &str, track: &str, split_at: Option<f64>, clip: Option<
     let ti = p.tracks.iter().position(|t| t.name == track).ok_or_else(|| anyhow!("no track named '{track}'"))?;
     let what = match split_at {
         Some(at) => {
-            let ci = p.tracks[ti].clips.iter().position(|c| c.audio.is_some() && at > c.start.0 && at < c.start.0 + c.length.0).ok_or_else(|| anyhow!("beat {at} is not inside any audio clip of '{track}'"))?;
+            let ci = p.tracks[ti]
+                .clips
+                .iter()
+                .position(|c| c.audio.is_some() && at > c.start.0 && at < c.start.0 + c.length.0)
+                .ok_or_else(|| anyhow!("beat {at} is not inside any audio clip of '{track}'"))?;
             split(&mut p, ti, ci, at)?
         }
         None => {
@@ -109,7 +113,8 @@ mod tests {
         let mut p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [
             { "name": "vocal", "instrument": "audio", "clips": [
                 { "start": 0, "length": 4, "audio": { "file": "a.wav" } }, { "start": 4, "length": 4, "audio": { "file": "a.wav", "offset": 2 } }] },
-            { "name": "keys", "instrument": "synth.poly", "clips": [{ "start": 0, "length": 4, "notes": [] }] }] })).unwrap();
+            { "name": "keys", "instrument": "synth.poly", "clips": [{ "start": 0, "length": 4, "notes": [] }] }] }))
+        .unwrap();
         remove(&mut p, 0, 0).unwrap();
         assert_eq!(p.tracks[0].clips.len(), 1);
         assert_eq!(p.tracks[0].clips[0].start.0, 4.0, "剪开后的后半截留着");
@@ -120,8 +125,11 @@ mod tests {
 
     #[test]
     fn split_then_move() {
-        let mut p = Project::from_json(r#"{ "tempo": 120, "tracks": [{ "name": "v", "instrument": "audio",
-            "clips": [{ "start": 4, "length": 8, "audio": { "file": "a.wav", "offset": 1.0 } }] }] }"#).unwrap();
+        let mut p = Project::from_json(
+            r#"{ "tempo": 120, "tracks": [{ "name": "v", "instrument": "audio",
+            "clips": [{ "start": 4, "length": 8, "audio": { "file": "a.wav", "offset": 1.0 } }] }] }"#,
+        )
+        .unwrap();
         split(&mut p, 0, 0, 6.0).unwrap();
         let c = &p.tracks[0].clips;
         assert_eq!((c[0].start.0, c[0].length.0, c[1].start.0, c[1].length.0), (4.0, 2.0, 6.0, 6.0));

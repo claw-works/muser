@@ -37,7 +37,29 @@ pub fn expand(d: &Drummer, length: f64, seed: u64, dir: Option<&std::path::Path>
     let scale = 0.6 + 0.8 * d.intensity;
     let c = d.complexity;
     let mut out: Vec<Note> = Vec::new();
-    let note = |pitch: u8, start: f64, velocity: f64| Note { pitch, start: Beats(start), length: Beats(step), velocity: velocity as f32, accent: false, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0, bend: Vec::new(), lyric: None, technique: None, harmonic: None, articulation: None };
+    let note = |pitch: u8, start: f64, velocity: f64| Note {
+        pitch,
+        start: Beats(start),
+        length: Beats(step),
+        velocity: velocity as f32,
+        accent: false,
+        mute: false,
+        tremolo: false,
+        slide: false,
+        slide_out: false,
+        breath: false,
+        damp: false,
+        flutter: false,
+        trill: 0,
+        half_trill: false,
+        scoop: 0.0,
+        fall: 0.0,
+        bend: Vec::new(),
+        lyric: None,
+        technique: None,
+        harmonic: None,
+        articulation: None,
+    };
 
     // 哪些小节打过门、打几拍。
     let fills: Vec<Option<f64>> = (0..bars)
@@ -149,8 +171,12 @@ mod tests {
         let d: Drummer = serde_json::from_value(serde_json::json!({ "loop": "rock_basic", "complexity": 0.5 })).unwrap();
         let fill_bars = |seed: u64| -> Vec<u32> {
             let n = expand(&d, 32.0 * 4.0, seed, None).unwrap();
-            (0..32).filter(|&b| n.iter().any(|x| TOMS.contains(&x.pitch) && x.start.0 >= f64::from(b) * 4.0 && x.start.0 < f64::from(b + 1) * 4.0)
-                || n.iter().filter(|x| x.pitch == SNARE && x.start.0 >= f64::from(b) * 4.0 + 3.0 && x.start.0 < f64::from(b + 1) * 4.0).count() >= 3).collect()
+            (0..32)
+                .filter(|&b| {
+                    n.iter().any(|x| TOMS.contains(&x.pitch) && x.start.0 >= f64::from(b) * 4.0 && x.start.0 < f64::from(b + 1) * 4.0)
+                        || n.iter().filter(|x| x.pitch == SNARE && x.start.0 >= f64::from(b) * 4.0 + 3.0 && x.start.0 < f64::from(b + 1) * 4.0).count() >= 3
+                })
+                .collect()
         };
         let (a, b) = (fill_bars(1), fill_bars(2));
         assert!(a.contains(&31) && b.contains(&31), "最后一小节有过门：{a:?}");
@@ -174,7 +200,13 @@ mod tests {
         assert!(toms_or_snare_in_bar4 >= 6, "第 4 小节末有过门：{toms_or_snare_in_bar4}");
         assert!(notes.iter().any(|n| n.pitch == CRASH && n.start.0 == 16.0), "过门后第一拍有镲");
         // 各小节不完全一样。
-        let bar = |b: f64| notes.iter().filter(|n| n.start.0 >= b * 4.0 && n.start.0 < b * 4.0 + 4.0).map(|n| (n.pitch, ((n.start.0 - b * 4.0) * 4.0).round() as i64)).collect::<Vec<_>>();
+        let bar = |b: f64| {
+            notes
+                .iter()
+                .filter(|n| n.start.0 >= b * 4.0 && n.start.0 < b * 4.0 + 4.0)
+                .map(|n| (n.pitch, ((n.start.0 - b * 4.0) * 4.0).round() as i64))
+                .collect::<Vec<_>>()
+        };
         assert!(bar(0.0) != bar(1.0) || bar(1.0) != bar(2.0));
         // 同种子相同，换种子不同。
         assert_eq!(notes, expand(&drummer(0.8), 32.0, 7, None).unwrap());

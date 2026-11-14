@@ -43,7 +43,8 @@ fn build_one(project: &Project, t: &muser_core::tuning::Tuning) -> Result<Option
         "scala" => {
             let read = |file: &str| {
                 let path = crate::audio::resolve(project, file);
-                std::fs::read_to_string(&path).map_err(|e| format!("tuning: failed to read '{}': {e} (relative paths are relative to the project file's directory)", path.display()))
+                std::fs::read_to_string(&path)
+                    .map_err(|e| format!("tuning: failed to read '{}': {e} (relative paths are relative to the project file's directory)", path.display()))
             };
             let scale = ScalaScale::parse(&read(t.scala.as_deref().unwrap_or_default())?).map_err(|e| format!("tuning.scala: {e}"))?;
             let mapping = match &t.kbm {
@@ -54,13 +55,8 @@ fn build_one(project: &Project, t: &muser_core::tuning::Tuning) -> Result<Option
         }
         _ => Scale::Equal { divisions: t.divisions, period_cents: t.period_cents },
     };
-    let settings = TuningSettings {
-        scale,
-        reference_key: t.reference_key,
-        reference_hz: t.reference_hz,
-        detune_cents: t.detune_cents,
-        ..TuningSettings::default()
-    };
+    let settings =
+        TuningSettings { scale, reference_key: t.reference_key, reference_hz: t.reference_hz, detune_cents: t.detune_cents, ..TuningSettings::default() };
     settings.build().map(Some).map_err(|e| format!("tuning: {e}"))
 }
 

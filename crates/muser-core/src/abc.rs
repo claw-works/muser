@@ -96,7 +96,14 @@ pub fn bar_problems(text: &str, meter: f64) -> Result<Vec<String>, String> {
         let bar = meters.iter().rev().find(|m| m.0 <= w[0] + 1e-9).map_or(p.bar, |m| m.1);
         let wrong = if k == 0 || k == last { len > bar + 1e-6 } else { (len - bar).abs() > 1e-6 };
         if wrong && len > 1e-9 {
-            out.push(format!("bar {} is {} beats ({} units) long, but a bar should be {} beats ({} units)", k + 1, beats(len), units(len), beats(bar), units(bar)));
+            out.push(format!(
+                "bar {} is {} beats ({} units) long, but a bar should be {} beats ({} units)",
+                k + 1,
+                beats(len),
+                units(len),
+                beats(bar),
+                units(bar)
+            ));
         }
     }
     Ok(out)
@@ -314,7 +321,29 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                         let length = if staccato { l * 0.5 } else { l };
-                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, mute: false, tremolo: false, slide, slide_out, breath, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0, bend: Vec::new(), lyric: None, technique: None, harmonic: None, articulation: None });
+                        notes.push(Note {
+                            pitch,
+                            start: Beats(t),
+                            length: Beats(length),
+                            velocity,
+                            accent,
+                            mute: false,
+                            tremolo: false,
+                            slide,
+                            slide_out,
+                            breath,
+                            damp: false,
+                            flutter: false,
+                            trill: 0,
+                            half_trill: false,
+                            scoop: 0.0,
+                            fall: 0.0,
+                            bend: Vec::new(),
+                            lyric: None,
+                            technique: None,
+                            harmonic: None,
+                            articulation: None,
+                        });
                         if tie {
                             next_tied.push(notes.len() - 1);
                         }

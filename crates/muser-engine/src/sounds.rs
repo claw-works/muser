@@ -62,17 +62,19 @@ pub fn list() -> Vec<Sound> {
         description: String::new(),
         card: None,
     }));
-    out.extend(crate::modal::library().into_iter().map(|e| Sound {
-        spec: e.spec,
-        name: e.name,
-        kind: "yinse".into(),
-        group: e.family,
-        description: [e.description, [e.source, e.license].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")]
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join(" — "),
-        card: None,
+    out.extend(crate::modal::library().into_iter().map(|e| {
+        Sound {
+            spec: e.spec,
+            name: e.name,
+            kind: "yinse".into(),
+            group: e.family,
+            description: [e.description, [e.source, e.license].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" — "),
+            card: None,
+        }
     }));
     if let Ok((plugins, _)) = crate::plugin::scan(false) {
         out.extend(plugins.into_iter().filter(|p| p.kind == "instrument").map(|p| Sound {
@@ -80,7 +82,10 @@ pub fn list() -> Vec<Sound> {
             name: p.name,
             kind: "plugin".into(),
             group: p.vendor,
-            description: format!("{} instrument plugin (the sound is set by the plugin's own state: use @state, or have a person choose it under 🎛 in muser view)", p.format.to_uppercase()),
+            description: format!(
+                "{} instrument plugin (the sound is set by the plugin's own state: use @state, or have a person choose it under 🎛 in muser view)",
+                p.format.to_uppercase()
+            ),
             card: None,
         }));
     }
@@ -122,7 +127,16 @@ pub struct AnalysisJson {
 
 impl From<Analysis> for AnalysisJson {
     fn from(a: Analysis) -> Self {
-        Self { peak_db: a.peak_db, lufs: a.lufs, centroid_hz: a.centroid_hz, low_pct: a.low_pct, mid_pct: a.mid_pct, high_pct: a.high_pct, attack_ms: a.attack_ms, release_s: a.release_s }
+        Self {
+            peak_db: a.peak_db,
+            lufs: a.lufs,
+            centroid_hz: a.centroid_hz,
+            low_pct: a.low_pct,
+            mid_pct: a.mid_pct,
+            high_pct: a.high_pct,
+            attack_ms: a.attack_ms,
+            release_s: a.release_s,
+        }
     }
 }
 
@@ -152,7 +166,10 @@ fn cache_file(spec: &str, params: &serde_json::Map<String, Value>) -> PathBuf {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     // 音色文件变了（换了 .sfz、重存了 @state）卡片作废：计入修改时间。
-    let file = spec.strip_prefix("sfz:").map(crate::sfz::resolve).or_else(|| params.get("@state").and_then(Value::as_str).map(|p| PathBuf::from(&*crate::plugin::expand_home(p))));
+    let file = spec
+        .strip_prefix("sfz:")
+        .map(crate::sfz::resolve)
+        .or_else(|| params.get("@state").and_then(Value::as_str).map(|p| PathBuf::from(&*crate::plugin::expand_home(p))));
     let mtime = file.and_then(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok()).map(|t| format!("{t:?}"));
     (spec, Value::Object(params.clone()).to_string(), mtime, PROBE_VERSION).hash(&mut h);
     crate::plugin::cache_dir().join("sounds").join(format!("{:016x}.json", h.finish()))
@@ -193,11 +210,8 @@ pub fn describe(spec: &str, params: &serde_json::Map<String, Value>, drums: Opti
     let (slot, hold) = if drums { (3.0, 0.25) } else { (4.0, 1.0) };
     let mut probes: Vec<(u8, f32)> = if drums { DRUM_KEYS.iter().map(|&k| (k, 0.8)).collect() } else { PITCHES.iter().map(|&p| (p, 0.8)).collect() };
     probes.push(if drums { (38, 0.3) } else { (60, 0.3) });
-    let notes: Vec<Note> = probes
-        .iter()
-        .enumerate()
-        .map(|(i, &(pitch, velocity))| Note { velocity, ..Note::new(pitch, Beats(i as f64 * slot), Beats(hold)) })
-        .collect();
+    let notes: Vec<Note> =
+        probes.iter().enumerate().map(|(i, &(pitch, velocity))| Note { velocity, ..Note::new(pitch, Beats(i as f64 * slot), Beats(hold)) }).collect();
     let mut track = Track::new("probe", spec);
     track.instrument_params = params.clone();
     let mut clip = Clip::new(0.0, probes.len() as f64 * slot);
@@ -257,16 +271,39 @@ pub fn describe(spec: &str, params: &serde_json::Map<String, Value>, drums: Opti
     let (summary, mut traits) = words(&measured, drums);
     // 音量：和内置乐器校准用的同一段参考乐句（内置乐器 gain_db 为 0 时都在 TARGET_LUFS 附近）。
     let range = crate::instrument::describe(spec).map_or((48, 84), |i| i.range);
-    let level = crate::render::render_loudness(&crate::levels::phrase(spec, params, range, drums), RenderSettings { tail_seconds: 1.0, ..RenderSettings::default() }, &mut crate::render::RenderCache::new())
-        .ok()
-        .and_then(|l| l.first().and_then(|n| n.output.lufs));
+    let level = crate::render::render_loudness(
+        &crate::levels::phrase(spec, params, range, drums),
+        RenderSettings { tail_seconds: 1.0, ..RenderSettings::default() },
+        &mut crate::render::RenderCache::new(),
+    )
+    .ok()
+    .and_then(|l| l.first().and_then(|n| n.output.lufs));
     if let Some(l) = level {
         let d = l - crate::levels::TARGET_LUFS;
-        let how = if d.abs() < 2.0 { "about as loud as the built-in instruments".to_string() } else if d > 0.0 { format!("{d:.0} dB louder than the built-in instruments") } else { format!("{:.0} dB quieter than the built-in instruments", -d) };
-        traits.push(format!("Volume: reference phrase {l:.1} LUFS (built-in instruments are about {:.0} at gain_db 0) -> {how}{}", crate::levels::TARGET_LUFS,
-            if d.abs() < 2.0 { String::new() } else { format!("; when mixing with built-in instruments, start gain_db at {:+.0}", -d) }));
+        let how = if d.abs() < 2.0 {
+            "about as loud as the built-in instruments".to_string()
+        } else if d > 0.0 {
+            format!("{d:.0} dB louder than the built-in instruments")
+        } else {
+            format!("{:.0} dB quieter than the built-in instruments", -d)
+        };
+        traits.push(format!(
+            "Volume: reference phrase {l:.1} LUFS (built-in instruments are about {:.0} at gain_db 0) -> {how}{}",
+            crate::levels::TARGET_LUFS,
+            if d.abs() < 2.0 { String::new() } else { format!("; when mixing with built-in instruments, start gain_db at {:+.0}", -d) }
+        ));
     }
-    let card = Card { spec: spec.to_string(), params: params.clone(), drums, probes: measured, summary, traits, level_lufs: level, suggested_gain_db: level.map(|l| ((crate::levels::TARGET_LUFS - l) * 10.0).round() / 10.0), probe_version: PROBE_VERSION };
+    let card = Card {
+        spec: spec.to_string(),
+        params: params.clone(),
+        drums,
+        probes: measured,
+        summary,
+        traits,
+        level_lufs: level,
+        suggested_gain_db: level.map(|l| ((crate::levels::TARGET_LUFS - l) * 10.0).round() / 10.0),
+        probe_version: PROBE_VERSION,
+    };
     let path = cache_file(spec, params);
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -315,12 +352,21 @@ fn words(probes: &[Probe], drums: bool) -> (String, Vec<String>) {
     let mut traits = Vec::new();
     let loud: Vec<&Probe> = probes.iter().filter(|p| p.audible && p.velocity > 0.5).collect();
     if loud.is_empty() {
-        return ("Silent: none of the probe notes sounded (the sound did not load, or the range / drum keys are wrong)".into(), vec!["every probe note peaks below -60 dBFS".into()]);
+        return (
+            "Silent: none of the probe notes sounded (the sound did not load, or the range / drum keys are wrong)".into(),
+            vec!["every probe note peaks below -60 dBFS".into()],
+        );
     }
     if drums {
         for p in probes.iter().filter(|p| p.velocity > 0.5) {
             match &p.analysis {
-                Some(a) => traits.push(format!("{}: decays 40 dB in {:.2} s, centroid {:.0} Hz, loudness {:.1} LUFS", drum_name(p.pitch), a.release_s, a.centroid_hz, a.lufs)),
+                Some(a) => traits.push(format!(
+                    "{}: decays 40 dB in {:.2} s, centroid {:.0} Hz, loudness {:.1} LUFS",
+                    drum_name(p.pitch),
+                    a.release_s,
+                    a.centroid_hz,
+                    a.lufs
+                )),
                 None => traits.push(format!("{}: silent", drum_name(p.pitch))),
             }
         }
@@ -333,7 +379,16 @@ fn words(probes: &[Probe], drums: bool) -> (String, Vec<String>) {
         let kick = probes.iter().find(|p| p.pitch == 36).and_then(|p| p.analysis.as_ref());
         let mut summary = String::from("Drum kit");
         if let Some(k) = kick {
-            summary += &format!("; kick is {}", if k.release_s > 0.6 { "long with a low tail (808-like)" } else if k.centroid_hz < 150.0 { "deep and short" } else { "tight and short" });
+            summary += &format!(
+                "; kick is {}",
+                if k.release_s > 0.6 {
+                    "long with a low tail (808-like)"
+                } else if k.centroid_hz < 150.0 {
+                    "deep and short"
+                } else {
+                    "tight and short"
+                }
+            );
         }
         if silent > 0 {
             summary += &format!("; {silent} common drum keys are silent");
@@ -374,7 +429,13 @@ fn words(probes: &[Probe], drums: bool) -> (String, Vec<String>) {
             format!("decays quickly after the key goes down ({:.0} dB lower after 1 s held: plucked, percussive, piano-like)", -hold)
         };
         traits.push(format!("Sustain: {body}"));
-        let release = if a.release_s < 0.15 { "stops on release" } else if a.release_s < 1.0 { "short tail after release" } else { "long tail after release" };
+        let release = if a.release_s < 0.15 {
+            "stops on release"
+        } else if a.release_s < 1.0 {
+            "short tail after release"
+        } else {
+            "long tail after release"
+        };
         traits.push(format!("Tail: decays 40 dB in {:.2} s after release -> {release}", a.release_s));
         let width = m.width_pct.unwrap_or(0.0);
         let stereo = if width < 3.0 {
@@ -388,13 +449,20 @@ fn words(probes: &[Probe], drums: bool) -> (String, Vec<String>) {
         };
         traits.push(format!("Stereo: side / mid energy {width:.0}% -> {stereo}"));
         match m.detected_pitch {
-            Some(d) if (d - 60.0).abs() > 6.0 => traits.push(format!("Pitch: playing C4 measured {d:.1} ({:+.0} semitones off: the sound's pitch mapping disagrees with its labeling)", d - 60.0)),
+            Some(d) if (d - 60.0).abs() > 6.0 => traits
+                .push(format!("Pitch: playing C4 measured {d:.1} ({:+.0} semitones off: the sound's pitch mapping disagrees with its labeling)", d - 60.0)),
             Some(d) => traits.push(format!("Pitch: playing C4 measured {d:.1}, in tune")),
             None => traits.push("Pitch: no clear pitch detected (noise, percussive, or very inharmonic)".into()),
         }
         summary.push(bright.split('、').next().unwrap_or(bright).to_string());
         summary.push(attack.split('（').next().unwrap_or(attack).to_string());
-        summary.push(if hold > -6.0 { "sustained".into() } else if hold > -20.0 { "slow decay".to_string() } else { "fast decay".to_string() });
+        summary.push(if hold > -6.0 {
+            "sustained".into()
+        } else if hold > -20.0 {
+            "slow decay".to_string()
+        } else {
+            "fast decay".to_string()
+        });
         summary.push(release.to_string());
         if width >= 25.0 {
             summary.push("wide stereo".into());
@@ -403,7 +471,13 @@ fn words(probes: &[Probe], drums: bool) -> (String, Vec<String>) {
     if let (Some(soft), Some(m)) = (probes.iter().find(|p| p.velocity < 0.5).and_then(|p| p.analysis.as_ref()), mid.and_then(|p| p.analysis.as_ref())) {
         let db = m.lufs - soft.lufs;
         let tone = m.centroid_hz / soft.centroid_hz.max(1.0);
-        let resp = if db < 2.0 { "velocity barely affects volume" } else if db < 10.0 { "velocity has a moderate effect" } else { "velocity has a large effect" };
+        let resp = if db < 2.0 {
+            "velocity barely affects volume"
+        } else if db < 10.0 {
+            "velocity has a moderate effect"
+        } else {
+            "velocity has a large effect"
+        };
         traits.push(format!(
             "Velocity: soft (0.3) is {db:.1} dB below hard (0.8), and the hard centroid is {tone:.2}x the soft one -> {resp}{}",
             if tone > 1.25 { "; hard playing is clearly brighter" } else { "" }
@@ -513,7 +587,15 @@ pub fn note_name(p: u8) -> String {
 }
 
 /// 做键位卡：`from..=to` 的每个键按住 `hold_bars` 小节（4/4，`tempo`），一次渲染里依次排开。结果缓存在本机。
-pub fn describe_keys(spec: &str, params: &serde_json::Map<String, Value>, from: u8, to: u8, tempo: f64, hold_bars: f64, refresh: bool) -> Result<KeyMap, String> {
+pub fn describe_keys(
+    spec: &str,
+    params: &serde_json::Map<String, Value>,
+    from: u8,
+    to: u8,
+    tempo: f64,
+    hold_bars: f64,
+    refresh: bool,
+) -> Result<KeyMap, String> {
     if from > to || to > 127 {
         return Err("key range must satisfy from <= to <= 127".into());
     }
@@ -521,7 +603,8 @@ pub fn describe_keys(spec: &str, params: &serde_json::Map<String, Value>, from: 
     key_params.insert("@keys".into(), serde_json::json!([from, to, tempo, hold_bars]));
     let cache = cache_file(spec, &key_params);
     if !refresh {
-        if let Some(m) = std::fs::read_to_string(&cache).ok().and_then(|t| serde_json::from_str::<KeyMap>(&t).ok()).filter(|m| m.probe_version == PROBE_VERSION) {
+        if let Some(m) = std::fs::read_to_string(&cache).ok().and_then(|t| serde_json::from_str::<KeyMap>(&t).ok()).filter(|m| m.probe_version == PROBE_VERSION)
+        {
             return Ok(m);
         }
     }
@@ -603,7 +686,8 @@ pub fn describe_keys(spec: &str, params: &serde_json::Map<String, Value>, from: 
         let mut spec_buf = vec![manguebyte::dsp::fft::Complex::<f32>::default(); fft.spectrum_len()];
         let mid = mono.len() / 2;
         let start = mid.saturating_sub(n / 2);
-        let frame: Vec<f32> = (0..n).map(|k| mono.get(start + k).copied().unwrap_or(0.0) * (0.5 - 0.5 * (std::f32::consts::TAU * k as f32 / n as f32).cos())).collect();
+        let frame: Vec<f32> =
+            (0..n).map(|k| mono.get(start + k).copied().unwrap_or(0.0) * (0.5 - 0.5 * (std::f32::consts::TAU * k as f32 / n as f32).cos())).collect();
         fft.forward(&frame, &mut spec_buf);
         let (mut num, mut den) = (0f64, 0f64);
         for (k, c) in spec_buf.iter().enumerate() {

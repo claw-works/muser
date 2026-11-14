@@ -6,7 +6,7 @@
 
 use manguebyte::analysis::LoudnessMeter;
 use manguebyte::dsp::fft::{Complex, RealFft};
-use manguebyte::prelude::{decibels, AudioBuffer, ProcessSpec, Processor, WavFormat, wav};
+use manguebyte::prelude::{decibels, wav, AudioBuffer, ProcessSpec, Processor, WavFormat};
 use muser_core::{Clip, Effect, Note, Project, Track};
 use serde::Serialize;
 use serde_json::Value;
@@ -47,10 +47,7 @@ pub fn analyze(audio: &AudioBuffer<f32>, sample_rate: f64, note: (usize, usize))
     let env: Vec<f32> = mono.chunks(win).map(|c| c.iter().fold(0f32, |m, s| m.max(s.abs()))).collect();
     let env_peak = env.iter().cloned().fold(0f32, f32::max).max(1e-12);
     let on = note.0 / win;
-    let attack_ms = env[on.min(env.len())..]
-        .iter()
-        .position(|e| *e >= 0.9 * env_peak)
-        .map_or(0.0, |i| i as f64 * win as f64 / sample_rate * 1000.0);
+    let attack_ms = env[on.min(env.len())..].iter().position(|e| *e >= 0.9 * env_peak).map_or(0.0, |i| i as f64 * win as f64 / sample_rate * 1000.0);
     let off = (note.1 / win).min(env.len());
     let floor = env_peak * 0.01; // -40 dB
     let after = &env[off..];
@@ -114,10 +111,23 @@ pub fn analyze(audio: &AudioBuffer<f32>, sample_rate: f64, note: (usize, usize))
     let energy: Vec<f64> = mag.iter().map(|m| m * m).collect();
     let etot: f64 = energy.iter().sum::<f64>().max(1e-12);
     let band = |lo: f64, hi: f64| {
-        100.0 * energy.iter().enumerate().filter(|(i, _)| { let f = *i as f64 * bin_hz; f >= lo && f < hi }).map(|(_, e)| e).sum::<f64>() / etot
+        100.0
+            * energy
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| {
+                    let f = *i as f64 * bin_hz;
+                    f >= lo && f < hi
+                })
+                .map(|(_, e)| e)
+                .sum::<f64>()
+            / etot
     };
 
-    let round = |x: f64, d: i32| { let p = 10f64.powi(d); (x * p).round() / p };
+    let round = |x: f64, d: i32| {
+        let p = 10f64.powi(d);
+        (x * p).round() / p
+    };
     Analysis {
         peak_db: round(decibels::gain_to_db(f64::from(peak)), 1),
         rms_db: round(rms_db, 1),
@@ -230,12 +240,7 @@ fn set_effect_param(effect: &Effect, key: &str, v: &Value) -> Result<Effect, Str
 }
 
 /// 逐个取值渲染并分析。`param` 为 None 时只渲染原样一版。
-pub fn audition(
-    subject: &Subject,
-    param: Option<&str>,
-    values: &[Value],
-    settings: &AuditionSettings,
-) -> Result<Vec<Take>, EngineError> {
+pub fn audition(subject: &Subject, param: Option<&str>, values: &[Value], settings: &AuditionSettings) -> Result<Vec<Take>, EngineError> {
     let invalid = |m: String| EngineError::Core(muser_core::CoreError::Invalid(m));
     let rs = RenderSettings { tail_seconds: settings.tail_seconds, ..RenderSettings::default() };
     let sr = f64::from(rs.sample_rate);
@@ -276,7 +281,6 @@ pub fn parse_value(s: &str) -> Value {
         _ => Value::String(s.trim().to_string()),
     }
 }
-
 
 #[cfg(test)]
 mod tests {

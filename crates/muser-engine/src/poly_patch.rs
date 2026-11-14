@@ -8,9 +8,8 @@
 //! 但 `matrix`（调制矩阵）整体替换：给出的就是全部调制，其余槽位清空。
 
 use manguebyte::dsp::instruments::poly::{
-    EnvParams, FilterModel, FilterParams, FilterRouting, LfoParams, ModDestination, ModSlot, ModSource, NoiseParams,
-    OscParams, OscSource, PolySynthParams, SubParams, SubWave, TableShape, VoiceMode, Wave, ENVELOPES, FILTERS, LFOS,
-    MAX_UNISON, MOD_SLOTS, OSCILLATORS,
+    EnvParams, FilterModel, FilterParams, FilterRouting, LfoParams, ModDestination, ModSlot, ModSource, NoiseParams, OscParams, OscSource, PolySynthParams,
+    SubParams, SubWave, TableShape, VoiceMode, Wave, ENVELOPES, FILTERS, LFOS, MAX_UNISON, MOD_SLOTS, OSCILLATORS,
 };
 use manguebyte::dsp::{LfoShape, NoiseColor};
 use serde_json::{json, Map, Value};
@@ -146,8 +145,22 @@ pub const SUB_WAVES: Choices<SubWave> = (&["sine", "triangle", "square", "saw"],
 pub const NOISE_COLORS: Choices<NoiseColor> = (&["white", "pink", "brown"], &[NoiseColor::White, NoiseColor::Pink, NoiseColor::Brown]);
 pub const FILTER_MODELS: Choices<FilterModel> = (
     &[
-        "off", "ladder_lp24", "ladder_lp12", "ladder_hp24", "ladder_bp12", "svf_lp", "svf_bp", "svf_hp", "svf_notch", "sem_notch",
-        "sem_band", "ms20_lp", "ms20_hp", "comb_plus", "comb_minus", "formant",
+        "off",
+        "ladder_lp24",
+        "ladder_lp12",
+        "ladder_hp24",
+        "ladder_bp12",
+        "svf_lp",
+        "svf_bp",
+        "svf_hp",
+        "svf_notch",
+        "sem_notch",
+        "sem_band",
+        "ms20_lp",
+        "ms20_hp",
+        "comb_plus",
+        "comb_minus",
+        "formant",
     ],
     &[
         FilterModel::Off,
@@ -174,10 +187,7 @@ pub const LFO_SHAPES: Choices<LfoShape> = (
     &[LfoShape::Sine, LfoShape::Triangle, LfoShape::SawUp, LfoShape::SawDown, LfoShape::Square, LfoShape::SampleAndHold],
 );
 pub const MOD_SOURCES: Choices<ModSource> = (
-    &[
-        "off", "env1", "env2", "env3", "env4", "lfo1", "lfo2", "lfo3", "velocity", "accent", "aftertouch", "mod_wheel", "key", "random",
-        "brightness",
-    ],
+    &["off", "env1", "env2", "env3", "env4", "lfo1", "lfo2", "lfo3", "velocity", "accent", "aftertouch", "mod_wheel", "key", "random", "brightness"],
     &[
         ModSource::Off,
         ModSource::Env1,
@@ -198,9 +208,34 @@ pub const MOD_SOURCES: Choices<ModSource> = (
 );
 pub const MOD_DESTINATIONS: Choices<ModDestination> = (
     &[
-        "off", "pitch", "osc1_pitch", "osc2_pitch", "osc3_pitch", "osc1_level", "osc2_level", "osc3_level", "sub_level", "noise_level",
-        "osc1_shape", "osc2_shape", "osc3_shape", "osc1_fm", "osc2_fm", "osc3_fm", "detune", "cutoff", "cutoff1", "cutoff2", "resonance",
-        "morph", "drive", "volume", "pan", "lfo1_rate", "lfo2_rate", "lfo3_rate",
+        "off",
+        "pitch",
+        "osc1_pitch",
+        "osc2_pitch",
+        "osc3_pitch",
+        "osc1_level",
+        "osc2_level",
+        "osc3_level",
+        "sub_level",
+        "noise_level",
+        "osc1_shape",
+        "osc2_shape",
+        "osc3_shape",
+        "osc1_fm",
+        "osc2_fm",
+        "osc3_fm",
+        "detune",
+        "cutoff",
+        "cutoff1",
+        "cutoff2",
+        "resonance",
+        "morph",
+        "drive",
+        "volume",
+        "pan",
+        "lfo1_rate",
+        "lfo2_rate",
+        "lfo3_rate",
     ],
     &[
         ModDestination::Off,
@@ -249,7 +284,8 @@ pub static OSC: &[Field<OscParams>] = &[
     num!("spread", 0.0, 1.0, "", "Stereo width the unison voices spread across", |p| p.spread),
     num!("pan", -1.0, 1.0, "", "Pan: -1 left, 1 right", |p| p.pan),
     num!("phase", 0.0, 1.0, "cycles", "Phase at the start of each note", |p| p.phase),
-    num!("random_phase", 0.0, 1.0, "", "Amount of random start phase: 0 gives a crisp, repeatable attack, 1 is free-running phase (analog-synth style)", |p| p.random_phase),
+    num!("random_phase", 0.0, 1.0, "", "Amount of random start phase: 0 gives a crisp, repeatable attack, 1 is free-running phase (analog-synth style)", |p| p
+        .random_phase),
     flag!("sync", "Hard sync to oscillator 1 (ignored on oscillator 1 itself)", |p| p.sync),
     choice!("mod_source", OSC_SOURCES, "Which oscillator is the modulation source for fm / ring", |p| p.mod_source),
     num!("fm", 0.0, 16.0, "rad", "Depth of phase modulation by mod_source (FM index)", |p| p.fm),
@@ -262,13 +298,16 @@ pub static SUB: &[Field<SubParams>] = &[
     num!("level", 0.0, 1.0, "", "Level", |p| p.level),
 ];
 
-pub static NOISE: &[Field<NoiseParams>] = &[
-    choice!("color", NOISE_COLORS, "Noise color: white is brightest, brown is darkest", |p| p.color),
-    num!("level", 0.0, 1.0, "", "Level", |p| p.level),
-];
+pub static NOISE: &[Field<NoiseParams>] =
+    &[choice!("color", NOISE_COLORS, "Noise color: white is brightest, brown is darkest", |p| p.color), num!("level", 0.0, 1.0, "", "Level", |p| p.level)];
 
 pub static FILTER: &[Field<FilterParams>] = &[
-    choice!("model", FILTER_MODELS, "Filter model: ladder (classic four-pole), svf, sem (morphable), ms20 (aggressive), comb, formant (vowel); off = unused", |p| p.model),
+    choice!(
+        "model",
+        FILTER_MODELS,
+        "Filter model: ladder (classic four-pole), svf, sem (morphable), ms20 (aggressive), comb, formant (vowel); off = unused",
+        |p| p.model
+    ),
     num!("cutoff", 20.0, 20000.0, "Hz", "Cutoff (for comb, the first resonance; for formant, the formant shift, unchanged at 1 kHz)", |p| p.cutoff),
     num!("resonance", 0.0, 1.0, "", "Resonance. ladder / ms20 self-oscillate at 1", |p| p.resonance),
     num!("drive", 0.0, 36.0, "dB", "Gain into the filter saturation", |p| p.drive),
@@ -321,9 +360,10 @@ fn object<T>(fields: &[Field<T>], p: &T) -> Value {
 fn set_object<T>(fields: &[Field<T>], p: &mut T, v: &Value, path: &str) -> Result<(), String> {
     let obj = v.as_object().ok_or_else(|| format!("{path}: expected an object"))?;
     for (key, value) in obj {
-        let f = fields.iter().find(|f| f.name == key).ok_or_else(|| {
-            format!("{path}.{key}: unknown field, available: {}", fields.iter().map(|f| f.name).collect::<Vec<_>>().join(", "))
-        })?;
+        let f = fields
+            .iter()
+            .find(|f| f.name == key)
+            .ok_or_else(|| format!("{path}.{key}: unknown field, available: {}", fields.iter().map(|f| f.name).collect::<Vec<_>>().join(", ")))?;
         (f.set)(p, value).map_err(|e| format!("{path}.{key}: {e}"))?;
     }
     Ok(())
@@ -436,7 +476,11 @@ mod tests {
     fn partial_patch_and_matrix_replace() {
         let base = PRESETS.iter().find(|p| p.name == "Reese").unwrap().params;
         let mut p = base;
-        apply(&mut p, &json!({ "oscillators": [{}, { "wave": "pulse" }], "glide": 0.2, "matrix": [{ "source": "lfo2", "destination": "pan", "amount": 0.5 }] })).unwrap();
+        apply(
+            &mut p,
+            &json!({ "oscillators": [{}, { "wave": "pulse" }], "glide": 0.2, "matrix": [{ "source": "lfo2", "destination": "pan", "amount": 0.5 }] }),
+        )
+        .unwrap();
         assert_eq!(p.oscillators[0], base.oscillators[0]);
         assert_eq!(p.oscillators[1].wave, Wave::Pulse);
         assert_eq!(p.oscillators[1].semitones, base.oscillators[1].semitones);

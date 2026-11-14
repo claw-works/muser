@@ -16,14 +16,20 @@ use crate::plugin::{read_state_file, write_state_file, Opened, StateHeader};
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Cmd {
     /// 循环试听：`notes` 为 `[音高, 起点拍, 时值拍, 力度]`，`beats` 拍一圈。
-    Play { notes: Vec<(u8, f64, f64, f32)>, beats: f64, tempo: f64 },
+    Play {
+        notes: Vec<(u8, f64, f64, f32)>,
+        beats: f64,
+        tempo: f64,
+    },
     Stop,
     /// 存盘并关窗口。
     Done,
     /// 不存盘，关窗口。
     Cancel,
     /// 改窗口标题（换了要载入的音色时）。
-    Title { title: String },
+    Title {
+        title: String,
+    },
     /// 把窗口提到最前面（页面上又点了一次"打开"，窗口其实还开着、被挡在后面）。
     Front,
 }
@@ -48,7 +54,10 @@ mod audition {
 
     pub enum ToAudio {
         /// (帧, 音高, 力度；力度 < 0 为松键)，按帧排序；一圈 `len` 帧。
-        Loop { events: Vec<(usize, u8, f32)>, len: usize },
+        Loop {
+            events: Vec<(usize, u8, f32)>,
+            len: usize,
+        },
         Stop,
     }
 
@@ -239,7 +248,20 @@ mod window {
                     ..Default::default()
                 };
                 w::RegisterClassW(&wc);
-                w::CreateWindowExW(0, class.as_ptr(), title.as_ptr(), STYLE, w::CW_USEDEFAULT, w::CW_USEDEFAULT, 800, 600, std::ptr::null_mut(), std::ptr::null_mut(), instance, std::ptr::null())
+                w::CreateWindowExW(
+                    0,
+                    class.as_ptr(),
+                    title.as_ptr(),
+                    STYLE,
+                    w::CW_USEDEFAULT,
+                    w::CW_USEDEFAULT,
+                    800,
+                    600,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    instance,
+                    std::ptr::null(),
+                )
             };
             let parent = ParentWindow::win32(hwnd as usize).ok_or("cannot create the plugin window")?;
             Ok((Self { hwnd, ole }, parent))
@@ -322,7 +344,9 @@ pub fn run(
 
     // 声卡：插件按声卡的采样率激活，音频半边交给声卡线程。
     #[cfg(feature = "devices")]
-    let device = manguebyte::devices::OutputDevice::open_default().map_err(|e| eprintln!("[muser] cannot open the audio device; you will hear nothing while editing: {e}")).ok();
+    let device = manguebyte::devices::OutputDevice::open_default()
+        .map_err(|e| eprintln!("[muser] cannot open the audio device; you will hear nothing while editing: {e}"))
+        .ok();
     #[cfg(feature = "devices")]
     let sr = device.as_ref().map_or(48_000.0, |d| d.sample_rate());
     #[cfg(not(feature = "devices"))]

@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 
 pub mod abc;
 pub mod arrange;
-pub mod chord;
 pub mod audio;
 pub mod automation;
-pub mod tempo;
+pub mod chord;
 pub mod effect;
 pub mod grid;
 pub mod humanize;
 pub mod routing;
+pub mod tempo;
 pub mod time;
 pub mod tuning;
 
@@ -113,11 +113,7 @@ impl Project {
 
     /// 工程的总时长（beats）：所有 clip 结束位置与曲式长度的最大值。
     pub fn duration_beats(&self) -> Beats {
-        self.tracks
-            .iter()
-            .flat_map(|t| t.clips.iter())
-            .map(|c| c.start + c.length)
-            .fold(Beats(self.form_beats()), |acc, b| if b.0 > acc.0 { b } else { acc })
+        self.tracks.iter().flat_map(|t| t.clips.iter()).map(|c| c.start + c.length).fold(Beats(self.form_beats()), |acc, b| if b.0 > acc.0 { b } else { acc })
     }
 
     /// 一小节多少拍（四分音符为一拍），工程的拍号。段落可以有自己的拍号，按位置换算小节用 [`Self::bar_map`]。
@@ -228,10 +224,7 @@ impl Project {
             return Err(CoreError::Invalid(format!("transpose = {}: whole-piece transposition must be between -24 and 24 semitones", self.transpose)));
         }
         if !(self.tempo > 0.0) {
-            return Err(CoreError::Invalid(format!(
-                "tempo must be positive, got {}",
-                self.tempo
-            )));
+            return Err(CoreError::Invalid(format!("tempo must be positive, got {}", self.tempo)));
         }
         routing::plan(self).map_err(CoreError::Invalid)?;
         if let Some(t) = &self.tuning {
@@ -247,28 +240,22 @@ impl Project {
                 check_automation(a, Layer::Bus, bus.effects.len(), &sends, &format!("buses[{bi}].automation[{i}]"))?;
             }
             for (i, e) in bus.effects.iter().enumerate() {
-                e.validate()
-                    .map_err(|m| CoreError::Invalid(format!("buses[{bi}].effects[{i}]: {m}")))?;
+                e.validate().map_err(|m| CoreError::Invalid(format!("buses[{bi}].effects[{i}]: {m}")))?;
             }
         }
         for (i, e) in self.master_effects.iter().enumerate() {
-            e.validate()
-                .map_err(|m| CoreError::Invalid(format!("master_effects[{i}]: {m}")))?;
+            e.validate().map_err(|m| CoreError::Invalid(format!("master_effects[{i}]: {m}")))?;
         }
         for (ti, track) in self.tracks.iter().enumerate() {
             if !(-1.0..=1.0).contains(&track.pan) {
-                return Err(CoreError::Invalid(format!(
-                    "tracks[{ti}].pan = {} is out of range [-1, 1]",
-                    track.pan
-                )));
+                return Err(CoreError::Invalid(format!("tracks[{ti}].pan = {} is out of range [-1, 1]", track.pan)));
             }
             let sends: Vec<&str> = track.sends.keys().map(String::as_str).collect();
             for (i, a) in track.automation.iter().enumerate() {
                 check_automation(a, Layer::Track, track.effects.len(), &sends, &format!("tracks[{ti}].automation[{i}]"))?;
             }
             for (i, e) in track.effects.iter().enumerate() {
-                e.validate()
-                    .map_err(|m| CoreError::Invalid(format!("tracks[{ti}].effects[{i}]: {m}")))?;
+                e.validate().map_err(|m| CoreError::Invalid(format!("tracks[{ti}].effects[{i}]: {m}")))?;
             }
             if let Some(h) = &track.humanize {
                 h.validate(&format!("tracks[{ti}].humanize")).map_err(CoreError::Invalid)?;
@@ -299,25 +286,23 @@ impl Project {
                     d.validate(&format!("tracks[{ti}].clips[{ci}].drummer")).map_err(CoreError::Invalid)?;
                 }
                 if clip.start.0 < 0.0 {
-                    return Err(CoreError::Invalid(format!(
-                        "track[{ti}].clip[{ci}] start is negative: {}",
-                        clip.start.0
-                    )));
+                    return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}] start is negative: {}", clip.start.0)));
                 }
                 if clip.length.0 <= 0.0 {
-                    return Err(CoreError::Invalid(format!(
-                        "track[{ti}].clip[{ci}] length must be positive: {}",
-                        clip.length.0
-                    )));
+                    return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}] length must be positive: {}", clip.length.0)));
                 }
                 let mut prev_end = f64::NEG_INFINITY;
                 for (pi, &(a, b)) in clip.pedal.iter().enumerate() {
                     let at = format!("tracks[{ti}].clips[{ci}].pedal[{pi}]");
                     if !(a.is_finite() && b.is_finite()) || a < 0.0 || b <= a {
-                        return Err(CoreError::Invalid(format!("{at} = [{a}, {b}] is invalid: expected [start, end] with 0 <= start < end (beats, relative to the clip start)")));
+                        return Err(CoreError::Invalid(format!(
+                            "{at} = [{a}, {b}] is invalid: expected [start, end] with 0 <= start < end (beats, relative to the clip start)"
+                        )));
                     }
                     if a < prev_end {
-                        return Err(CoreError::Invalid(format!("{at} overlaps the previous range or is out of order: ranges must be in increasing time order and not overlap")));
+                        return Err(CoreError::Invalid(format!(
+                            "{at} overlaps the previous range or is out of order: ranges must be in increasing time order and not overlap"
+                        )));
                     }
                     if a >= clip.length.0 {
                         return Err(CoreError::Invalid(format!("{at} start {a} is beyond the clip length {}", clip.length.0)));
@@ -333,16 +318,15 @@ impl Project {
                         )));
                     }
                     if !(0.0..=1.0).contains(&note.velocity) {
-                        return Err(CoreError::Invalid(format!(
-                            "track[{ti}].clip[{ci}].note[{ni}].velocity = {} is out of range [0, 1]",
-                            note.velocity
-                        )));
+                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].velocity = {} is out of range [0, 1]", note.velocity)));
                     }
                     if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin, yinse.pluck.guzheng and yinse.pluck.pipa accept per-note string techniques")));
                     }
                     if note.articulation.is_some() && !track.instrument.trim().starts_with("yinse:") {
-                        return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].articulation: only instruments extracted from recordings (yinse:<file>) have articulations")));
+                        return Err(CoreError::Invalid(format!(
+                            "track[{ti}].clip[{ci}].note[{ni}].articulation: only instruments extracted from recordings (yinse:<file>) have articulations"
+                        )));
                     }
                     if !(0.0..=2.0).contains(&note.scoop) || !(0.0..=2.0).contains(&note.fall) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}]: scoop and fall are 0-2 semitones")));
@@ -776,7 +760,13 @@ fn trill_semitones<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Erro
         N(u8),
     }
     Ok(match T::deserialize(d)? {
-        T::B(b) => if b { 2 } else { 0 },
+        T::B(b) => {
+            if b {
+                2
+            } else {
+                0
+            }
+        }
         T::N(n) => n,
     })
 }
@@ -797,10 +787,18 @@ impl Note {
             tremolo: false,
             slide: false,
             slide_out: false,
-            breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0,
+            breath: false,
+            damp: false,
+            flutter: false,
+            trill: 0,
+            half_trill: false,
+            scoop: 0.0,
+            fall: 0.0,
             bend: Vec::new(),
             lyric: None,
-            technique: None, harmonic: None, articulation: None,
+            technique: None,
+            harmonic: None,
+            articulation: None,
         }
     }
 }
@@ -874,7 +872,8 @@ mod tests {
             "name":"guqin","tempo":60,"tracks":[{"name":"q","instrument":"yinse.pluck.guqin",
             "clips":[{"start":0,"length":4,"notes":[{"pitch":62,"start":0,"length":3,
             "technique":"pressed","bend":[[0,0],[1,12],[2,-12]]}]}]}]
-        })).unwrap();
+        }))
+        .unwrap();
         assert!(p.validate().is_ok());
         assert_eq!(Project::from_json(&p.to_json().unwrap()).unwrap(), p);
         p.tracks[0].clips[0].notes[0].bend[1].1 = 25.0;
@@ -891,8 +890,14 @@ mod tests {
 
     #[test]
     fn notes_may_start_up_to_a_beat_before_their_clip() {
-        let p = |clip: f64, note: f64| Project::from_json(&format!(r#"{{"name":"n","tempo":120,"tracks":[{{"name":"d","instrument":"drums.808",
-            "clips":[{{"start":{clip},"length":4,"notes":[{{"pitch":38,"start":{note},"length":0.1}}]}}]}}]}}"#)).unwrap().validate();
+        let p = |clip: f64, note: f64| {
+            Project::from_json(&format!(
+                r#"{{"name":"n","tempo":120,"tracks":[{{"name":"d","instrument":"drums.808",
+            "clips":[{{"start":{clip},"length":4,"notes":[{{"pitch":38,"start":{note},"length":0.1}}]}}]}}]}}"#
+            ))
+            .unwrap()
+            .validate()
+        };
         assert!(p(4.0, -0.1).is_ok());
         assert!(p(4.0, -1.5).is_err(), "more than a beat early");
         assert!(p(0.0, -0.1).is_err(), "before the project starts");
@@ -973,9 +978,11 @@ mod tests {
     #[test]
     fn pedal_validation() {
         let p = |pedal: &str| {
-            Project::from_json(&format!(r#"{{ "tempo": 120, "tracks": [{{ "instrument": "synth.poly", "clips": [{{ "start": 0, "length": 8, "pedal": {pedal}, "notes": [] }}] }}] }}"#))
-                .unwrap()
-                .validate()
+            Project::from_json(&format!(
+                r#"{{ "tempo": 120, "tracks": [{{ "instrument": "synth.poly", "clips": [{{ "start": 0, "length": 8, "pedal": {pedal}, "notes": [] }}] }}] }}"#
+            ))
+            .unwrap()
+            .validate()
         };
         assert!(p("[[0, 3.9], [4, 7.9]]").is_ok());
         assert!(p("[[0, 9]]").is_ok(), "超出 clip 末尾时截到 clip 结束");

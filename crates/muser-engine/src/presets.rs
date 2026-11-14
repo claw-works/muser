@@ -328,9 +328,24 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
         .into_iter()
         .flatten()
         .filter(|(_, f)| Path::new(f).is_file())
-        .map(|(name, f)| Preset { name: name.clone(), category: "My sounds".into(), library: "muser".into(), tags: Vec::new(), file: f.clone(), load: Load::Captured })
+        .map(|(name, f)| Preset {
+            name: name.clone(),
+            category: "My sounds".into(),
+            library: "muser".into(),
+            tags: Vec::new(),
+            file: f.clone(),
+            load: Load::Captured,
+        })
         .collect();
-    let status = |file: &str, auto: bool| if captured_state(p, file).is_some() { Load::Captured } else if auto { Load::Auto } else { Load::Manual };
+    let status = |file: &str, auto: bool| {
+        if captured_state(p, file).is_some() {
+            Load::Captured
+        } else if auto {
+            Load::Auto
+        } else {
+            Load::Manual
+        }
+    };
     // VST3 标准预设。
     if p.format == "vst3" {
         for dir in vst3_preset_dirs(p) {
@@ -357,7 +372,11 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
             walk(&root, "fxp", 4, &[], &mut files);
             let lib = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             for f in files {
-                let rel: Vec<String> = f.parent().and_then(|d| d.strip_prefix(&root).ok()).map(|r| r.iter().map(|c| c.to_string_lossy().into_owned()).collect()).unwrap_or_default();
+                let rel: Vec<String> = f
+                    .parent()
+                    .and_then(|d| d.strip_prefix(&root).ok())
+                    .map(|r| r.iter().map(|c| c.to_string_lossy().into_owned()).collect())
+                    .unwrap_or_default();
                 let file = f.display().to_string();
                 out.push(Preset { name: stem(&f), category: rel.join(" / "), library: lib.clone(), tags: Vec::new(), load: status(&file, true), file });
             }
@@ -372,7 +391,11 @@ pub fn presets(p: &PluginRef) -> Vec<Preset> {
                 walk(&root, ext, 8, &[], &mut files);
             }
             for f in files {
-                let rel: Vec<String> = f.parent().and_then(|d| d.strip_prefix(&root).ok()).map(|r| r.iter().map(|c| c.to_string_lossy().into_owned()).collect()).unwrap_or_default();
+                let rel: Vec<String> = f
+                    .parent()
+                    .and_then(|d| d.strip_prefix(&root).ok())
+                    .map(|r| r.iter().map(|c| c.to_string_lossy().into_owned()).collect())
+                    .unwrap_or_default();
                 let m = std::fs::read(&f).ok().and_then(|b| crate::xfer::meta(&b).ok()).unwrap_or_default();
                 let file = f.display().to_string();
                 let name = if m.name.is_empty() { stem(&f) } else { m.name };

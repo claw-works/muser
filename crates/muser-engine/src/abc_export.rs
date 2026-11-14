@@ -48,7 +48,16 @@ pub struct AbcOptions {
 
 impl AbcOptions {
     pub fn new(dialect: Dialect) -> Self {
-        Self { dialect, chords: dialect == Dialect::Yue2, tracks: Vec::new(), vocal: Vec::new(), ins: Vec::new(), sections: Vec::new(), key: None, vocal_octave: 0 }
+        Self {
+            dialect,
+            chords: dialect == Dialect::Yue2,
+            tracks: Vec::new(),
+            vocal: Vec::new(),
+            ins: Vec::new(),
+            sections: Vec::new(),
+            key: None,
+            vocal_octave: 0,
+        }
     }
 }
 
@@ -73,9 +82,21 @@ const MAJOR: [&str; 15] = ["Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D
 const MINOR: [&str; 15] = ["Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", "Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m"];
 /// 和弦模板（YuE2 的原生和弦记号）：后缀与相对根音的音程。
 const CHORDS: [(&str, &[u8]); 15] = [
-    ("", &[0, 4, 7]), ("m", &[0, 3, 7]), ("7", &[0, 4, 7, 10]), ("maj7", &[0, 4, 7, 11]), ("m7", &[0, 3, 7, 10]),
-    ("dim", &[0, 3, 6]), ("aug", &[0, 4, 8]), ("sus4", &[0, 5, 7]), ("sus2", &[0, 2, 7]), ("6", &[0, 4, 7, 9]),
-    ("m6", &[0, 3, 7, 9]), ("dim7", &[0, 3, 6, 9]), ("m7b5", &[0, 3, 6, 10]), ("7sus4", &[0, 5, 7, 10]), ("m(maj7)", &[0, 3, 7, 11]),
+    ("", &[0, 4, 7]),
+    ("m", &[0, 3, 7]),
+    ("7", &[0, 4, 7, 10]),
+    ("maj7", &[0, 4, 7, 11]),
+    ("m7", &[0, 3, 7, 10]),
+    ("dim", &[0, 3, 6]),
+    ("aug", &[0, 4, 8]),
+    ("sus4", &[0, 5, 7]),
+    ("sus2", &[0, 2, 7]),
+    ("6", &[0, 4, 7, 9]),
+    ("m6", &[0, 3, 7, 9]),
+    ("dim7", &[0, 3, 6, 9]),
+    ("m7b5", &[0, 3, 6, 10]),
+    ("7sus4", &[0, 5, 7, 10]),
+    ("m(maj7)", &[0, 3, 7, 11]),
 ];
 
 /// 调号：五度圈位置（正为升号个数，负为降号个数）与是否小调。
@@ -95,7 +116,11 @@ impl Key {
 
     pub(crate) fn name(self) -> &'static str {
         let i = (self.fifths + 7) as usize;
-        if self.minor { MINOR[i] } else { MAJOR[i] }
+        if self.minor {
+            MINOR[i]
+        } else {
+            MAJOR[i]
+        }
     }
     /// 调号给每个音名的升降。
     fn signature(self) -> [i32; 7] {
@@ -213,7 +238,11 @@ pub(crate) fn guess_chord(tones: &[(Tone, f64)], from: f64, to: f64, key: Key) -
             let tones_in = |pc: usize| intervals.iter().any(|&i| usize::from((root + i) % 12) == pc);
             let (mut inside, mut outside) = (0.0, 0.0);
             for (pc, &v) in w.iter().enumerate() {
-                if tones_in(pc) { inside += v } else { outside += v }
+                if tones_in(pc) {
+                    inside += v
+                } else {
+                    outside += v
+                }
             }
             // 根音、三音要有；多出的音（七音、六音）要有证据，不然取三和弦。
             let has = |i: u8| w[usize::from((root + i) % 12)] > 0.0;
@@ -234,7 +263,16 @@ pub(crate) fn guess_chord(tones: &[(Tone, f64)], from: f64, to: f64, key: Key) -
             }
             if best.as_ref().is_none_or(|(s, _)| score > *s + 1e-9) {
                 let (l, acc) = key.spell(i32::from(root));
-                let name = format!("{l}{}{suffix}", match acc { 1 => "#", -1 => "b", 2 => "##", -2 => "bb", _ => "" });
+                let name = format!(
+                    "{l}{}{suffix}",
+                    match acc {
+                        1 => "#",
+                        -1 => "b",
+                        2 => "##",
+                        -2 => "bb",
+                        _ => "",
+                    }
+                );
                 best = Some((score, name));
             }
         }
@@ -246,8 +284,24 @@ pub(crate) fn guess_chord(tones: &[(Tone, f64)], from: f64, to: f64, key: Key) -
 fn native_chord(c: &muser_core::chord::Chord, key: Key) -> String {
     let has = |i: u8| c.intervals.contains(&i);
     let third = [4, 3, 5, 2].into_iter().find(|&i| has(i)).unwrap_or(0);
-    let fifth = if has(7) { 7 } else if has(6) { 6 } else if has(8) { 8 } else { 7 };
-    let seventh = if has(11) { Some(11) } else if has(10) { Some(10) } else if has(9) && third == 3 && fifth == 6 { Some(9) } else { None };
+    let fifth = if has(7) {
+        7
+    } else if has(6) {
+        6
+    } else if has(8) {
+        8
+    } else {
+        7
+    };
+    let seventh = if has(11) {
+        Some(11)
+    } else if has(10) {
+        Some(10)
+    } else if has(9) && third == 3 && fifth == 6 {
+        Some(9)
+    } else {
+        None
+    };
     let six = has(9) && seventh.is_none();
     let suffix = match (third, fifth, seventh) {
         (3, 6, Some(9)) => "dim7",
@@ -268,7 +322,16 @@ fn native_chord(c: &muser_core::chord::Chord, key: Key) -> String {
     };
     let name = |pc: u8| {
         let (l, acc) = key.spell(i32::from(pc));
-        format!("{l}{}", match acc { 1 => "#", -1 => "b", 2 => "##", -2 => "bb", _ => "" })
+        format!(
+            "{l}{}",
+            match acc {
+                1 => "#",
+                -1 => "b",
+                2 => "##",
+                -2 => "bb",
+                _ => "",
+            }
+        )
     };
     match c.bass.filter(|&b| b != c.root) {
         Some(b) => format!("{}{suffix}/{}", name(c.root), name(b)),
@@ -307,8 +370,7 @@ fn events(tones: &[Tone], unit: f64, slots: usize, mono: bool, breaks: &[bool]) 
     let mut out: Vec<Event> = Vec::new();
     for s in 0..slots {
         let cell = &grid[s];
-        let same = |e: &Event| e.at + e.len == s && !breaks[s] && e.pitches.len() == cell.len()
-            && e.pitches.iter().zip(cell).all(|(a, b)| a.0 == b.0 && !b.1);
+        let same = |e: &Event| e.at + e.len == s && !breaks[s] && e.pitches.len() == cell.len() && e.pitches.iter().zip(cell).all(|(a, b)| a.0 == b.0 && !b.1);
         match out.last_mut() {
             Some(e) if same(e) => e.len += 1,
             _ => out.push(Event { at: s, len: 1, pitches: cell.iter().map(|&(p, _)| (p, false)).collect() }),
@@ -350,7 +412,13 @@ impl Accidentals {
         let exact = *self.exact.get(&(li, octave)).unwrap_or(&self.sig[li]);
         let mut s = String::new();
         if acc != self.letter[li] || acc != exact {
-            s.push_str(match acc { 2 => "^^", 1 => "^", 0 => "=", -1 => "_", _ => "__" });
+            s.push_str(match acc {
+                2 => "^^",
+                1 => "^",
+                0 => "=",
+                -1 => "_",
+                _ => "__",
+            });
             self.letter[li] = acc;
             self.exact.insert((li, octave), acc);
         }
@@ -384,7 +452,11 @@ fn pieces(len: usize, dialect: Dialect) -> Vec<usize> {
 }
 
 fn dur(n: usize) -> String {
-    if n == 1 { String::new() } else { n.to_string() }
+    if n == 1 {
+        String::new()
+    } else {
+        n.to_string()
+    }
 }
 
 /// 一个声部的一小节。`chords` 是这一小节里 (单位格, 和弦名)。
@@ -470,9 +542,11 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             lyrics.push(words);
         }
     }
-    let find = |name: &str| parts.iter().position(|(n, _)| n == name).ok_or_else(|| {
-        invalid(format!("no instrument track named '{name}' (available: {})", parts.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")))
-    });
+    let find = |name: &str| {
+        parts.iter().position(|(n, _)| n == name).ok_or_else(|| {
+            invalid(format!("no instrument track named '{name}' (available: {})", parts.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")))
+        })
+    };
     let find_all = |names: &[String]| names.iter().map(|n| find(n)).collect::<Result<Vec<usize>, _>>();
     // 声部：(声部名, 合并进来的音轨下标)。
     let voices: Vec<(String, Vec<usize>)> = match opts.dialect {
@@ -508,7 +582,11 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             let ins = find_all(&opts.ins)?;
             if !vocal.is_empty() {
                 let names: Vec<&str> = vocal.iter().map(|&i| parts[i].0.as_str()).collect();
-                notes.push(format!("Vocal = {}{}", names.join(" + "), if opts.vocal.is_empty() { " (chosen automatically; set it with --vocal, which takes several: a,b,c)" } else { "" }));
+                notes.push(format!(
+                    "Vocal = {}{}",
+                    names.join(" + "),
+                    if opts.vocal.is_empty() { " (chosen automatically; set it with --vocal, which takes several: a,b,c)" } else { "" }
+                ));
             }
             vec![("Vocal".into(), vocal), ("Ins".into(), ins)]
         }
@@ -573,10 +651,8 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             Dialect::Yue2 => voices.iter().flat_map(|(_, v)| v.iter().copied()).collect(),
             Dialect::Standard => Vec::new(),
         };
-        let harmony: Vec<(Tone, f64)> = (0..parts.len())
-            .flat_map(|i| parts[i].1.iter().map(move |&t| (t, i)))
-            .map(|(t, i)| (t, if melodic.contains(&i) { 0.5 } else { 1.0 }))
-            .collect();
+        let harmony: Vec<(Tone, f64)> =
+            (0..parts.len()).flat_map(|i| parts[i].1.iter().map(move |&t| (t, i))).map(|(t, i)| (t, if melodic.contains(&i) { 0.5 } else { 1.0 })).collect();
         let mut last: Option<String> = None;
         for b in 0..bars {
             let (a, z) = (map.bar_start(b), map.bar_start(b + 1));
@@ -621,25 +697,31 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
                     .flat_map(|&i| parts[i].1.iter().copied())
                     .filter_map(|t| u8::try_from(i32::from(t.pitch) + shift).ok().filter(|p| *p <= 127).map(|pitch| Tone { pitch, ..t }))
                     .collect();
-                let poly = ts.iter().any(|a| ts.iter().any(|b| b.start > a.start + 1e-9 && b.start < a.end - 1e-9) || ts.iter().filter(|b| (b.start - a.start).abs() < 1e-9).count() > 1);
+                let poly = ts.iter().any(|a| {
+                    ts.iter().any(|b| b.start > a.start + 1e-9 && b.start < a.end - 1e-9) || ts.iter().filter(|b| (b.start - a.start).abs() < 1e-9).count() > 1
+                });
                 if mono && poly {
-                    notes.push(format!("{vname} is polyphonic (or several tracks overlap) but YuE2 voices are monophonic: keeping only the highest note at each moment"));
+                    notes.push(format!(
+                        "{vname} is polyphonic (or several tracks overlap) but YuE2 voices are monophonic: keeping only the highest note at each moment"
+                    ));
                 }
                 events(&ts, unit, slots, mono, &breaks)
             }
         })
         .map(|evs| {
             // 休止也按小节线切开。
-            evs.into_iter().flat_map(|e| {
-                let mut out = Vec::new();
-                let mut at = e.at;
-                while at < e.at + e.len {
-                    let stop = bar_start.iter().copied().find(|&b| b > at).unwrap_or(slots).min(e.at + e.len);
-                    out.push(Event { at, len: stop - at, pitches: e.pitches.clone() });
-                    at = stop;
-                }
-                out
-            }).collect()
+            evs.into_iter()
+                .flat_map(|e| {
+                    let mut out = Vec::new();
+                    let mut at = e.at;
+                    while at < e.at + e.len {
+                        let stop = bar_start.iter().copied().find(|&b| b > at).unwrap_or(slots).min(e.at + e.len);
+                        out.push(Event { at, len: stop - at, pitches: e.pitches.clone() });
+                        at = stop;
+                    }
+                    out
+                })
+                .collect()
         })
         .collect();
 
@@ -706,11 +788,11 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
             for bar in g0..g1 {
                 let (a, z) = (bar_start[bar], bar_start[bar + 1]);
                 let evs: Vec<&Event> = voice_events[vi].iter().filter(|e| e.at >= a && e.at < z).collect();
-                let bar_chords: Vec<(usize, String)> =
-                    if vi == 0 { chord_at.iter().filter(|(c, _)| *c >= a && *c < z).cloned().collect() } else { Vec::new() };
+                let bar_chords: Vec<(usize, String)> = if vi == 0 { chord_at.iter().filter(|(c, _)| *c >= a && *c < z).cloned().collect() } else { Vec::new() };
                 let empty = evs.iter().all(|e| e.pitches.is_empty());
                 let meter = map.meter_of(bar);
-                let mut inline = if bar > 0 && meter != map.meter_of(bar - 1) { format!("[M:{}/{}]", meter.numerator, meter.denominator) } else { String::new() };
+                let mut inline =
+                    if bar > 0 && meter != map.meter_of(bar - 1) { format!("[M:{}/{}]", meter.numerator, meter.denominator) } else { String::new() };
                 if bar > 0 && !tm.is_constant() && q_of(bar) != q_of(bar - 1) {
                     inline += &format!("[Q:1/4={}]", q_of(bar));
                 }
@@ -720,13 +802,20 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
                     let syl: Vec<String> = evs
                         .iter()
                         .filter(|e| {
-                            let held: Vec<u8> = voice_events[vi].iter().find(|p| p.at + p.len == e.at).map_or(Vec::new(), |p| p.pitches.iter().filter(|x| x.1).map(|x| x.0).collect());
+                            let held: Vec<u8> = voice_events[vi]
+                                .iter()
+                                .find(|p| p.at + p.len == e.at)
+                                .map_or(Vec::new(), |p| p.pitches.iter().filter(|x| x.1).map(|x| x.0).collect());
                             e.pitches.iter().any(|p| !held.contains(&p.0))
                         })
                         .map(|e| {
                             words.iter().find(|w| (w.0 / unit).round() as usize == e.at).map_or("*".into(), |w| {
                                 let t: String = w.1.split_whitespace().collect::<Vec<_>>().join("~").chars().filter(|c| !"-*_|".contains(*c)).collect();
-                                if t.is_empty() { "*".into() } else { t }
+                                if t.is_empty() {
+                                    "*".into()
+                                } else {
+                                    t
+                                }
                             })
                         })
                         .collect();
@@ -745,7 +834,9 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
         }
     }
     if opts.dialect == Dialect::Yue2 && section_list.is_empty() {
-        notes.push("no sections marked: add sections (e.g. intro:4,verse:8,chorus:8) to write % verse etc. comments that match the [Verse] tags in the lyrics".into());
+        notes.push(
+            "no sections marked: add sections (e.g. intro:4,verse:8,chorus:8) to write % verse etc. comments that match the [Verse] tags in the lyrics".into(),
+        );
     }
     Ok(AbcExport { text: abc, notes })
 }

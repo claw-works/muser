@@ -170,7 +170,8 @@ struct Mix {
 impl Mix {
     fn automation(&self, master: bool) -> Automation {
         serde_json::from_value(json!({ "target": if master { "master_gain_db" } else { "gain_db" }, "shape": "points",
-            "points": [[self.beat, self.from], [self.beat + self.ramp, self.to]], "start": self.beat })).expect("valid automation")
+            "points": [[self.beat, self.from], [self.beat + self.ramp, self.to]], "start": self.beat }))
+        .expect("valid automation")
     }
 }
 
@@ -245,7 +246,12 @@ impl Session {
         base.form.clear();
         base.sections.clear();
         let title = if template.name.is_empty() { "muser live".to_string() } else { template.name.clone() };
-        let s = Session { base, title, mixes: Vec::new(), segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false, offset: 0.0, patch: false, karaoke: Default::default() }] };
+        let s = Session {
+            base,
+            title,
+            mixes: Vec::new(),
+            segs: vec![Seg { start: 0.0, bars, ts, change: Arc::new(first), rep: false, cut: false, offset: 0.0, patch: false, karaoke: Default::default() }],
+        };
         s.project()?;
         Ok(s)
     }
@@ -323,7 +329,11 @@ impl Session {
                     let into = (s.offset / bpb).round() as u32 + k;
                     if into >= change.bars {
                         self.segs = before;
-                        bail!("this section is already at bar {}, and the replacement is only {} bar(s): use \"after\" to queue it behind", into + 1, change.bars);
+                        bail!(
+                            "this section is already at bar {}, and the replacement is only {} bar(s): use \"after\" to queue it behind",
+                            into + 1,
+                            change.bars
+                        );
                     }
                     patch_from = Some(into);
                 }
@@ -332,7 +342,11 @@ impl Session {
         };
         self.extend(at);
         // 排着还没放的段里接入了效果器：效果链只能往后加，去不掉。
-        let adds = |c: &Change| c.tracks.iter().any(|t| !t.effects_add.is_empty()) || c.buses.iter().any(|b| !b.effects_add.is_empty()) || c.master.as_ref().is_some_and(|m| !m.effects_add.is_empty());
+        let adds = |c: &Change| {
+            c.tracks.iter().any(|t| !t.effects_add.is_empty())
+                || c.buses.iter().any(|b| !b.effects_add.is_empty())
+                || c.master.as_ref().is_some_and(|m| !m.effects_add.is_empty())
+        };
         if self.segs.iter().any(|s| s.start >= at - 1e-9 && !s.rep && adds(&s.change)) {
             self.segs = before;
             bail!("a queued section later brings in an effect, so it cannot be cut off now: use \"now\" after it has started playing, or use \"after\"");
@@ -352,7 +366,17 @@ impl Session {
         let skip = patch_from.unwrap_or(0);
         let offset = f64::from(skip) * ts.beats_per_bar();
         let karaoke = Arc::new(karaoke_of(&change, &self.base, ts));
-        self.segs.push(Seg { start: at, bars: change.bars - skip, ts, change: Arc::new(change), rep: false, cut: false, offset, patch: patch_from.is_some(), karaoke });
+        self.segs.push(Seg {
+            start: at,
+            bars: change.bars - skip,
+            ts,
+            change: Arc::new(change),
+            rep: false,
+            cut: false,
+            offset,
+            patch: patch_from.is_some(),
+            karaoke,
+        });
         match self.project() {
             Ok(p) => {
                 let map = p.bar_map();
@@ -398,7 +422,17 @@ impl Session {
             if seg.patch {
                 name.push_str(&format!(" (patch from bar {})", (seg.offset / seg.ts.beats_per_bar()).round() as u32 + 1));
             }
-            sections.insert(name.clone(), muser_core::arrange::Section { bars: seg.bars, time_signature: Some(seg.ts), chords: None, tempo: seg.change.tempo, tempo_ramp_bars: seg.change.tempo_ramp_bars, tuning: seg.change.tuning.clone() });
+            sections.insert(
+                name.clone(),
+                muser_core::arrange::Section {
+                    bars: seg.bars,
+                    time_signature: Some(seg.ts),
+                    chords: None,
+                    tempo: seg.change.tempo,
+                    tempo_ramp_bars: seg.change.tempo_ramp_bars,
+                    tuning: seg.change.tuning.clone(),
+                },
+            );
             p.form.push(muser_core::arrange::FormEntry::Name(name));
             apply(&mut p, seg).with_context(|| format!("section {}", k + 1))?;
             // 这一段里调过的音量：写在这一段之后（比它晚的段写的自动化会覆盖它）。
@@ -441,7 +475,10 @@ impl Session {
         }
         let p = self.project()?;
         let from = Self::fader_at(&p, target, at).ok_or_else(|| {
-            anyhow!("no track or bus named '{target}' (write master for the master output); available: {}", p.tracks.iter().map(|t| t.name.as_str()).chain(p.buses.iter().map(|b| b.name.as_str())).collect::<Vec<_>>().join(", "))
+            anyhow!(
+                "no track or bus named '{target}' (write master for the master output); available: {}",
+                p.tracks.iter().map(|t| t.name.as_str()).chain(p.buses.iter().map(|b| b.name.as_str())).collect::<Vec<_>>().join(", ")
+            )
         })?;
         self.mixes.push(Mix { target: target.to_string(), beat: at, ramp, from, to: db });
         if let Err(e) = self.project() {
@@ -517,8 +554,10 @@ impl Session {
                     s.karaoke
                         .iter()
                         .filter(|l| base + l.end > s.start && base + l.start < s.end())
-                        .map(|l| json!({ "start": at(l.start), "end": at(l.end),
-                            "tokens": l.tokens.iter().map(|t| json!({ "text": t.text, "start": at(t.start), "end": at(t.end) })).collect::<Vec<_>>() }))
+                        .map(|l| {
+                            json!({ "start": at(l.start), "end": at(l.end),
+                            "tokens": l.tokens.iter().map(|t| json!({ "text": t.text, "start": at(t.start), "end": at(t.end) })).collect::<Vec<_>>() })
+                        })
                         .collect()
                 } else {
                     Vec::new()
@@ -578,7 +617,11 @@ fn karaoke_of(change: &Change, base: &Project, ts: TimeSignature) -> Vec<muser_e
         .iter()
         .filter(|t| !t.clips.is_empty())
         .map(|t| {
-            let inst = t.instrument.clone().or_else(|| base.tracks.iter().find(|b| b.name == t.name).map(|b| b.instrument.clone())).unwrap_or_else(|| "synth.poly".into());
+            let inst = t
+                .instrument
+                .clone()
+                .or_else(|| base.tracks.iter().find(|b| b.name == t.name).map(|b| b.instrument.clone()))
+                .unwrap_or_else(|| "synth.poly".into());
             json!({ "name": t.name, "instrument": inst, "clips": t.clips })
         })
         .collect();
@@ -598,7 +641,11 @@ fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
             Some(i) if seg.rep || seg.patch => i,
             Some(i) => {
                 if tc.instrument.is_some() && tc.instrument.as_deref() != Some(p.tracks[i].instrument.as_str()) {
-                    bail!("track '{}' already has an instrument ({}): it cannot be changed midway; to change instrument, open a new track", tc.name, p.tracks[i].instrument);
+                    bail!(
+                        "track '{}' already has an instrument ({}): it cannot be changed midway; to change instrument, open a new track",
+                        tc.name,
+                        p.tracks[i].instrument
+                    );
                 }
                 if tc.instrument_params.is_some() || tc.output.is_some() || tc.sends.is_some() || tc.gain_db.is_some() || tc.pan.is_some() {
                     bail!("track '{}' already exists: instrument_params / output / sends / gain_db / pan can only be set on a new track; change them midway with automation", tc.name);
@@ -652,7 +699,11 @@ fn apply(p: &mut Project, seg: &Seg) -> Result<()> {
         }
     }
     for bc in &seg.change.buses {
-        let b = p.buses.iter_mut().find(|b| b.name == bc.name).ok_or_else(|| anyhow!("no bus named '{}' (buses must be created in the template first)", bc.name))?;
+        let b = p
+            .buses
+            .iter_mut()
+            .find(|b| b.name == bc.name)
+            .ok_or_else(|| anyhow!("no bus named '{}' (buses must be created in the template first)", bc.name))?;
         // 总线、主输出的变化只在这一段第一次出现时：渐弱以后循环停在弱的那里，不会每遍重来。
         if !seg.rep {
             effects_change(&mut b.effects, bc, seg.start, &format!("bus '{}'", bc.name))?;
@@ -833,7 +884,8 @@ impl Live {
         // 混音：每个节点的推子值与现在的响度（RMS dBFS，约 1.5 秒），agent 自己看谁太小、太大。
         let now = self.now_beat();
         let faders: std::collections::HashMap<String, f64> = self.session.lock().unwrap().faders(now).into_iter().collect();
-        let loud: std::collections::HashMap<String, Option<f64>> = self.player.loudness().into_iter().map(|(n, l)| (if n.is_empty() { "master".into() } else { n }, l)).collect();
+        let loud: std::collections::HashMap<String, Option<f64>> =
+            self.player.loudness().into_iter().map(|(n, l)| (if n.is_empty() { "master".into() } else { n }, l)).collect();
         let mut mix: Vec<Value> = faders
             .iter()
             .map(|(n, g)| json!({ "name": n, "gain_db": g, "rms_db": loud.get(n).copied().flatten().map(|x| (x * 10.0).round() / 10.0) }))
@@ -936,7 +988,8 @@ impl Live {
         s["reason"] = json!(reason);
         s["hint"] = json!(match reason {
             "stopped" => "the session has ended",
-            "autoplay_over" => "autoplay time is up: submit one last section (a phrase that loops well) and stop, then wait for the human; the music keeps looping",
+            "autoplay_over" =>
+                "autoplay time is up: submit one last section (a phrase that loops well) and stop, then wait for the human; the music keeps looping",
             "runway" => "the queued music is about to run out: write and submit the next section (if you do not, the last section just loops)",
             _ => "too early: call wait again",
         });
@@ -957,7 +1010,11 @@ pub fn parse_duration(s: &str) -> Result<Option<Duration>> {
             '0'..='9' | '.' => num.push(c),
             'm' | 's' | 'h' => {
                 let n: f64 = num.parse().map_err(|_| anyhow!("invalid duration: {s} (e.g. 90s, 3m, 1m30s)"))?;
-                total += n * match c { 'h' => 3600.0, 'm' => 60.0, _ => 1.0 };
+                total += n * match c {
+                    'h' => 3600.0,
+                    'm' => 60.0,
+                    _ => 1.0,
+                };
                 num.clear();
             }
             _ => bail!("invalid duration: {s} (e.g. 90s, 3m, 1m30s)"),
@@ -978,7 +1035,15 @@ pub fn serve(_: &str, _: muser_engine::RenderSettings, _: u16, _: Option<Duratio
 
 #[cfg(feature = "device")]
 #[allow(clippy::too_many_arguments)]
-pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, autoplay: Option<Duration>, record: Option<String>, open: bool, title: Option<String>) -> Result<()> {
+pub fn serve(
+    template: &str,
+    settings: muser_engine::RenderSettings,
+    port: u16,
+    autoplay: Option<Duration>,
+    record: Option<String>,
+    open: bool,
+    title: Option<String>,
+) -> Result<()> {
     let text = std::fs::read_to_string(template).with_context(|| format!("cannot read template {template}"))?;
     let tpl = Project::from_json(&text).map_err(|e| anyhow!("{e}"))?.at_file(std::path::Path::new(template));
     let mut session = Session::new(&tpl)?;
@@ -1012,7 +1077,10 @@ pub fn serve(template: &str, settings: muser_engine::RenderSettings, port: u16, 
     if open {
         crate::web::open_browser(&format!("http://127.0.0.1:{port}/"));
     }
-    println!("Control it with muser live send / status / wait / autoplay / stop; the session is recorded to {}", live.record.as_ref().map_or("(no --record, not saved)".into(), |p| p.display().to_string()));
+    println!(
+        "Control it with muser live send / status / wait / autoplay / stop; the session is recorded to {}",
+        live.record.as_ref().map_or("(no --record, not saved)".into(), |p| p.display().to_string())
+    );
     // 循环往后排：保持至少 KEEP_SECONDS 秒。
     {
         let l = Arc::clone(&live);
@@ -1182,7 +1250,11 @@ mod tests {
     #[test]
     fn a_section_can_change_the_tuning() {
         let mut s = Session::new(&template()).unwrap();
-        s.submit(change(json!({ "bars": 2, "tuning": { "scale": "custom", "key": "C", "deviations": [0, -14, 0, 0, -14, 0, 0, 0, -14, 0, 0, -14] }, "tracks": [] })), 0.0).unwrap();
+        s.submit(
+            change(json!({ "bars": 2, "tuning": { "scale": "custom", "key": "C", "deviations": [0, -14, 0, 0, -14, 0, 0, 0, -14, 0, 0, -14] }, "tracks": [] })),
+            0.0,
+        )
+        .unwrap();
         let p = s.project().unwrap();
         let ch = p.tuning_changes();
         assert_eq!(ch.len(), 1);
@@ -1212,17 +1284,24 @@ mod tests {
     #[test]
     fn buses_master_and_names() {
         let mut s = Session::new(&template()).unwrap();
-        s.submit(change(json!({ "name": "outro", "bars": 2,
+        s.submit(
+            change(json!({ "name": "outro", "bars": 2,
             "buses": [{ "name": "verb", "effects_add": [{ "type": "eq", "shape": "lowpass", "frequency": 2000 }],
                         "automation": [{ "target": "gain_db", "shape": "points", "points": [[0, 0], [8, -12]] }] }],
-            "master": { "automation": [{ "target": "master_gain_db", "shape": "points", "points": [[0, 0], [8, -40]] }] } })), 2.0).unwrap();
+            "master": { "automation": [{ "target": "master_gain_db", "shape": "points", "points": [[0, 0], [8, -40]] }] } })),
+            2.0,
+        )
+        .unwrap();
         s.extend(30.0);
         let p = s.project().unwrap();
         assert_eq!(p.buses[0].effects[1].from.map(|b| b.0), Some(8.0), "第 2 拍提交：模板那一小节再循环一遍，第 8 拍接上");
         assert_eq!(p.buses[0].effects.len(), 2, "循环出来的不再接入");
         assert_eq!(p.automation[0].start.map(|b| b.0), Some(8.0));
         assert_eq!(p.automation.len(), 1, "主输出的渐弱不在循环里重来");
-        match &p.automation[0].shape { muser_core::automation::Shape::Points { points, .. } => assert_eq!(points[1].0, 16.0), _ => panic!() }
+        match &p.automation[0].shape {
+            muser_core::automation::Shape::Points { points, .. } => assert_eq!(points[1].0, 16.0),
+            _ => panic!(),
+        }
         assert!(p.form.iter().any(|f| matches!(f, muser_core::arrange::FormEntry::Name(n) if n == "003 outro")));
         assert!(p.form.iter().any(|f| matches!(f, muser_core::arrange::FormEntry::Name(n) if n == "004 outro (repeat)")));
         assert!(s.submit(change(json!({ "bars": 1, "buses": [{ "name": "nope" }] })), 3.0).is_err(), "总线要先在模板里建好");
@@ -1241,7 +1320,11 @@ mod tests {
         let p = s.project().unwrap();
         assert_eq!(Session::fader_at(&p, "bass", 6.0), Some(-3.0));
         // 之后的一段写了音量自动化：从那里起听它的。
-        s.submit(change(json!({ "bars": 1, "tracks": [{ "name": "bass", "automation": [{ "target": "gain_db", "shape": "points", "points": [[0, -10]] }] }] })), 10.0).unwrap();
+        s.submit(
+            change(json!({ "bars": 1, "tracks": [{ "name": "bass", "automation": [{ "target": "gain_db", "shape": "points", "points": [[0, -10]] }] }] })),
+            10.0,
+        )
+        .unwrap();
         let p = s.project().unwrap();
         let at = s.segs.last().unwrap().start;
         assert_eq!(Session::fader_at(&p, "bass", at + 0.5), Some(-10.0));
@@ -1254,9 +1337,11 @@ mod tests {
     #[test]
     fn patch_continues_at_the_same_place() {
         let mut s = Session::new(&template()).unwrap();
-        let song = |kick: &str| change(json!({ "at": "after", "bars": 4, "tracks": [
+        let song = |kick: &str| {
+            change(json!({ "at": "after", "bars": 4, "tracks": [
             { "name": "bass", "clips": [{ "start": 0, "length": 16, "notes": (0..16).map(|i| json!({ "pitch": 36 + i, "start": i, "length": 0.5 })).collect::<Vec<_>>() }] },
-            { "name": "drums", "clips": [{ "start": 0, "length": 16, "grid": { "kick": kick } }] } ] }));
+            { "name": "drums", "clips": [{ "start": 0, "length": 16, "grid": { "kick": kick } }] } ] }))
+        };
         s.submit(song("x..............."), 0.0).unwrap();
         // 这一段从第 4 拍开始（模板一小节之后）。现在第 9 拍：1.5 秒（3 拍）以后的下一条小节线是第 12 拍 = 这一段的第 3 小节。
         let mut c = song("x...x...x...x...");
@@ -1287,8 +1372,12 @@ mod tests {
     #[test]
     fn karaoke_in_the_timeline() {
         let mut s = Session::new(&template()).unwrap();
-        s.submit(change(json!({ "bars": 2, "lyrics": "一闪一闪\n亮晶晶", "tracks": [{ "name": "guide", "instrument": "choir.solo", "gain_db": -80,
-            "clips": [{ "start": 0, "length": 8, "abc": "L:1/4\nK:C\nCCGG | AAG2 |\nw: yi shan yi shan liang jing jing" }] }] })), 0.0).unwrap();
+        s.submit(
+            change(json!({ "bars": 2, "lyrics": "一闪一闪\n亮晶晶", "tracks": [{ "name": "guide", "instrument": "choir.solo", "gain_db": -80,
+            "clips": [{ "start": 0, "length": 8, "abc": "L:1/4\nK:C\nCCGG | AAG2 |\nw: yi shan yi shan liang jing jing" }] }] })),
+            0.0,
+        )
+        .unwrap();
         let t = s.timeline(4.0);
         let seg = &t["segments"][1];
         let lines = seg["karaoke"].as_array().unwrap();

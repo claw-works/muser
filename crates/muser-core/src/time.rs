@@ -68,10 +68,7 @@ pub struct TimeSignature {
 
 impl Default for TimeSignature {
     fn default() -> Self {
-        TimeSignature {
-            numerator: 4,
-            denominator: 4,
-        }
+        TimeSignature { numerator: 4, denominator: 4 }
     }
 }
 
@@ -102,14 +99,7 @@ mod tests {
     #[test]
     fn time_signature_beats_per_bar() {
         assert_eq!(TimeSignature::default().beats_per_bar(), 4.0);
-        assert_eq!(
-            TimeSignature {
-                numerator: 6,
-                denominator: 8
-            }
-            .beats_per_bar(),
-            3.0
-        );
+        assert_eq!(TimeSignature { numerator: 6, denominator: 8 }.beats_per_bar(), 3.0);
     }
 
     #[test]

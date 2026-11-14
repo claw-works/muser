@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 
 use muser_core::arrange::{self, Chordal, Part, Step, Transform};
-use muser_core::automation::{SplitMix64, derive_seed};
+use muser_core::automation::{derive_seed, SplitMix64};
 use muser_core::chord::{self, Chord, Placed};
 use muser_core::{Beats, Clip, Note, Project};
 
@@ -60,11 +60,8 @@ pub fn arranged(project: &Project) -> Result<Cow<'_, Project>, String> {
     for (fi, (entry, span)) in project.form.iter().zip(&spans).enumerate() {
         let occ_seed = entry.seed().unwrap_or_else(|| derive_seed(project.seed, None, 0x464f_0000 + fi));
         // 和弦的时间相对段落开头；先按原调取音，最后整体移调。
-        let chords: Vec<Placed> = span
-            .chords
-            .iter()
-            .map(|p| Placed { start: p.start - span.start, length: p.length, chord: p.chord.transposed(-entry.transpose()) })
-            .collect();
+        let chords: Vec<Placed> =
+            span.chords.iter().map(|p| Placed { start: p.start - span.start, length: p.length, chord: p.chord.transposed(-entry.transpose()) }).collect();
         for (ti, track) in project.tracks.iter().enumerate() {
             if track.parts.is_empty() || entry.muted(&track.name) {
                 continue;
@@ -179,7 +176,9 @@ pub fn part_blocks(project: &Project) -> Vec<Vec<(f64, f64, String)>> {
                 // global 对齐的 part 在连续的段落里是一整段（与 arranged 合成的 clip 一致）。
                 .fold(Vec::<(f64, f64, String, i32)>::new(), |mut v, b| {
                     let joins = v.last().is_some_and(|l| {
-                        l.2 == b.2 && l.3 == b.3 && (l.0 + l.1 - b.0).abs() < 1e-9
+                        l.2 == b.2
+                            && l.3 == b.3
+                            && (l.0 + l.1 - b.0).abs() < 1e-9
                             && t.parts.get(&b.2).is_some_and(|p| p.align == muser_core::arrange::Align::Global && p.end.is_none())
                     });
                     if joins {
@@ -270,7 +269,17 @@ impl Ctx<'_> {
 /// 大调音阶上第几级的半音数（显式升降号 `b7`、`#11` 以它为准）。
 fn scale_interval(deg: u8) -> i32 {
     match deg {
-        1 => 0, 2 => 2, 3 => 4, 4 => 5, 5 => 7, 6 => 9, 7 => 11, 8 => 12, 9 => 14, 11 => 17, _ => 21,
+        1 => 0,
+        2 => 2,
+        3 => 4,
+        4 => 5,
+        5 => 7,
+        6 => 9,
+        7 => 11,
+        8 => 12,
+        9 => 14,
+        11 => 17,
+        _ => 21,
     }
 }
 
@@ -307,7 +316,29 @@ fn chordal_notes(steps: &[Step], step: f64, loop_len: f64, rep_start: f64, chord
         let Some(c) = chord::at(chords, rep_start + t) else { continue };
         let root = base + i32::from(c.root);
         let note = |pitch: i32, accent: bool| {
-            (0..=127).contains(&pitch).then_some(Note { pitch: pitch.clamp(0, 127) as u8, start: Beats(t), length: Beats(step), velocity: if accent { 1.0 } else { vel }, accent, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0, bend: Vec::new(), lyric: None, technique: None, harmonic: None, articulation: None })
+            (0..=127).contains(&pitch).then_some(Note {
+                pitch: pitch.clamp(0, 127) as u8,
+                start: Beats(t),
+                length: Beats(step),
+                velocity: if accent { 1.0 } else { vel },
+                accent,
+                mute: false,
+                tremolo: false,
+                slide: false,
+                slide_out: false,
+                breath: false,
+                damp: false,
+                flutter: false,
+                trill: 0,
+                half_trill: false,
+                scoop: 0.0,
+                fall: 0.0,
+                bend: Vec::new(),
+                lyric: None,
+                technique: None,
+                harmonic: None,
+                articulation: None,
+            })
         };
         let new: Vec<Note> = match steps[i % steps.len()] {
             Step::Rest => {
@@ -361,7 +392,8 @@ fn voice(c: &Chord, center: i32, prev: &[i32]) -> Vec<i32> {
             // 排列里相邻两音成小二度（大七和弦的七音紧贴根音下面）很刺耳，尽量不用。
             let rough = v.windows(2).filter(|w| w[1] - w[0] == 1).count() as f64 * 6.0;
             let near = |a: &[i32], b: &[i32]| a.iter().map(|x| b.iter().map(|y| (x - y).abs()).min().unwrap_or(0) as f64).sum::<f64>();
-            let cost = rough + if prev.is_empty() { (mean - f64::from(center)).abs() } else { near(&v, prev) + near(prev, &v) + 0.15 * (mean - f64::from(center)).abs() };
+            let cost = rough
+                + if prev.is_empty() { (mean - f64::from(center)).abs() } else { near(&v, prev) + near(prev, &v) + 0.15 * (mean - f64::from(center)).abs() };
             if best.as_ref().is_none_or(|(b, _)| cost < *b - 1e-9) {
                 best = Some((cost, v));
             }
@@ -406,10 +438,13 @@ pub(crate) fn apply(ts: &[Transform], notes: &mut Vec<Note>, len: &mut f64, k: u
     for (ti, t) in ts.iter().enumerate() {
         let pitched = |n: &mut Vec<Note>, f: &dyn Fn(i32) -> i32| {
             if !drums {
-                *n = std::mem::take(n).into_iter().filter_map(|x| {
-                    let d = f(i32::from(x.pitch)) - i32::from(x.pitch);
-                    shift_pitch(x, d)
-                }).collect();
+                *n = std::mem::take(n)
+                    .into_iter()
+                    .filter_map(|x| {
+                        let d = f(i32::from(x.pitch)) - i32::from(x.pitch);
+                        shift_pitch(x, d)
+                    })
+                    .collect();
             }
         };
         if let Some(s) = t.transpose {
@@ -469,7 +504,8 @@ pub(crate) fn apply(ts: &[Transform], notes: &mut Vec<Note>, len: &mut f64, k: u
                     // 换成相邻的和弦音（没有和弦时，音型里出现过的音高）。
                     let up = rng.unit() < 0.5;
                     let here = i32::from(n.pitch);
-                    let pcs: Vec<i32> = chord::at(chords, n.start.0).map_or_else(|| pattern.iter().map(|p| p.rem_euclid(12)).collect(), |c| c.pitch_classes().iter().map(|&x| i32::from(x)).collect());
+                    let pcs: Vec<i32> = chord::at(chords, n.start.0)
+                        .map_or_else(|| pattern.iter().map(|p| p.rem_euclid(12)).collect(), |c| c.pitch_classes().iter().map(|&x| i32::from(x)).collect());
                     let cand = (1..=12).map(|d| if up { here + d } else { here - d }).find(|q| pcs.contains(&q.rem_euclid(12)));
                     if let Some(q) = cand.filter(|q| (0..=127).contains(q)) {
                         n.pitch = q as u8;
@@ -496,7 +532,9 @@ mod tests {
                 { "name": "k", "instrument": "drums.909", "clips": [{ "start": 0, "length": 4, "grid": { "kick": "x..." } }] } ] }));
         let pitches = |p: &Project| -> Vec<Vec<u8>> {
             let a = arranged(p).unwrap();
-            (0..a.tracks.len()).map(|ti| (0..a.tracks[ti].clips.len()).flat_map(|ci| crate::clip_notes(&a, ti, ci).unwrap()).map(|n| n.pitch).collect()).collect()
+            (0..a.tracks.len())
+                .map(|ti| (0..a.tracks[ti].clips.len()).flat_map(|ci| crate::clip_notes(&a, ti, ci).unwrap()).map(|n| n.pitch).collect())
+                .collect()
         };
         let before = pitches(&p);
         p.transpose = 3;
@@ -571,11 +609,8 @@ mod tests {
 
     fn notes(p: &Project, track: usize) -> Vec<(f64, f64, u8)> {
         let a = arranged(p).unwrap();
-        let mut v: Vec<(f64, f64, u8)> = a.tracks[track]
-            .clips
-            .iter()
-            .flat_map(|c| c.notes.iter().map(move |n| (c.start.0 + n.start.0, n.length.0, n.pitch)))
-            .collect();
+        let mut v: Vec<(f64, f64, u8)> =
+            a.tracks[track].clips.iter().flat_map(|c| c.notes.iter().map(move |n| (c.start.0 + n.start.0, n.length.0, n.pitch))).collect();
         v.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.2.cmp(&b.2)));
         v
     }
@@ -633,12 +668,14 @@ mod tests {
 
     #[test]
     fn vary_is_seeded_and_drums_dont_transpose() {
-        let mk = |seed: u64| project(serde_json::json!({ "tempo": 120, "seed": seed,
+        let mk = |seed: u64| {
+            project(serde_json::json!({ "tempo": 120, "seed": seed,
             "sections": { "s": { "bars": 4, "chords": "C" } }, "form": [{ "section": "s", "transpose": 5 }],
             "tracks": [
                 { "name": "arp", "instrument": "poly.bell_pluck", "parts": { "s": { "chordal": "1 3 5 8", "step": 0.25, "transform": [{ "vary": 0.5 }] } } },
                 { "name": "drums", "instrument": "drums.808", "parts": { "s": { "grid": { "kick": "x..." }, "transform": [{ "transpose": 7 }] } } }
-            ] }));
+            ] }))
+        };
         assert_eq!(notes(&mk(1), 0), notes(&mk(1), 0));
         assert_ne!(notes(&mk(1), 0), notes(&mk(2), 0));
         assert!(notes(&mk(1), 1).iter().all(|n| n.2 == 36));
@@ -662,9 +699,11 @@ mod tests {
     #[test]
     fn errors() {
         let p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "sections": { "s": { "bars": 1 } }, "form": ["s"],
-            "tracks": [{ "name": "b", "instrument": "bass.finger", "parts": { "s": { "chordal": "1" } } }] })).unwrap();
+            "tracks": [{ "name": "b", "instrument": "bass.finger", "parts": { "s": { "chordal": "1" } } }] }))
+        .unwrap();
         assert!(arranged(&p).unwrap_err().contains("has no chords"));
-        let bad: Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "sections": { "s": { "bars": 1 } }, "form": ["x"], "tracks": [] })).unwrap();
+        let bad: Project =
+            serde_json::from_value(serde_json::json!({ "tempo": 120, "sections": { "s": { "bars": 1 } }, "form": ["x"], "tracks": [] })).unwrap();
         assert!(bad.validate().unwrap_err().to_string().contains("no section 'x'"));
     }
 }

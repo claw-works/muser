@@ -182,7 +182,13 @@ fn skip(b: &[u8], i: usize, depth: usize) -> Result<usize, String> {
 
 fn text(s: &str) -> Vec<u8> {
     let n = s.len();
-    let mut v = if n < 24 { vec![0x60 | n as u8] } else if n < 256 { vec![0x78, n as u8] } else { [&[0x79][..], &(n as u16).to_be_bytes()].concat() };
+    let mut v = if n < 24 {
+        vec![0x60 | n as u8]
+    } else if n < 256 {
+        vec![0x78, n as u8]
+    } else {
+        [&[0x79][..], &(n as u16).to_be_bytes()].concat()
+    };
     v.extend_from_slice(s.as_bytes());
     v
 }
@@ -300,7 +306,8 @@ mod tests {
     fn puts_an_effect_chain_into_the_fx_state() {
         // 骨架：{"Global0": 1, "FXRack0": {"FX": [], "plainParams": 7}, "component": "processor"}
         let rack = [&[0xa2][..], &text("FX"), &[0x80], &text("plainParams"), &[0x07]].concat();
-        let skel = file(r#"{"fileType":"x"}"#, &[&[0xa3][..], &text("Global0"), &[0x01], &text("FXRack0"), &rack, &text("component"), &text("processor")].concat());
+        let skel =
+            file(r#"{"fileType":"x"}"#, &[&[0xa3][..], &text("Global0"), &[0x01], &text("FXRack0"), &rack, &text("component"), &text("processor")].concat());
         let chorus = [&[0xa1][..], &text("kParamWet"), &[0xf9, 0x3c, 0x00]].concat();
         // 整条链：{"FXRack": {"FX": [chorus]}}
         let chain = [&[0xa1][..], &text("FXRack"), &[0xa1], &text("FX"), &[0x81], &chorus].concat();

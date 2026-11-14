@@ -11,11 +11,11 @@
 //! - `mix-report <project.json> [--json]`  各轨/总线/主总线响度，用来平衡音量
 //! - `new [-o project.json]`                生成一个示例工程 JSON（供 AI 参考格式）
 
+mod clipedit;
 mod live;
 mod loop_edit;
 mod play;
 mod poly;
-mod clipedit;
 mod self_update;
 mod takes;
 mod view;
@@ -513,10 +513,7 @@ enum SoundsCommand {
     },
     /// Capture (macOS, Windows): open the plugin window and load this sound in it (with the plugin's own browser / search box);
     /// after the window is closed the state is saved to the local sound library and `sounds state` can use it directly. A person clicks, or the agent uses computer use.
-    Capture {
-        plugin: String,
-        preset: String,
-    },
+    Capture { plugin: String, preset: String },
     /// Listen to a sound: render probe tones (5 registers + soft velocity; common drum keys for drum kits) and measure brightness, attack, sustain, tail, range, velocity response, stereo and pitch,
     /// then write a text card and cache it locally (read from the cache while the sound, parameters and files are unchanged).
     Describe {
@@ -695,7 +692,12 @@ fn main() {
 /// 其它系统留在主线程（macOS 的插件窗口必须在主线程上）。
 #[cfg(windows)]
 fn run_with_stack() -> Result<()> {
-    std::thread::Builder::new().stack_size(16 << 20).spawn(run).context("cannot start the main thread")?.join().unwrap_or_else(|_| Err(anyhow::anyhow!("main thread crashed")))
+    std::thread::Builder::new()
+        .stack_size(16 << 20)
+        .spawn(run)
+        .context("cannot start the main thread")?
+        .join()
+        .unwrap_or_else(|_| Err(anyhow::anyhow!("main thread crashed")))
 }
 
 #[cfg(not(windows))]
@@ -706,18 +708,9 @@ fn run_with_stack() -> Result<()> {
 fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Render {
-            project,
-            output,
-            sample_rate,
-            tail,
-            seed,
-            stems,
-        } => cmd_render(&project, &output, sample_rate, tail, seed, stems.as_deref()),
+        Command::Render { project, output, sample_rate, tail, seed, stems } => cmd_render(&project, &output, sample_rate, tail, seed, stems.as_deref()),
         Command::Validate { project } => cmd_validate(&project),
-        Command::Instruments { name, family, json } => {
-            cmd_instruments(name.as_deref(), family.as_deref(), json)
-        }
+        Command::Instruments { name, family, json } => cmd_instruments(name.as_deref(), family.as_deref(), json),
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::SelfUpdate { check, version } => self_update::run(check, version),
@@ -776,7 +769,10 @@ fn run() -> Result<()> {
                 opts.sections = s
                     .split(',')
                     .map(|part| {
-                        let (name, bars) = part.trim().rsplit_once(':').ok_or_else(|| anyhow::anyhow!("--sections takes name:bars, comma-separated, e.g. verse:8,chorus:8"))?;
+                        let (name, bars) = part
+                            .trim()
+                            .rsplit_once(':')
+                            .ok_or_else(|| anyhow::anyhow!("--sections takes name:bars, comma-separated, e.g. verse:8,chorus:8"))?;
                         Ok((name.trim().to_string(), bars.trim().parse::<u32>().with_context(|| format!("the bar count in '{part}' is not an integer"))?))
                     })
                     .collect::<Result<_>>()?;
@@ -827,17 +823,29 @@ fn cmd_analyze(project_path: &str, audio: bool, json: bool) -> Result<()> {
     // 能量曲线：每段一格。
     const BLOCKS: [char; 11] = [' ', '▁', '▂', '▃', '▃', '▄', '▅', '▆', '▆', '▇', '█'];
     let curve: String = r.sections.iter().map(|s| BLOCKS[usize::from(s.energy.min(10))]).collect();
-    let labels: Vec<String> = r.sections.iter().map(|s| format!("{}{} {}", s.name, if s.occurrence > 1 { format!("#{}", s.occurrence) } else { String::new() }, s.energy)).collect();
+    let labels: Vec<String> =
+        r.sections.iter().map(|s| format!("{}{} {}", s.name, if s.occurrence > 1 { format!("#{}", s.occurrence) } else { String::new() }, s.energy)).collect();
     println!("energy |{curve}|  {}", labels.join(" · "));
     for s in &r.sections {
         let label = if s.occurrence > 1 { format!("{} #{}", s.name, s.occurrence) } else { s.name.clone() };
         println!();
-        print!("[{label}] bars {}-{}  energy {}  density {} notes/bar  repetition {:.0}%  chords {}/bar", s.bar, s.bar + s.bars - 1, s.energy, s.density, s.repeated * 100.0, s.chord_changes_per_bar);
+        print!(
+            "[{label}] bars {}-{}  energy {}  density {} notes/bar  repetition {:.0}%  chords {}/bar",
+            s.bar,
+            s.bar + s.bars - 1,
+            s.energy,
+            s.density,
+            s.repeated * 100.0,
+            s.chord_changes_per_bar
+        );
         match &s.audio {
             Some(a) => {
                 println!("  {:.1} LUFS  centroid {} Hz  low/mid/high {}/{}/{}%", a.lufs, a.centroid_hz, a.low_pct, a.mid_pct, a.high_pct);
                 if a.rms_db < a.lufs - 6.0 {
-                    println!("  average level {:.1} dB: most of this section is very quiet (LUFS only counts the loud parts, which a few hits pulled up)", a.rms_db);
+                    println!(
+                        "  average level {:.1} dB: most of this section is very quiet (LUFS only counts the loud parts, which a few hits pulled up)",
+                        a.rms_db
+                    );
                 }
             }
             None => println!(),
@@ -938,11 +946,7 @@ fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, see
     if let Some(s) = seed {
         project.seed = s;
     }
-    let settings = RenderSettings {
-        sample_rate,
-        tail_seconds: tail,
-        ..RenderSettings::default()
-    };
+    let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
     // 在终端里原地显示进度（大工程、调试构建可能要渲染很久）；输出被管道/AI 捕获时不打印。
     let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
     let (sr, t0) = (f64::from(sample_rate), std::time::Instant::now());
@@ -950,7 +954,13 @@ fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, see
     let mut progress = |done: usize, total: usize| {
         if tty && (last.elapsed().as_millis() >= 200 || done == total) {
             last = std::time::Instant::now();
-            eprint!("\rrendering {:3.0}% ({:.1}s / {:.1}s, elapsed {:.1}s)", done as f64 * 100.0 / total.max(1) as f64, done as f64 / sr, total as f64 / sr, t0.elapsed().as_secs_f64());
+            eprint!(
+                "\rrendering {:3.0}% ({:.1}s / {:.1}s, elapsed {:.1}s)",
+                done as f64 * 100.0 / total.max(1) as f64,
+                done as f64 / sr,
+                total as f64 / sr,
+                t0.elapsed().as_secs_f64()
+            );
         }
     };
     if let Some(dir) = stems {
@@ -978,10 +988,7 @@ fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, see
         eprint!("\r{:80}\r", "");
     }
     let (seconds, peak_db) = result.with_context(|| format!("render failed: {project_path}"))?;
-    println!(
-        "rendered '{}' -> {output}: {:.2}s, peak {:.1} dBFS",
-        project.name, seconds, peak_db
-    );
+    println!("rendered '{}' -> {output}: {:.2}s, peak {:.1} dBFS", project.name, seconds, peak_db);
     if peak_db > 0.0 {
         println!("WARNING master clipping (peak {peak_db:+.1} dBFS): lower master_gain_db or the tracks' gain_db, or put a limiter last on the master (ceiling_db -1). Details: muser mix-report {project_path}");
     }
@@ -992,13 +999,7 @@ fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, see
 fn cmd_validate(project_path: &str) -> Result<()> {
     let project = load_project(project_path)?;
     muser_engine::validate(&project).with_context(|| "project validation failed")?;
-    println!(
-        "OK: '{}' is valid - tempo {}, {} track(s), length {:.2} beats",
-        project.name,
-        project.tempo,
-        project.tracks.len(),
-        project.duration_beats().0
-    );
+    println!("OK: '{}' is valid - tempo {}, {} track(s), length {:.2} beats", project.name, project.tempo, project.tracks.len(), project.duration_beats().0);
     print_warnings(&project);
     Ok(())
 }
@@ -1019,8 +1020,7 @@ fn note_label(n: muser_engine::NoteConvention) -> &'static str {
 
 fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Result<()> {
     if let Some(name) = name {
-        let info = muser_engine::describe_instrument(name)
-            .with_context(|| format!("unknown instrument '{name}'; see `muser instruments` for all"))?;
+        let info = muser_engine::describe_instrument(name).with_context(|| format!("unknown instrument '{name}'; see `muser instruments` for all"))?;
         if json {
             println!("{}", serde_json::to_string_pretty(&info)?);
         } else {
@@ -1038,13 +1038,17 @@ fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Resu
                         Some("number") => {
                             let unit = spec["unit"].as_str().unwrap_or("");
                             let mut r = format!("{} – {}{}", spec["min"], spec["max"], if unit.is_empty() { String::new() } else { format!(" {unit}") });
-                            if spec["integer"] == true { r.push_str(" (integer)"); }
+                            if spec["integer"] == true {
+                                r.push_str(" (integer)");
+                            }
                             if let Some(n) = spec["names"].as_array() {
                                 r.push_str(&format!(", or {}", n.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join("/")));
                             }
                             r
                         }
-                        Some("choice") => spec["choices"].as_array().map(|c| c.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
+                        Some("choice") => {
+                            spec["choices"].as_array().map(|c| c.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default()
+                        }
                         Some("bool") => "true / false".into(),
                         Some("drawbars") => "a 9-digit string, each digit 0-8".into(),
                         _ => String::new(),
@@ -1094,8 +1098,7 @@ fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Resu
 
 fn cmd_effects(name: Option<&str>, json: bool) -> Result<()> {
     if let Some(name) = name {
-        let spec = muser_core::effect_spec(name)
-            .with_context(|| format!("unknown effect '{name}'; see `muser effects` for all"))?;
+        let spec = muser_core::effect_spec(name).with_context(|| format!("unknown effect '{name}'; see `muser effects` for all"))?;
         if json {
             println!("{}", serde_json::to_string_pretty(spec)?);
             return Ok(());
@@ -1111,10 +1114,7 @@ fn cmd_effects(name: Option<&str>, json: bool) -> Result<()> {
         }
         for p in spec.params {
             let unit = if p.unit.is_empty() { String::new() } else { format!(" {}", p.unit) };
-            println!(
-                "  {:<14} default {:<10} range [{}, {}]{}",
-                p.name, p.default, p.min, p.max, unit
-            );
+            println!("  {:<14} default {:<10} range [{}, {}]{}", p.name, p.default, p.min, p.max, unit);
             println!("  {:<14} {}", "", p.description);
         }
         println!("example: {}", spec.example);
@@ -1159,15 +1159,27 @@ fn cmd_profile(command: ProfileCommand) -> Result<()> {
         ProfileCommand::List { json } => {
             let all = profile::all();
             if json {
-                let list: Vec<_> = all.iter().map(|l| serde_json::json!({
-                    "name": l.profile.plugin.name, "ids": l.profile.plugin.ids, "origin": l.origin, "path": l.path,
-                    "tested_version": l.profile.source.tested_version, "params": l.profile.params.len(), "presets": l.profile.presets.len()
-                })).collect();
+                let list: Vec<_> = all
+                    .iter()
+                    .map(|l| {
+                        serde_json::json!({
+                            "name": l.profile.plugin.name, "ids": l.profile.plugin.ids, "origin": l.origin, "path": l.path,
+                            "tested_version": l.profile.source.tested_version, "params": l.profile.params.len(), "presets": l.profile.presets.len()
+                        })
+                    })
+                    .collect();
                 println!("{}", serde_json::to_string_pretty(&list)?);
                 return Ok(());
             }
             for l in &all {
-                println!("{:<24} {:>3} params {:>2} presets  {:?}  {}", l.profile.plugin.name, l.profile.params.len(), l.profile.presets.len(), l.origin, l.path.as_deref().unwrap_or(""));
+                println!(
+                    "{:<24} {:>3} params {:>2} presets  {:?}  {}",
+                    l.profile.plugin.name,
+                    l.profile.params.len(),
+                    l.profile.presets.len(),
+                    l.origin,
+                    l.path.as_deref().unwrap_or("")
+                );
             }
         }
         ProfileCommand::Show { target, markdown, json } => {
@@ -1249,9 +1261,12 @@ fn audio_files(inputs: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     for p in inputs {
         if p.is_dir() {
-            let mut list: Vec<std::path::PathBuf> = std::fs::read_dir(p).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|f| f.is_file()).collect();
+            let mut list: Vec<std::path::PathBuf> =
+                std::fs::read_dir(p).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|f| f.is_file()).collect();
             list.sort();
-            files.extend(list.into_iter().filter(|f| f.extension().and_then(|e| e.to_str()).is_some_and(|e| ["wav", "flac", "aif", "aiff", "ogg", "mp3"].contains(&e.to_ascii_lowercase().as_str()))));
+            files.extend(list.into_iter().filter(|f| {
+                f.extension().and_then(|e| e.to_str()).is_some_and(|e| ["wav", "flac", "aif", "aiff", "ogg", "mp3"].contains(&e.to_ascii_lowercase().as_str()))
+            }));
         } else {
             files.push(p.clone());
         }
@@ -1316,11 +1331,17 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
     use muser_engine::modal;
     match command {
         YinseCommand::Extract { inputs, output, name, from, params, pitches, velocities, hold, split, notes_dir } => {
-            let name = name.unwrap_or_else(|| output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default());
+            let name = name.unwrap_or_else(|| {
+                output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default()
+            });
             let (mut files, mut release, mut temp) = (audio_files(&inputs), None, None);
             if let Some(spec) = &from {
                 let pitches = parse_pitches(&pitches)?;
-                let velocities: Vec<f64> = velocities.split(',').map(|v| v.trim().parse::<f64>().map(|v| v.clamp(0.01, 1.0))).collect::<Result<_, _>>().map_err(|e| anyhow::anyhow!("--velocities: {e}"))?;
+                let velocities: Vec<f64> = velocities
+                    .split(',')
+                    .map(|v| v.trim().parse::<f64>().map(|v| v.clamp(0.01, 1.0)))
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| anyhow::anyhow!("--velocities: {e}"))?;
                 let params: muser_core::InstrumentParams = match &params {
                     Some(p) => serde_json::from_str(p).map_err(|e| anyhow::anyhow!("--params: {e}"))?,
                     None => Default::default(),
@@ -1346,7 +1367,14 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                         None => used += 1,
                         Some(_) => skipped += 1,
                     }
-                    eprintln!("  {} {:>8.2} s  {:>5.1} s  pitch {pitch}  {:>6.1} dB  {}", s.source, s.start, s.seconds, s.level_db, s.skipped.map_or("used".to_string(), |why| format!("skipped: {why}")));
+                    eprintln!(
+                        "  {} {:>8.2} s  {:>5.1} s  pitch {pitch}  {:>6.1} dB  {}",
+                        s.source,
+                        s.start,
+                        s.seconds,
+                        s.level_db,
+                        s.skipped.map_or("used".to_string(), |why| format!("skipped: {why}"))
+                    );
                 });
                 if let (Err(_), Some(dir)) = (&found, &temp) {
                     let _ = std::fs::remove_dir_all(dir);
@@ -1355,7 +1383,13 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                 eprintln!("found {} notes, using {used} ({skipped} skipped)", used + skipped);
             }
             let result = modal::extract(&files, &name, |n| {
-                eprintln!("  {}: pitch {:.2}, {} partials, slowest {:.1} s", n.source, n.pitch, n.partials.len(), n.partials.iter().map(|p| p.t60).fold(0.0, f64::max));
+                eprintln!(
+                    "  {}: pitch {:.2}, {} partials, slowest {:.1} s",
+                    n.source,
+                    n.pitch,
+                    n.partials.len(),
+                    n.partials.iter().map(|p| p.t60).fold(0.0, f64::max)
+                );
             });
             if let Some(dir) = temp {
                 let _ = std::fs::remove_dir_all(dir);
@@ -1398,7 +1432,16 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
             for e in &list {
                 let range = e["range"].as_array().map(|r| format!("{}-{}", r[0], r.get(1).unwrap_or(&r[0]))).unwrap_or_default();
                 let arts = e["articulations"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(",")).unwrap_or_default();
-                println!("{:<28} {:<12} {:<8} {:<12} {} KB  {}{}", s(&e["spec"]), s(&e["zh"]), range, s(&e["license"]), e["kb"], s(&e["description"]), if arts.is_empty() { String::new() } else { format!("  [{arts}]") });
+                println!(
+                    "{:<28} {:<12} {:<8} {:<12} {} KB  {}{}",
+                    s(&e["spec"]),
+                    s(&e["zh"]),
+                    range,
+                    s(&e["license"]),
+                    e["kb"],
+                    s(&e["description"]),
+                    if arts.is_empty() { String::new() } else { format!("  [{arts}]") }
+                );
             }
             println!("{} in {repo}. Install one with `muser yinse install <family>/<name>`.", list.len());
         }
@@ -1447,7 +1490,12 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
             println!("installed yinse:{family}/{name} ({}, pitch {lo:.0}-{hi:.0}) -> {}", table.name, dir.display());
             if let Some(meta) = files.iter().find(|f| f.0 == "meta.json").and_then(|f| serde_json::from_slice::<serde_json::Value>(&f.1).ok()) {
                 let src = &meta["source"];
-                println!("recordings: {} by {} · license {}", src["title"].as_str().unwrap_or("?"), src["author"].as_str().unwrap_or("?"), src["license"].as_str().unwrap_or("?"));
+                println!(
+                    "recordings: {} by {} · license {}",
+                    src["title"].as_str().unwrap_or("?"),
+                    src["author"].as_str().unwrap_or("?"),
+                    src["license"].as_str().unwrap_or("?")
+                );
                 if src["license"].as_str().is_some_and(|l| l.starts_with("CC-BY")) {
                     println!("This license asks for credit: name the recordings' author when you publish music made with it (see README.md in the folder).");
                 }
@@ -1469,7 +1517,10 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
             let (family, n) = library_name(&name)?;
             let dir = modal::user_library().join("instruments").join(&family).join(&n);
             if !dir.join(format!("{n}.yinse.json")).is_file() {
-                anyhow::bail!("yinse:{family}/{n} is not installed in this machine's library ({}); instruments on MUSER_YINSE_PATH are not removed here", modal::user_library().display());
+                anyhow::bail!(
+                    "yinse:{family}/{n} is not installed in this machine's library ({}); instruments on MUSER_YINSE_PATH are not removed here",
+                    modal::user_library().display()
+                );
             }
             std::fs::remove_dir_all(&dir)?;
             // 这一类空了就把类的目录也去掉（不是空的就删不掉，正好）。
@@ -1482,18 +1533,41 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&list)?);
                 return Ok(());
             }
-            println!("{:<28} {:>5} {:>4} {:>9} {:>8} {:>8}  {:<26} {:<26} {:>11}", "recording", "pitch", "vel", "spectral", "level", "between", "decay @0.1/0.5/1/2 s (rec)", "(extracted)", "stereo r/e");
+            println!(
+                "{:<28} {:>5} {:>4} {:>9} {:>8} {:>8}  {:<26} {:<26} {:>11}",
+                "recording", "pitch", "vel", "spectral", "level", "between", "decay @0.1/0.5/1/2 s (rec)", "(extracted)", "stereo r/e"
+            );
             let f = |d: [f64; 4]| d.iter().map(|v| if v.is_nan() { "  -".into() } else { format!("{v:>4.0}") }).collect::<Vec<_>>().join(" ");
             for c in &list {
                 let b = c.between_db.map_or("-".to_string(), |b| format!("{b:.1}dB"));
-                println!("{:<28} {:>5.1} {:>4.2} {:>7.1}dB {:>+6.1}dB {:>8}  {:<26} {:<26} {:>5.2}/{:<5.2}", c.source, c.pitch, c.velocity, c.spectral_db, c.level_db, b, f(c.decay_ref), f(c.decay_ours), c.stereo_ref, c.stereo_ours);
+                println!(
+                    "{:<28} {:>5.1} {:>4.2} {:>7.1}dB {:>+6.1}dB {:>8}  {:<26} {:<26} {:>5.2}/{:<5.2}",
+                    c.source,
+                    c.pitch,
+                    c.velocity,
+                    c.spectral_db,
+                    c.level_db,
+                    b,
+                    f(c.decay_ref),
+                    f(c.decay_ours),
+                    c.stereo_ref,
+                    c.stereo_ours
+                );
             }
             let n = list.len().max(1) as f64;
             let mean = list.iter().map(|c| c.spectral_db).sum::<f64>() / n;
-            println!("mean level difference {:.2} dB, largest {:+.1} dB (extracted minus recording, first 2 s, not matched)", list.iter().map(|c| c.level_db.abs()).sum::<f64>() / n, list.iter().map(|c| c.level_db).fold(0.0, |m: f64, v| if v.abs() > m.abs() { v } else { m }));
+            println!(
+                "mean level difference {:.2} dB, largest {:+.1} dB (extracted minus recording, first 2 s, not matched)",
+                list.iter().map(|c| c.level_db.abs()).sum::<f64>() / n,
+                list.iter().map(|c| c.level_db).fold(0.0, |m: f64, v| if v.abs() > m.abs() { v } else { m })
+            );
             let b: Vec<f64> = list.iter().filter_map(|c| c.between_db).collect();
             if !b.is_empty() {
-                println!("mean spectral difference of pitches blended from their neighbours {:.2} dB ({} notes; how far off pitches that were not recorded are)", b.iter().sum::<f64>() / b.len() as f64, b.len());
+                println!(
+                    "mean spectral difference of pitches blended from their neighbours {:.2} dB ({} notes; how far off pitches that were not recorded are)",
+                    b.iter().sum::<f64>() / b.len() as f64,
+                    b.len()
+                );
             }
             println!("mean spectral difference {mean:.2} dB (third-octave bands, 20 ms frames, first 2 s, loudness matched; lower is closer)");
         }
@@ -1512,7 +1586,13 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
             }
             for s in &list {
                 let extra = s.card.as_deref().map(|c| format!("  ♪ {c}")).unwrap_or_default();
-                println!("{:<44} [{}{}] {}{extra}", s.spec, s.kind, if s.group.is_empty() { String::new() } else { format!(" · {}", s.group) }, s.description.chars().take(60).collect::<String>());
+                println!(
+                    "{:<44} [{}{}] {}{extra}",
+                    s.spec,
+                    s.kind,
+                    if s.group.is_empty() { String::new() } else { format!(" · {}", s.group) },
+                    s.description.chars().take(60).collect::<String>()
+                );
             }
             println!("\n{} in total. `muser sounds describe <sound>` listens to one (a note marker means already listened to).", list.len());
         }
@@ -1530,9 +1610,19 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                     presets::Load::Captured => "captured",
                     presets::Load::Manual => "manual",
                 };
-                println!("[{mark}] {:<32} {} · {}{}", x.name, x.library, x.category, if x.tags.is_empty() { String::new() } else { format!(" · {}", x.tags.join(", ")) });
+                println!(
+                    "[{mark}] {:<32} {} · {}{}",
+                    x.name,
+                    x.library,
+                    x.category,
+                    if x.tags.is_empty() { String::new() } else { format!(" · {}", x.tags.join(", ")) }
+                );
             }
-            println!("\n{} in total. `muser sounds state '{}' <sound>` gets the state; for [manual] ones run `muser sounds capture` first.", list.len(), p.spec());
+            println!(
+                "\n{} in total. `muser sounds state '{}' <sound>` gets the state; for [manual] ones run `muser sounds capture` first.",
+                list.len(),
+                p.spec()
+            );
         }
         SoundsCommand::State { plugin, preset } => {
             use muser_engine::presets;
@@ -1578,7 +1668,9 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
                 }
                 let title = format!("Load: {} ({}) - close the window after loading · muser", x.name, x.library);
                 let (_tx, rx) = std::sync::mpsc::channel();
-                match muser_engine::plugin_edit::run(&format!("{}#{}", p.path, p.id), &serde_json::Map::new(), &out, &title, rx, || {}).map_err(|e| anyhow::anyhow!(e))? {
+                match muser_engine::plugin_edit::run(&format!("{}#{}", p.path, p.id), &serde_json::Map::new(), &out, &title, rx, || {})
+                    .map_err(|e| anyhow::anyhow!(e))?
+                {
                     muser_engine::plugin_edit::Outcome::Saved(_) => {
                         let mut params = serde_json::Map::new();
                         params.insert("@state".into(), serde_json::json!(out.display().to_string()));
@@ -1618,7 +1710,8 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
         }
         SoundsCommand::Describe { sound, params, keys: true, from, to, tempo, hold, refresh, json, .. } => {
             let params = parse_map(params.as_deref())?;
-            let map = muser_engine::plugin::with_stdout_to_stderr(|| sounds::describe_keys(&sound, &params, from, to, tempo, hold, refresh)).map_err(|e| anyhow::anyhow!(e))?;
+            let map = muser_engine::plugin::with_stdout_to_stderr(|| sounds::describe_keys(&sound, &params, from, to, tempo, hold, refresh))
+                .map_err(|e| anyhow::anyhow!(e))?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&map)?);
                 return Ok(());
@@ -1626,12 +1719,16 @@ fn cmd_sounds(command: SoundsCommand) -> Result<()> {
             println!("{}\n  {} ({} BPM, each key held {} bars)", map.spec, map.summary, map.tempo, map.hold_bars);
             for k in map.keys.iter().filter(|k| k.audible) {
                 let lp = k.loop_bars.map_or("no loop".to_string(), |b| format!("{b} bars per cycle"));
-                println!("  {:<4} {:>3}  {lp:<10} onsets {:>4}/bar  level {:>6.1} dB  brightness {:>5.0} Hz", k.name, k.pitch, k.onsets_per_bar, k.level_db, k.centroid_hz);
+                println!(
+                    "  {:<4} {:>3}  {lp:<10} onsets {:>4}/bar  level {:>6.1} dB  brightness {:>5.0} Hz",
+                    k.name, k.pitch, k.onsets_per_bar, k.level_db, k.centroid_hz
+                );
             }
         }
         SoundsCommand::Describe { sound, params, drums, refresh, json, .. } => {
             let params = parse_map(params.as_deref())?;
-            let card = muser_engine::plugin::with_stdout_to_stderr(|| sounds::describe(&sound, &params, drums.then_some(true), refresh)).map_err(|e| anyhow::anyhow!(e))?;
+            let card = muser_engine::plugin::with_stdout_to_stderr(|| sounds::describe(&sound, &params, drums.then_some(true), refresh))
+                .map_err(|e| anyhow::anyhow!(e))?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&card)?);
                 return Ok(());
@@ -1698,10 +1795,18 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
             println!("  param groups: {}", shown.join(" "));
             match &info.profile {
                 Some(pr) => {
-                    println!("  profile:  {:?} {}, {} alias(es), presets: {}", pr.origin, pr.path.as_deref().unwrap_or(""), pr.aliases,
-                        if pr.presets.is_empty() { "none".into() } else { pr.presets.join(", ") });
+                    println!(
+                        "  profile:  {:?} {}, {} alias(es), presets: {}",
+                        pr.origin,
+                        pr.path.as_deref().unwrap_or(""),
+                        pr.aliases,
+                        if pr.presets.is_empty() { "none".into() } else { pr.presets.join(", ") }
+                    );
                     if !pr.setup.is_empty() {
-                        println!("            setup applied automatically: {} (write \"@setup\": false to turn off)", serde_json::Value::Object(pr.setup.clone()));
+                        println!(
+                            "            setup applied automatically: {} (write \"@setup\": false to turn off)",
+                            serde_json::Value::Object(pr.setup.clone())
+                        );
                     }
                     println!("            `muser plugin profile show '{spec}' --markdown` shows the usage notes");
                 }
@@ -1744,7 +1849,8 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
                 }
                 let title = title.unwrap_or_else(|| {
                     let path = plugin::split_spec(&spec).0;
-                    let name = path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or(path).trim_end_matches(".vst3").trim_end_matches(".clap");
+                    let name =
+                        path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or(path).trim_end_matches(".vst3").trim_end_matches(".clap");
                     format!("{name} · muser")
                 });
                 let saved = || {
@@ -1805,14 +1911,15 @@ fn cmd_plugin(command: PluginCommand) -> Result<()> {
                 let steps = p.steps.map_or(String::new(), |s| format!(" {s} steps"));
                 let flags = format!("{}{}", if p.automatable { "" } else { " not automatable" }, if p.read_only { " read-only" } else { "" });
                 let alias = p.alias.as_ref().map_or(String::new(), |a| format!("  alias {a}"));
-                println!("  {:<40} {} – {}{unit}{steps}  current {} \"{}\"  id {}{flags}{alias}",
-                    p.name, p.min, p.max, p.current, p.current_text, p.id);
+                println!("  {:<40} {} – {}{unit}{steps}  current {} \"{}\"  id {}{flags}{alias}", p.name, p.min, p.max, p.current, p.current_text, p.id);
             }
             if total > shown.len() {
                 println!("  ... {} more; narrow with --filter or show all with --limit 0", total - shown.len());
             }
-            println!("\n{total} in total. Use the parameter name as the key; the value can be the text the plugin displays (e.g. \"{}\") or a number.",
-                shown.first().map_or("…".into(), |p| p.current_text.clone()));
+            println!(
+                "\n{total} in total. Use the parameter name as the key; the value can be the text the plugin displays (e.g. \"{}\") or a number.",
+                shown.first().map_or("…".into(), |p| p.current_text.clone())
+            );
         }
     }
     Ok(())
@@ -1852,9 +1959,7 @@ fn cmd_audition(
     if record {
         let spec = match &subject {
             Subject::Instrument { name, .. } => name.trim().strip_prefix("plugin:").map(String::from),
-            Subject::Effect { effect: muser_core::Effect::Plugin { path, id, .. }, .. } => {
-                Some(id.as_ref().map_or(path.clone(), |i| format!("{path}#{i}")))
-            }
+            Subject::Effect { effect: muser_core::Effect::Plugin { path, id, .. }, .. } => Some(id.as_ref().map_or(path.clone(), |i| format!("{path}#{i}"))),
             _ => None,
         };
         match (spec, &param) {
@@ -1869,14 +1974,40 @@ fn cmd_audition(
         println!("{}", serde_json::to_string_pretty(&takes)?);
         return Ok(());
     }
-    println!("{:<14} {:>7} {:>7} {:>7} {:>9} {:>6} {:>6} {:>6} {:>8} {:>9}",
-        param.as_deref().unwrap_or("value"), "peak dB", "RMS dB", "LUFS", "centroid Hz", "low%", "mid%", "high%", "attack ms", "tail s");
+    println!(
+        "{:<14} {:>7} {:>7} {:>7} {:>9} {:>6} {:>6} {:>6} {:>8} {:>9}",
+        param.as_deref().unwrap_or("value"),
+        "peak dB",
+        "RMS dB",
+        "LUFS",
+        "centroid Hz",
+        "low%",
+        "mid%",
+        "high%",
+        "attack ms",
+        "tail s"
+    );
     for t in &takes {
         let a = &t.analysis;
-        let v = match &t.value { serde_json::Value::Null => "unchanged".to_string(), serde_json::Value::String(s) => s.clone(), v => v.to_string() };
-        println!("{:<14} {:>7.1} {:>7.1} {:>7.1} {:>9.0} {:>6.1} {:>6.1} {:>6.1} {:>8.0} {:>8.2}{}",
-            v, a.peak_db, a.rms_db, a.lufs, a.centroid_hz, a.low_pct, a.mid_pct, a.high_pct, a.attack_ms, a.release_s,
-            if a.release_truncated { "+" } else { " " });
+        let v = match &t.value {
+            serde_json::Value::Null => "unchanged".to_string(),
+            serde_json::Value::String(s) => s.clone(),
+            v => v.to_string(),
+        };
+        println!(
+            "{:<14} {:>7.1} {:>7.1} {:>7.1} {:>9.0} {:>6.1} {:>6.1} {:>6.1} {:>8.0} {:>8.2}{}",
+            v,
+            a.peak_db,
+            a.rms_db,
+            a.lufs,
+            a.centroid_hz,
+            a.low_pct,
+            a.mid_pct,
+            a.high_pct,
+            a.attack_ms,
+            a.release_s,
+            if a.release_truncated { "+" } else { " " }
+        );
         if let Some(w) = &t.wav {
             println!("{:<14} → {w}", "");
         }
@@ -1894,19 +2025,31 @@ fn cmd_mix_report(path: &str, sample_rate: u32, tail: f64, json: bool) -> Result
         return Ok(());
     }
     let f = |x: Option<f64>| x.map_or("-".to_string(), |v| format!("{v:.1}"));
-    println!("{:<12} {:<14} {:>7} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>7}",
-        "node", "name", "gain_db", "in LUFS", "in peak", "out LUFS", "short max", "out peak", "to master", "rel LU");
+    println!(
+        "{:<12} {:<14} {:>7} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>7}",
+        "node", "name", "gain_db", "in LUFS", "in peak", "out LUFS", "short max", "out peak", "to master", "rel LU"
+    );
     for n in r.tracks.iter().chain(&r.buses).chain(std::iter::once(&r.master)) {
         let name = if n.muted { format!("{} (muted)", n.name) } else { n.name.clone() };
         println!(
             "{:<12} {:<14} {:>7.1} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>7}",
-            n.node, name, n.gain_db, f(n.input.lufs), f(n.input.peak_db), f(n.output.lufs), f(n.output.max_short_lufs),
-            f(n.output.peak_db), f(n.at_master_lufs), f(n.rel_lu)
+            n.node,
+            name,
+            n.gain_db,
+            f(n.input.lufs),
+            f(n.input.peak_db),
+            f(n.output.lufs),
+            f(n.output.max_short_lufs),
+            f(n.output.peak_db),
+            f(n.at_master_lufs),
+            f(n.rel_lu)
         );
     }
     println!("in = before the effect chain (for a track, the dry instrument; for a bus / master, the sum of the signals sent in); out = after the fader.");
     println!("to master = out + the gain_db of the buses on the direct output path (an estimate, ignoring bus effects and sends); rel LU = to master minus the loudest track.");
-    println!("The estimate can be off by 2-5 LU through buses with compression / EQ: compare tracks' out LUFS within one bus, and buses' out LUFS between groups.");
+    println!(
+        "The estimate can be off by 2-5 LU through buses with compression / EQ: compare tracks' out LUFS within one bus, and buses' out LUFS between groups."
+    );
     for w in &r.warnings {
         println!("WARNING {w}");
     }
@@ -1928,10 +2071,16 @@ fn cmd_routing(path: &str) -> Result<()> {
         if list.is_empty() {
             String::new()
         } else {
-            format!(" → {}", list.iter().map(|e| match e.effect.sidechain() {
-                Some(k) => format!("{}⟵{k}", e.type_name()),
-                None => e.type_name().to_string(),
-            }).collect::<Vec<_>>().join(" → "))
+            format!(
+                " → {}",
+                list.iter()
+                    .map(|e| match e.effect.sidechain() {
+                        Some(k) => format!("{}⟵{k}", e.type_name()),
+                        None => e.type_name().to_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" → ")
+            )
         }
     };
     println!("Processing order and destinations:");
@@ -2119,7 +2268,11 @@ fn cmd_live(command: LiveCommand) -> Result<()> {
             }
             let exe = std::env::current_exe()?;
             let v = muser_engine::live_client::spawn_detached(&exe, &args).map_err(|e| anyhow::anyhow!(e))?;
-            println!("muser live started in the background (bar {}); page http://127.0.0.1:{port}/; log {}", v["bar"], std::env::temp_dir().join("muser-live.log").display());
+            println!(
+                "muser live started in the background (bar {}); page http://127.0.0.1:{port}/; log {}",
+                v["bar"],
+                std::env::temp_dir().join("muser-live.log").display()
+            );
             Ok(())
         }
         LiveCommand::Start { template, autoplay, record, port, open, title, detach: false, tail } => {
@@ -2145,8 +2298,12 @@ fn cmd_live(command: LiveCommand) -> Result<()> {
         }
         LiveCommand::Status { port } => print(live::request(port, "GET", "/api/status", None)?),
         LiveCommand::Wait { runway, port } => print(live::request(port, "GET", &format!("/api/wait?runway={runway}"), None)?),
-        LiveCommand::Mix { track, gain_db, port } => print(live::request(port, "POST", "/api/mix", Some(&serde_json::json!({ "track": track, "gain_db": gain_db }).to_string()))?),
-        LiveCommand::Autoplay { duration, port } => print(live::request(port, "POST", "/api/autoplay", Some(&serde_json::json!({ "duration": duration }).to_string()))?),
+        LiveCommand::Mix { track, gain_db, port } => {
+            print(live::request(port, "POST", "/api/mix", Some(&serde_json::json!({ "track": track, "gain_db": gain_db }).to_string()))?)
+        }
+        LiveCommand::Autoplay { duration, port } => {
+            print(live::request(port, "POST", "/api/autoplay", Some(&serde_json::json!({ "duration": duration }).to_string()))?)
+        }
         LiveCommand::Stop { port } => print(live::request(port, "POST", "/api/stop", None)?),
     }
 }

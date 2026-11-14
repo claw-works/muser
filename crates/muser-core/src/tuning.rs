@@ -14,9 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 可选的律制名。
-pub const SCALES: &[&str] = &[
-    "equal", "pythagorean", "meantone", "werckmeister_iii", "kirnberger_iii", "vallotti", "young", "just", "custom", "scala",
-];
+pub const SCALES: &[&str] = &["equal", "pythagorean", "meantone", "werckmeister_iii", "kirnberger_iii", "vallotti", "young", "just", "custom", "scala"];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Tuning {
@@ -105,11 +103,13 @@ pub fn pitch_class(name: &str) -> Option<u8> {
         'B' => 11,
         _ => return None,
     };
-    let shift: i32 = chars.map(|c| match c {
-        '#' | '♯' => Some(1),
-        'b' | '♭' => Some(-1),
-        _ => None,
-    }).sum::<Option<i32>>()?;
+    let shift: i32 = chars
+        .map(|c| match c {
+            '#' | '♯' => Some(1),
+            'b' | '♭' => Some(-1),
+            _ => None,
+        })
+        .sum::<Option<i32>>()?;
     Some((base + shift).rem_euclid(12) as u8)
 }
 

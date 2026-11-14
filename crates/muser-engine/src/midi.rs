@@ -7,11 +7,11 @@
 //! - 音轨的 `gain_db` / `pan` 写成 CC7 / CC10。静音的音轨照常导出，轨名后标"(muted)"。
 //! - audio 音轨（音频文件）没有音符，不导出。
 
-use manguebyte::midi::MidiMessage;
 use manguebyte::midi::file::{MetaEvent, MidiFile, Track};
+use manguebyte::midi::MidiMessage;
 use muser_core::Project;
 
-use crate::render::{Act, EngineError, schedule_ticks};
+use crate::render::{schedule_ticks, Act, EngineError};
 
 /// 每四分音符的 tick 数。
 pub const TICKS_PER_QUARTER: u16 = 480;
@@ -26,23 +26,77 @@ pub struct MidiExport {
 /// shortcut: 关键词表很粗，只求 DAW 里打开时大致对路；需要精确时再给音轨加一个显式的 program 字段。
 fn gm_program(instrument: &str) -> u8 {
     const TABLE: &[(&str, u8)] = &[
-        ("pizz", 45), ("contrabass", 43), ("cello", 42), ("viola", 41), ("violin", 40), ("ensemble", 48), ("string", 48),
-        ("nylon", 24), ("steel_pan", 114), ("steel", 25), ("guitar", 25),
-        ("acid", 38), ("slap", 36), ("finger", 33), ("bass", 38), ("sub", 38),
-        ("organ", 16), ("marimba", 12), ("xylophone", 13), ("vibraphone", 11), ("glockenspiel", 9), ("celesta", 8),
-        ("kalimba", 108), ("tubular", 14), ("bell", 14),
-        ("flute", 73), ("clarinet", 71), ("sax", 65), ("trumpet", 56), ("trombone", 57), ("brass", 61), ("horn", 60), ("fanfare", 61),
-        ("choir.solo", 53), ("choir", 52), ("aah", 52), ("ooh", 53),
-        ("clavinet", 7), ("wurly", 4), ("electric_piano", 5), ("keys", 4), ("piano", 0),
-        ("pad", 89), ("drone", 89), ("spectra", 89), ("wash", 89), ("pluck", 84),
-        ("lead", 81), ("saw", 81), ("square", 80), ("chiptune", 80), ("hoover", 81), ("screamer", 81),
-        ("riser", 98), ("downlifter", 98), ("noise", 122), ("wind", 122), ("impact", 127), ("siren", 125), ("laser", 98), ("bleep", 98),
+        ("pizz", 45),
+        ("contrabass", 43),
+        ("cello", 42),
+        ("viola", 41),
+        ("violin", 40),
+        ("ensemble", 48),
+        ("string", 48),
+        ("nylon", 24),
+        ("steel_pan", 114),
+        ("steel", 25),
+        ("guitar", 25),
+        ("acid", 38),
+        ("slap", 36),
+        ("finger", 33),
+        ("bass", 38),
+        ("sub", 38),
+        ("organ", 16),
+        ("marimba", 12),
+        ("xylophone", 13),
+        ("vibraphone", 11),
+        ("glockenspiel", 9),
+        ("celesta", 8),
+        ("kalimba", 108),
+        ("tubular", 14),
+        ("bell", 14),
+        ("flute", 73),
+        ("clarinet", 71),
+        ("sax", 65),
+        ("trumpet", 56),
+        ("trombone", 57),
+        ("brass", 61),
+        ("horn", 60),
+        ("fanfare", 61),
+        ("choir.solo", 53),
+        ("choir", 52),
+        ("aah", 52),
+        ("ooh", 53),
+        ("clavinet", 7),
+        ("wurly", 4),
+        ("electric_piano", 5),
+        ("keys", 4),
+        ("piano", 0),
+        ("pad", 89),
+        ("drone", 89),
+        ("spectra", 89),
+        ("wash", 89),
+        ("pluck", 84),
+        ("lead", 81),
+        ("saw", 81),
+        ("square", 80),
+        ("chiptune", 80),
+        ("hoover", 81),
+        ("screamer", 81),
+        ("riser", 98),
+        ("downlifter", 98),
+        ("noise", 122),
+        ("wind", 122),
+        ("impact", 127),
+        ("siren", 125),
+        ("laser", 98),
+        ("bleep", 98),
     ];
     let name = instrument.to_ascii_lowercase();
     if let Some(&(_, p)) = TABLE.iter().find(|(k, _)| name.contains(k)) {
         return p;
     }
-    if name.starts_with("poly.") || name.starts_with("synth.") { 81 } else { 0 }
+    if name.starts_with("poly.") || name.starts_with("synth.") {
+        81
+    } else {
+        0
+    }
 }
 
 /// 把工程导出为 MIDI 文件。
@@ -79,12 +133,15 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
     }
     // 拍号：开头一个，段落换拍号的地方各一个。
     for (beat, ts) in project.bar_map().segs {
-        conductor.push_meta((beat * f64::from(TICKS_PER_QUARTER)).round() as u64, MetaEvent::TimeSignature {
-            numerator: ts.numerator,
-            denominator_power: ts.denominator.max(1).trailing_zeros() as u8,
-            clocks_per_click: 24,
-            thirty_seconds_per_quarter: 8,
-        });
+        conductor.push_meta(
+            (beat * f64::from(TICKS_PER_QUARTER)).round() as u64,
+            MetaEvent::TimeSignature {
+                numerator: ts.numerator,
+                denominator_power: ts.denominator.max(1).trailing_zeros() as u8,
+                clocks_per_click: 24,
+                thirty_seconds_per_quarter: 8,
+            },
+        );
     }
     let mut tracks = vec![conductor];
     let mut skipped = Vec::new();
@@ -132,9 +189,7 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
                     track.push_meta(tick, MetaEvent::Lyric(text.as_str().to_string()));
                     continue;
                 }
-                Act::On { key, velocity, .. } => {
-                    MidiMessage::NoteOn { channel, note: key, velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8 }
-                }
+                Act::On { key, velocity, .. } => MidiMessage::NoteOn { channel, note: key, velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8 },
                 Act::Off { key, .. } => MidiMessage::NoteOff { channel, note: key, velocity: 0 },
                 Act::Pedal { down } => MidiMessage::ControlChange { channel, controller: 64, value: if down { 127 } else { 0 } },
                 // shortcut: 一个音轨一个通道，弯音会带上同时响着的其它音；要分开得按 MPE 每音一个通道导出。
@@ -160,7 +215,8 @@ mod tests {
             "name":"q","tempo":60,"tracks":[{"name":"q","instrument":"yinse.pluck.guqin",
             "clips":[{"start":0,"length":3,"notes":[{"pitch":57,"start":0,"length":2,
             "technique":"pressed","bend":[[0,0],[1,12],[2,12]]}]}]}]
-        })).unwrap();
+        }))
+        .unwrap();
         let bytes = export(&p).unwrap().bytes;
         let f = MidiFile::from_bytes(&bytes).unwrap();
         let events = f.tracks[1].events();
@@ -189,10 +245,14 @@ mod tests {
         assert_eq!(f.tracks.len(), 3);
         assert!(f.tracks[0].events().iter().any(|e| e.kind == TrackEventKind::Meta(MetaEvent::Tempo(666_667))));
         let on = |t: usize| -> Vec<(u64, u8, u8)> {
-            f.tracks[t].events().iter().filter_map(|e| match e.kind {
-                TrackEventKind::Midi(MidiMessage::NoteOn { channel, note, .. }) => Some((e.tick, channel, note)),
-                _ => None,
-            }).collect()
+            f.tracks[t]
+                .events()
+                .iter()
+                .filter_map(|e| match e.kind {
+                    TrackEventKind::Midi(MidiMessage::NoteOn { channel, note, .. }) => Some((e.tick, channel, note)),
+                    _ => None,
+                })
+                .collect()
         };
         // 鼓：通道 10，第 1 拍与第 2 拍（clip 从第 1 拍开始，四个十六分一下）。
         assert_eq!(on(1), [(480, 9, 36), (960, 9, 36)]);
@@ -210,9 +270,11 @@ mod tests {
     fn odd_tempo_lands_on_ticks() {
         for tempo in [97.3, 123.7, 61.1, 173.9] {
             let p: Project = serde_json::from_value(serde_json::json!({ "tempo": tempo, "tracks": [
-                { "instrument": "drums.909", "clips": [{ "start": 3, "length": 64, "grid": { "hat": "x" } }] }] })).unwrap();
+                { "instrument": "drums.909", "clips": [{ "start": 3, "length": 64, "grid": { "hat": "x" } }] }] }))
+            .unwrap();
             let f = MidiFile::from_bytes(&export(&p).unwrap().bytes).unwrap();
-            let ticks: Vec<u64> = f.tracks[1].events().iter().filter(|e| matches!(e.kind, TrackEventKind::Midi(MidiMessage::NoteOn { .. }))).map(|e| e.tick).collect();
+            let ticks: Vec<u64> =
+                f.tracks[1].events().iter().filter(|e| matches!(e.kind, TrackEventKind::Midi(MidiMessage::NoteOn { .. }))).map(|e| e.tick).collect();
             assert_eq!(ticks, (0..256).map(|k| 3 * 480 + k * 120).collect::<Vec<u64>>(), "tempo {tempo}");
         }
     }

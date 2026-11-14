@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use muser_core::Project;
 use serde::Serialize;
 
-use crate::abc_export::{Tone, estimate_key, guess_chord};
+use crate::abc_export::{estimate_key, guess_chord, Tone};
 use crate::render::{EngineError, RenderSettings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -178,7 +178,9 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         let mut f: Vec<(usize, i64, u8)> = tracks
             .iter()
             .enumerate()
-            .flat_map(|(i, t)| t.2.iter().filter(move |n| n.start >= a - 1e-9 && n.start < z - 1e-9).map(move |n| (i, ((n.start - a) * 48.0).round() as i64, n.pitch)))
+            .flat_map(|(i, t)| {
+                t.2.iter().filter(move |n| n.start >= a - 1e-9 && n.start < z - 1e-9).map(move |n| (i, ((n.start - a) * 48.0).round() as i64, n.pitch))
+            })
             .collect();
         f.sort_unstable();
         f
@@ -241,7 +243,10 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         };
         // 冲突。
         let mut clashes: Vec<Clash> = Vec::new();
-        let at = |t: f64| { let (b, into) = map.bar_at(t); (b + 1, round2(into + 1.0)) };
+        let at = |t: f64| {
+            let (b, into) = map.bar_at(t);
+            (b + 1, round2(into + 1.0))
+        };
         let held: Vec<(&str, Tone)> = tracks
             .iter()
             .filter(|t| !t.1)
@@ -255,7 +260,11 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
                 if !pcs.contains(&pc) && pcs.contains(&((pc + 11) % 12)) {
                     let (bar, beat) = at(n.start);
                     let below = name((n.pitch + 11) % 12 + 60).trim_end_matches('4').to_string();
-                    clashes.push(Clash { bar, beat, what: format!("{tn}: {} is an avoid note over {} (a semitone above the chord tone {below})", name(n.pitch), c.text) });
+                    clashes.push(Clash {
+                        bar,
+                        beat,
+                        what: format!("{tn}: {} is an avoid note over {} (a semitone above the chord tone {below})", name(n.pitch), c.text),
+                    });
                 }
             }
         }
@@ -288,10 +297,21 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
             let an = crate::audition::analyze(&part, sr, (0, part.num_frames()));
             let ms = (0..2).map(|c| part.channel(c).iter().map(|x| f64::from(*x).powi(2)).sum::<f64>()).sum::<f64>() / (2 * part.num_frames()) as f64;
             let rms_db = (10.0 * ms.max(1e-12).log10() * 10.0).round() / 10.0;
-            AudioStat { lufs: (an.lufs * 10.0).round() / 10.0, rms_db, centroid_hz: an.centroid_hz.round(), low_pct: an.low_pct.round(), mid_pct: an.mid_pct.round(), high_pct: an.high_pct.round() }
+            AudioStat {
+                lufs: (an.lufs * 10.0).round() / 10.0,
+                rms_db,
+                centroid_hz: an.centroid_hz.round(),
+                low_pct: an.low_pct.round(),
+                mid_pct: an.mid_pct.round(),
+                high_pct: an.high_pct.round(),
+            }
         });
         let vel: Vec<f32> = tracks.iter().zip(&vels).flat_map(|(t, v)| t.2.iter().zip(v).filter(|(n, _)| inside(n)).map(|(_, &x)| x)).collect();
-        energy_raw.push((onsets as f64 / nbars as f64, stats.len() as f64, if vel.is_empty() { 0.0 } else { f64::from(vel.iter().sum::<f32>()) / vel.len() as f64 }));
+        energy_raw.push((
+            onsets as f64 / nbars as f64,
+            stats.len() as f64,
+            if vel.is_empty() { 0.0 } else { f64::from(vel.iter().sum::<f32>()) / vel.len() as f64 },
+        ));
         sections.push(SectionReport {
             name: name_s.clone(),
             occurrence: *occurrence,
@@ -340,7 +360,12 @@ fn mute_hint(project: &Project, sections: &[SectionReport], i: usize, mute: &[&s
         return format!("{} ({span}): drop the notes of {}", s.name, mute.join(", "));
     }
     let list = mute.iter().map(|m| format!("\"{m}\"")).collect::<Vec<_>>().join(", ");
-    format!("{} ({span}): mute {}: write form[{i}] as {{\"section\": \"{}\", \"mute\": [{list}]}} (keep any existing transpose / seed)", s.name, mute.join(", "), s.name)
+    format!(
+        "{} ({span}): mute {}: write form[{i}] as {{\"section\": \"{}\", \"mute\": [{list}]}} (keep any existing transpose / seed)",
+        s.name,
+        mute.join(", "),
+        s.name
+    )
 }
 
 /// 编制不变时：开头一段只留最稀的一件（铺底 / 和弦），其余先不进。
@@ -394,39 +419,75 @@ fn tells(
     let has_form = !project.form.is_empty();
     if has_form && n >= 3 {
         let all8 = sections.iter().all(|s| s.bars % 8 == 0);
-        tell(1, "Every section is a multiple of 8 bars", all8, if all8 {
-            "Real songs often have sections of 2 / 4 / 6 / 10 / 12 bars: shorten or lengthen the intro, pre-chorus or outro, or add a 2-bar transition".into()
-        } else { "Some sections are not a multiple of 8 bars".into() });
+        tell(
+            1,
+            "Every section is a multiple of 8 bars",
+            all8,
+            if all8 {
+                "Real songs often have sections of 2 / 4 / 6 / 10 / 12 bars: shorten or lengthen the intro, pre-chorus or outro, or add a 2-bar transition"
+                    .into()
+            } else {
+                "Some sections are not a multiple of 8 bars".into()
+            },
+        );
     }
     if n >= 3 {
         let e: Vec<u8> = sections.iter().map(|s| s.energy).collect();
         let rising = e.windows(2).all(|w| w[1] >= w[0]);
-        tell(2, "Energy only rises, never drops", rising, if rising {
-            format!("Energy {:?} never drops (all 62 of 62 real arrangements measured have drops): pull a few instruments out of the interlude, bridge or before the last chorus. {}", e, drop_hint(project, sections))
-        } else { format!("Energy {:?} rises and falls", e) });
+        tell(
+            2,
+            "Energy only rises, never drops",
+            rising,
+            if rising {
+                format!("Energy {:?} never drops (all 62 of 62 real arrangements measured have drops): pull a few instruments out of the interlude, bridge or before the last chorus. {}", e, drop_hint(project, sections))
+            } else {
+                format!("Energy {:?} rises and falls", e)
+            },
+        );
         let present: Vec<Vec<&str>> = sections.iter().map(|s| s.tracks.iter().map(|t| t.name.as_str()).collect()).collect();
         let used: std::collections::BTreeSet<&str> = present.iter().flatten().copied().collect();
         let constant = used.len() >= 2 && present.iter().all(|p| p.len() == used.len());
-        tell(3, "Instrumentation never changes", constant, if constant {
-            format!("Every track plays in every section: let instruments come and go - fewer in the intro, enter at the chorus, drop the drums or bass in some section. {}", sparse_hint(project, sections))
-        } else { "Instruments come and go".into() });
-        let progs: Vec<String> = sections.iter().filter(|s| !s.chords.is_empty()).map(|s| {
-            let mut c: Vec<&str> = s.chords.iter().map(|x| x.trim_start_matches('~')).collect();
-            c.dedup();
-            c.join(" ")
-        }).collect();
+        tell(
+            3,
+            "Instrumentation never changes",
+            constant,
+            if constant {
+                format!("Every track plays in every section: let instruments come and go - fewer in the intro, enter at the chorus, drop the drums or bass in some section. {}", sparse_hint(project, sections))
+            } else {
+                "Instruments come and go".into()
+            },
+        );
+        let progs: Vec<String> = sections
+            .iter()
+            .filter(|s| !s.chords.is_empty())
+            .map(|s| {
+                let mut c: Vec<&str> = s.chords.iter().map(|x| x.trim_start_matches('~')).collect();
+                c.dedup();
+                c.join(" ")
+            })
+            .collect();
         let one_loop = progs.len() >= 3 && progs.windows(2).all(|w| w[0] == w[1]);
         let scale = key.scale_pcs();
-        let outside = sections.iter().flat_map(|s| s.chords.iter()).filter_map(|c| muser_core::chord::Chord::parse(c.trim_start_matches('~')).ok())
+        let outside = sections
+            .iter()
+            .flat_map(|s| s.chords.iter())
+            .filter_map(|c| muser_core::chord::Chord::parse(c.trim_start_matches('~')).ok())
             .any(|c| c.pitch_classes().iter().any(|pc| !scale.contains(pc)));
         let modulates = project.form.iter().any(|e| e.transpose() != 0);
         if !progs.is_empty() {
             let hit = one_loop || (!outside && !modulates && n >= 4);
-            tell(4, "One harmonic loop for the whole song / never leaves the key", hit, if one_loop {
-                format!("Every section uses the same progression ({}): give the pre / bridge / chorus different chords", progs[0])
-            } else if hit {
-                "Only diatonic chords and no key change: use a non-diatonic chord in the bridge or pre (borrowed chords such as iv, bVII, or secondary dominants such as V/vi), or transpose the last chorus".into()
-            } else { "The harmony varies".into() });
+            tell(
+                4,
+                "One harmonic loop for the whole song / never leaves the key",
+                hit,
+                if one_loop {
+                    format!("Every section uses the same progression ({}): give the pre / bridge / chorus different chords", progs[0])
+                } else if hit {
+                    "Only diatonic chords and no key change: use a non-diatonic chord in the bridge or pre (borrowed chords such as iv, bVII, or secondary dominants such as V/vi), or transpose the last chorus".into()
+                } else {
+                    "The harmony varies".into()
+                },
+            );
         }
     }
     // 过门：鼓轨里通鼓 ≥ 3 下、或最后两拍军鼓 ≥ 4 下的小节。
@@ -443,27 +504,54 @@ fn tells(
         if fill_bars.len() >= 3 {
             let rigid = fill_bars.iter().all(|b| (b + 1) % 4 == 0) && fill_bars.len() * 4 >= prints.len() * 3 / 4;
             let shown: Vec<String> = fill_bars.iter().take(12).map(|b| (b + 1).to_string()).collect();
-            tell(5, "Fills fall rigidly on multiples of 4 bars", rigid, if rigid {
-                format!("Fills at bar {}, every 4 bars: leave fill_every out of the drummer (it then fills automatically at section ends and at random phrase ends), or write fills at section ends with end", shown.join(", "))
-            } else { format!("Fills at bar {}", shown.join(", ")) });
+            tell(
+                5,
+                "Fills fall rigidly on multiples of 4 bars",
+                rigid,
+                if rigid {
+                    format!("Fills at bar {}, every 4 bars: leave fill_every out of the drummer (it then fills automatically at section ends and at random phrase ends), or write fills at section ends with end", shown.join(", "))
+                } else {
+                    format!("Fills at bar {}", shown.join(", "))
+                },
+            );
         }
     }
     let pitched = tracks.iter().filter(|t| !t.1 && !t.2.is_empty()).count();
     if pitched > 0 {
         let hit = unhumanized.len() == pitched;
-        tell(8, "Melody / harmony all on the grid", hit, if hit {
-            format!("{} have no humanize: add humanize to the melody, bass and harmony (timing_ms, drift, or push / lay-back); the drum kit can stay on the grid", unhumanized.join(", "))
-        } else if unhumanized.is_empty() { "Melody / harmony tracks all have humanize".into() } else { format!("Tracks without humanize: {}", unhumanized.join(", ")) });
+        tell(
+            8,
+            "Melody / harmony all on the grid",
+            hit,
+            if hit {
+                format!("{} have no humanize: add humanize to the melody, bass and harmony (timing_ms, drift, or push / lay-back); the drum kit can stay on the grid", unhumanized.join(", "))
+            } else if unhumanized.is_empty() {
+                "Melody / harmony tracks all have humanize".into()
+            } else {
+                format!("Tracks without humanize: {}", unhumanized.join(", "))
+            },
+        );
     }
     // 副歌每遍一模一样：各遍的小节指纹完全相同。
-    let is_chorus = |n: &str| { let n = n.to_lowercase(); ["chorus", "drop", "hook", "副歌"].iter().any(|k| n.contains(k)) };
+    let is_chorus = |n: &str| {
+        let n = n.to_lowercase();
+        ["chorus", "drop", "hook", "副歌"].iter().any(|k| n.contains(k))
+    };
     let choruses: Vec<&SectionReport> = sections.iter().filter(|s| is_chorus(&s.name)).collect();
     if choruses.len() >= 2 {
         let body = |s: &SectionReport| -> Vec<Vec<(usize, i64, u8)>> { (s.bar - 1..s.bar - 1 + s.bars).filter_map(|b| prints.get(b).cloned()).collect() };
         let same = choruses.windows(2).all(|w| body(w[0]) == body(w[1]));
-        tell(11, "Every chorus is identical", same, if same {
-            "The notes of every chorus are identical: for later choruses use chorus#2 to write it differently, add parts, vary, or transpose the last one".into()
-        } else { "The choruses vary".into() });
+        tell(
+            11,
+            "Every chorus is identical",
+            same,
+            if same {
+                "The notes of every chorus are identical: for later choruses use chorus#2 to write it differently, add parts, vary, or transpose the last one"
+                    .into()
+            } else {
+                "The choruses vary".into()
+            },
+        );
     }
     let audio: Vec<&AudioStat> = sections.iter().filter_map(|s| s.audio.as_ref()).filter(|a| a.lufs.is_finite()).collect();
     if audio.len() >= 3 {
@@ -471,9 +559,16 @@ fn tells(
         let mean = audio.iter().map(|a| a.centroid_hz).sum::<f64>() / audio.len() as f64;
         let sd = (audio.iter().map(|a| (a.centroid_hz - mean).powi(2)).sum::<f64>() / audio.len() as f64).sqrt();
         let flat = hi - lo < 1.5 || sd < 0.04 * mean;
-        tell(7, "Dynamics flattened, brightness never changes", flat, if flat {
-            format!("Section loudness differs by only {:.1} LU and spectral centroid varies by {:.0}%: make the intro / interlude sparser and darker and the chorus fuller and brighter (drop instruments, change register, eq / filter automation)", hi - lo, 100.0 * sd / mean.max(1.0))
-        } else { format!("Section loudness differs by {:.1} LU", hi - lo) });
+        tell(
+            7,
+            "Dynamics flattened, brightness never changes",
+            flat,
+            if flat {
+                format!("Section loudness differs by only {:.1} LU and spectral centroid varies by {:.0}%: make the intro / interlude sparser and darker and the chorus fuller and brighter (drop instruments, change register, eq / filter automation)", hi - lo, 100.0 * sd / mean.max(1.0))
+            } else {
+                format!("Section loudness differs by {:.1} LU", hi - lo)
+            },
+        );
     }
     out
 }
@@ -526,14 +621,13 @@ fn silent_sections(p: &Project, sections: &[SectionReport], map: &muser_core::Ba
         if master < -24.0 && !low.is_empty() {
             why.push("the master curve and the track fades overlap".into());
         }
-        let why = if why.is_empty() { "cause unclear: check the level automation, fades and effects (gate, filter) on the master and the tracks".to_string() } else { why.join("; ") };
+        let why = if why.is_empty() {
+            "cause unclear: check the level automation, fades and effects (gate, filter) on the master and the tracks".to_string()
+        } else {
+            why.join("; ")
+        };
         let level = if a.rms_db.is_finite() { format!("averages {:.0} dB", a.rms_db) } else { "completely silent".into() };
-        out.push(format!(
-            "{} (bars {}–{}) is almost silent ({level}): {why}. Ignore this if the gap is intentional",
-            s.name,
-            s.bar,
-            s.bar + s.bars - 1
-        ));
+        out.push(format!("{} (bars {}–{}) is almost silent ({level}): {why}. Ignore this if the gap is intentional", s.name, s.bar, s.bar + s.bars - 1));
     }
     out
 }
@@ -569,7 +663,10 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
     }
     let distinct: std::collections::BTreeSet<&str> = sections.iter().flat_map(|s| s.chords.iter().map(|c| c.trim_start_matches('~'))).collect();
     if distinct.len() == 1 && nonempty >= 8 {
-        out.push(format!("The whole song has only one chord ({}): unless this is a deliberate drone / one-chord groove, write a chord progression in sections", distinct.iter().next().unwrap()));
+        out.push(format!(
+            "The whole song has only one chord ({}): unless this is a deliberate drone / one-chord groove, write a chord progression in sections",
+            distinct.iter().next().unwrap()
+        ));
     }
     // 音区重叠：同一段里两条旋律 / 和声音轨长时间发声、中位音高相差不到 5 个半音。同一条轨和几条轨都重叠时合成一句。
     let mut masked: BTreeMap<String, BTreeMap<String, (u8, u8, Vec<String>)>> = BTreeMap::new();
@@ -608,7 +705,10 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
     if lufs.len() >= 3 {
         let (lo, hi) = lufs.iter().fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
         if hi - lo < 1.5 {
-            out.push(format!("Section loudness differs by only {:.1} LU: no dynamic contrast; make the intro / interlude sparser and the chorus fuller", hi - lo));
+            out.push(format!(
+                "Section loudness differs by only {:.1} LU: no dynamic contrast; make the intro / interlude sparser and the chorus fuller",
+                hi - lo
+            ));
         }
     }
     // 明暗看频谱重心：完整的混音一般在 1500–3000 Hz（低频的能量占比在混音里总是很高，不作判断）。
@@ -616,7 +716,10 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
         if a.centroid_hz < 1000.0 {
             out.push(format!("{} has a spectral centroid of only {} Hz: dark and muffled; add hi-hat / shaker, brighten the harmony track with high_shelf, or add highpass to non-bass tracks", sec.name, a.centroid_hz));
         } else if a.centroid_hz > 4500.0 {
-            out.push(format!("{} has a spectral centroid of {} Hz: bright and possibly harsh; lower the cymbals / high tracks, or use lowpass", sec.name, a.centroid_hz));
+            out.push(format!(
+                "{} has a spectral centroid of {} Hz: bright and possibly harsh; lower the cymbals / high tracks, or use lowpass",
+                sec.name, a.centroid_hz
+            ));
         }
     }
     if out.is_empty() {

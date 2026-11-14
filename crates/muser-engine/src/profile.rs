@@ -231,11 +231,9 @@ fn clean_deep(v: &Value, depth: usize) -> Result<Value, String> {
     }
     match v {
         Value::Array(a) if a.len() <= MAX_ITEMS => a.iter().map(|x| clean_deep(x, depth + 1)).collect::<Result<_, _>>().map(Value::Array),
-        Value::Object(m) if m.len() <= MAX_ITEMS => m
-            .iter()
-            .map(|(k, x)| Ok((clean(k), clean_deep(x, depth + 1)?)))
-            .collect::<Result<Map<_, _>, String>>()
-            .map(Value::Object),
+        Value::Object(m) if m.len() <= MAX_ITEMS => {
+            m.iter().map(|(k, x)| Ok((clean(k), clean_deep(x, depth + 1)?))).collect::<Result<Map<_, _>, String>>().map(Value::Object)
+        }
         Value::Array(_) | Value::Object(_) => Err("too many items".into()),
         Value::Null => Err("must not be null".into()),
         _ => clean_value(v),
@@ -412,9 +410,8 @@ pub fn user_dir() -> PathBuf {
 }
 
 fn search_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("MUSER_PROFILE_PATH")
-        .map(|v| std::env::split_paths(&v).filter(|p| !p.as_os_str().is_empty()).collect())
-        .unwrap_or_default();
+    let mut dirs: Vec<PathBuf> =
+        std::env::var_os("MUSER_PROFILE_PATH").map(|v| std::env::split_paths(&v).filter(|p| !p.as_os_str().is_empty()).collect()).unwrap_or_default();
     dirs.push(user_dir());
     dirs
 }
@@ -680,7 +677,10 @@ mod tests {
         assert!(Profile::from_json(&base(r#", "unknown": 1"#)).is_err(), "unknown fields are rejected");
         assert!(Profile::from_json(&base(r#", "setup": { "@preset": "a" }"#)).is_err(), "reserved keys are rejected");
         assert!(Profile::from_json(&base(r#", "setup": { "a": { "nested": 1 } }"#)).is_err(), "nested values are rejected");
-        assert!(Profile::from_json(&base(r#", "params": [{ "name": "A", "alias": "x" }, { "name": "B", "alias": "X" }]"#)).is_err(), "duplicate aliases are rejected");
+        assert!(
+            Profile::from_json(&base(r#", "params": [{ "name": "A", "alias": "x" }, { "name": "B", "alias": "X" }]"#)).is_err(),
+            "duplicate aliases are rejected"
+        );
         let p = Profile::from_json(&base(r#", "tips": ["ok\u0007bell"]"#)).unwrap();
         assert_eq!(p.tips[0], "okbell");
         assert!(Profile::from_json(r#"{ "schema_version": 2, "plugin": { "name": "X", "ids": ["x"] } }"#).is_err());

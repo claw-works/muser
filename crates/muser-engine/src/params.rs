@@ -8,8 +8,8 @@
 
 use manguebyte::dsp::instruments::poly::{FilterModel, FilterParams};
 use manguebyte::dsp::instruments::{
-    AcidParams, BowedParams, ChoirParams, FmParams, MalletParams, OrganParams, Percussion,
-    PercussionDecay, PercussionHarmonic, Piece, PolySynthParams, StringParams, WindParams,
+    AcidParams, BowedParams, ChoirParams, FmParams, MalletParams, OrganParams, Percussion, PercussionDecay, PercussionHarmonic, Piece, PolySynthParams,
+    StringParams, WindParams,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -150,10 +150,16 @@ fn active_filter_ref(p: &PolySynthParams) -> Option<&FilterParams> {
 pub(crate) static POLY: &[ParamDef<PolySynthParams>] = &[
     num!("attack", 0.0, 20.0, "s", "Volume attack time. 0.001-0.01 crisp; 0.1-0.5 soft; >1 slowly fades in (pad)", |p| p.envelopes[0].attack),
     num!("decay", 0.0, 20.0, "s", "Time for the volume to fall from the peak to sustain", |p| p.envelopes[0].decay),
-    num!("sustain", 0.0, 1.0, "", "Volume level held while the key is down. 0 = attack only (pluck); 1 = full volume throughout (pad/organ)", |p| p.envelopes[0].sustain),
+    num!("sustain", 0.0, 1.0, "", "Volume level held while the key is down. 0 = attack only (pluck); 1 = full volume throughout (pad/organ)", |p| p.envelopes
+        [0]
+    .sustain),
     num!("release", 0.0, 20.0, "s", "Tail length after release. 0.05-0.2 tight; 0.5-2 with a tail; >3 a very long bed", |p| p.envelopes[0].release),
     ParamDef {
-        spec: InstParamSpec { name: "cutoff", kind: number(20.0, 20000.0, "Hz"), description: "Filter cutoff: lower is duller and darker, higher is brighter. Bass 200-1500; lead 1500-6000" },
+        spec: InstParamSpec {
+            name: "cutoff",
+            kind: number(20.0, 20000.0, "Hz"),
+            description: "Filter cutoff: lower is duller and darker, higher is brighter. Bass 200-1500; lead 1500-6000",
+        },
         get: |p| active_filter_ref(p).map_or(Value::Null, |f| json!(f.cutoff)),
         set: Setter::Num(|p, v| {
             active_filter(p)?.cutoff = v;
@@ -161,7 +167,11 @@ pub(crate) static POLY: &[ParamDef<PolySynthParams>] = &[
         }),
     },
     ParamDef {
-        spec: InstParamSpec { name: "resonance", kind: number(0.0, 1.0, ""), description: "Filter resonance: the peak at the cutoff. 0.2-0.4 adds character; 0.7+ screaming (acid)" },
+        spec: InstParamSpec {
+            name: "resonance",
+            kind: number(0.0, 1.0, ""),
+            description: "Filter resonance: the peak at the cutoff. 0.2-0.4 adds character; 0.7+ screaming (acid)",
+        },
         get: |p| active_filter_ref(p).map_or(Value::Null, |f| json!(f.resonance)),
         set: Setter::Num(|p, v| {
             active_filter(p)?.resonance = v;
@@ -169,7 +179,11 @@ pub(crate) static POLY: &[ParamDef<PolySynthParams>] = &[
         }),
     },
     ParamDef {
-        spec: InstParamSpec { name: "filter_env", kind: number(-8.0, 8.0, "oct"), description: "How many octaves the filter envelope pushes the cutoff. Positive = brightens on attack then falls back (a 'wah'); 0 = no movement" },
+        spec: InstParamSpec {
+            name: "filter_env",
+            kind: number(-8.0, 8.0, "oct"),
+            description: "How many octaves the filter envelope pushes the cutoff. Positive = brightens on attack then falls back (a 'wah'); 0 = no movement",
+        },
         get: |p| active_filter_ref(p).map_or(Value::Null, |f| json!(f.env_amount)),
         set: Setter::Num(|p, v| {
             active_filter(p)?.env_amount = v;
@@ -207,11 +221,20 @@ pub(crate) static FM: &[ParamDef<FmParams>] = &[
 ];
 
 pub(crate) static STRING: &[ParamDef<StringParams>] = &[
-    num!("decay", 0.05, 60.0, "s", "How long the string rings while held (time for middle C to decay 60 dB). Short = muted; long = long ringing tail", |p| p.decay),
+    num!("decay", 0.05, 60.0, "s", "How long the string rings while held (time for middle C to decay 60 dB). Short = muted; long = long ringing tail", |p| p
+        .decay),
     num!("release", 0.01, 10.0, "s", "Decay time after release (damping)", |p| p.release),
     num!("tone", 200.0, 20000.0, "Hz", "Final low-pass: brightness of the body/pickup. 2000 dark; 5000 normal; 10000+ very bright", |p| p.tone),
-    num!("pluck_brightness", 100.0, 20000.0, "Hz", "Pluck brightness: fingernail/pick is bright (5000+), fingertip is dark (1000-2000)", |p| p.pluck_brightness),
-    num!("pluck_position", 0.02, 0.5, "", "Pluck position (fraction of the way from the bridge). 0.05 near the bridge, thin and bright; 0.5 mid-string, round and hollow", |p| p.pluck_position),
+    num!("pluck_brightness", 100.0, 20000.0, "Hz", "Pluck brightness: fingernail/pick is bright (5000+), fingertip is dark (1000-2000)", |p| p
+        .pluck_brightness),
+    num!(
+        "pluck_position",
+        0.02,
+        0.5,
+        "",
+        "Pluck position (fraction of the way from the bridge). 0.05 near the bridge, thin and bright; 0.5 mid-string, round and hollow",
+        |p| p.pluck_position
+    ),
     num!("buzz", 0.0, 1.0, "", "Fret buzz. 0 clean; 0.3+ percussive (slap)", |p| p.buzz),
 ];
 
@@ -260,10 +283,8 @@ pub(crate) static ELECTRIC: &[ParamDef<crate::electric::ElectricParams>] = &[
     num!("pluck_position", 0.02, 0.5, "", "Where the pick hits (fraction of the way from the bridge): 0.06 near the bridge, thin and twangy; 0.3 over the neck, round", |p| p.string.pluck_position),
 ];
 
-pub(crate) const NEXT_ZITHER: &[&str] = &[
-    "decay", "release", "high_decay", "strike", "pluck_noise", "pluck_brightness", "pluck_position",
-    "vibrato", "vibrato_rate", "vibrato_delay", "pressure",
-];
+pub(crate) const NEXT_ZITHER: &[&str] =
+    &["decay", "release", "high_decay", "strike", "pluck_noise", "pluck_brightness", "pluck_position", "vibrato", "vibrato_rate", "vibrato_delay", "pressure"];
 
 pub(crate) static ZITHER: &[ParamDef<crate::zither::ZitherParams>] = &[
     ParamDef {
@@ -410,7 +431,11 @@ fn drawbars_text(p: &OrganParams) -> Value {
 
 pub(crate) static ORGAN: &[ParamDef<OrganParams>] = &[
     ParamDef {
-        spec: InstParamSpec { name: "drawbars", kind: ParamKind::Drawbars, description: "Nine drawbars (16' 5⅓' 8' 4' 2⅔' 2' 1⅗' 1⅓' 1'), each 0-8. \"888000000\" classic jazz; \"838000000\" soft; \"888888888\" all out" },
+        spec: InstParamSpec {
+            name: "drawbars",
+            kind: ParamKind::Drawbars,
+            description: "Nine drawbars (16' 5⅓' 8' 4' 2⅔' 2' 1⅗' 1⅓' 1'), each 0-8. \"888000000\" classic jazz; \"838000000\" soft; \"888888888\" all out",
+        },
         get: drawbars_text,
         set: Setter::Text(|p, s| {
             let digits: Vec<u32> = s.chars().filter(|c| !c.is_whitespace()).map(|c| c.to_digit(10).unwrap_or(99)).collect();
@@ -424,7 +449,11 @@ pub(crate) static ORGAN: &[ParamDef<OrganParams>] = &[
         }),
     },
     ParamDef {
-        spec: InstParamSpec { name: "percussion", kind: ParamKind::Choice { choices: &["off", "second", "third"] }, description: "Percussion: adds a short 2nd/3rd harmonic at key-down, the jazz organ \"ping\"" },
+        spec: InstParamSpec {
+            name: "percussion",
+            kind: ParamKind::Choice { choices: &["off", "second", "third"] },
+            description: "Percussion: adds a short 2nd/3rd harmonic at key-down, the jazz organ \"ping\"",
+        },
         get: |p| match p.percussion {
             None => json!("off"),
             Some(x) if x.harmonic == PercussionHarmonic::Second => json!("second"),
@@ -539,17 +568,13 @@ pub(crate) fn to_number(spec: &InstParamSpec, v: &Value) -> Result<f64, String> 
     match spec.kind {
         ParamKind::Number { min, max, unit, integer, names } => {
             let x = if let Some(s) = v.as_str() {
-                names
-                    .iter()
-                    .position(|n| n.eq_ignore_ascii_case(s.trim()))
-                    .map(|i| i as f64)
-                    .ok_or_else(|| {
-                        if names.is_empty() {
-                            format!("expected a number, got \"{s}\"")
-                        } else {
-                            format!("expected a number or {}, got \"{s}\"", names.join("/"))
-                        }
-                    })?
+                names.iter().position(|n| n.eq_ignore_ascii_case(s.trim())).map(|i| i as f64).ok_or_else(|| {
+                    if names.is_empty() {
+                        format!("expected a number, got \"{s}\"")
+                    } else {
+                        format!("expected a number or {}, got \"{s}\"", names.join("/"))
+                    }
+                })?
             } else {
                 v.as_f64().ok_or_else(|| format!("expected a number, got {v}"))?
             };
@@ -570,10 +595,7 @@ pub(crate) fn to_number(spec: &InstParamSpec, v: &Value) -> Result<f64, String> 
                 .map(|i| i as f64)
                 .ok_or_else(|| format!("\"{s}\" is invalid, choose from {}", choices.join(" / ")))
         }
-        ParamKind::Bool => v
-            .as_bool()
-            .map(|b| if b { 1.0 } else { 0.0 })
-            .ok_or_else(|| format!("expected true/false, got {v}")),
+        ParamKind::Bool => v.as_bool().map(|b| if b { 1.0 } else { 0.0 }).ok_or_else(|| format!("expected true/false, got {v}")),
         ParamKind::Drawbars => Err("internal error: drawbar parameters must be written as text".into()),
     }
 }
@@ -586,18 +608,12 @@ fn apply_one<P>(def: &ParamDef<P>, p: &mut P, v: &Value) -> Result<(), String> {
 }
 
 /// 把一组参数应用到乐器参数结构上。错误信息以参数名开头。
-pub(crate) fn apply<P>(
-    defs: &[ParamDef<P>],
-    p: &mut P,
-    params: &serde_json::Map<String, Value>,
-) -> Result<(), String> {
+pub(crate) fn apply<P>(defs: &[ParamDef<P>], p: &mut P, params: &serde_json::Map<String, Value>) -> Result<(), String> {
     for (key, value) in params {
-        let def = defs.iter().find(|d| d.spec.name == key).ok_or_else(|| {
-            format!(
-                "unknown parameter '{key}', available: {}",
-                defs.iter().map(|d| d.spec.name).collect::<Vec<_>>().join(", ")
-            )
-        })?;
+        let def = defs
+            .iter()
+            .find(|d| d.spec.name == key)
+            .ok_or_else(|| format!("unknown parameter '{key}', available: {}", defs.iter().map(|d| d.spec.name).collect::<Vec<_>>().join(", ")))?;
         apply_one(def, p, value).map_err(|e| format!("{key}: {e}"))?;
     }
     Ok(())
@@ -605,16 +621,12 @@ pub(crate) fn apply<P>(
 
 /// 参数规格 + 当前值。
 pub(crate) fn describe<P>(defs: &[ParamDef<P>], p: &P, next_note: &[&str]) -> Vec<ParamInfo> {
-    defs.iter()
-        .map(|d| ParamInfo { spec: d.spec, current: (d.get)(p), automation: automatable(&d.spec, next_note) })
-        .collect()
+    defs.iter().map(|d| ParamInfo { spec: d.spec, current: (d.get)(p), automation: automatable(&d.spec, next_note) }).collect()
 }
 
 /// 只要规格（不带当前值）。
 pub(crate) fn specs<P>(defs: &[ParamDef<P>], next_note: &[&str]) -> Vec<ParamInfo> {
-    defs.iter()
-        .map(|d| ParamInfo { spec: d.spec, current: Value::Null, automation: automatable(&d.spec, next_note) })
-        .collect()
+    defs.iter().map(|d| ParamInfo { spec: d.spec, current: Value::Null, automation: automatable(&d.spec, next_note) }).collect()
 }
 
 /// 自动化：按名字写一个数值（已校验过范围；这里再夹一次，防御性）。
@@ -629,4 +641,3 @@ pub(crate) fn set_number<P>(defs: &[ParamDef<P>], p: &mut P, name: &str, v: f64)
         Setter::Text(_) => false,
     }
 }
-

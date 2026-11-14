@@ -10,29 +10,31 @@ pub mod audio;
 pub mod audition;
 pub mod automate;
 pub mod daw;
+pub mod distortion;
 pub mod drummer;
 pub mod effects;
 pub mod export_data;
 pub mod hum;
-pub mod distortion;
 pub mod instrument;
 pub mod levels;
 pub mod loop_library;
+// Phoneme and modal tables: one entry per line would bury them (percussion.rs is also written by the fitting scripts).
+#[rustfmt::skip]
 pub mod english;
 pub mod lyric;
 pub mod midi;
 pub mod migrate;
 pub mod mix;
 pub mod params;
-pub mod poly_patch;
-pub mod poly_library;
 #[cfg(feature = "devices")]
 pub mod playback;
 pub mod plugin;
-#[cfg(all(feature = "host", unix))]
-mod plugin_log;
 #[cfg(all(feature = "host", any(target_os = "macos", windows)))]
 pub mod plugin_edit;
+#[cfg(all(feature = "host", unix))]
+mod plugin_log;
+pub mod poly_library;
+pub mod poly_patch;
 pub mod profile;
 pub mod vital;
 
@@ -55,7 +57,8 @@ pub mod transport {
     fn map(tempo: f64, segs: &[(f64, u16, u16)], bar_of: impl Fn(f64) -> usize) -> TempoMap {
         let sig = |n: u16, d: u16| TimeSignature { numerator: n, denominator: d };
         let first = segs.first().map_or(sig(4, 4), |s| sig(s.1, s.2));
-        let mut m = TempoMap::new(tempo, first).or_else(|_| TempoMap::new(tempo, sig(4, 4))).unwrap_or_else(|_| TempoMap::new(120.0, sig(4, 4)).expect("120 bpm 4/4"));
+        let mut m =
+            TempoMap::new(tempo, first).or_else(|_| TempoMap::new(tempo, sig(4, 4))).unwrap_or_else(|_| TempoMap::new(120.0, sig(4, 4)).expect("120 bpm 4/4"));
         for &(beat, n, d) in segs.iter().skip(1) {
             let _ = m.set_signature(bar_of(beat) as i64, sig(n, d));
         }
@@ -133,7 +136,8 @@ pub mod transport {
             // 4/4 两小节，然后 7/8：第 8 拍起是第 2 小节、7/8；第 11.5 拍是第 3 小节的开头。
             let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 120,
                 "sections": { "a": { "bars": 2 }, "b": { "bars": 2, "time_signature": { "numerator": 7, "denominator": 8 } } },
-                "form": ["a", "b"], "tracks": [] })).unwrap();
+                "form": ["a", "b"], "tracks": [] }))
+            .unwrap();
             let _g = super::set(&p, 0);
             let mut c = super::clock();
             let sr = 1000.0;
@@ -164,29 +168,33 @@ pub fn trace(msg: impl FnOnce() -> String) {
     }
 }
 
-pub mod sfz;
-pub mod presets;
-mod electric;
 mod accordion;
 mod chinese;
-mod zither;
+mod electric;
 pub mod modal;
+pub mod presets;
+pub mod sfz;
+mod zither;
+#[rustfmt::skip]
 pub mod percussion;
 pub(crate) mod singer;
-pub mod xfer;
 pub mod sounds;
+pub mod xfer;
 
 pub use instrument::{
     available as available_instruments, catalog as instrument_catalog, check as check_instrument_with, check_name as check_instrument,
     describe as describe_instrument, InstrumentInfo, NoteConvention, TrackInstrument,
 };
-pub use params::Automatable;
 /// 渲染结果用的立体声缓冲（来自 manguebyte）。
 pub use manguebyte::prelude::AudioBuffer;
 /// WAV 读写（`muser view` 录人声用）。
 pub use manguebyte::prelude::{wav, WavFormat};
 pub use mix::{mix_report, MixReport, NodeReport};
-pub use render::{render, render_cached, render_loudness, render_metered, Level, NodeLoudness, render_to_wav, render_to_wav_with_progress, mp3_bytes, EngineError, Meter, RenderCache, RenderSettings, Renderer, METER_WINDOW};
+pub use params::Automatable;
+pub use render::{
+    mp3_bytes, render, render_cached, render_loudness, render_metered, render_to_wav, render_to_wav_with_progress, EngineError, Level, Meter, NodeLoudness,
+    RenderCache, RenderSettings, Renderer, METER_WINDOW,
+};
 
 /// 完整校验：工程结构与效果器参数（core 描述表）+ 每条音轨的乐器名是否可用。
 /// 不加载插件，`plugin:` 只做语法检查。错误信息带出错位置，可直接反馈给 AI。
@@ -210,7 +218,12 @@ pub fn clip_notes(project: &muser_core::Project, ti: usize, ci: usize) -> Result
         }
         let beats = l.beats();
         for k in 0..((clip.length.0 / beats).ceil() as usize) {
-            notes.extend(l.notes.iter().map(|n| muser_core::Note { start: muser_core::Beats(n.start.0 + k as f64 * beats), ..n.clone() }).filter(|n| n.start.0 < clip.length.0));
+            notes.extend(
+                l.notes
+                    .iter()
+                    .map(|n| muser_core::Note { start: muser_core::Beats(n.start.0 + k as f64 * beats), ..n.clone() })
+                    .filter(|n| n.start.0 < clip.length.0),
+            );
         }
     }
     if let Some(d) = &clip.drummer {
@@ -297,7 +310,8 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
         for (ti, t) in p.tracks.iter().enumerate() {
             // 鼓组：这套鼓没有的鼓键不出声。
             if let Some(keys) = instrument::drum_kit_keys(&t.instrument) {
-                let mut missing: Vec<u8> = (0..t.clips.len()).filter_map(|ci| clip_notes(&p, ti, ci).ok()).flatten().map(|n| n.pitch).filter(|k| !keys.contains(k)).collect();
+                let mut missing: Vec<u8> =
+                    (0..t.clips.len()).filter_map(|ci| clip_notes(&p, ti, ci).ok()).flatten().map(|n| n.pitch).filter(|k| !keys.contains(k)).collect();
                 let count = missing.len();
                 missing.sort_unstable();
                 missing.dedup();
@@ -331,7 +345,10 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
             }
             let sung = (0..t.clips.len()).any(|ci| clip_notes(&arranged, ti, ci).unwrap_or_default().iter().any(|n| n.lyric.is_some()));
             if sung {
-                out.push(format!("tracks[{ti}] '{}': has lyrics (lyric / ABC w: lines), but only choir.* and yinse.voice.* sing; {} ignores them", t.name, t.instrument));
+                out.push(format!(
+                    "tracks[{ti}] '{}': has lyrics (lyric / ABC w: lines), but only choir.* and yinse.voice.* sing; {} ignores them",
+                    t.name, t.instrument
+                ));
             }
         }
     }
@@ -343,7 +360,11 @@ const RANGE_SLACK: u8 = 7;
 
 fn fmt_beats(b: f64) -> String {
     let r = (b * 100.0).round() / 100.0;
-    if r.fract() == 0.0 { format!("{r:.0}") } else { format!("{r}") }
+    if r.fract() == 0.0 {
+        format!("{r:.0}")
+    } else {
+        format!("{r}")
+    }
 }
 
 /// MIDI 音高 → 音名（C4 = 60）。
@@ -369,11 +390,8 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
         }
     }
     for (i, track) in project.tracks.iter().enumerate() {
-        instrument::check(&track.instrument, &track.instrument_params).map_err(|e| {
-            EngineError::Core(muser_core::CoreError::Invalid(format!(
-                "tracks[{i}].instrument: {e}"
-            )))
-        })?;
+        instrument::check(&track.instrument, &track.instrument_params)
+            .map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(format!("tracks[{i}].instrument: {e}"))))?;
     }
     // 录音提取的乐器：音符的演奏法要是这件乐器有的。
     for (ti, track) in project.tracks.iter().enumerate() {
@@ -393,8 +411,7 @@ pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
     // 插件效果器的参数（host 特性下会加载插件检查参数名与取值）。
     let plugin_fx = |fx: &muser_core::Effect, at: String| -> Result<(), EngineError> {
         if let muser_core::Effect::Plugin { path, id, params } = fx {
-            plugin::check_params(path, id.as_deref(), params)
-                .map_err(|m| EngineError::Core(muser_core::CoreError::Invalid(format!("{at}.params: {m}"))))?;
+            plugin::check_params(path, id.as_deref(), params).map_err(|m| EngineError::Core(muser_core::CoreError::Invalid(format!("{at}.params: {m}"))))?;
         }
         Ok(())
     };
@@ -424,7 +441,8 @@ mod tests {
         let project = |fx: serde_json::Value| -> muser_core::Project {
             serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "poly.wurly", "effects": fx,
                 "automation": [{ "target": "effects[1]", "param": "frequency", "shape": "points", "points": [[0, 400], [2, 2000]] }],
-                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 1 }] }] }] })).unwrap()
+                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 60, "start": 0, "length": 1 }] }] }] }))
+            .unwrap()
         };
         let render = |p: &muser_core::Project| crate::render(p, RenderSettings::default()).unwrap().channel(0).to_vec();
         let eq = serde_json::json!({ "type": "eq", "shape": "lowpass", "frequency": 800 });
@@ -447,7 +465,11 @@ mod tests {
         };
         let render = |p: &muser_core::Project| crate::render(p, RenderSettings::default()).unwrap().channel(0).to_vec();
         let dry = render(&project(serde_json::json!([])));
-        let fx = |w: serde_json::Value| { let mut e = serde_json::json!({ "type": "reverb", "mix": 0.8, "decay_seconds": 3.0 }); e.as_object_mut().unwrap().extend(w.as_object().unwrap().clone()); project(serde_json::json!([e])) };
+        let fx = |w: serde_json::Value| {
+            let mut e = serde_json::json!({ "type": "reverb", "mix": 0.8, "decay_seconds": 3.0 });
+            e.as_object_mut().unwrap().extend(w.as_object().unwrap().clone());
+            project(serde_json::json!([e]))
+        };
         let windowed = render(&fx(serde_json::json!({ "from": 2, "until": 4 })));
         let always = render(&fx(serde_json::json!({})));
         let f = |beat: f64| (beat / 2.0 * 48_000.0) as usize; // 120 BPM：每拍 0.5 秒
@@ -480,10 +502,7 @@ mod tests {
     #[test]
     fn renders_nonempty_audio() {
         let p = demo_project();
-        let settings = RenderSettings {
-            tail_seconds: 0.5,
-            ..RenderSettings::default()
-        };
+        let settings = RenderSettings { tail_seconds: 0.5, ..RenderSettings::default() };
         let audio = render(&p, settings).expect("渲染应成功");
         // 应有合理时长：4拍@120bpm=2s + 0.5s 余响
         assert!(audio.num_frames() > 48_000, "时长应 > 1s");
@@ -537,23 +556,12 @@ mod tests {
         use muser_core::Effect;
         let mut p = demo_project();
         // 轨级加压缩器
-        p.tracks[0].effects.push((Effect::Compressor {
-            threshold_db: -18.0,
-            ratio: 4.0,
-            attack_ms: 10.0,
-            release_ms: 120.0,
-            makeup_db: 0.0,
-            sidechain: None,
-        }).into());
+        p.tracks[0]
+            .effects
+            .push((Effect::Compressor { threshold_db: -18.0, ratio: 4.0, attack_ms: 10.0, release_ms: 120.0, makeup_db: 0.0, sidechain: None }).into());
         // 主总线加混响
-        p.master_effects.push((Effect::Reverb {
-            mix: 0.25,
-            decay_seconds: 1.6,
-            damping: 0.5,
-            size: 0.5,
-        }).into());
-        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
-            .expect("带效果链渲染应成功");
+        p.master_effects.push((Effect::Reverb { mix: 0.25, decay_seconds: 1.6, damping: 0.5, size: 0.5 }).into());
+        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() }).expect("带效果链渲染应成功");
         assert!(audio.peak() > 0.0, "带效果链仍应发声");
     }
 
@@ -569,12 +577,7 @@ mod tests {
         dry.tracks.push(t);
 
         let mut wet = dry.clone();
-        wet.master_effects.push((Effect::Reverb {
-            mix: 0.6,
-            decay_seconds: 2.5,
-            damping: 0.3,
-            size: 0.8,
-        }).into());
+        wet.master_effects.push((Effect::Reverb { mix: 0.6, decay_seconds: 2.5, damping: 0.3, size: 0.8 }).into());
 
         let s = RenderSettings { tail_seconds: 2.0, ..Default::default() };
         let dry_audio = render(&dry, s).unwrap();
@@ -593,10 +596,7 @@ mod tests {
         };
         let dry_tail = tail_energy(&dry_audio);
         let wet_tail = tail_energy(&wet_audio);
-        assert!(
-            wet_tail > dry_tail * 2.0,
-            "混响应在尾部注入明显能量: dry={dry_tail:.6}, wet={wet_tail:.6}"
-        );
+        assert!(wet_tail > dry_tail * 2.0, "混响应在尾部注入明显能量: dry={dry_tail:.6}, wet={wet_tail:.6}");
     }
 
     #[test]
@@ -604,24 +604,11 @@ mod tests {
         use muser_core::Effect;
         let mut p = demo_project();
         // 轨级 chorus + EQ
-        p.tracks[0].effects.push((Effect::Chorus {
-            rate_hz: 0.8,
-            depth_ms: 3.0,
-            mix: 0.4,
-        }).into());
-        p.tracks[0].effects.push((Effect::Eq {
-            shape: "high_shelf".to_string(),
-            frequency: 6000.0,
-            q: 0.707,
-            gain_db: 3.0,
-        }).into());
+        p.tracks[0].effects.push((Effect::Chorus { rate_hz: 0.8, depth_ms: 3.0, mix: 0.4 }).into());
+        p.tracks[0].effects.push((Effect::Eq { shape: "high_shelf".to_string(), frequency: 6000.0, q: 0.707, gain_db: 3.0 }).into());
         // 主总线 limiter
-        p.master_effects.push((Effect::Limiter {
-            ceiling_db: -0.3,
-            release_ms: 50.0,
-        }).into());
-        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
-            .expect("chorus/eq/limiter 渲染应成功");
+        p.master_effects.push((Effect::Limiter { ceiling_db: -0.3, release_ms: 50.0 }).into());
+        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() }).expect("chorus/eq/limiter 渲染应成功");
         assert!(audio.peak() > 0.0, "应发声");
         // limiter 上限 -0.3 dBFS，峰值不应超过它（给一点点数值裕度）。
         let peak_db = manguebyte::prelude::decibels::gain_to_db(f64::from(audio.peak()));
@@ -632,18 +619,9 @@ mod tests {
     fn phaser_flanger_render() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.tracks[0].effects.push((Effect::Phaser {
-            rate_hz: 0.5,
-            feedback: 0.4,
-            mix: 0.5,
-        }).into());
-        p.master_effects.push((Effect::Flanger {
-            rate_hz: 0.2,
-            feedback: 0.7,
-            mix: 0.5,
-        }).into());
-        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() })
-            .expect("phaser/flanger 渲染应成功");
+        p.tracks[0].effects.push((Effect::Phaser { rate_hz: 0.5, feedback: 0.4, mix: 0.5 }).into());
+        p.master_effects.push((Effect::Flanger { rate_hz: 0.2, feedback: 0.7, mix: 0.5 }).into());
+        let audio = render(&p, RenderSettings { tail_seconds: 1.0, ..Default::default() }).expect("phaser/flanger 渲染应成功");
         assert!(audio.peak() > 0.0, "应发声");
     }
 
@@ -651,12 +629,7 @@ mod tests {
     fn eq_unknown_shape_errors() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.master_effects.push((Effect::Eq {
-            shape: "bogus".to_string(),
-            frequency: 1000.0,
-            q: 0.7,
-            gain_db: 0.0,
-        }).into());
+        p.master_effects.push((Effect::Eq { shape: "bogus".to_string(), frequency: 1000.0, q: 0.7, gain_db: 0.0 }).into());
         let err = render(&p, RenderSettings::default()).unwrap_err();
         // 工程校验阶段（core 描述表）就会拦截，错误信息指明位置与可选值。
         let msg = err.to_string();
@@ -686,8 +659,7 @@ mod tests {
             c.notes.push(Note::new(55, 0.0, 1.0));
             t.clips.push(c);
             p.tracks.push(t);
-            let audio = render(&p, RenderSettings { tail_seconds: 0.5, ..Default::default() })
-                .unwrap_or_else(|e| panic!("{name} 渲染失败: {e}"));
+            let audio = render(&p, RenderSettings { tail_seconds: 0.5, ..Default::default() }).unwrap_or_else(|e| panic!("{name} 渲染失败: {e}"));
             assert!(audio.peak() > 1e-4, "{name} 应发声，峰值 {}", audio.peak());
         }
     }
@@ -698,11 +670,7 @@ mod tests {
     fn plugin_without_host_feature_errors() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.master_effects.push((Effect::Plugin {
-            path: "/nonexistent/x.clap".to_string(),
-            id: None,
-            params: Default::default(),
-        }).into());
+        p.master_effects.push((Effect::Plugin { path: "/nonexistent/x.clap".to_string(), id: None, params: Default::default() }).into());
         let err = render(&p, RenderSettings::default()).unwrap_err();
         match err {
             EngineError::Effect(crate::effects::EffectError::HostDisabled) => {}
@@ -716,11 +684,7 @@ mod tests {
     fn plugin_missing_path_errors() {
         use muser_core::Effect;
         let mut p = demo_project();
-        p.master_effects.push((Effect::Plugin {
-            path: "/definitely/not/here.clap".to_string(),
-            id: None,
-            params: Default::default(),
-        }).into());
+        p.master_effects.push((Effect::Plugin { path: "/definitely/not/here.clap".to_string(), id: None, params: Default::default() }).into());
         let err = render(&p, RenderSettings::default()).unwrap_err();
         // host 下 validate 会加载插件检查参数，路径不存在在校验阶段就报出，并指明位置。
         let msg = err.to_string();
@@ -767,8 +731,7 @@ mod tests {
                     params.insert(pi.spec.name.to_string(), pi.current.clone());
                 }
             }
-            crate::instrument::check(&info.name, &params)
-                .unwrap_or_else(|e| panic!("{} 的当前参数应能写回: {e}\n{params:?}", info.name));
+            crate::instrument::check(&info.name, &params).unwrap_or_else(|e| panic!("{} 的当前参数应能写回: {e}\n{params:?}", info.name));
         }
     }
 
@@ -864,7 +827,11 @@ mod tests {
         let plain = dir.join("plain.sfz");
         let curved = dir.join("curved.sfz");
         std::fs::write(&plain, "<region> sample=*sine lokey=0 hikey=127 pitch_keycenter=69").unwrap();
-        std::fs::write(&curved, "<control> set_hdcc81=0.5\n<global> tune_oncc81=100 tune_curvecc81=1\n<region> sample=*sine lokey=0 hikey=127 pitch_keycenter=69").unwrap();
+        std::fs::write(
+            &curved,
+            "<control> set_hdcc81=0.5\n<global> tune_oncc81=100 tune_curvecc81=1\n<region> sample=*sine lokey=0 hikey=127 pitch_keycenter=69",
+        )
+        .unwrap();
         let a = render_one(&format!("sfz:{}", plain.display()), serde_json::json!({}), &[(69, 0.0, 1.0)]).unwrap();
         let b = render_one(&format!("sfz:{}", curved.display()), serde_json::json!({}), &[(69, 0.0, 1.0)]).unwrap();
         let diff = a.channel(0).iter().zip(b.channel(0)).map(|(x, y)| (x - y).abs()).fold(0f32, f32::max);
@@ -912,9 +879,13 @@ mod tests {
     #[test]
     fn automation_cutoff_sweep_brightens() {
         // 一个 4 秒长音，cutoff 从 200 扫到 6000（exp）。
-        let p = auto_project("poly.moog_bass", &[(36, 0.0, 8.0)], serde_json::json!([
-            { "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 200], [8, 6000]], "curve": "exp" }
-        ]));
+        let p = auto_project(
+            "poly.moog_bass",
+            &[(36, 0.0, 8.0)],
+            serde_json::json!([
+                { "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 200], [8, 6000]], "curve": "exp" }
+            ]),
+        );
         let a = render(&p, quiet()).unwrap();
         let early = seg_brightness(&a, SEC / 2, SEC);
         let late = seg_brightness(&a, 3 * SEC, 7 * SEC / 2);
@@ -923,9 +894,13 @@ mod tests {
 
     #[test]
     fn automation_gain_fade_in() {
-        let p = auto_project("synth.poly", &[(60, 0.0, 8.0)], serde_json::json!([
-            { "target": "gain_db", "shape": "points", "points": [[0, -60], [8, 0]] }
-        ]));
+        let p = auto_project(
+            "synth.poly",
+            &[(60, 0.0, 8.0)],
+            serde_json::json!([
+                { "target": "gain_db", "shape": "points", "points": [[0, -60], [8, 0]] }
+            ]),
+        );
         let a = render(&p, quiet()).unwrap();
         assert!(seg_energy(&a, 0, 3 * SEC, 4 * SEC) > seg_energy(&a, 0, SEC / 4, SEC) * 100.0);
     }
@@ -933,9 +908,13 @@ mod tests {
     #[test]
     fn automation_pan_lfo_alternates() {
         // 声像 LFO 方波，周期 4 拍（2 秒）：前 1 秒在右（max），后 1 秒在左。
-        let p = auto_project("synth.poly", &[(60, 0.0, 8.0)], serde_json::json!([
-            { "target": "pan", "shape": "lfo", "wave": "square", "period_beats": 4, "min": -1, "max": 1 }
-        ]));
+        let p = auto_project(
+            "synth.poly",
+            &[(60, 0.0, 8.0)],
+            serde_json::json!([
+                { "target": "pan", "shape": "lfo", "wave": "square", "period_beats": 4, "min": -1, "max": 1 }
+            ]),
+        );
         let a = render(&p, quiet()).unwrap();
         let (l1, r1) = (seg_energy(&a, 0, SEC / 4, SEC * 3 / 4), seg_energy(&a, 1, SEC / 4, SEC * 3 / 4));
         let (l2, r2) = (seg_energy(&a, 0, SEC * 5 / 4, SEC * 7 / 4), seg_energy(&a, 1, SEC * 5 / 4, SEC * 7 / 4));
@@ -945,9 +924,13 @@ mod tests {
     #[test]
     fn automation_effect_param() {
         // eq lowpass 的 frequency 从 300 扫到 12000：后段更亮。
-        let mut p = auto_project("synth.poly", &[(60, 0.0, 8.0), (64, 0.0, 8.0)], serde_json::json!([
-            { "target": "effects[0]", "param": "frequency", "shape": "points", "points": [[0, 300], [8, 12000]], "curve": "exp" }
-        ]));
+        let mut p = auto_project(
+            "synth.poly",
+            &[(60, 0.0, 8.0), (64, 0.0, 8.0)],
+            serde_json::json!([
+                { "target": "effects[0]", "param": "frequency", "shape": "points", "points": [[0, 300], [8, 12000]], "curve": "exp" }
+            ]),
+        );
         p.tracks[0].effects.push((muser_core::Effect::Eq { shape: "lowpass".into(), frequency: 300.0, q: 0.707, gain_db: 0.0 }).into());
         let a = render(&p, quiet()).unwrap();
         assert!(seg_brightness(&a, 3 * SEC, 7 * SEC / 2) > seg_brightness(&a, SEC / 2, SEC) * 3.0);
@@ -960,7 +943,8 @@ mod tests {
         p.automation = serde_json::from_value(serde_json::json!([
             { "target": "master_effects[0]", "param": "mix", "shape": "points", "points": [[0, 0], [2, 0.8]] },
             { "target": "master_gain_db", "shape": "points", "points": [[0, 0], [8, -6]] }
-        ])).unwrap();
+        ]))
+        .unwrap();
         render(&p, quiet()).unwrap();
     }
 
@@ -986,9 +970,13 @@ mod tests {
     fn automation_drum_piece_next_hit() {
         // 每拍一个底鼓，kick.tune 从 0 跳到 +12：后段音高更高（过零率更高）。
         let hits: Vec<(u8, f64, f64)> = (0..8).map(|b| (36u8, b as f64, 0.25)).collect();
-        let p = auto_project("drums.808", &hits, serde_json::json!([
-            { "target": "instrument", "param": "kick.tune", "shape": "points", "points": [[0, 0], [3.9, 0], [4, 12]], "curve": "step" }
-        ]));
+        let p = auto_project(
+            "drums.808",
+            &hits,
+            serde_json::json!([
+                { "target": "instrument", "param": "kick.tune", "shape": "points", "points": [[0, 0], [3.9, 0], [4, 12]], "curve": "step" }
+            ]),
+        );
         let a = render(&p, quiet()).unwrap();
         let zc = |from: usize, to: usize| a.channel(0)[from..to].windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
         assert!(zc(SEC / 2 * 4, SEC / 2 * 4 + 8000) > zc(0, 8000), "调高后过零应更多");
@@ -996,9 +984,8 @@ mod tests {
 
     #[test]
     fn automation_validation_errors() {
-        let err = |instrument: &str, auto: serde_json::Value| {
-            crate::validate(&auto_project(instrument, &[], serde_json::json!([auto]))).unwrap_err().to_string()
-        };
+        let err =
+            |instrument: &str, auto: serde_json::Value| crate::validate(&auto_project(instrument, &[], serde_json::json!([auto]))).unwrap_err().to_string();
         let e = err("poly.moog_bass", serde_json::json!({ "target": "instrument", "param": "cutof", "shape": "points", "points": [[0, 1]] }));
         assert!(e.contains("automation[0]") && e.contains("cutoff"), "{e}");
         let e = err("poly.moog_bass", serde_json::json!({ "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 10], [4, 99999]] }));
@@ -1014,9 +1001,14 @@ mod tests {
         let e = err("poly.bell_pluck", serde_json::json!({ "target": "instrument", "param": "cutoff", "shape": "points", "points": [[0, 500]] }));
         assert!(e.contains("no filter"), "{e}");
         // 元音可用名字
-        crate::validate(&auto_project("choir.aah", &[], serde_json::json!([
-            { "target": "instrument", "param": "vowel", "shape": "points", "points": [[0, "a"], [4, "o"], [8, "u"]] }
-        ]))).unwrap();
+        crate::validate(&auto_project(
+            "choir.aah",
+            &[],
+            serde_json::json!([
+                { "target": "instrument", "param": "vowel", "shape": "points", "points": [[0, "a"], [4, "o"], [8, "u"]] }
+            ]),
+        ))
+        .unwrap();
     }
 
     #[test]
@@ -1051,8 +1043,13 @@ mod tests {
         // 未知效果器字段
         assert!(audition(
             &Subject::Effect { effect: serde_json::from_str(r#"{"type":"reverb"}"#).unwrap(), source: "synth.poly".into() },
-            Some("mixx"), &[serde_json::json!(1)], &AuditionSettings::default()
-        ).unwrap_err().to_string().contains("has no parameter"));
+            Some("mixx"),
+            &[serde_json::json!(1)],
+            &AuditionSettings::default()
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("has no parameter"));
     }
 
     #[test]
@@ -1140,12 +1137,17 @@ mod tests {
         if !have(SURGE) {
             return;
         }
-        let mut p = auto_project(&format!("plugin:{SURGE}"), &[(48, 0.0, 8.0)], serde_json::json!([
-            { "target": "instrument", "param": "A Filter 1 Cutoff", "shape": "points", "points": [[0, "150 Hz"], [8, "6000 Hz"]] }
-        ]));
+        let mut p = auto_project(
+            &format!("plugin:{SURGE}"),
+            &[(48, 0.0, 8.0)],
+            serde_json::json!([
+                { "target": "instrument", "param": "A Filter 1 Cutoff", "shape": "points", "points": [[0, "150 Hz"], [8, "6000 Hz"]] }
+            ]),
+        );
         p.tracks[0].instrument_params = serde_json::from_value(serde_json::json!({
             "A Filter 1 Type": "LP 24 dB", "A Osc 1 Retrigger": "On"
-        })).unwrap();
+        }))
+        .unwrap();
         let a = render(&p, quiet()).unwrap();
         assert!(seg_brightness(&a, 3 * SEC, 7 * SEC / 2) > seg_brightness(&a, SEC / 2, SEC) * 5.0, "插件 cutoff 自动化应变亮");
         // Retrigger 开启后可复现
@@ -1210,7 +1212,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("muser-state-rt-{}", std::process::id()));
         let file = dir.join("lead.muserstate");
         let direct = serde_json::json!({ "A Filter 1 Type": "LP 24 dB", "A Filter 1 Cutoff": "700 Hz", "A Amp EG Attack": "200 ms",
-            "A Osc 1 Retrigger": "On", "A Osc 2 Retrigger": "On", "A Osc 3 Retrigger": "On" }).as_object().unwrap().clone();
+            "A Osc 1 Retrigger": "On", "A Osc 2 Retrigger": "On", "A Osc 3 Retrigger": "On" })
+        .as_object()
+        .unwrap()
+        .clone();
         crate::plugin::save_state(SURGE, &direct, &file).unwrap();
         let s = AuditionSettings { hold_seconds: 0.5, tail_seconds: 0.5, ..Default::default() };
         let run = |params: serde_json::Map<String, serde_json::Value>| {
@@ -1254,13 +1259,27 @@ mod tests {
     /// 声码器用一条（静音的）人声轨做调制信号。
     #[test]
     fn workstation_effects_render_and_change_the_sound() {
-        let names = ["bitcrusher", "tremolo", "auto_pan", "ring_mod", "frequency_shifter", "widener", "transient_shaper",
-            "multiband_compressor", "tape", "vocoder", "granular_delay", "formant_filter"];
-        let song = |effects: serde_json::Value| proj(serde_json::json!({ "tempo": 120, "tracks": [
+        let names = [
+            "bitcrusher",
+            "tremolo",
+            "auto_pan",
+            "ring_mod",
+            "frequency_shifter",
+            "widener",
+            "transient_shaper",
+            "multiband_compressor",
+            "tape",
+            "vocoder",
+            "granular_delay",
+            "formant_filter",
+        ];
+        let song = |effects: serde_json::Value| {
+            proj(serde_json::json!({ "tempo": 120, "tracks": [
             { "name": "voice", "instrument": "choir.solo", "muted": true,
               "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 2 }, { "pitch": 62, "start": 2, "length": 2 }] }] },
             { "name": "pad", "instrument": "poly.string_machine", "pan": 0.4, "effects": effects,
-              "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 57, "start": 0, "length": 4 }, { "pitch": 64, "start": 0.5, "length": 3.5 }] }] } ] }));
+              "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 57, "start": 0, "length": 4 }, { "pitch": 64, "start": 0.5, "length": 3.5 }] }] } ] }))
+        };
         let dry = render(&song(serde_json::json!([])), quiet()).unwrap();
         for name in names {
             let spec = muser_core::effect_spec(name).unwrap();
@@ -1277,8 +1296,11 @@ mod tests {
     /// 不阻止渲染的提示：远超音域、part 只占一小段、ABC 小节和拍号对不上；写对了就没有。
     #[test]
     fn a_clip_with_only_from_plays_the_loop() {
-        let p = muser_core::Project::from_json(r#"{"name":"l","tempo":120,"tracks":[{"name":"d","instrument":"drums.808",
-            "clips":[{"start":0,"length":8,"from":"loop:rock_basic"},{"start":8,"length":4,"from":"loop:nope"}]}]}"#).unwrap();
+        let p = muser_core::Project::from_json(
+            r#"{"name":"l","tempo":120,"tracks":[{"name":"d","instrument":"drums.808",
+            "clips":[{"start":0,"length":8,"from":"loop:rock_basic"},{"start":8,"length":4,"from":"loop:nope"}]}]}"#,
+        )
+        .unwrap();
         let notes = clip_notes(&p, 0, 0).unwrap();
         assert!(!notes.is_empty() && notes.iter().any(|n| n.start.0 >= 4.0), "the loop repeats over the clip");
         assert!(clip_notes(&p, 0, 1).unwrap_err().contains("nope"));
@@ -1470,7 +1492,7 @@ mod tests {
 
     #[test]
     fn profile_selector_and_english_markdown() {
-        use crate::profile::{Loaded, Origin, Profile, render_markdown};
+        use crate::profile::{render_markdown, Loaded, Origin, Profile};
         let p = Profile::from_json(
             r#"{ "schema_version": 1, "plugin": { "name": "X", "ids": ["x"] }, "source": { "lang": "en" },
                  "selector": { "key": "Effect", "juce_xml_attribute": "cur",
@@ -1490,8 +1512,11 @@ mod tests {
         assert!(bad(r#", "state_format": "other""#));
         // 只有 state_format 声明的保留键能写进预设。
         assert!(bad(r#", "presets": [{ "name": "p", "params": { "@wavetable": "sine" } }]"#));
-        assert!(Profile::from_json(r#"{ "schema_version": 1, "plugin": { "name": "X", "ids": ["x"] }, "state_format": "vital",
-            "presets": [{ "name": "p", "params": { "@wavetable": "sine", "@modulations": [{ "source": "env_2", "destination": "filter_1_cutoff" }] } }] }"#).is_ok());
+        assert!(Profile::from_json(
+            r#"{ "schema_version": 1, "plugin": { "name": "X", "ids": ["x"] }, "state_format": "vital",
+            "presets": [{ "name": "p", "params": { "@wavetable": "sine", "@modulations": [{ "source": "env_2", "destination": "filter_1_cutoff" }] } }] }"#
+        )
+        .is_ok());
     }
 
     #[cfg(feature = "host")]
@@ -1507,9 +1532,7 @@ mod tests {
         if !have(AIRWINDOWS) {
             return;
         }
-        let params = |base: serde_json::Value| {
-            crate::plugin::params(AIRWINDOWS, None, false, &serde_json::from_value(base).unwrap()).unwrap()
-        };
+        let params = |base: serde_json::Value| crate::plugin::params(AIRWINDOWS, None, false, &serde_json::from_value(base).unwrap()).unwrap();
         let names = |v: Vec<crate::plugin::PluginParam>| v.into_iter().map(|p| p.name).take(3).collect::<Vec<_>>();
         assert_eq!(names(params(serde_json::json!({ "effect": "Pressure4" }))), ["Pressure", "Speed", "Mewiness"]);
         assert_eq!(names(params(serde_json::json!({ "@preset": "plate" }))), ["Input", "Regen", "DeRez"]);
@@ -1537,8 +1560,12 @@ mod tests {
         }
         let spec = format!("plugin:{VITAL}");
         let run = |params: serde_json::Value| {
-            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": spec, "instrument_params": params,
-                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 48, "start": 0, "length": 1.5 }] }] }] })), quiet()).unwrap()
+            render(
+                &proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": spec, "instrument_params": params,
+                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 48, "start": 0, "length": 1.5 }] }] }] })),
+                quiet(),
+            )
+            .unwrap()
         };
         let bright = |a: &AudioBuffer<f32>| seg_brightness(a, 0, SEC / 2);
         let saw = run(serde_json::json!({}));
@@ -1553,7 +1580,8 @@ mod tests {
         assert!(energy(&slow, 0, SEC / 10) < energy(&slow, SEC / 2, SEC * 6 / 10) * 0.2, "attack 0.5 s");
         assert!(energy(&slow, SEC / 2, SEC * 6 / 10) > 0.0);
         let err = crate::validate(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": spec,
-            "instrument_params": { "@modulations": [{ "source": "env_9", "destination": "filter_1_cutoff" }] }, "clips": [] }] }))).unwrap_err();
+            "instrument_params": { "@modulations": [{ "source": "env_9", "destination": "filter_1_cutoff" }] }, "clips": [] }] })))
+        .unwrap_err();
         assert!(err.to_string().contains("env_1"), "{err}");
     }
 
@@ -1564,8 +1592,12 @@ mod tests {
             return;
         }
         let run = |fx: serde_json::Value| {
-            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "bass.finger", "effects": [fx],
-                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 40, "start": 0, "length": 1 }] }] }] })), quiet()).unwrap()
+            render(
+                &proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "bass.finger", "effects": [fx],
+                "clips": [{ "start": 0, "length": 2, "notes": [{ "pitch": 40, "start": 0, "length": 1 }] }] }] })),
+                quiet(),
+            )
+            .unwrap()
         };
         let clean = run(serde_json::json!({ "type": "plugin", "path": PLASMA, "params": { "mix": "0.00" } }));
         let dirty = run(serde_json::json!({ "type": "plugin", "path": PLASMA, "params": { "@preset": "scream" } }));
@@ -1576,19 +1608,27 @@ mod tests {
     fn sustain_pedal_holds_released_notes() {
         // 短音（0.25 拍）；踏板踩到第 3 拍。踩着时松键后仍发声，抬起后很快消失。
         let run = |pedal: serde_json::Value| {
-            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "synth.poly", "instrument_params": { "release": 0.05 },
-                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }] }] }] })), quiet()).unwrap()
+            render(
+                &proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "synth.poly", "instrument_params": { "release": 0.05 },
+                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }] }] }] })),
+                quiet(),
+            )
+            .unwrap()
         };
         let dry = run(serde_json::json!([]));
         let held = run(serde_json::json!([[0, 3]]));
-        let mid = (SEC * 3 / 4, SEC);                 // 第 1.5–2 拍
+        let mid = (SEC * 3 / 4, SEC); // 第 1.5–2 拍
         assert!(energy(&held, mid.0, mid.1) > energy(&dry, mid.0, mid.1) * 100.0, "踏板延音");
         let after = (SEC * 3 / 2 + SEC / 5, SEC * 2); // 抬起（1.5 s）之后
         assert!(energy(&held, after.0, after.1) < energy(&held, mid.0, mid.1) * 0.01, "抬起后释音");
         // 同一时刻换踏板：新音在新踏板下继续。
-        let two = render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "synth.poly", "instrument_params": { "release": 0.05 },
+        let two = render(
+            &proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": "synth.poly", "instrument_params": { "release": 0.05 },
             "clips": [{ "start": 0, "length": 4, "pedal": [[0, 1.0], [1.0, 3]],
-                "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }, { "pitch": 67, "start": 1.0, "length": 0.25 }] }] }] })), quiet()).unwrap();
+                "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }, { "pitch": 67, "start": 1.0, "length": 0.25 }] }] }] })),
+            quiet(),
+        )
+        .unwrap();
         assert!(energy(&two, SEC, SEC * 3 / 2) > energy(&dry, SEC / 2, SEC) * 100.0, "换踏板后新音被保持");
     }
 
@@ -1599,8 +1639,12 @@ mod tests {
             return;
         }
         let run = |pedal: serde_json::Value| {
-            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("sfz:{}", sfz.display()),
-                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.2 }] }] }] })), quiet()).unwrap()
+            render(
+                &proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("sfz:{}", sfz.display()),
+                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.2 }] }] }] })),
+                quiet(),
+            )
+            .unwrap()
         };
         let (dry, held) = (run(serde_json::json!([])), run(serde_json::json!([[0, 4]])));
         assert!(energy(&held, SEC, SEC * 3 / 2) > energy(&dry, SEC, SEC * 3 / 2) * 10.0);
@@ -1613,8 +1657,12 @@ mod tests {
             return;
         }
         let run = |pedal: serde_json::Value| {
-            render(&proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("plugin:{SURGE}"),
-                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }] }] }] })), quiet()).unwrap()
+            render(
+                &proj(serde_json::json!({ "tempo": 120, "tracks": [{ "instrument": format!("plugin:{SURGE}"),
+                "clips": [{ "start": 0, "length": 4, "pedal": pedal, "notes": [{ "pitch": 60, "start": 0, "length": 0.25 }] }] }] })),
+                quiet(),
+            )
+            .unwrap()
         };
         let (dry, held) = (run(serde_json::json!([])), run(serde_json::json!([[0, 3]])));
         assert!(energy(&held, SEC * 3 / 4, SEC) > energy(&dry, SEC * 3 / 4, SEC) * 100.0, "插件收到 CC64");

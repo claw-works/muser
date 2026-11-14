@@ -112,7 +112,8 @@ impl ElectricParams {
         }
         p.pluck_position = (p.pluck_position * shorter).min(0.3);
         // 缠弦（E A D）：泛音收得快、拨片亮度低一些、刮弦的声音多、更硬；光弦（G B E）：亮、泛音留得久。
-        let (high, bright, noise, stiff) = [(0.7, 0.8, 1.5, 2.0), (0.75, 0.85, 1.4, 1.7), (0.85, 0.9, 1.25, 1.4), (1.15, 1.1, 0.7, 1.6), (1.2, 1.15, 0.6, 1.0), (1.25, 1.2, 0.5, 0.7)][string];
+        let (high, bright, noise, stiff) =
+            [(0.7, 0.8, 1.5, 2.0), (0.75, 0.85, 1.4, 1.7), (0.85, 0.9, 1.25, 1.4), (1.15, 1.1, 0.7, 1.6), (1.2, 1.15, 0.6, 1.0), (1.25, 1.2, 0.5, 0.7)][string];
         p.high_decay = (p.high_decay * high).clamp(0.01, 1.0);
         p.pluck_brightness = (p.pluck_brightness * bright).clamp(100.0, 20_000.0);
         p.pluck_noise = (p.pluck_noise * noise).clamp(0.0, 1.0);
@@ -339,7 +340,10 @@ mod tests {
 
     #[test]
     fn notes_sit_on_strings_and_frets() {
-        assert_eq!((fretting(40), fretting(45), fretting(52), fretting(64), fretting(76), fretting(38)), ((0, 0.0), (1, 0.0), (2, 2.0), (5, 0.0), (5, 12.0), (0, 0.0)));
+        assert_eq!(
+            (fretting(40), fretting(45), fretting(52), fretting(64), fretting(76), fretting(38)),
+            ((0, 0.0), (1, 0.0), (2, 2.0), (5, 0.0), (5, 12.0), (0, 0.0))
+        );
         let e = ElectricParams::single_coil_neck();
         let open = e.strings().0;
         // 第 12 品：弦短了一半，拾音器落在弦上两倍远的地方（到一半为止）；按着的音收得快一些。

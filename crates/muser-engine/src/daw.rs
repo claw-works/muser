@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use muser_core::Project;
 
-use crate::render::{EngineError, RenderSettings, Stem, render_stems, render_to_wav};
+use crate::render::{render_stems, render_to_wav, EngineError, RenderSettings, Stem};
 
 pub struct DawExport {
     pub midi: PathBuf,
@@ -45,7 +45,8 @@ fn guide_text(p: &Project, base: &str, sr: u32, stems: &[Stem], skipped: &[Strin
     if !p.tempo_map().is_constant() {
         tempo += " -> variable (the MIDI file carries the tempo map)";
     }
-    let stem_list: String = stems.iter().map(|s| format!("- `stems/{}`: {}\n", s.path.file_name().map(|f| f.to_string_lossy()).unwrap_or_default(), s.track)).collect();
+    let stem_list: String =
+        stems.iter().map(|s| format!("- `stems/{}`: {}\n", s.path.file_name().map(|f| f.to_string_lossy()).unwrap_or_default(), s.track)).collect();
     let skipped = if skipped.is_empty() { String::new() } else { format!("\n({} are audio tracks: no MIDI, stems only.)\n", skipped.join(", ")) };
     format!(
         "# {base} - Importing into a DAW\n\n\

@@ -10,7 +10,9 @@ fn main() {
     loop {
         let t = std::time::Instant::now();
         let n = r.process(&mut block).unwrap();
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         times.push((t.elapsed(), at));
         at += n;
     }

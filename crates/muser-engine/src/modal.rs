@@ -242,7 +242,13 @@ pub fn parse_name(stem: &str) -> NameInfo {
     for token in stem.split(|c: char| !c.is_ascii_alphanumeric() && c != '#' && c != '.').filter(|t| !t.is_empty()) {
         let t = token.to_ascii_lowercase();
         if articulation.is_none() && (ARTICULATION_WORDS.contains(&t.as_str()) || t == "damp") {
-            articulation = Some(if t == "muted" { "mute".into() } else if t == "plucked" { "pluck".into() } else { t });
+            articulation = Some(if t == "muted" {
+                "mute".into()
+            } else if t == "plucked" {
+                "pluck".into()
+            } else {
+                t
+            });
             continue;
         }
         if pitch.is_none() {
@@ -344,7 +350,11 @@ fn fundamental(mag: &[f64], bin_hz: f64, hint: Option<f64>) -> f64 {
         let (hz, m) = peak_near(mag, bin_hz, f * n as f64, (f * n as f64 * 0.015).max(bin_hz));
         (a + m * hz / n as f64, b + m)
     });
-    if den > 0.0 { num / den } else { f }
+    if den > 0.0 {
+        num / den
+    } else {
+        f
+    }
 }
 
 /// 一个频率在给定的各帧（起点 `starts`，窗长 `window`）上的复振幅：加汉宁窗解调。放不下一整窗的帧不算。
@@ -454,7 +464,8 @@ fn fit_decay(t: &[f64], amp: &[f64], floor: f64, early: f64, lead: f64, splits: 
         }
         let total = |x: f64| slow_at(x) + fa * (-(x - t[kp]) * 1000f64.ln() / ft).exp();
         // 响的地方差一点比快听不见的地方差一点要紧：按振幅加权。
-        let err = (kp..end).map(|k| amp[k] * (db[k] - 20.0 * total(t[k]).max(1e-12).log10()).powi(2)).sum::<f64>() / (kp..end).map(|k| amp[k]).sum::<f64>().max(1e-30);
+        let err = (kp..end).map(|k| amp[k] * (db[k] - 20.0 * total(t[k]).max(1e-12).log10()).powi(2)).sum::<f64>()
+            / (kp..end).map(|k| amp[k]).sum::<f64>().max(1e-30);
         Some((err, b, m, fa, ft))
     };
     let t_end = t[end - 1];
@@ -483,7 +494,8 @@ fn fit_envelope(t: &[f64], amp: &[f64], hz: f64, floor: f64) -> (Partial, bool) 
     let t60 = if d.slope < -0.5 { -60.0 / d.slope } else { 30.0 }.clamp(0.05, 30.0);
     let fast_t60 = d.fast_t60.max(0.01);
     // 演奏时从起音那一刻（峰值）开始：振幅取拟合线在峰值处的值。
-    let model_db = |x: f64| 20.0 * (d.amp * 10f64.powf(d.slope * (x - t[kp]) / 20.0) + d.fast_amp * (-(x - t[kp]) * 1000f64.ln() / fast_t60).exp()).max(1e-12).log10();
+    let model_db =
+        |x: f64| 20.0 * (d.amp * 10f64.powf(d.slope * (x - t[kp]) / 20.0) + d.fast_amp * (-(x - t[kp]) * 1000f64.ln() / fast_t60).exp()).max(1e-12).log10();
     // 拍：残差（dB）里最强的周期起伏。要它真的是一个周期起伏（占残差的一半以上、看到两个周期以上、起伏 1 dB 以上），
     // 而且两根弦差得不离谱（25 音分以内）：否则只是包络上的毛刺。
     let res: Vec<(f64, f64)> = (kp..end).filter(|&k| t[k] >= 0.1).map(|k| (t[k], 20.0 * amp[k].max(1e-12).log10() - model_db(t[k]))).collect();
@@ -638,7 +650,16 @@ fn noise_bands(l: &[f64], r: &[f64], sr: f64, on: usize, tracks: &[Track]) -> Ve
             lr += bl[k] * br[k];
         }
         let mid = (0.5 * (ll + rr)).max(1e-30);
-        out.push(NoiseBand { hz: c, amp, t60, tail, tail_t60, left: (ll / mid).sqrt(), right: (rr / mid).sqrt(), corr: (lr / (ll * rr).sqrt().max(1e-30)).clamp(-1.0, 1.0) });
+        out.push(NoiseBand {
+            hz: c,
+            amp,
+            t60,
+            tail,
+            tail_t60,
+            left: (ll / mid).sqrt(),
+            right: (rr / mid).sqrt(),
+            corr: (lr / (ll * rr).sqrt().max(1e-30)).clamp(-1.0, 1.0),
+        });
     }
     out
 }
@@ -707,7 +728,13 @@ pub fn analyze(path: &Path, pitch: Option<f64>, velocity: f64) -> Result<NoteTab
         let top = mag.iter().copied().fold(0.0, f64::max);
         let (lo, hi) = ((30.0 / bin_hz) as usize + 1, ((0.45 * sr / bin_hz) as usize).min(mag.len() - 2));
         let mut peaks: Vec<(f64, usize)> = (lo..hi)
-            .filter(|&k| mag[k] > mag[k - 1] && mag[k] >= mag[k + 1] && mag[k] > 8.0 * floors[k / block] && mag[k] > top * 10f64.powf(-50.0 / 20.0) && mag[k] > 1e-7 * size as f64)
+            .filter(|&k| {
+                mag[k] > mag[k - 1]
+                    && mag[k] >= mag[k + 1]
+                    && mag[k] > 8.0 * floors[k / block]
+                    && mag[k] > top * 10f64.powf(-50.0 / 20.0)
+                    && mag[k] > 1e-7 * size as f64
+            })
             .map(|k| (mag[k], k))
             .collect();
         peaks.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -875,7 +902,11 @@ pub fn extract(inputs: &[PathBuf], name: &str, mut on_note: impl FnMut(&NoteTabl
             let mut list: Vec<PathBuf> = std::fs::read_dir(p)
                 .map_err(|e| format!("cannot read folder '{}': {e}", p.display()))?
                 .filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|f| f.extension().and_then(|e| e.to_str()).is_some_and(|e| ["wav", "flac", "aif", "aiff", "ogg", "mp3"].contains(&e.to_ascii_lowercase().as_str())))
+                .filter(|f| {
+                    f.extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| ["wav", "flac", "aif", "aiff", "ogg", "mp3"].contains(&e.to_ascii_lowercase().as_str()))
+                })
                 .collect();
             list.sort();
             files.extend(list);
@@ -963,7 +994,14 @@ pub fn extract(inputs: &[PathBuf], name: &str, mut on_note: impl FnMut(&NoteTabl
         (RESONANCE_SCALE * (f / (1.0 - f).max(0.05)).sqrt()).clamp(0.0, 0.3)
     };
     // 五位有效数字就够了（文件小一半多）。
-    let r = |x: f64| if x == 0.0 || !x.is_finite() { x } else { let k = 10f64.powi(4 - x.abs().log10().floor() as i32); (x * k).round() / k };
+    let r = |x: f64| {
+        if x == 0.0 || !x.is_finite() {
+            x
+        } else {
+            let k = 10f64.powi(4 - x.abs().log10().floor() as i32);
+            (x * k).round() / k
+        }
+    };
     for n in &mut notes {
         n.pitch = r(n.pitch);
         n.off_harmonic = r(n.off_harmonic);
@@ -973,7 +1011,19 @@ pub fn extract(inputs: &[PathBuf], name: &str, mut on_note: impl FnMut(&NoteTabl
             }
         }
         for p in &mut n.partials {
-            for v in [&mut p.ratio, &mut p.amp, &mut p.t60, &mut p.fast_amp, &mut p.fast_t60, &mut p.beat, &mut p.beat_cents, &mut p.left, &mut p.right, &mut p.phase, &mut p.start] {
+            for v in [
+                &mut p.ratio,
+                &mut p.amp,
+                &mut p.t60,
+                &mut p.fast_amp,
+                &mut p.fast_t60,
+                &mut p.beat,
+                &mut p.beat_cents,
+                &mut p.left,
+                &mut p.right,
+                &mut p.phase,
+                &mut p.start,
+            ] {
                 *v = r(*v);
             }
         }
@@ -1075,7 +1125,8 @@ pub fn split_notes(inputs: &[PathBuf], dir: &Path, mut on_segment: impl FnMut(&S
         // 但它的分音所在的频段里会突然多出东西来。
         let window = next_pow2((0.02 * sr) as usize);
         let centers: Vec<f64> = (0..40).map(|i| 150.0 * 2f64.powf(i as f64 / 3.0)).take_while(|&c| c * 1.13 < 0.45 * sr).collect();
-        let edges: Vec<(usize, usize)> = centers.iter().map(|&c| (((c / 1.122) * window as f64 / sr).floor() as usize, ((c * 1.122) * window as f64 / sr).ceil() as usize)).collect();
+        let edges: Vec<(usize, usize)> =
+            centers.iter().map(|&c| (((c / 1.122) * window as f64 / sr).floor() as usize, ((c * 1.122) * window as f64 / sr).ceil() as usize)).collect();
         let (taper, mut fft, mut spec, mut input) = (hann(window), RealFft::<f64>::new(window), vec![Complex::ZERO; window / 2 + 1], vec![0.0; window]);
         let mut bands: Vec<Vec<f64>> = vec![vec![-140.0; frames]; centers.len()];
         for k in (window / hop)..frames {
@@ -1136,7 +1187,15 @@ pub fn split_notes(inputs: &[PathBuf], dir: &Path, mut on_segment: impl FnMut(&S
             let to = next.min(from + (ANALYSIS_SECONDS * sr) as usize);
             let peak = full[at..(at + 20).min(frames)].iter().copied().fold(f64::NEG_INFINITY, f64::max);
             let before = if at >= 8 { full[at - 8..at - 1].iter().sum::<f64>() / 7.0 } else { -140.0 };
-            let mut seg = Segment { source: source.clone(), start: from as f64 / sr, seconds: (to - from) as f64 / sr, pitch: None, level_db: peak, file: None, skipped: None };
+            let mut seg = Segment {
+                source: source.clone(),
+                start: from as f64 / sr,
+                seconds: (to - from) as f64 / sr,
+                pitch: None,
+                level_db: peak,
+                file: None,
+                skipped: None,
+            };
             if seg.seconds < 0.5 {
                 seg.skipped = Some("shorter than 0.5 s before the next note");
             } else if before > peak - 20.0 {
@@ -1204,7 +1263,8 @@ pub fn split_notes(inputs: &[PathBuf], dir: &Path, mut on_segment: impl FnMut(&S
                     }
                 }
                 let file = dir.join(name);
-                manguebyte::prelude::wav::write_file(&file, &out, file_rate(sr), manguebyte::prelude::WavFormat::Float32).map_err(|e| format!("cannot write '{}': {e:?}", file.display()))?;
+                manguebyte::prelude::wav::write_file(&file, &out, file_rate(sr), manguebyte::prelude::WavFormat::Float32)
+                    .map_err(|e| format!("cannot write '{}': {e:?}", file.display()))?;
                 files.push(file.clone());
                 f.seg.file = Some(file);
             }
@@ -1223,7 +1283,14 @@ fn file_rate(sr: f64) -> u32 {
 
 /// 用 muser 的一个乐器（`sfz:` 音色库、`plugin:`、内置乐器）演奏每个音高、力度，各存成一个文件（文件名带音高、力度），
 /// 只留按住的那 `hold` 秒（松开以后的不要）。再每个音高演奏一个 1 秒的短音，量松开后余音收掉的快慢（有制音器的乐器）。
-pub fn render_notes(spec: &str, params: &muser_core::InstrumentParams, pitches: &[u8], velocities: &[f64], hold: f64, dir: &Path) -> Result<(Vec<PathBuf>, Option<f64>), String> {
+pub fn render_notes(
+    spec: &str,
+    params: &muser_core::InstrumentParams,
+    pitches: &[u8],
+    velocities: &[f64],
+    hold: f64,
+    dir: &Path,
+) -> Result<(Vec<PathBuf>, Option<f64>), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create '{}': {e}", dir.display()))?;
     let gap = hold + 4.0;
     let mut notes = Vec::new();
@@ -1267,7 +1334,8 @@ pub fn render_notes(spec: &str, params: &muser_core::InstrumentParams, pitches: 
             b.channel_mut(c).copy_from_slice(&audio.channel(c)[start..end]);
         }
         let path = dir.join(format!("{}{}_v{v:.2}.wav", names[usize::from(p % 12)], i32::from(p / 12) - 1));
-        manguebyte::prelude::wav::write_file(&path, &b, 48_000, manguebyte::prelude::WavFormat::Float32).map_err(|e| format!("cannot write '{}': {e:?}", path.display()))?;
+        manguebyte::prelude::wav::write_file(&path, &b, 48_000, manguebyte::prelude::WavFormat::Float32)
+            .map_err(|e| format!("cannot write '{}': {e:?}", path.display()))?;
         files.push(path);
     }
     releases.sort_by(f64::total_cmp);
@@ -1366,7 +1434,8 @@ fn analyze_vibrato(x: &[f64], sr: f64, f0: f64, partials: &[Partial]) -> Option<
     let rate = best.1;
     // 深浅：一个周期一个窗的峰峰值的一半；从第一个超过一半深度的窗开始算 delay。
     let per = ((1.0 / rate) / dt) as usize;
-    let swings: Vec<f64> = dev.chunks(per.max(2)).map(|c| (c.iter().copied().fold(f64::MIN, f64::max) - c.iter().copied().fold(f64::MAX, f64::min)) / 2.0).collect();
+    let swings: Vec<f64> =
+        dev.chunks(per.max(2)).map(|c| (c.iter().copied().fold(f64::MIN, f64::max) - c.iter().copied().fold(f64::MAX, f64::min)) / 2.0).collect();
     let mut sorted = swings.clone();
     sorted.sort_by(f64::total_cmp);
     let depth = sorted[sorted.len() * 3 / 4];
@@ -1482,7 +1551,7 @@ impl ModalTable {
                     .enumerate()
                     .filter(|(_, s)| !s.2.iter().any(|q| q.0 == wi))
                     .filter(|(_, s)| if p.n > 0 { s.0 == p.n } else { s.0 == 0 && (s.1 - p.ratio).abs() <= near })
-                    .min_by(|a, b| (a.1.1 - p.ratio).abs().total_cmp(&(b.1.1 - p.ratio).abs()))
+                    .min_by(|a, b| (a.1 .1 - p.ratio).abs().total_cmp(&(b.1 .1 - p.ratio).abs()))
                     .map(|(k, _)| k);
                 match hit {
                     Some(k) => slots[k].2.push((wi, p)),
@@ -1500,7 +1569,9 @@ impl ModalTable {
             let avg = |f: &dyn Fn(&Partial) -> f64| present.iter().map(|&(p, w, _)| f(p) * w).sum::<f64>() / wsum;
             let geo = |f: &dyn Fn(&Partial) -> f64| (present.iter().map(|&(p, w, _)| f(p).max(1e-9).ln() * w).sum::<f64>() / wsum).exp();
             let (pr, pi) = present.iter().fold((0.0, 0.0), |(a, b), &(p, w, _)| (a + p.phase.cos() * w, b + p.phase.sin() * w));
-            let (sr, si) = present.iter().fold((0.0, 0.0), |(a, b), &(p, w, _)| (a + p.start.cos() * w * (p.amp + p.fast_amp), b + p.start.sin() * w * (p.amp + p.fast_amp)));
+            let (sr, si) = present
+                .iter()
+                .fold((0.0, 0.0), |(a, b), &(p, w, _)| (a + p.start.cos() * w * (p.amp + p.fast_amp), b + p.start.sin() * w * (p.amp + p.fast_amp)));
             partials.push(Partial {
                 ratio: avg(&|p| p.ratio),
                 // 振幅按全部权重加（缺这个分音的录音算 0），其余按有这个分音的录音平均。
@@ -1525,13 +1596,15 @@ impl ModalTable {
         partials.sort_by(|a, b| a.ratio.total_cmp(&b.ratio));
         let noise = Noise {
             amp: weights.iter().map(|&(i, w, g)| self.notes[i].noise.amp * w * g).sum(),
-            hz: (weights.iter().map(|&(i, w, _)| self.notes[i].noise.hz.max(1.0).ln() * w).sum::<f64>() / weights.iter().map(|w| w.1).sum::<f64>().max(1e-9)).exp(),
+            hz: (weights.iter().map(|&(i, w, _)| self.notes[i].noise.hz.max(1.0).ln() * w).sum::<f64>() / weights.iter().map(|w| w.1).sum::<f64>().max(1e-9))
+                .exp(),
         };
         // 噪声的频段：各录音同一个频段的加权（没有这个频段的录音算 0）。
         let mut bands = Vec::new();
         for k in 0..NOISE_BANDS {
             let hz = 31.25 * (k as f64).exp2();
-            let present: Vec<(&NoiseBand, f64, f64)> = weights.iter().filter_map(|&(i, w, g)| self.notes[i].bands.iter().find(|b| (b.hz / hz - 1.0).abs() < 0.02).map(|b| (b, w, g))).collect();
+            let present: Vec<(&NoiseBand, f64, f64)> =
+                weights.iter().filter_map(|&(i, w, g)| self.notes[i].bands.iter().find(|b| (b.hz / hz - 1.0).abs() < 0.02).map(|b| (b, w, g))).collect();
             let wsum: f64 = present.iter().map(|p| p.1).sum();
             if wsum <= 0.0 {
                 continue;
@@ -1539,7 +1612,11 @@ impl ModalTable {
             let avg = |f: &dyn Fn(&NoiseBand) -> f64| present.iter().map(|&(b, w, _)| f(b) * w).sum::<f64>() / wsum;
             let geo = |f: &dyn Fn(&NoiseBand) -> f64, has: &dyn Fn(&NoiseBand) -> bool| {
                 let w: f64 = present.iter().filter(|p| has(p.0)).map(|p| p.1).sum();
-                if w <= 0.0 { 0.0 } else { (present.iter().filter(|p| has(p.0)).map(|&(b, w, _)| f(b).max(1e-9).ln() * w).sum::<f64>() / w).exp() }
+                if w <= 0.0 {
+                    0.0
+                } else {
+                    (present.iter().filter(|p| has(p.0)).map(|&(b, w, _)| f(b).max(1e-9).ln() * w).sum::<f64>() / w).exp()
+                }
             };
             bands.push(NoiseBand {
                 hz,
@@ -1578,7 +1655,11 @@ pub(crate) fn load(path: &str) -> Result<(&'static ModalTable, &'static crate::z
     let text = std::fs::read_to_string(&path).map_err(|e| format!("cannot read yinse instrument '{}': {e}", path.display()))?;
     let table: ModalTable = serde_json::from_str(&text).map_err(|e| format!("'{}' is not a yinse instrument: {e}", path.display()))?;
     if table.format == FORMAT && table.version > VERSION {
-        return Err(format!("'{}' was extracted by a newer muser (table version {}, this muser reads up to {VERSION}): update muser", path.display(), table.version));
+        return Err(format!(
+            "'{}' was extracted by a newer muser (table version {}, this muser reads up to {VERSION}): update muser",
+            path.display(),
+            table.version
+        ));
     }
     if table.format != FORMAT || table.notes.is_empty() || table.notes.iter().any(|n| n.partials.is_empty()) {
         return Err(format!("'{}' is not a yinse instrument (format {FORMAT}, at least one note with partials)", path.display()));
@@ -1611,7 +1692,8 @@ pub fn user_library() -> PathBuf {
 
 /// 找乐器的库：先 `$MUSER_YINSE_PATH` 里的（路径分隔符隔开），最后是本机的 [`user_library`]。
 pub fn roots() -> Vec<PathBuf> {
-    let mut roots: Vec<PathBuf> = std::env::var_os("MUSER_YINSE_PATH").map(|v| std::env::split_paths(&v).filter(|r| !r.as_os_str().is_empty()).collect()).unwrap_or_default();
+    let mut roots: Vec<PathBuf> =
+        std::env::var_os("MUSER_YINSE_PATH").map(|v| std::env::split_paths(&v).filter(|r| !r.as_os_str().is_empty()).collect()).unwrap_or_default();
     roots.push(user_library());
     roots
 }
@@ -1628,13 +1710,15 @@ pub fn library() -> Vec<LibraryEntry> {
     for root in roots.iter().filter(|r| !r.as_os_str().is_empty()) {
         for family in dirs(&root.join("instruments")) {
             for dir in dirs(&family) {
-                let (f, n) = (family.file_name().unwrap_or_default().to_string_lossy().into_owned(), dir.file_name().unwrap_or_default().to_string_lossy().into_owned());
+                let (f, n) =
+                    (family.file_name().unwrap_or_default().to_string_lossy().into_owned(), dir.file_name().unwrap_or_default().to_string_lossy().into_owned());
                 let path = dir.join(format!("{n}.yinse.json"));
                 let spec = format!("yinse:{f}/{n}");
                 if !path.is_file() || out.iter().any(|e| e.spec == spec) {
                     continue;
                 }
-                let meta: serde_json::Value = std::fs::read_to_string(dir.join("meta.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+                let meta: serde_json::Value =
+                    std::fs::read_to_string(dir.join("meta.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
                 let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
                 let zh = text(&meta["zh"]);
                 out.push(LibraryEntry {
@@ -1643,7 +1727,11 @@ pub fn library() -> Vec<LibraryEntry> {
                     family: f,
                     description: text(&meta["description"]),
                     license: text(&meta["source"]["license"]),
-                    source: [text(&meta["source"]["title"]), text(&meta["source"]["author"])].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(", "),
+                    source: [text(&meta["source"]["title"]), text(&meta["source"]["author"])]
+                        .into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     path,
                 });
             }
@@ -1856,7 +1944,8 @@ pub fn compare(table_path: &str, files: &[PathBuf], between: bool) -> Result<Vec
                 let mut without = table.clone();
                 without.notes.retain(|n| n.articulation != articulation || (n.pitch - pitch).abs() > 0.5);
                 std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create '{}': {e}", dir.display()))?;
-                std::fs::write(&file, serde_json::to_string(&without).map_err(|e| e.to_string())?).map_err(|e| format!("cannot write '{}': {e}", file.display()))?;
+                std::fs::write(&file, serde_json::to_string(&without).map_err(|e| e.to_string())?)
+                    .map_err(|e| format!("cannot write '{}': {e}", file.display()))?;
             }
             let (gc, ..) = features(&play(&format!("yinse:{}", file.display()), pitch, velocity, &articulation)?, f64::from(sr));
             between_db = Some(difference(&ga, &gc));
@@ -1987,7 +2076,11 @@ mod tests {
         });
         let note = analyze(&path, Some(69.0), 0.7).unwrap();
         for (ratio, amp, t60) in [(2.76, 0.2, 1.0), (5.4, 0.1, 0.5)] {
-            let p = note.partials.iter().find(|p| (p.ratio - ratio).abs() < 0.01).unwrap_or_else(|| panic!("partial at {ratio}: {:?}", note.partials.iter().map(|p| p.ratio).collect::<Vec<_>>()));
+            let p = note
+                .partials
+                .iter()
+                .find(|p| (p.ratio - ratio).abs() < 0.01)
+                .unwrap_or_else(|| panic!("partial at {ratio}: {:?}", note.partials.iter().map(|p| p.ratio).collect::<Vec<_>>()));
             assert!(p.n == 0 && (p.amp - amp).abs() < 0.03 && (p.t60 - t60).abs() < 0.15, "{p:?}");
         }
         assert_eq!(note.partials.len(), 3, "{:?}", note.partials.iter().map(|p| p.ratio).collect::<Vec<_>>());
@@ -2000,7 +2093,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("muser-modal-play-{}", std::process::id()));
         // 分音在 3 ms 里升起来（真的乐器不会从半截波形突然开始）。
         let rise = |t: f64| 0.5 - 0.5 * (core::f64::consts::PI * (t / 0.003).min(1.0)).cos();
-        let tone = |t: f64| rise(t) * (0.3 * (TAU * 220.0 * t + 0.7).sin() * 10f64.powf(-3.0 * t / 3.0) + 0.1 * (TAU * 440.0 * t - 1.0).sin() * 10f64.powf(-3.0 * t / 1.5));
+        let tone = |t: f64| {
+            rise(t) * (0.3 * (TAU * 220.0 * t + 0.7).sin() * 10f64.powf(-3.0 * t / 3.0) + 0.1 * (TAU * 440.0 * t - 1.0).sin() * 10f64.powf(-3.0 * t / 1.5))
+        };
         // 2 … 8 kHz 的一下噪声（白噪声的二阶差分近似高通），60 ms 到 -60 dB。
         let burst = |t: f64, i: usize| 0.05 * (white(i, 3) - white(i + 1, 3)) * 10f64.powf(-3.0 * t / 0.06);
         let path = write_note(&dir, "A3_v100.wav", 4.0, |t, i| (tone(t) + burst(t, i), tone(t) + burst(t, i)));
@@ -2036,8 +2131,13 @@ mod tests {
             articulation: String::new(),
         };
         let mut t = ModalTable {
-            format: FORMAT.into(), version: VERSION, name: String::new(), resonance: 0.0,
-            notes: vec![note(0.4, &[1, 2, 4, 5]), note(0.8, &[1, 2, 3, 4, 5])], gestures: Gestures::default(), release: None,
+            format: FORMAT.into(),
+            version: VERSION,
+            name: String::new(),
+            resonance: 0.0,
+            notes: vec![note(0.4, &[1, 2, 4, 5]), note(0.8, &[1, 2, 3, 4, 5])],
+            gestures: Gestures::default(),
+            release: None,
         };
         let v = t.voice(60.0, 0.6, "");
         let ratios = |v: &Voice| v.partials.iter().map(|p| (p.ratio * 1e6).round() / 1e6).collect::<Vec<_>>();
@@ -2076,7 +2176,12 @@ mod tests {
         let table = extract(&files, "take", |_| {}).unwrap();
         let a3: Vec<&NoteTable> = table.notes.iter().filter(|n| n.pitch == 57.0).collect();
         assert_eq!(a3.len(), 2);
-        assert!(a3[0].velocity < a3[1].velocity && (a3[1].partials[0].amp / a3[0].partials[0].amp - 4.0).abs() < 0.4, "{:?} {:?}", a3[0].partials[0], a3[1].partials[0]);
+        assert!(
+            a3[0].velocity < a3[1].velocity && (a3[1].partials[0].amp / a3[0].partials[0].amp - 4.0).abs() < 0.4,
+            "{:?} {:?}",
+            a3[0].partials[0],
+            a3[1].partials[0]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2129,7 +2234,8 @@ mod tests {
         let dir = root.join("instruments/strike/bell");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("bell.yinse.json"), "{}").unwrap();
-        std::fs::write(dir.join("meta.json"), r#"{"zh":"钟","description":"a bell","source":{"title":"Bells","author":"Someone","license":"CC0-1.0"}}"#).unwrap();
+        std::fs::write(dir.join("meta.json"), r#"{"zh":"钟","description":"a bell","source":{"title":"Bells","author":"Someone","license":"CC0-1.0"}}"#)
+            .unwrap();
         // 只有这个测试读写 MUSER_YINSE_PATH。
         unsafe { std::env::set_var("MUSER_YINSE_PATH", &root) };
         let list = library();
@@ -2157,8 +2263,13 @@ mod tests {
         let mut muted = note(60.0, 0.8, 0.05);
         muted.articulation = "mute".into();
         let t = ModalTable {
-            format: FORMAT.into(), version: 1, name: String::new(), resonance: 0.0,
-            notes: vec![note(60.0, 0.4, 0.1), note(60.0, 0.8, 0.3), note(72.0, 0.8, 0.5), muted], gestures: Gestures::default(), release: None,
+            format: FORMAT.into(),
+            version: 1,
+            name: String::new(),
+            resonance: 0.0,
+            notes: vec![note(60.0, 0.4, 0.1), note(60.0, 0.8, 0.3), note(72.0, 0.8, 0.5), muted],
+            gestures: Gestures::default(),
+            release: None,
         };
         assert!((t.voice(60.0, 0.6, "").partials[0].amp - 0.2).abs() < 1e-9);
         assert!((t.voice(66.0, 0.8, "").partials[0].amp - 0.4).abs() < 1e-9);

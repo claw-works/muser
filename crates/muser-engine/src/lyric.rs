@@ -11,15 +11,28 @@
 pub enum Onset {
     None,
     /// 摩擦音：滤波噪声（s 最高、sh 低一些、f 宽而轻、h 最宽）。
-    Fricative { hz: f32, q: f32, level: f32 },
+    Fricative {
+        hz: f32,
+        q: f32,
+        level: f32,
+    },
     /// 爆破音：一下短促的噪声；不送气（b d g）只有爆破，送气（p t k）后面再跟一小段气声。
-    Plosive { hz: f32, aspirated: bool },
+    Plosive {
+        hz: f32,
+        aspirated: bool,
+    },
     /// 塞擦音（zh ch j q z c）：爆破接一小段摩擦。
-    Affricate { hz: f32, q: f32, aspirated: bool },
+    Affricate {
+        hz: f32,
+        q: f32,
+        aspirated: bool,
+    },
     /// 鼻音（m n）：先一小段闭着嘴的哼声，再打开元音。
     Nasal,
     /// 近音（l r w y）：不加噪声，从相近的元音形状快速滑到目标元音。
-    Glide { from: f32 },
+    Glide {
+        from: f32,
+    },
 }
 
 /// 音节结尾。
@@ -59,7 +72,8 @@ pub fn parse(text: &str) -> Syl {
     let s: String = text.to_lowercase().chars().filter(|c| c.is_alphabetic() || *c == 'ü').collect();
     let s = s.replace('v', "ü");
     // 起头的辅音（长的先比）。
-    const ONSETS: &[&str] = &["zh", "ch", "sh", "th", "ph", "wh", "qu", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "r", "z", "c", "s", "y", "w", "v"];
+    const ONSETS: &[&str] =
+        &["zh", "ch", "sh", "th", "ph", "wh", "qu", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "r", "z", "c", "s", "y", "w", "v"];
     let ini = ONSETS.iter().find(|o| s.starts_with(**o)).copied().unwrap_or("");
     let mut rest = &s[ini.len()..];
     let onset = match ini {
@@ -107,14 +121,26 @@ pub fn parse(text: &str) -> Syl {
             'e' => {
                 // 拼音单独的 e（de、ge、he……）是"鹅"；ie、ue、ei 里的 e 是 e。
                 let alone = letters.len() == 1 || (k == 0 && letters.get(1) == Some(&'r'));
-                if alone && !jqx && !s.ends_with("ee") { SCHWA } else { E }
+                if alone && !jqx && !s.ends_with("ee") {
+                    SCHWA
+                } else {
+                    E
+                }
             }
             'i' | 'y' => {
-                if apical { SCHWA + 0.4 } else { I }
+                if apical {
+                    SCHWA + 0.4
+                } else {
+                    I
+                }
             }
             'o' => O,
             'u' => {
-                if jqx && k == 0 { I } else { U }
+                if jqx && k == 0 {
+                    I
+                } else {
+                    U
+                }
             }
             'ü' => I,
             _ => continue,
@@ -140,8 +166,20 @@ impl Syl {
     pub fn lead(&self) -> f64 {
         match self.onset {
             Onset::None => 0.0,
-            Onset::Fricative { level, .. } => if level < 0.3 { 0.08 } else { 0.12 },
-            Onset::Plosive { aspirated, .. } => if aspirated { 0.05 } else { 0.02 },
+            Onset::Fricative { level, .. } => {
+                if level < 0.3 {
+                    0.08
+                } else {
+                    0.12
+                }
+            }
+            Onset::Plosive { aspirated, .. } => {
+                if aspirated {
+                    0.05
+                } else {
+                    0.02
+                }
+            }
             Onset::Affricate { .. } => 0.09,
             Onset::Nasal => 0.07,
             Onset::Glide { .. } => 0.05,
@@ -221,7 +259,14 @@ impl Consonants {
         // 辅音比元音轻得多（摩擦音约低 12 dB，爆破只是一下）：整体按校准后的人声音量缩小。
         let v = self.gain * CONSONANT_GAIN * (0.35 + 0.65 * velocity.clamp(0.0, 1.0));
         let mut push = |start: usize, len: usize, hz: f32, q: f32, level: f32, attack: usize, release: usize, sr: f32| {
-            self.bursts.push(Burst { start, len: len.max(1), level: level * v, attack: attack.max(1), release: release.max(1), biquad: Biquad::bandpass(hz, q, sr) });
+            self.bursts.push(Burst {
+                start,
+                len: len.max(1),
+                level: level * v,
+                attack: attack.max(1),
+                release: release.max(1),
+                biquad: Biquad::bandpass(hz, q, sr),
+            });
         };
         let sr = self.sr;
         match syl.onset {

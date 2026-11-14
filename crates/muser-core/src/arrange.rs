@@ -199,9 +199,16 @@ pub struct Transform {
 impl Transform {
     pub fn validate(&self, at: &str) -> Result<(), String> {
         let ops = [
-            self.transpose.is_some(), self.octave.is_some(), self.reverse, self.invert.is_some(),
-            self.stretch.is_some(), self.shift.is_some(), self.every.is_some(), self.vary.is_some(),
-            !self.sequence.is_empty(), self.fragment.is_some(),
+            self.transpose.is_some(),
+            self.octave.is_some(),
+            self.reverse,
+            self.invert.is_some(),
+            self.stretch.is_some(),
+            self.shift.is_some(),
+            self.every.is_some(),
+            self.vary.is_some(),
+            !self.sequence.is_empty(),
+            self.fragment.is_some(),
         ];
         if ops.iter().filter(|&&o| o).count() != 1 {
             return Err(format!("{at}: give each transform object only one kind: transpose / octave / reverse / invert / stretch / shift / sequence / fragment / every+then / vary"));
@@ -251,11 +258,22 @@ pub enum Step {
     Rest,
     Hold,
     /// 和弦的第几个音：`deg` 1 2 3 4 5 6 7 8 9 11 13，`acc` 显式升降（`b7`、`#11`），`oct` 八度偏移（`'` / `,`）。
-    Degree { deg: u8, acc: i8, oct: i8, accent: bool },
+    Degree {
+        deg: u8,
+        acc: i8,
+        oct: i8,
+        accent: bool,
+    },
     /// 整个和弦（自动转位）。
-    Chord { oct: i8, accent: bool },
+    Chord {
+        oct: i8,
+        accent: bool,
+    },
     /// 低音：斜线和弦的低音，否则根音。
-    Bass { oct: i8, accent: bool },
+    Bass {
+        oct: i8,
+        accent: bool,
+    },
 }
 
 /// 解析好的 chordal 音型。
@@ -266,7 +284,9 @@ impl Chordal {
     pub fn parse(text: &str) -> Result<Vec<Step>, String> {
         let mut out = Vec::new();
         for tok in text.split_whitespace().filter(|t| *t != "|") {
-            let err = || format!("chordal token '{tok}' not understood: use 1 3 5 7 8 9 (which chord tone; may add b/# and ' ,), c (whole chord), B (bass), . (rest), - (hold); a trailing ! is an accent");
+            let err = || {
+                format!("chordal token '{tok}' not understood: use 1 3 5 7 8 9 (which chord tone; may add b/# and ' ,), c (whole chord), B (bass), . (rest), - (hold); a trailing ! is an accent")
+            };
             let (body, accent) = match tok.strip_suffix('!') {
                 Some(b) => (b, true),
                 None => (tok, false),
@@ -319,7 +339,10 @@ impl Part {
         if let Some(c) = &self.chordal {
             Chordal::parse(c).map_err(|e| format!("{at}.{e}"))?;
         } else if self.grid.is_some() && self.step.is_some() {
-            return Err(format!("{at}: put the grid step inside grid: \"grid\": {{ \"step\": {}, ... }} (step / octave on a part are only for chordal)", self.step.unwrap_or(0.25)));
+            return Err(format!(
+                "{at}: put the grid step inside grid: \"grid\": {{ \"step\": {}, ... }} (step / octave on a part are only for chordal)",
+                self.step.unwrap_or(0.25)
+            ));
         } else if self.step.is_some() || self.octave.is_some() {
             return Err(format!("{at}: step / octave are only for chordal"));
         }

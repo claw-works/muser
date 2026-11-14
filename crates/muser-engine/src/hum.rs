@@ -40,7 +40,11 @@ const FRAME_SECONDS: f64 = 0.01;
 
 fn median(v: &mut [f64]) -> f64 {
     v.sort_by(f64::total_cmp);
-    if v.is_empty() { 0.0 } else { v[v.len() / 2] }
+    if v.is_empty() {
+        0.0
+    } else {
+        v[v.len() / 2]
+    }
 }
 
 /// 转谱。`audio` 任意声道数（取平均），`sample_rate` 是它的采样率。
@@ -166,7 +170,11 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
             .map(|s| {
                 let x = (beat(frames[s.first].0) - shift) / opts.step;
                 let f = x - x.floor();
-                if f >= 0.7 { f - 1.0 } else { f }
+                if f >= 0.7 {
+                    f - 1.0
+                } else {
+                    f
+                }
             })
             .collect();
         let m = median(&mut phases);
@@ -189,7 +197,29 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
         if let Some(prev) = notes.last_mut() {
             if (prev.start.0 - start).abs() < 1e-9 {
                 if end - start > prev.length.0 {
-                    *prev = Note { pitch, start: Beats(start), length: Beats(end - start), velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32, accent: false, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0, bend: Vec::new(), lyric: None, technique: None, harmonic: None, articulation: None };
+                    *prev = Note {
+                        pitch,
+                        start: Beats(start),
+                        length: Beats(end - start),
+                        velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32,
+                        accent: false,
+                        mute: false,
+                        tremolo: false,
+                        slide: false,
+                        slide_out: false,
+                        breath: false,
+                        damp: false,
+                        flutter: false,
+                        trill: 0,
+                        half_trill: false,
+                        scoop: 0.0,
+                        fall: 0.0,
+                        bend: Vec::new(),
+                        lyric: None,
+                        technique: None,
+                        harmonic: None,
+                        articulation: None,
+                    };
                 }
                 continue;
             }
@@ -198,11 +228,34 @@ pub fn transcribe(audio: &AudioBuffer<f32>, sample_rate: u32, opts: HumOptions) 
                 prev.length = Beats(start - prev.start.0);
             }
         }
-        notes.push(Note { pitch, start: Beats(start), length: Beats(end - start), velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32, accent: false, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0, bend: Vec::new(), lyric: None, technique: None, harmonic: None, articulation: None });
+        notes.push(Note {
+            pitch,
+            start: Beats(start),
+            length: Beats(end - start),
+            velocity: (0.45 + 0.55 * level).clamp(0.3, 1.0) as f32,
+            accent: false,
+            mute: false,
+            tremolo: false,
+            slide: false,
+            slide_out: false,
+            breath: false,
+            damp: false,
+            flutter: false,
+            trill: 0,
+            half_trill: false,
+            scoop: 0.0,
+            fall: 0.0,
+            bend: Vec::new(),
+            lyric: None,
+            technique: None,
+            harmonic: None,
+            articulation: None,
+        });
     }
     let end = notes.iter().map(|n| n.start.0 + n.length.0).fold(0.0, f64::max);
     let bars = ((end / 4.0) - 1e-9).ceil().max(1.0) as u32;
-    let tones: Vec<crate::abc_export::Tone> = notes.iter().map(|n| crate::abc_export::Tone { start: n.start.0, end: n.start.0 + n.length.0, pitch: n.pitch }).collect();
+    let tones: Vec<crate::abc_export::Tone> =
+        notes.iter().map(|n| crate::abc_export::Tone { start: n.start.0, end: n.start.0 + n.length.0, pitch: n.pitch }).collect();
     let key = crate::abc_export::estimate_key(&tones).name().to_string();
     Ok(Transcription { notes, bars, key, tuning_cents: (offset * 100.0).round() })
 }

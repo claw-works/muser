@@ -6,8 +6,8 @@
 //! 单条轨过总线后的响度本来就分不开），这时同一总线内比各音轨的 `output`，组与组之间比各总线的 `output`，
 //! 这两个都是实测值。主总线看送进来的信号峰值：超过 0 dBFS 说明靠主效果链硬压。
 
-use muser_core::Project;
 use muser_core::routing::Node;
+use muser_core::Project;
 use serde::Serialize;
 
 use crate::render::{render_loudness, Level, RenderCache, RenderSettings};
@@ -112,7 +112,8 @@ pub fn mix_report(project: &Project, settings: RenderSettings, cache: &mut Rende
         ));
     }
     if let Some(p) = master.output.peak_db.filter(|p| *p > -0.1) {
-        warnings.push(format!("The master output peaks at {p:+.1} dBFS and will clip: put a limiter last on the master (ceiling_db -1) or lower master_gain_db"));
+        warnings
+            .push(format!("The master output peaks at {p:+.1} dBFS and will clip: put a limiter last on the master (ceiling_db -1) or lower master_gain_db"));
     }
     Ok(MixReport { tracks, buses, master, warnings })
 }

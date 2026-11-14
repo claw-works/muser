@@ -127,12 +127,7 @@ fn bus_index(p: &Project, name: &str, at: &str) -> Result<Option<usize>, String>
         .iter()
         .position(|b| b.name == name)
         .map(Some)
-        .ok_or_else(|| {
-            format!(
-                "{at}: no bus named '{name}' (available: master{})",
-                p.buses.iter().map(|b| format!(", {}", b.name)).collect::<String>()
-            )
-        })
+        .ok_or_else(|| format!("{at}: no bus named '{name}' (available: master{})", p.buses.iter().map(|b| format!(", {}", b.name)).collect::<String>()))
 }
 
 /// 检查路由结构并给出渲染顺序。
@@ -162,8 +157,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
         };
         edges.push(Edge { from, to, send: None, level_db: 0.0 });
         for (name, db) in sends {
-            let to = bus_index(p, name, &format!("{at}.sends"))?
-                .ok_or_else(|| format!("{at}.sends: cannot send to master (use output)"))?;
+            let to = bus_index(p, name, &format!("{at}.sends"))?.ok_or_else(|| format!("{at}.sends: cannot send to master (use output)"))?;
             if !(LEVEL_RANGE.0..=LEVEL_RANGE.1).contains(db) || !db.is_finite() {
                 return Err(format!("{at}.sends.{name} = {db} is out of range [{}, {}] dB", LEVEL_RANGE.0, LEVEL_RANGE.1));
             }
@@ -237,11 +231,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
     let mut order = Vec::new();
     let mut done = std::collections::HashSet::new();
     while order.len() < nodes.len() {
-        let ready: Vec<Node> = nodes
-            .iter()
-            .copied()
-            .filter(|n| !done.contains(n) && deps(*n).iter().all(|d| done.contains(d)))
-            .collect();
+        let ready: Vec<Node> = nodes.iter().copied().filter(|n| !done.contains(n) && deps(*n).iter().all(|d| done.contains(d))).collect();
         if ready.is_empty() {
             let name = |n: &Node| match n {
                 Node::Track(i) => format!("track '{}'", p.tracks[*i].name),
@@ -265,8 +255,12 @@ mod tests {
     /// 插件的直接输出：总线排在音轨之后；总线名要存在；只用于插件乐器。
     #[test]
     fn taps_order_and_checks() {
-        let pr = |bus: &str, inst: &str| project(&format!(r#"{{ "tempo": 120, "buses": [ {{ "name": "kick" }} ],
-            "tracks": [ {{ "name": "kit", "instrument": "{inst}", "instrument_params": {{ "@outputs": [ {{ "channel": 1, "bus": "{bus}" }}, {{ "channel": 2 }} ] }} }} ] }}"#));
+        let pr = |bus: &str, inst: &str| {
+            project(&format!(
+                r#"{{ "tempo": 120, "buses": [ {{ "name": "kick" }} ],
+            "tracks": [ {{ "name": "kit", "instrument": "{inst}", "instrument_params": {{ "@outputs": [ {{ "channel": 1, "bus": "{bus}" }}, {{ "channel": 2 }} ] }} }} ] }}"#
+            ))
+        };
         let p = plan(&pr("kick", "plugin:/x.clap")).unwrap();
         assert_eq!(p.taps, vec![Tap { track: 0, index: 0, to: Some(0) }]);
         let at = |n: Node| p.order.iter().position(|x| *x == n).unwrap();
@@ -281,12 +275,14 @@ mod tests {
 
     #[test]
     fn plan_orders_tracks_before_buses_and_keys() {
-        let p = project(r#"{ "tempo": 120,
+        let p = project(
+            r#"{ "tempo": 120,
             "buses": [ { "name": "drums", "output": "glue" }, { "name": "glue" }, { "name": "verb" } ],
             "tracks": [
               { "name": "kick", "instrument": "drums.808", "output": "drums" },
               { "name": "bass", "instrument": "bass.finger", "sends": { "verb": -12 },
-                "effects": [ { "type": "compressor", "sidechain": "kick" } ] } ] }"#);
+                "effects": [ { "type": "compressor", "sidechain": "kick" } ] } ] }"#,
+        );
         let plan = plan(&p).unwrap();
         let pos = |n| plan.order.iter().position(|x| *x == n).unwrap();
         assert!(pos(Node::Track(0)) < pos(Node::Bus(0)));
@@ -306,12 +302,17 @@ mod tests {
         assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "a" }, { "name": "a" } ] }"#).contains("duplicate"));
         assert!(err(r#"{ "tempo": 120, "tracks": [ { "instrument": "x", "sends": { "master": -6 } } ] }"#).contains("master"));
         assert!(err(r#"{ "tempo": 120, "tracks": [ { "name": "k", "instrument": "x" }, { "name": "k", "instrument": "x" },
-            { "instrument": "x", "effects": [ { "type": "compressor", "sidechain": "k" } ] } ] }"#).contains("unique"));
+            { "instrument": "x", "effects": [ { "type": "compressor", "sidechain": "k" } ] } ] }"#)
+        .contains("unique"));
         // 侧链与输出形成环：t 输出到 a，a 的压缩器由 t 触发——合法（t 先于 a）。
-        plan(&project(r#"{ "tempo": 120, "buses": [ { "name": "a", "effects": [ { "type": "compressor", "sidechain": "t" } ] } ],
-            "tracks": [ { "name": "t", "instrument": "x", "output": "a" } ] }"#)).unwrap();
+        plan(&project(
+            r#"{ "tempo": 120, "buses": [ { "name": "a", "effects": [ { "type": "compressor", "sidechain": "t" } ] } ],
+            "tracks": [ { "name": "t", "instrument": "x", "output": "a" } ] }"#,
+        ))
+        .unwrap();
         // 真正的环：t 的压缩器由总线 a 触发，而 t 输出到 a。
         assert!(err(r#"{ "tempo": 120, "buses": [ { "name": "a" } ],
-            "tracks": [ { "name": "t", "instrument": "x", "output": "a", "effects": [ { "type": "compressor", "sidechain": "a" } ] } ] }"#).contains("cycle"));
+            "tracks": [ { "name": "t", "instrument": "x", "output": "a", "effects": [ { "type": "compressor", "sidechain": "a" } ] } ] }"#)
+        .contains("cycle"));
     }
 }

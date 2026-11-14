@@ -40,7 +40,11 @@ pub fn run(check: bool, version: Option<String>) -> Result<()> {
 }
 
 fn normalize(v: &str) -> String {
-    if v.starts_with('v') { v.to_string() } else { format!("v{v}") }
+    if v.starts_with('v') {
+        v.to_string()
+    } else {
+        format!("v{v}")
+    }
 }
 
 /// `releases/latest` 会跳转到 `…/releases/tag/<版本>`：不调 API，不受频率限制。
@@ -77,7 +81,13 @@ fn install_home() -> Option<PathBuf> {
 fn installer(tag: &str, home: Option<&Path>) -> Command {
     let url = |r: &str| format!("https://raw.githubusercontent.com/{REPO}/{r}/scripts/install.sh");
     let mut c = Command::new("sh");
-    c.args(["-c", "s=$(curl -fsSL \"$0\" || curl -fsSL \"$1\") || { echo 'failed to download the install script' >&2; exit 1; }; printf '%s\\n' \"$s\" | sh", &url(tag), &url("main")]).env("MUSER_VERSION", tag);
+    c.args([
+        "-c",
+        "s=$(curl -fsSL \"$0\" || curl -fsSL \"$1\") || { echo 'failed to download the install script' >&2; exit 1; }; printf '%s\\n' \"$s\" | sh",
+        &url(tag),
+        &url("main"),
+    ])
+    .env("MUSER_VERSION", tag);
     if let Some(h) = home {
         c.env("MUSER_HOME", h);
     }

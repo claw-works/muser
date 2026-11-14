@@ -204,11 +204,21 @@ pub fn run(project_path: &str, clean: bool, timing: bool) -> Result<()> {
 fn report_timing(p: &Project) -> Result<()> {
     let rows = line_lags(p)?;
     let mut lags = Vec::new();
-    println!("Per-line timing (positive = later than the guide melody, negative = earlier; fit is the average difference in semitones, lower is more reliable):");
+    println!(
+        "Per-line timing (positive = later than the guide melody, negative = earlier; fit is the average difference in semitones, lower is more reliable):"
+    );
     for (k, (text, bar, best)) in rows.iter().enumerate() {
         match best {
             Some((lag, err)) => {
-                let mark = if *err > 1.5 { "  (poor fit, unreliable)" } else if *lag > 0.04 { "  <- late" } else if *lag < -0.04 { "  <- early" } else { "" };
+                let mark = if *err > 1.5 {
+                    "  (poor fit, unreliable)"
+                } else if *lag > 0.04 {
+                    "  <- late"
+                } else if *lag < -0.04 {
+                    "  <- early"
+                } else {
+                    ""
+                };
                 println!("  {:>2}. bar {:>2} {text}: {:+4.0} ms ({err:.2}){mark}", k + 1, bar + 1, lag * 1000.0);
                 if *err <= 1.5 {
                     lags.push(*lag);
@@ -258,7 +268,11 @@ fn line_lags(p: &Project) -> Result<Vec<(String, usize, Option<(f64, f64)>)>> {
     let map = p.bar_map();
     let mut rows = Vec::new();
     for line in &lines {
-        let text: String = line.tokens.iter().map(|t| t.text.as_str()).collect::<Vec<_>>().join(if line.tokens.iter().all(|t| t.text.chars().count() == 1) { "" } else { " " });
+        let text: String = line.tokens.iter().map(|t| t.text.as_str()).collect::<Vec<_>>().join(if line.tokens.iter().all(|t| t.text.chars().count() == 1) {
+            ""
+        } else {
+            " "
+        });
         let (a, z) = (line.start - 0.3, line.end + 0.3);
         // 这一句的人声音高（歌曲时间 → 片段 → 文件）。
         let mut times = Vec::new();

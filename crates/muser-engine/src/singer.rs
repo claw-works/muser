@@ -129,9 +129,13 @@ pub enum Place {
 pub enum Manner {
     None,
     /// 塞音：成阻（无声）→ 爆破 →（送气）→ 元音。
-    Stop { aspirated: bool },
+    Stop {
+        aspirated: bool,
+    },
     /// 塞擦音：成阻 → 爆破 → 摩擦 →（送气）→ 元音。
-    Affricate { aspirated: bool },
+    Affricate {
+        aspirated: bool,
+    },
     /// 擦音：一段摩擦噪声 → 元音。
     Fricative,
     /// 鼻音：嘴闭着、从鼻腔出的哼声 → 元音。
@@ -287,7 +291,19 @@ pub struct Syllable {
 
 impl Syllable {
     fn one(v: Vowel) -> Self {
-        Self { onset: Onset::NONE, vowels: [v; 3], n: 1, medial: false, offglide: false, coda: Coda::None, english: false, pre: [Onset::NONE; 2], n_pre: 0, tails: [Onset::NONE; 4], n_tail: 0 }
+        Self {
+            onset: Onset::NONE,
+            vowels: [v; 3],
+            n: 1,
+            medial: false,
+            offglide: false,
+            coda: Coda::None,
+            english: false,
+            pre: [Onset::NONE; 2],
+            n_pre: 0,
+            tails: [Onset::NONE; 4],
+            n_tail: 0,
+        }
     }
 
     /// 元音之前的辅音一共多长（秒）。
@@ -379,7 +395,13 @@ pub fn syllable(text: &str) -> Syllable {
         _ => Onset::NONE,
     };
     // 鼻韵尾（er 不算；单独的 n / ng 也不算）。
-    syl.coda = if s.len() > 2 && s.ends_with("ng") { Coda::Ng } else if s.len() > 1 && s.ends_with('n') && !s.ends_with("er") { Coda::N } else { Coda::None };
+    syl.coda = if s.len() > 2 && s.ends_with("ng") {
+        Coda::Ng
+    } else if s.len() > 1 && s.ends_with('n') && !s.ends_with("er") {
+        Coda::N
+    } else {
+        Coda::None
+    };
     syl
 }
 
@@ -393,7 +415,13 @@ fn finals(text: &str) -> Option<Syllable> {
     // y / w 开头：yi = i、ya = ia、wu = u、wa = ua、yu = ü …
     match ini {
         "y" => {
-            fin = if let Some(r) = fin.strip_prefix('u') { format!("ü{r}") } else if fin.starts_with('i') { fin } else { format!("i{fin}") };
+            fin = if let Some(r) = fin.strip_prefix('u') {
+                format!("ü{r}")
+            } else if fin.starts_with('i') {
+                fin
+            } else {
+                format!("i{fin}")
+            };
         }
         "w" => {
             if !fin.starts_with('u') {
@@ -404,7 +432,13 @@ fn finals(text: &str) -> Option<Syllable> {
         _ => {}
     }
     // 鼻韵尾：这一版唱成元音（n、ng 去掉；ang 的 a 偏后、ong 是 u）。
-    let (core, _nasal) = if let Some(c) = fin.strip_suffix("ng") { (c.to_string(), true) } else if let Some(c) = fin.strip_suffix('n') { (c.to_string(), true) } else { (fin.clone(), false) };
+    let (core, _nasal) = if let Some(c) = fin.strip_suffix("ng") {
+        (c.to_string(), true)
+    } else if let Some(c) = fin.strip_suffix('n') {
+        (c.to_string(), true)
+    } else {
+        (fin.clone(), false)
+    };
     let apical = matches!(ini, "z" | "c" | "s");
     let retro = matches!(ini, "zh" | "ch" | "sh" | "r");
     Some(match core.as_str() {
@@ -974,7 +1008,13 @@ impl SingerVoice {
             // 上一个字在闭塞前平滑收掉。
             // 塞音、塞擦音要闭住（很快收掉）；擦音是嗓音退下去、摩擦声接上来，中间没有空白。
             let fade = if self.syl.onset.manner == Manner::Fricative { 0.05 } else { 0.012 };
-            av = if self.syl.onset.voiced() { 1.0 } else if self.carried { 1.0 - smoothstep(t / fade) } else { 0.0 };
+            av = if self.syl.onset.voiced() {
+                1.0
+            } else if self.carried {
+                1.0 - smoothstep(t / fade)
+            } else {
+                0.0
+            };
         } else if self.syl.onset.manner != Manner::None && !self.syl.onset.voiced() {
             // 声带开始振动：与尚未消失的摩擦、送气平滑交接。
             let after = (self.at - self.lead_frames) as f64 / sr;
@@ -1102,7 +1142,14 @@ impl SingerVoice {
         x = (x + air) * murmur_gain;
         // 摩擦、爆破：噪声经过各自的带通（舌、唇前面的那一小段腔），不经过整条声道。
         // 带声的（英文的 v z）摩擦轻一半；拼音不送气的塞擦音也轻。
-        let level = frication(cons, self.formants[1]).2 * if cons.voice { 0.5 } else if cons.manner == (Manner::Affricate { aspirated: false }) { 0.6 } else { 1.0 };
+        let level = frication(cons, self.formants[1]).2
+            * if cons.voice {
+                0.5
+            } else if cons.manner == (Manner::Affricate { aspirated: false }) {
+                0.6
+            } else {
+                1.0
+            };
         let (n1, n2) = (self.rng.signed(), self.rng.signed());
         let mut f = n1 * af * level;
         for r in self.fric.iter_mut() {
@@ -1154,7 +1201,11 @@ impl Voice<f32> for SingerVoice {
             let first = if syl.n_pre > 0 { syl.pre[0] } else { syl.onset };
             let start = murmur(first).unwrap_or_else(|| {
                 let vowel = male(syl.vowels[0]);
-                if first.manner == Manner::None { vowel } else { locus_start(first, vowel) }
+                if first.manner == Manner::None {
+                    vowel
+                } else {
+                    locus_start(first, vowel)
+                }
             });
             self.av = 0.0;
             self.formants = start.map(|f| f * self.part().formants * self.params.formant_shift);
@@ -1262,7 +1313,11 @@ fn nasal_coda(c: Coda) -> Option<[f64; 5]> {
 
 /// 鼻韵尾占这个音的最后多少帧：0.2 秒，至多三成半（没有鼻韵尾是 0）。
 fn coda_frames(coda: Coda, note: u64, sr: f64) -> u64 {
-    if coda == Coda::None { 0 } else { ((0.2 * sr) as u64).min(note * 7 / 20) }
+    if coda == Coda::None {
+        0
+    } else {
+        ((0.2 * sr) as u64).min(note * 7 / 20)
+    }
 }
 
 /// 元音开头的共振峰：从辅音部位的"锁点"与元音之间的一半起（Klatt），往元音滑。
@@ -1366,7 +1421,13 @@ mod tests {
         let mut v = SingerVoice::new(SingerParams { vibrato_depth: 0.0, jitter: 0.0, breath: 0.0, ..SingerParams::preset(0) });
         v.lyric("a", 96_000, 0);
         v.note_on(NoteRef::new(0, 84), 0.8);
-        let x: Vec<f64> = (0..48_000).map(|_| { let s = v.sample(); v.at += 1; s }).collect();
+        let x: Vec<f64> = (0..48_000)
+            .map(|_| {
+                let s = v.sample();
+                v.at += 1;
+                s
+            })
+            .collect();
         let f0 = 440.0 * 2f64.powf((84.0 - 69.0) / 12.0);
         // 两个泛音正中间（不在泛音上）的能量，比旁边的泛音低 40 dB 以上。
         let power = |hz: f64| {
@@ -1384,7 +1445,13 @@ mod tests {
         let mut v = SingerVoice::new(SingerParams::preset(2));
         v.lyric("a", 96_000, 0);
         v.note_on(NoteRef::new(0, 55), 0.8);
-        let x: Vec<f64> = (0..48_000).map(|_| { let s = v.sample(); v.at += 1; s }).collect();
+        let x: Vec<f64> = (0..48_000)
+            .map(|_| {
+                let s = v.sample();
+                v.at += 1;
+                s
+            })
+            .collect();
         let high: f64 = x[24_000..].windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).powi(2)).sum();
         let all: f64 = x[24_000..].iter().map(|s| s * s).sum();
         assert!(high / all > 1e-4, "second difference (weights the top octave) {:.2e}", high / all);

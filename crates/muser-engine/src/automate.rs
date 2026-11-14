@@ -49,11 +49,7 @@ impl Lane {
 
 /// 同一标量目标有多条自动化时，后写的覆盖先写的（在其生效窗内）。
 pub fn scalar(lanes: &[Lane], beat: f64, base: f64) -> f64 {
-    lanes
-        .iter()
-        .rev()
-        .find_map(|l| l.curve.value_at(beat))
-        .unwrap_or(base)
+    lanes.iter().rev().find_map(|l| l.curve.value_at(beat)).unwrap_or(base)
 }
 
 /// 一条音轨（或总线）的全部自动化。总线没有 `instrument`。
@@ -93,20 +89,16 @@ struct Rule {
 impl Rule {
     fn number(&self, v: &Value) -> Result<f64, String> {
         let x = match v {
-            Value::String(s) if self.text.is_some() => (self.text.as_ref().unwrap())(s)
-                .ok_or_else(|| format!("the plugin cannot parse '{s}'; write a number in {}–{}", self.min, self.max))?,
-            Value::String(s) => self
-                .names
-                .iter()
-                .position(|n| n.eq_ignore_ascii_case(s.trim()))
-                .map(|i| i as f64)
-                .ok_or_else(|| {
-                    if self.names.is_empty() {
-                        format!("expected a number, got \"{s}\"")
-                    } else {
-                        format!("expected a number or {}, got \"{s}\"", self.names.join("/"))
-                    }
-                })?,
+            Value::String(s) if self.text.is_some() => {
+                (self.text.as_ref().unwrap())(s).ok_or_else(|| format!("the plugin cannot parse '{s}'; write a number in {}–{}", self.min, self.max))?
+            }
+            Value::String(s) => self.names.iter().position(|n| n.eq_ignore_ascii_case(s.trim())).map(|i| i as f64).ok_or_else(|| {
+                if self.names.is_empty() {
+                    format!("expected a number, got \"{s}\"")
+                } else {
+                    format!("expected a number or {}, got \"{s}\"", self.names.join("/"))
+                }
+            })?,
             _ => v.as_f64().ok_or_else(|| format!("expected a number, got {v}"))?,
         };
         if !x.is_finite() || x < self.min || x > self.max {
@@ -133,15 +125,7 @@ fn plugin_rule(path: &str, id: Option<&str>, base_params: &serde_json::Map<Strin
     let p = opened.params.iter().find(|p| p.id == pid).expect("just-resolved parameter").clone();
     let base = opened.plugin.param_value(pid).unwrap_or(p.default);
     let (min, max, unit) = (p.min, p.max, p.unit.clone());
-    Ok(Rule {
-        min,
-        max,
-        unit,
-        names: &[],
-        base,
-        text: Some(Box::new(move |s: &str| opened.text_value(&p, s))),
-        key: Some(pid.0.to_string()),
-    })
+    Ok(Rule { min, max, unit, names: &[], base, text: Some(Box::new(move |s: &str| opened.text_value(&p, s))), key: Some(pid.0.to_string()) })
 }
 
 #[cfg(not(feature = "host"))]
@@ -155,18 +139,9 @@ fn effect_rule(effect: &Effect, param: &str) -> Result<Rule, String> {
     }
     let spec = muser_core::effect_spec(effect.type_name()).expect("every effect has a description");
     let p = spec.params.iter().find(|p| p.name == param).ok_or_else(|| {
-        format!(
-            "{} has no parameter '{param}'; automatable: {}",
-            spec.name,
-            spec.params.iter().map(|p| p.name).collect::<Vec<_>>().join(", ")
-        )
+        format!("{} has no parameter '{param}'; automatable: {}", spec.name, spec.params.iter().map(|p| p.name).collect::<Vec<_>>().join(", "))
     })?;
-    let base = effect
-        .numeric_params()
-        .into_iter()
-        .find(|(n, _)| *n == param)
-        .map(|(_, v)| v)
-        .unwrap_or(p.default);
+    let base = effect.numeric_params().into_iter().find(|(n, _)| *n == param).map(|(_, v)| v).unwrap_or(p.default);
     Ok(Rule { min: p.min, max: p.max, unit: p.unit.into(), names: &[], base, text: None, key: None })
 }
 
@@ -177,11 +152,9 @@ fn scalar_rule(min: f64, max: f64, unit: &'static str, base: f64) -> Rule {
 /// 检查取值并编译。
 fn compile_lane(a: &Automation, rule: &Rule, seed: u64, total_beats: f64) -> Result<Lane, String> {
     let values = match &a.shape {
-        Shape::Points { points, .. } => points
-            .iter()
-            .enumerate()
-            .map(|(i, (_, v))| rule.number(v).map_err(|e| format!("points[{i}]: {e}")))
-            .collect::<Result<Vec<_>, _>>()?,
+        Shape::Points { points, .. } => {
+            points.iter().enumerate().map(|(i, (_, v))| rule.number(v).map_err(|e| format!("points[{i}]: {e}"))).collect::<Result<Vec<_>, _>>()?
+        }
         Shape::Lfo { min, max, .. } | Shape::Random { min, max, .. } => {
             rule.number(&Value::from(*min)).map_err(|e| format!("min: {e}"))?;
             rule.number(&Value::from(*max)).map_err(|e| format!("max: {e}"))?;
@@ -193,12 +166,7 @@ fn compile_lane(a: &Automation, rule: &Rule, seed: u64, total_beats: f64) -> Res
             return Err("curve \"exp\" needs adjacent points of the same sign and non-zero; use linear / smooth when a value is 0 or crosses 0".into());
         }
     }
-    Ok(Lane {
-        param: rule.key.clone().unwrap_or_else(|| a.param.clone()),
-        curve: a.compile(&values, seed, total_beats),
-        base: rule.base,
-        last: None,
-    })
+    Ok(Lane { param: rule.key.clone().unwrap_or_else(|| a.param.clone()), curve: a.compile(&values, seed, total_beats), base: rule.base, last: None })
 }
 
 /// 编译一条音轨的自动化。`ti` 用于推导默认种子与错误位置。
@@ -281,10 +249,7 @@ pub fn compile_bus(project: &Project, bi: usize, total_beats: f64) -> Result<Tra
 
 /// 编译主总线自动化。
 pub fn compile_master(project: &Project, total_beats: f64) -> Result<MasterLanes, String> {
-    let mut out = MasterLanes {
-        effects: (0..project.master_effects.len()).map(|_| Vec::new()).collect(),
-        ..Default::default()
-    };
+    let mut out = MasterLanes { effects: (0..project.master_effects.len()).map(|_| Vec::new()).collect(), ..Default::default() };
     for (ai, a) in project.automation.iter().enumerate() {
         let at = |e: String| format!("automation[{ai}]: {e}");
         let seed = derive_seed(project.seed, None, ai);

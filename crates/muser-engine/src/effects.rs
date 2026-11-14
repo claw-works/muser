@@ -11,13 +11,10 @@
 use muser_core::Effect;
 
 use manguebyte::dsp::{
-    AutoPan, Bitcrusher, FormantFilter, FrequencyShifter, GranularDelay, LfoShape, MultibandCompressor, RingModulator,
-    StereoWidener, TapeSaturation, TransientShaper, Tremolo, Vocoder,
+    AutoPan, Bitcrusher, FormantFilter, FrequencyShifter, GranularDelay, LfoShape, MultibandCompressor, RingModulator, StereoWidener, TapeSaturation,
+    TransientShaper, Tremolo, Vocoder,
 };
-use manguebyte::prelude::{
-    AudioBuffer, Chorus, Compressor, Delay, Filter, FilterShape, Limiter, Phaser, ProcessSpec,
-    Processor, Reverb,
-};
+use manguebyte::prelude::{AudioBuffer, Chorus, Compressor, Delay, Filter, FilterShape, Limiter, Phaser, ProcessSpec, Processor, Reverb};
 
 /// 效果链构建错误。
 #[derive(Debug, thiserror::Error)]
@@ -37,7 +34,11 @@ pub enum Fx {
     Compressor(Compressor<f32>),
     /// 合唱与镶边共用（镶边是 Chorus::flanger 预设）。
     Chorus(Chorus<f32>),
-    Eq { filter: Filter<f32>, shape: String, gain_db: f64 },
+    Eq {
+        filter: Filter<f32>,
+        shape: String,
+        gain_db: f64,
+    },
     Limiter(Limiter<f32>),
     Phaser(Phaser<f32>),
     Bitcrusher(Bitcrusher<f32>),
@@ -206,39 +207,17 @@ pub fn build_chain(effects: &[muser_core::EffectSlot], spec: &ProcessSpec) -> Re
 
 fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
     let fx = match effect {
-        Effect::Reverb {
-            mix,
-            decay_seconds,
-            damping,
-            size,
-        } => {
-            let mut r = Reverb::<f32>::new()
-                .with_mix(*mix)
-                .with_decay_seconds(*decay_seconds)
-                .with_damping(*damping);
+        Effect::Reverb { mix, decay_seconds, damping, size } => {
+            let mut r = Reverb::<f32>::new().with_mix(*mix).with_decay_seconds(*decay_seconds).with_damping(*damping);
             r.set_size(*size);
             Fx::Reverb(r)
         }
-        Effect::Delay {
-            time_seconds,
-            feedback,
-            mix,
-        } => {
+        Effect::Delay { time_seconds, feedback, mix } => {
             let max = time_seconds.max(2.0);
-            let d = Delay::<f32>::new(max)
-                .with_time(*time_seconds)
-                .with_feedback(*feedback)
-                .with_mix(*mix);
+            let d = Delay::<f32>::new(max).with_time(*time_seconds).with_feedback(*feedback).with_mix(*mix);
             Fx::Delay(d)
         }
-        Effect::Compressor {
-            threshold_db,
-            ratio,
-            attack_ms,
-            release_ms,
-            makeup_db,
-            sidechain,
-        } => {
+        Effect::Compressor { threshold_db, ratio, attack_ms, release_ms, makeup_db, sidechain } => {
             let mut c = Compressor::<f32>::new()
                 .with_threshold_db(*threshold_db)
                 .with_ratio(*ratio)
@@ -250,74 +229,39 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
             }
             Fx::Compressor(c)
         }
-        Effect::Chorus {
-            rate_hz,
-            depth_ms,
-            mix,
-        } => {
-            let c = Chorus::<f32>::new()
-                .with_rate_hz(*rate_hz)
-                .with_depth_ms(*depth_ms)
-                .with_mix(*mix);
+        Effect::Chorus { rate_hz, depth_ms, mix } => {
+            let c = Chorus::<f32>::new().with_rate_hz(*rate_hz).with_depth_ms(*depth_ms).with_mix(*mix);
             Fx::Chorus(c)
         }
-        Effect::Eq {
-            shape,
-            frequency,
-            q,
-            gain_db,
-        } => {
+        Effect::Eq { shape, frequency, q, gain_db } => {
             let fshape = parse_filter_shape(shape, *gain_db)?;
             Fx::Eq { filter: Filter::<f32>::new(fshape, *frequency, *q), shape: shape.clone(), gain_db: *gain_db }
         }
-        Effect::Limiter {
-            ceiling_db,
-            release_ms,
-        } => {
-            let l = Limiter::<f32>::new()
-                .with_ceiling_db(*ceiling_db)
-                .with_release_ms(*release_ms);
+        Effect::Limiter { ceiling_db, release_ms } => {
+            let l = Limiter::<f32>::new().with_ceiling_db(*ceiling_db).with_release_ms(*release_ms);
             Fx::Limiter(l)
         }
-        Effect::Phaser {
-            rate_hz,
-            feedback,
-            mix,
-        } => {
-            let p = Phaser::<f32>::new()
-                .with_rate_hz(*rate_hz)
-                .with_feedback(*feedback)
-                .with_mix(*mix);
+        Effect::Phaser { rate_hz, feedback, mix } => {
+            let p = Phaser::<f32>::new().with_rate_hz(*rate_hz).with_feedback(*feedback).with_mix(*mix);
             Fx::Phaser(p)
         }
-        Effect::Flanger {
-            rate_hz,
-            feedback,
-            mix,
-        } => {
+        Effect::Flanger { rate_hz, feedback, mix } => {
             // Chorus::flanger() 预设（2ms 中心延迟），再覆盖 rate/feedback/mix。
-            let f = Chorus::<f32>::flanger()
-                .with_rate_hz(*rate_hz)
-                .with_feedback(*feedback)
-                .with_mix(*mix);
+            let f = Chorus::<f32>::flanger().with_rate_hz(*rate_hz).with_feedback(*feedback).with_mix(*mix);
             Fx::Chorus(f)
         }
-        Effect::Bitcrusher { bits, downsample, mix } => {
-            Fx::Bitcrusher(Bitcrusher::new().with_bits(*bits).with_downsample(*downsample).with_mix(*mix))
+        Effect::Bitcrusher { bits, downsample, mix } => Fx::Bitcrusher(Bitcrusher::new().with_bits(*bits).with_downsample(*downsample).with_mix(*mix)),
+        Effect::Tremolo { rate_hz, depth, stereo_phase, shape } => {
+            Fx::Tremolo(Tremolo::new().with_rate_hz(*rate_hz).with_depth(*depth).with_stereo_phase(*stereo_phase).with_shape(lfo_shape(shape)))
         }
-        Effect::Tremolo { rate_hz, depth, stereo_phase, shape } => Fx::Tremolo(
-            Tremolo::new().with_rate_hz(*rate_hz).with_depth(*depth).with_stereo_phase(*stereo_phase).with_shape(lfo_shape(shape)),
-        ),
-        Effect::AutoPan { rate_hz, width, shape } => {
-            Fx::AutoPan(AutoPan::new().with_rate_hz(*rate_hz).with_width(*width).with_shape(lfo_shape(shape)))
-        }
+        Effect::AutoPan { rate_hz, width, shape } => Fx::AutoPan(AutoPan::new().with_rate_hz(*rate_hz).with_width(*width).with_shape(lfo_shape(shape))),
         Effect::RingMod { frequency_hz, mix } => Fx::RingMod(RingModulator::new().with_frequency_hz(*frequency_hz).with_mix(*mix)),
         Effect::FrequencyShifter { shift_hz, feedback, mix } => {
             Fx::FrequencyShifter(FrequencyShifter::new().with_shift_hz(*shift_hz).with_feedback(*feedback).with_mix(*mix))
         }
-        Effect::Widener { width, bass_mono_hz } => Fx::Widener(
-            StereoWidener::new().with_width(*width).with_bass_mono(*bass_mono_hz > 0.0).with_bass_mono_hz(bass_mono_hz.max(20.0)),
-        ),
+        Effect::Widener { width, bass_mono_hz } => {
+            Fx::Widener(StereoWidener::new().with_width(*width).with_bass_mono(*bass_mono_hz > 0.0).with_bass_mono_hz(bass_mono_hz.max(20.0)))
+        }
         Effect::TransientShaper { attack_db, sustain_db, attack_ms, sustain_ms } => Fx::TransientShaper(
             TransientShaper::new().with_attack_db(*attack_db).with_sustain_db(*sustain_db).with_attack_ms(*attack_ms).with_sustain_ms(*sustain_ms),
         ),
@@ -334,7 +278,12 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
             Fx::MultibandCompressor(m)
         }
         Effect::Tape { drive_db, asymmetry, wow_cents, flutter_cents, mix } => Fx::Tape(
-            TapeSaturation::new().with_drive_db(*drive_db).with_asymmetry(*asymmetry).with_wow_cents(*wow_cents).with_flutter_cents(*flutter_cents).with_mix(*mix),
+            TapeSaturation::new()
+                .with_drive_db(*drive_db)
+                .with_asymmetry(*asymmetry)
+                .with_wow_cents(*wow_cents)
+                .with_flutter_cents(*flutter_cents)
+                .with_mix(*mix),
         ),
         Effect::Distortion { mode, drive_db, tone_hz, low_cut_hz, cabinet, output_db, mix } => {
             Fx::Distortion(crate::distortion::Distortion::new(mode, *drive_db, *tone_hz, *low_cut_hz, cabinet, *output_db, *mix))
@@ -354,20 +303,18 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
             mix: *mix as f32,
             dry: AudioBuffer::new(0, 0),
         }),
-        Effect::GranularDelay { position_ms, spray_ms, grain_ms, density_hz, pitch_semitones, pitch_spray, stereo_spread, feedback, mix } => {
-            Fx::GranularDelay(
-                GranularDelay::new()
-                    .with_position_ms(*position_ms)
-                    .with_spray_ms(*spray_ms)
-                    .with_grain_ms(*grain_ms)
-                    .with_density_hz(*density_hz)
-                    .with_pitch_semitones(*pitch_semitones)
-                    .with_pitch_spray(*pitch_spray)
-                    .with_stereo_spread(*stereo_spread)
-                    .with_feedback(*feedback)
-                    .with_mix(*mix),
-            )
-        }
+        Effect::GranularDelay { position_ms, spray_ms, grain_ms, density_hz, pitch_semitones, pitch_spray, stereo_spread, feedback, mix } => Fx::GranularDelay(
+            GranularDelay::new()
+                .with_position_ms(*position_ms)
+                .with_spray_ms(*spray_ms)
+                .with_grain_ms(*grain_ms)
+                .with_density_hz(*density_hz)
+                .with_pitch_semitones(*pitch_semitones)
+                .with_pitch_spray(*pitch_spray)
+                .with_stereo_spread(*stereo_spread)
+                .with_feedback(*feedback)
+                .with_mix(*mix),
+        ),
         Effect::FormantFilter { vowel, shift, gain_db, mix } => {
             Fx::FormantFilter(FormantFilter::new().with_vowel(*vowel).with_shift(*shift).with_gain_db(*gain_db).with_mix(*mix))
         }
@@ -503,12 +450,7 @@ fn parse_filter_shape(shape: &str, gain_db: f64) -> Result<FilterShape, EffectEr
 
 /// 构建第三方插件效果器。仅在 `host` 特性下可用。
 #[cfg(feature = "host")]
-fn build_plugin(
-    path: &str,
-    id: Option<&str>,
-    params: &serde_json::Map<String, serde_json::Value>,
-    spec: &ProcessSpec,
-) -> Result<Fx, EffectError> {
+fn build_plugin(path: &str, id: Option<&str>, params: &serde_json::Map<String, serde_json::Value>, spec: &ProcessSpec) -> Result<Fx, EffectError> {
     let load_err = |detail: String| EffectError::PluginLoad { path: path.to_string(), detail };
     let mut opened = crate::plugin::Opened::open(path, id).map_err(load_err)?;
     opened.apply(params).map_err(load_err)?;
@@ -524,12 +466,7 @@ fn build_plugin(
 }
 
 #[cfg(not(feature = "host"))]
-fn build_plugin(
-    _path: &str,
-    _id: Option<&str>,
-    _params: &serde_json::Map<String, serde_json::Value>,
-    _spec: &ProcessSpec,
-) -> Result<Fx, EffectError> {
+fn build_plugin(_path: &str, _id: Option<&str>, _params: &serde_json::Map<String, serde_json::Value>, _spec: &ProcessSpec) -> Result<Fx, EffectError> {
     Err(EffectError::HostDisabled)
 }
 

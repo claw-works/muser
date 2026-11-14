@@ -86,18 +86,26 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
                 .iter()
                 .map(|e| json!({ "name": e.item.name, "source": e.source, "drums": e.item.is_drums(), "bars": e.item.bars, "style": e.item.style, "description": e.item.description }))
                 .collect();
-            respond_json(req, 200, &json!({
-                "project_dir": loop_library::project_dir(base).display().to_string(),
-                "global_dir": loop_library::dir().display().to_string(),
-                "initial": cx.initial, "sample_rate": cx.sample_rate, "loops": loops,
-            }));
+            respond_json(
+                req,
+                200,
+                &json!({
+                    "project_dir": loop_library::project_dir(base).display().to_string(),
+                    "global_dir": loop_library::dir().display().to_string(),
+                    "initial": cx.initial, "sample_rate": cx.sample_rate, "loops": loops,
+                }),
+            );
         }
         (Method::Get, "/api/loop") => {
             let n = name();
             match loop_library::load_for(&n, base) {
                 Ok(l) => {
                     let (path, source) = loop_library::locate(&n, base).map_or((None, "builtin"), |(p, s)| (Some(p), s));
-                    respond_json(req, 200, &json!({ "loop": l, "source": source, "path": path.as_ref().map(|p| p.display().to_string()), "mtime": path.as_deref().and_then(mtime) }));
+                    respond_json(
+                        req,
+                        200,
+                        &json!({ "loop": l, "source": source, "path": path.as_ref().map(|p| p.display().to_string()), "mtime": path.as_deref().and_then(mtime) }),
+                    );
                 }
                 Err(e) => respond_json(req, 404, &json!({ "error": e })),
             }
@@ -150,7 +158,11 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
             let sr = num("sr", 48_000.0).clamp(8_000.0, 192_000.0) as u32;
             let mut audio = muser_engine::AudioBuffer::<f32>::new(1, samples.len().max(1));
             audio.channel_mut(0)[..samples.len()].copy_from_slice(&samples);
-            let opts = muser_engine::hum::HumOptions { tempo: num("tempo", 100.0).clamp(20.0, 300.0), step: num("grid", 0.25).max(0.0), from_start: q.get("from_start").is_some_and(|v| v == "1") };
+            let opts = muser_engine::hum::HumOptions {
+                tempo: num("tempo", 100.0).clamp(20.0, 300.0),
+                step: num("grid", 0.25).max(0.0),
+                from_start: q.get("from_start").is_some_and(|v| v == "1"),
+            };
             match muser_engine::hum::transcribe(&audio, sr, opts) {
                 Ok(t) => respond_json(req, 200, &json!({ "notes": t.notes, "bars": t.bars, "key": t.key, "tuning_cents": t.tuning_cents })),
                 Err(e) => err(req, e),
@@ -192,7 +204,8 @@ mod tests {
     #[test]
     fn previews_melody_and_drums() {
         let melody: loop_library::Loop = serde_json::from_value(json!({ "format": "muser.loop", "version": 2, "name": "m", "bars": 1,
-            "notes": [{ "pitch": 60, "start": 0, "length": 1 }, { "pitch": 64, "start": 1, "length": 1 }] })).unwrap();
+            "notes": [{ "pitch": 60, "start": 0, "length": 1 }, { "pitch": 64, "start": 1, "length": 1 }] }))
+        .unwrap();
         let pcm = preview(&PreviewBody { item: melody, instrument: Some("wind.flute".into()), tempo: Some(120.0), repeat: 2 }, 48_000).unwrap();
         // 2 遍 × 4 拍 @ 120 = 4 秒（总帧数含 1 帧余量）。
         assert!((pcm.len() / 4).abs_diff(4 * 48_000) <= 2, "{}", pcm.len() / 4);

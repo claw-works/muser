@@ -121,7 +121,7 @@ pub fn track_buffer(project: &Project, ti: usize, sr: u32, total_frames: usize) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use manguebyte::prelude::{WavFormat, wav};
+    use manguebyte::prelude::{wav, WavFormat};
 
     /// 1 秒 24 kHz 单声道 0.5 直流的 WAV，放在 120 bpm 的第 2 拍（1 秒处），从文件 0.25 秒处开始播 1 拍（0.5 秒）。
     #[test]

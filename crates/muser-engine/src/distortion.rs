@@ -217,7 +217,11 @@ impl Distortion {
         // 去掉开头（滤波器起振），量后 3/4。
         let rms = |v: &[f32]| (v.iter().map(|a| a * a).sum::<f32>() / v.len() as f32).sqrt();
         let (a, b) = (rms(&x[n / 4..]), rms(&buf.channel(0)[n / 4..]));
-        if b > 1e-9 { (a / b).clamp(0.01, 8.0) } else { 1.0 }
+        if b > 1e-9 {
+            (a / b).clamp(0.01, 8.0)
+        } else {
+            1.0
+        }
     }
 }
 
@@ -266,7 +270,9 @@ mod tests {
             for (i, x) in b.channel_mut(c).iter_mut().enumerate() {
                 let t = i as f64 / 48_000.0;
                 // 带泛音的和弦（锯齿波，比正弦更像乐器）；初相各不同，不和补偿用的参考信号一模一样。
-                *x = (REFERENCE_AMP as f64 / 3.0 * [82.41, 123.47, 164.81].iter().enumerate().map(|(k, f)| 2.0 * ((t * f + 0.3 * k as f64) % 1.0) - 1.0).sum::<f64>()) as f32;
+                *x = (REFERENCE_AMP as f64 / 3.0
+                    * [82.41, 123.47, 164.81].iter().enumerate().map(|(k, f)| 2.0 * ((t * f + 0.3 * k as f64) % 1.0) - 1.0).sum::<f64>())
+                    as f32;
             }
         }
         b

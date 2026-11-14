@@ -150,12 +150,7 @@ pub fn perform(h: &Humanize, notes: &[Note], lengths: &[f64], clip_start: f64, s
             let start = n.start.0 + if on_offbeat { swing_shift } else { 0.0 };
             let zv = gaussian(&mut feel_rng).clamp(-3.0, 3.0);
             let zl = gaussian(&mut feel_rng).clamp(-3.0, 3.0);
-            Performed {
-                start,
-                offset_s,
-                length: len * (1.0 + len_sd * zl).max(0.2),
-                velocity: (f64::from(n.velocity) + vel_sd * zv).clamp(0.01, 1.0) as f32,
-            }
+            Performed { start, offset_s, length: len * (1.0 + len_sd * zl).max(0.2), velocity: (f64::from(n.velocity) + vel_sd * zv).clamp(0.01, 1.0) as f32 }
         })
         .collect()
 }
@@ -166,7 +161,31 @@ mod tests {
     use crate::Beats;
 
     fn notes(n: usize, step: f64) -> Vec<Note> {
-        (0..n).map(|i| Note { pitch: 60, start: Beats(i as f64 * step), length: Beats(step * 0.9), velocity: 0.7, accent: false, mute: false, tremolo: false, slide: false, slide_out: false, breath: false, damp: false, flutter: false, trill: 0, half_trill: false, scoop: 0.0, fall: 0.0, bend: Vec::new(), lyric: None, technique: None, harmonic: None, articulation: None }).collect()
+        (0..n)
+            .map(|i| Note {
+                pitch: 60,
+                start: Beats(i as f64 * step),
+                length: Beats(step * 0.9),
+                velocity: 0.7,
+                accent: false,
+                mute: false,
+                tremolo: false,
+                slide: false,
+                slide_out: false,
+                breath: false,
+                damp: false,
+                flutter: false,
+                trill: 0,
+                half_trill: false,
+                scoop: 0.0,
+                fall: 0.0,
+                bend: Vec::new(),
+                lyric: None,
+                technique: None,
+                harmonic: None,
+                articulation: None,
+            })
+            .collect()
     }
 
     fn lengths(n: &[Note]) -> Vec<f64> {

@@ -354,7 +354,11 @@ mod imp {
             if let Some(k) = o.keys().find(|k| !["channel", "aux", "gain_db", "pan", "invert", "bus"].contains(&k.as_str())) {
                 return Err(format!("@outputs[{i}] has unknown field '{k}', available: channel / aux / gain_db / pan / invert / bus"));
             }
-            let index = |key: &str| o.get(key).map(|x| x.as_u64().filter(|&n| n >= 1).map(|n| n as usize).ok_or_else(|| format!("@outputs[{i}].{key} must be an integer starting at 1"))).transpose();
+            let index = |key: &str| {
+                o.get(key)
+                    .map(|x| x.as_u64().filter(|&n| n >= 1).map(|n| n as usize).ok_or_else(|| format!("@outputs[{i}].{key} must be an integer starting at 1")))
+                    .transpose()
+            };
             let (channel, aux_bus) = match (index("channel")?, index("aux")?) {
                 (Some(c), None) => {
                     if c > channels {
@@ -367,7 +371,10 @@ mod imp {
                 }
                 (None, Some(a)) => {
                     if a > aux.len() {
-                        return Err(format!("@outputs[{i}].aux = {a} is out of range: this plugin has {} auxiliary outputs (see \"Audio outputs\" in `muser plugin info`)", aux.len()));
+                        return Err(format!(
+                            "@outputs[{i}].aux = {a} is out of range: this plugin has {} auxiliary outputs (see \"Audio outputs\" in `muser plugin info`)",
+                            aux.len()
+                        ));
                     }
                     if out.iter().any(|m| m.aux == Some(a - 1)) {
                         return Err(format!("@outputs lists auxiliary output {a} more than once"));
@@ -433,7 +440,12 @@ mod imp {
         let t = t.trim();
         let end = t
             .char_indices()
-            .take_while(|(i, c)| c.is_ascii_digit() || *c == '.' || ((*c == '-' || *c == '+') && (*i == 0 || matches!(t.as_bytes()[i - 1], b'e' | b'E'))) || ((*c == 'e' || *c == 'E') && *i > 0 && t[i + 1..].starts_with(|d: char| d.is_ascii_digit() || d == '-' || d == '+')))
+            .take_while(|(i, c)| {
+                c.is_ascii_digit()
+                    || *c == '.'
+                    || ((*c == '-' || *c == '+') && (*i == 0 || matches!(t.as_bytes()[i - 1], b'e' | b'E')))
+                    || ((*c == 'e' || *c == 'E') && *i > 0 && t[i + 1..].starts_with(|d: char| d.is_ascii_digit() || d == '-' || d == '+'))
+            })
             .map(|(i, c)| i + c.len_utf8())
             .last()?;
         let v: f64 = t[..end].parse().ok()?;
@@ -460,11 +472,8 @@ mod imp {
         let xml = std::str::from_utf8(xml_bytes).map_err(|_| "the XML in the state is not UTF-8")?;
         let xml = xml.trim_end_matches('\0');
         // 根元素：跳过 <?xml ...?> 声明。
-        let root = xml
-            .match_indices('<')
-            .map(|(i, _)| i)
-            .find(|&i| !xml[i..].starts_with("<?") && !xml[i..].starts_with("<!"))
-            .ok_or("XML has no root element")?;
+        let root =
+            xml.match_indices('<').map(|(i, _)| i).find(|&i| !xml[i..].starts_with("<?") && !xml[i..].starts_with("<!")).ok_or("XML has no root element")?;
         let end = root + xml[root..].find('>').ok_or("XML root element is not closed")?;
         let tag = &xml[root..end];
         let escaped = value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
@@ -577,19 +586,13 @@ mod imp {
             let library = load_library(path)?;
             let plugin_id = match id {
                 Some(s) => s.to_string(),
-                None => library
-                    .plugins()
-                    .first()
-                    .map(|p| p.id.clone())
-                    .ok_or_else(|| format!("'{path}' contains no plugins"))?,
+                None => library.plugins().first().map(|p| p.id.clone()).ok_or_else(|| format!("'{path}' contains no plugins"))?,
             };
             if !library.plugins().iter().any(|p| p.id == plugin_id) {
                 let ids: Vec<String> = library.plugins().iter().map(|p| format!("{} ({})", p.id, p.name)).collect();
                 return Err(format!("'{path}' has no plugin with id '{plugin_id}', available: {}", ids.join(", ")));
             }
-            let plugin = library
-                .create(&plugin_id)
-                .map_err(|e| format!("failed to create plugin '{plugin_id}': {e:?}"))?;
+            let plugin = library.create(&plugin_id).map_err(|e| format!("failed to create plugin '{plugin_id}': {e:?}"))?;
             let params = plugin.params();
             let profile = crate::profile::find(&plugin_id);
             if let Some(pr) = &profile {
@@ -602,7 +605,17 @@ mod imp {
                     );
                 }
             }
-            Ok(Opened { library, plugin: std::mem::ManuallyDrop::new(plugin), params, path: path.to_string(), applied: Vec::new(), profile, state_loaded: false, outputs: None, warmup: 0.0 })
+            Ok(Opened {
+                library,
+                plugin: std::mem::ManuallyDrop::new(plugin),
+                params,
+                path: path.to_string(),
+                applied: Vec::new(),
+                profile,
+                state_loaded: false,
+                outputs: None,
+                warmup: 0.0,
+            })
         }
 
         pub fn open_spec(spec: &str) -> Result<Opened, String> {
@@ -782,7 +795,8 @@ mod imp {
             let preset_params = match params.get("@preset") {
                 Some(v) => {
                     let name = v.as_str().ok_or("@preset must be a preset name")?;
-                    let pr = profile.as_ref().ok_or("this plugin has no profile, so @preset cannot be used (generate one with `muser plugin profile draft`)")?;
+                    let pr =
+                        profile.as_ref().ok_or("this plugin has no profile, so @preset cannot be used (generate one with `muser plugin profile draft`)")?;
                     let preset = pr.profile.preset(name).ok_or_else(|| {
                         format!(
                             "the profile has no preset '{name}', available: {}",
@@ -816,11 +830,7 @@ mod imp {
             }
             let is_sel = |k: &str| selector.as_ref().is_some_and(|s| s.key.eq_ignore_ascii_case(k.trim()));
             if let Some(sel) = &selector {
-                let chosen = params
-                    .iter()
-                    .chain(preset_params.iter().flat_map(|(_, m)| m.iter()))
-                    .find(|(k, _)| is_sel(k))
-                    .map(|(_, v)| v.clone());
+                let chosen = params.iter().chain(preset_params.iter().flat_map(|(_, m)| m.iter())).find(|(k, _)| is_sel(k)).map(|(_, v)| v.clone());
                 if let Some(v) = chosen {
                     let name = v.as_str().ok_or_else(|| format!("{} must be text, got {v}", sel.key))?;
                     let name = sel.resolve(name)?;
@@ -834,15 +844,11 @@ mod imp {
                 }
             }
             if let Some((name, values)) = preset_params {
-                let values: serde_json::Map<String, Value> =
-                    values.into_iter().filter(|(k, _)| !is_sel(k) && !k.starts_with('@')).collect();
+                let values: serde_json::Map<String, Value> = values.into_iter().filter(|(k, _)| !is_sel(k) && !k.starts_with('@')).collect();
                 self.apply_plain(&values).map_err(|e| format!("preset '{name}': {e}"))?;
             }
-            let rest: serde_json::Map<String, Value> = params
-                .iter()
-                .filter(|(k, _)| !k.starts_with('@') && !is_sel(k))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
+            let rest: serde_json::Map<String, Value> =
+                params.iter().filter(|(k, _)| !k.starts_with('@') && !is_sel(k)).map(|(k, v)| (k.clone(), v.clone())).collect();
             self.apply_plain(&rest)
         }
 
@@ -850,8 +856,7 @@ mod imp {
         /// 刷新参数表；`reset_params` 时把参数设为插件为新选项上报的默认值。
         fn select(&mut self, sel: &crate::profile::Selector, choice: &str) -> Result<(), String> {
             let data = self.plugin.save_state().map_err(|e| format!("plugin failed to save state: {e:?}"))?;
-            let patched = patch_juce_state(&data, &sel.juce_xml_attribute, choice)
-                .map_err(|e| format!("failed to switch {}: {e}", sel.key))?;
+            let patched = patch_juce_state(&data, &sel.juce_xml_attribute, choice).map_err(|e| format!("failed to switch {}: {e}", sel.key))?;
             self.plugin.load_state(&patched).map_err(|e| format!("failed to switch {}, plugin rejected the state: {e:?}", sel.key))?;
             // 有的格式（VST3）在主线程消息里才宣布参数表变化。
             for _ in 0..4 {
@@ -860,8 +865,7 @@ mod imp {
             self.params = self.plugin.params();
             self.applied.clear();
             if sel.reset_params {
-                let defaults: Vec<(ParamId, f64)> =
-                    self.params.iter().filter(|p| !p.read_only).map(|p| (p.id, p.default)).collect();
+                let defaults: Vec<(ParamId, f64)> = self.params.iter().filter(|p| !p.read_only).map(|p| (p.id, p.default)).collect();
                 for (id, x) in defaults {
                     self.plugin.set_param(id, x).map_err(|e| format!("failed to set parameter {}: {e:?}", id.0))?;
                     self.applied.push((id, x));
@@ -877,7 +881,11 @@ mod imp {
             if h.plugin_id != e.id {
                 return Err(format!(
                     "state file '{}' belongs to plugin {} ({}) and cannot be loaded into {} ({})",
-                    path.display(), h.plugin_name, h.plugin_id, e.name, e.id
+                    path.display(),
+                    h.plugin_name,
+                    h.plugin_id,
+                    e.name,
+                    e.id
                 ));
             }
             if h.version != e.version {
@@ -927,11 +935,7 @@ mod imp {
         /// 有的插件在第一次处理时才初始化内部状态，会覆盖激活前写入的值（如 Surge XT Effects 会把
         /// FX Type 重置为默认，并按类型重置其它参数），预热让这些参数在正式渲染前真正生效。
         /// 返回预热的块数；未收敛时返回 Err（附说明），调用方可以选择只打印警告。
-        pub fn settle(
-            &mut self,
-            processor: &mut dyn manguebyte::prelude::Processor<f32>,
-            spec: &manguebyte::prelude::ProcessSpec,
-        ) -> Result<usize, String> {
+        pub fn settle(&mut self, processor: &mut dyn manguebyte::prelude::Processor<f32>, spec: &manguebyte::prelude::ProcessSpec) -> Result<usize, String> {
             use manguebyte::host::any::Notice;
             use manguebyte::prelude::AudioBuffer;
             const MAX_BLOCKS: usize = 64;
@@ -956,15 +960,10 @@ mod imp {
                 let notices = self.plugin.pump();
                 let disturbed = notices.iter().any(|n| match n {
                     Notice::ParamsChanged | Notice::RestartRequested => true,
-                    Notice::ParamValue { param, value } => {
-                        self.applied.iter().any(|(id, x)| id == param && !same(self, *id, *value, *x))
-                    }
+                    Notice::ParamValue { param, value } => self.applied.iter().any(|(id, x)| id == param && !same(self, *id, *value, *x)),
                     _ => false,
                 });
-                let drifted = self
-                    .applied
-                    .iter()
-                    .any(|(id, x)| self.plugin.param_value(*id).is_some_and(|v| !same(self, *id, v, *x)));
+                let drifted = self.applied.iter().any(|(id, x)| self.plugin.param_value(*id).is_some_and(|v| !same(self, *id, v, *x)));
                 if disturbed || drifted {
                     quiet_rounds = 0;
                     for (id, x) in self.applied.clone() {
@@ -992,10 +991,7 @@ mod imp {
 
         /// 有基础参数时激活并预热，让插件真正采纳它们（参数的文字表示随之更新）。
         /// 返回的 processor 必须先于本对象释放，调用方用变量接住即可。
-        pub fn run_briefly(
-            &mut self,
-            base: &serde_json::Map<String, Value>,
-        ) -> Result<Option<Box<dyn manguebyte::prelude::Processor<f32> + Send>>, String> {
+        pub fn run_briefly(&mut self, base: &serde_json::Map<String, Value>) -> Result<Option<Box<dyn manguebyte::prelude::Processor<f32> + Send>>, String> {
             if base.is_empty() {
                 return Ok(None);
             }
@@ -1017,10 +1013,7 @@ mod imp {
         /// 同 [`activate`](Self::activate)，给出能读辅助输出的处理器。
         pub fn activate_any(&mut self, sample_rate: f64, max_block_size: usize) -> Result<manguebyte::host::any::AnyProcessor, String> {
             self.enable_aux_outputs()?;
-            let processor = self
-                .plugin
-                .activate_processor(sample_rate, max_block_size)
-                .map_err(|e| format!("activate failed: {e:?}"))?;
+            let processor = self.plugin.activate_processor(sample_rate, max_block_size).map_err(|e| format!("activate failed: {e:?}"))?;
             for (id, x) in self.applied.clone() {
                 let _ = self.plugin.set_param(id, x);
             }
@@ -1063,7 +1056,11 @@ mod imp {
         /// 主输出总线的声道数（没有主输出时按 2 路算）。
         pub fn main_output_channels(&self) -> usize {
             let n: usize = self.plugin.audio_outputs().iter().filter(|b| b.is_main).map(|b| b.channels as usize).sum();
-            if n == 0 { 2 } else { n }
+            if n == 0 {
+                2
+            } else {
+                n
+            }
         }
 
         pub fn describe_param(&self, p: &Param) -> PluginParam {
@@ -1071,9 +1068,7 @@ mod imp {
             PluginParam {
                 id: p.id.0,
                 name: p.name.clone(),
-                alias: self.profile.as_ref().and_then(|l| {
-                    l.profile.params.iter().find(|q| q.name == p.name).and_then(|q| q.alias.clone())
-                }),
+                alias: self.profile.as_ref().and_then(|l| l.profile.params.iter().find(|q| q.name == p.name).and_then(|q| q.alias.clone())),
                 unit: p.unit.clone(),
                 min: p.min,
                 max: p.max,
@@ -1114,13 +1109,7 @@ mod imp {
                 params_total: self.params.len(),
                 params_visible: self.params.iter().filter(|p| !p.hidden).count(),
                 param_groups: groups,
-                siblings: self
-                    .library
-                    .plugins()
-                    .iter()
-                    .filter(|p| p.id != e.id)
-                    .map(|p| (p.id.clone(), p.name.clone()))
-                    .collect(),
+                siblings: self.library.plugins().iter().filter(|p| p.id != e.id).map(|p| (p.id.clone(), p.name.clone())).collect(),
                 profile: self.profile.as_ref().map(|l| ProfileSummary {
                     origin: l.origin,
                     path: l.path.clone(),
@@ -1233,7 +1222,11 @@ mod imp {
             name.windows(kw.len()).any(|win| {
                 win.iter().zip(kw).enumerate().all(|(i, (n, k))| {
                     // 单字母关键词必须整词相等；最后一个词允许前缀，其余整词相等
-                    if k.len() == 1 || i + 1 < kw.len() { n == k } else { n.starts_with(k.as_str()) }
+                    if k.len() == 1 || i + 1 < kw.len() {
+                        n == k
+                    } else {
+                        n.starts_with(k.as_str())
+                    }
                 })
             })
         }
@@ -1277,10 +1270,7 @@ mod imp {
                 all
             } else {
                 // 连续参数：取 5 个刻度
-                [0.0, 0.25, 0.5, 0.75, 1.0]
-                    .iter()
-                    .filter_map(|f| o.plugin.param_to_text(q.id, q.min + (q.max - q.min) * f))
-                    .collect()
+                [0.0, 0.25, 0.5, 0.75, 1.0].iter().filter_map(|f| o.plugin.param_to_text(q.id, q.min + (q.max - q.min) * f)).collect()
             }
         };
         let kind = o.info().kind;
@@ -1292,7 +1282,9 @@ mod imp {
                 name: q.name.clone(),
                 alias: Some(role.clone()),
                 role: role.clone(),
-                description: format!("Auto draft: the name contains a keyword related to '{role}'; initial value \"{current}\". Listen to confirm what it does"),
+                description: format!(
+                    "Auto draft: the name contains a keyword related to '{role}'; initial value \"{current}\". Listen to confirm what it does"
+                ),
                 values,
                 observed: Vec::new(),
             });
@@ -1300,7 +1292,9 @@ mod imp {
         drop(o);
         if audition {
             use crate::audition::{audition as run, AuditionSettings, Subject};
-            for pp in params.iter_mut().filter(|p| ["cutoff", "resonance", "attack", "release", "drive", "mix", "filter_env", "decay"].contains(&p.role.as_str())) {
+            for pp in
+                params.iter_mut().filter(|p| ["cutoff", "resonance", "attack", "release", "drive", "mix", "filter_env", "decay"].contains(&p.role.as_str()))
+            {
                 let values: Vec<Value> = vec![Value::from(0.1), Value::from(0.5), Value::from(0.9)];
                 let subject = if kind == "instrument" {
                     Subject::Instrument { name: format!("plugin:{spec}"), params: serde_json::Map::new() }
@@ -1323,7 +1317,11 @@ mod imp {
                 author: user,
                 tested_version: e.version.clone(),
                 updated: String::new(),
-                notes: format!("Draft generated by `muser plugin profile draft` ({} of {} parameters picked). Listen, then edit the descriptions and add presets.", visible.len(), params.len()),
+                notes: format!(
+                    "Draft generated by `muser plugin profile draft` ({} of {} parameters picked). Listen, then edit the descriptions and add presets.",
+                    visible.len(),
+                    params.len()
+                ),
                 lang: String::new(),
             },
             setup: serde_json::Map::new(),
@@ -1405,11 +1403,7 @@ mod imp {
     /// 用指定画像（而不是已安装/内置的那份）在插件上应用一组参数，检查能否生效。
     pub fn check_params_in(spec: &str, profile: &crate::profile::Profile, params: &serde_json::Map<String, Value>) -> Result<(), String> {
         let mut o = Opened::open_spec(spec)?;
-        o.profile = Some(std::sync::Arc::new(crate::profile::Loaded {
-            origin: crate::profile::Origin::File,
-            path: None,
-            profile: profile.clone(),
-        }));
+        o.profile = Some(std::sync::Arc::new(crate::profile::Loaded { origin: crate::profile::Origin::File, path: None, profile: profile.clone() }));
         let mut m = params.clone();
         m.insert("@setup".into(), Value::Bool(false));
         o.apply(&m)
@@ -1427,11 +1421,8 @@ mod imp {
         // 检查要真的打开插件、载入状态（Kontakt 要一秒上下）：同一组参数在这个进程里查过一次就记住。
         // 现场演奏每换一次工程都要校验，不记的话每次都要把所有插件打开一遍。只记通过的；状态文件改了（修改时间变了）重新查。
         static CHECKED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-        let state_mtime = params
-            .get("@state")
-            .and_then(Value::as_str)
-            .and_then(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok())
-            .map(|t| format!("{t:?}"));
+        let state_mtime =
+            params.get("@state").and_then(Value::as_str).and_then(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok()).map(|t| format!("{t:?}"));
         let key = format!("{path}#{}|{}|{state_mtime:?}", id.unwrap_or(""), Value::Object(params.clone()));
         let checked = CHECKED.get_or_init(Default::default);
         if checked.lock().unwrap_or_else(|e| e.into_inner()).contains(&key) {
@@ -1443,12 +1434,7 @@ mod imp {
     }
 
     /// 自动化：解析参数，返回（参数 id, 范围, 应用 base_params 后的当前值）以及文本转换器所在的插件。
-    pub fn automation_target(
-        path: &str,
-        id: Option<&str>,
-        base_params: &serde_json::Map<String, Value>,
-        key: &str,
-    ) -> Result<(Opened, ParamId), String> {
+    pub fn automation_target(path: &str, id: Option<&str>, base_params: &serde_json::Map<String, Value>, key: &str) -> Result<(Opened, ParamId), String> {
         let mut o = Opened::open(path, id)?;
         o.apply(base_params)?;
         let p = o.resolve(key)?;
@@ -1499,11 +1485,7 @@ mod imp {
                 categories: s.entry.categories.clone(),
             })
             .collect();
-        let failures = report
-            .failures
-            .into_iter()
-            .map(|f| (f.path.display().to_string(), format!("{:?}", f.error)))
-            .collect();
+        let failures = report.failures.into_iter().map(|f| (f.path.display().to_string(), format!("{:?}", f.error))).collect();
         Ok((plugins, failures))
     }
 
@@ -1525,11 +1507,15 @@ mod outputs_tests {
 
     #[test]
     fn outputs_pan_gain_and_invert() {
-        let m = parse_outputs(&json!([
-            { "channel": 1, "pan": -1 },
-            { "channel": 2, "pan": 1, "gain_db": -6.0206 },
-            { "channel": 3, "invert": true }
-        ]), 3, &[])
+        let m = parse_outputs(
+            &json!([
+                { "channel": 1, "pan": -1 },
+                { "channel": 2, "pan": 1, "gain_db": -6.0206 },
+                { "channel": 3, "invert": true }
+            ]),
+            3,
+            &[],
+        )
         .unwrap();
         assert_eq!(m.iter().map(|x| x.channel).collect::<Vec<_>>(), [0, 1, 2]);
         assert!((m[0].left - 1.0).abs() < 1e-6 && m[0].right.abs() < 1e-6);
@@ -1556,16 +1542,26 @@ mod outputs_tests {
 
     #[test]
     fn outputs_aux_and_bus() {
-        let m = parse_outputs(&json!([
-            { "channel": 1, "bus": "kick" },
-            { "channel": 2 },
-            { "aux": 2, "bus": "snare", "pan": 0.5 }
-        ]), 2, &[2, 2])
+        let m = parse_outputs(
+            &json!([
+                { "channel": 1, "bus": "kick" },
+                { "channel": 2 },
+                { "aux": 2, "bus": "snare", "pan": 0.5 }
+            ]),
+            2,
+            &[2, 2],
+        )
         .unwrap();
         assert_eq!(m.iter().map(|x| x.tap).collect::<Vec<_>>(), [Some(0), None, Some(1)]);
         assert_eq!(m[2].aux, Some(1));
         assert!((m[2].left - 0.5).abs() < 1e-6 && (m[2].right - 1.0).abs() < 1e-6, "stereo is balanced");
-        for bad in [json!([{ "aux": 3 }]), json!([{ "channel": 1, "aux": 1 }]), json!([{ "pan": 0 }]), json!([{ "aux": 1 }, { "aux": 1 }]), json!([{ "channel": 1, "bus": "" }])] {
+        for bad in [
+            json!([{ "aux": 3 }]),
+            json!([{ "channel": 1, "aux": 1 }]),
+            json!([{ "pan": 0 }]),
+            json!([{ "aux": 1 }, { "aux": 1 }]),
+            json!([{ "channel": 1, "bus": "" }]),
+        ] {
             assert!(parse_outputs(&bad, 2, &[2, 2]).is_err(), "{bad} should be rejected");
         }
     }

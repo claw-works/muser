@@ -9,13 +9,42 @@
 //!
 //! 只依赖 JSON 结构，不依赖插件代码；格式不符时报错，不会写坏状态。
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 /// 可用的调制源。
 pub const SOURCES: &[&str] = &[
-    "env_1", "env_2", "env_3", "env_4", "env_5", "env_6", "lfo_1", "lfo_2", "lfo_3", "lfo_4", "lfo_5", "lfo_6", "lfo_7", "lfo_8",
-    "random_1", "random_2", "random_3", "random_4", "macro_control_1", "macro_control_2", "macro_control_3", "macro_control_4",
-    "velocity", "note", "note_in_octave", "aftertouch", "mod_wheel", "pitch_wheel", "stereo", "random", "lift", "slide",
+    "env_1",
+    "env_2",
+    "env_3",
+    "env_4",
+    "env_5",
+    "env_6",
+    "lfo_1",
+    "lfo_2",
+    "lfo_3",
+    "lfo_4",
+    "lfo_5",
+    "lfo_6",
+    "lfo_7",
+    "lfo_8",
+    "random_1",
+    "random_2",
+    "random_3",
+    "random_4",
+    "macro_control_1",
+    "macro_control_2",
+    "macro_control_3",
+    "macro_control_4",
+    "velocity",
+    "note",
+    "note_in_octave",
+    "aftertouch",
+    "mod_wheel",
+    "pitch_wheel",
+    "stereo",
+    "random",
+    "lift",
+    "slide",
 ];
 
 /// 内置可生成的波表。
@@ -61,11 +90,7 @@ fn locate(data: &[u8]) -> Result<Located, String> {
     let mut de = serde_json::Deserializer::from_str(text).into_iter::<Value>();
     de.next().ok_or("Vital state JSON is empty")?.map_err(|e| format!("cannot parse Vital state JSON: {e}"))?;
     let end = start + de.byte_offset();
-    Ok(Located {
-        start,
-        end,
-        lengths: vec![(cl_at, 8, false), (comp + 20, 4, true), (comp + 172, 4, true)],
-    })
+    Ok(Located { start, end, lengths: vec![(cl_at, 8, false), (comp + 20, 4, true), (comp + 172, 4, true)] })
 }
 
 fn read_len(d: &[u8], at: usize, n: usize, be: bool) -> u64 {
@@ -139,17 +164,29 @@ use std::f64::consts::TAU;
 
 fn saw(p: f64) -> f64 {
     // 与 Vital Init 一致：0 → -1 下降，中点跳到 +1。
-    if p < 0.5 { -2.0 * p } else { 2.0 - 2.0 * p }
+    if p < 0.5 {
+        -2.0 * p
+    } else {
+        2.0 - 2.0 * p
+    }
 }
 fn sine(p: f64) -> f64 {
     (TAU * p).sin()
 }
 fn triangle(p: f64) -> f64 {
     let q = (p + 0.25) % 1.0;
-    if q < 0.5 { 4.0 * q - 1.0 } else { 3.0 - 4.0 * q }
+    if q < 0.5 {
+        4.0 * q - 1.0
+    } else {
+        3.0 - 4.0 * q
+    }
 }
 fn pulse(p: f64, width: f64) -> f64 {
-    if p < width { 1.0 } else { -1.0 }
+    if p < width {
+        1.0
+    } else {
+        -1.0
+    }
 }
 
 /// 生成一张波表（Vital 的 wavetable JSON）。
@@ -174,10 +211,7 @@ pub fn wavetable(name: &str) -> Result<Value, String> {
             })
             .collect(),
         other => {
-            return Err(format!(
-                "no built-in wavetable '{other}', available: {}",
-                WAVETABLES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
-            ));
+            return Err(format!("no built-in wavetable '{other}', available: {}", WAVETABLES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")));
         }
     };
     let keyframes: Vec<Value> = keys.into_iter().map(|(pos, data)| json!({ "position": pos, "wave_data": data })).collect();
@@ -198,27 +232,26 @@ pub fn wants_patch(params: &Map<String, Value>) -> bool {
 
 /// 按 `@modulations` / `@wavetable` 改写 JSON 文档。
 pub fn patch(doc: &mut Value, params: &Map<String, Value>) -> Result<(), String> {
-    let settings = doc
-        .get_mut("settings")
-        .and_then(Value::as_object_mut)
-        .ok_or("no settings in the Vital state JSON")?;
+    let settings = doc.get_mut("settings").and_then(Value::as_object_mut).ok_or("no settings in the Vital state JSON")?;
     if let Some(w) = params.get("@wavetable") {
         let table: Vec<(usize, String)> = match w {
             Value::String(s) => (0..3).map(|i| (i, s.trim().to_lowercase())).collect(),
             Value::Object(m) => m
                 .iter()
                 .map(|(k, v)| {
-                    let i: usize = k.trim().parse().ok().filter(|i| (1..=3).contains(i)).ok_or_else(|| format!("@wavetable keys must be oscillator 1 / 2 / 3, got '{k}'"))?;
+                    let i: usize = k
+                        .trim()
+                        .parse()
+                        .ok()
+                        .filter(|i| (1..=3).contains(i))
+                        .ok_or_else(|| format!("@wavetable keys must be oscillator 1 / 2 / 3, got '{k}'"))?;
                     let name = v.as_str().ok_or_else(|| format!("@wavetable.{k} must be a wavetable name"))?;
                     Ok((i - 1, name.trim().to_lowercase()))
                 })
                 .collect::<Result<_, String>>()?,
             _ => return Err("@wavetable must be a wavetable name, or {\"1\": name, \"2\": name}".into()),
         };
-        let tables = settings
-            .get_mut("wavetables")
-            .and_then(Value::as_array_mut)
-            .ok_or("no wavetables in the Vital state")?;
+        let tables = settings.get_mut("wavetables").and_then(Value::as_array_mut).ok_or("no wavetables in the Vital state")?;
         for (i, name) in table {
             let t = wavetable(&name)?;
             *tables.get_mut(i).ok_or("oscillator wavetable count mismatch in the Vital state")? = t;
@@ -263,12 +296,16 @@ pub fn patch(doc: &mut Value, params: &Map<String, Value>) -> Result<(), String>
                     Some(v) => v.as_f64().filter(|x| (lo..=hi).contains(x)).ok_or_else(|| at(format!("{k} must be a number in {lo}..{hi}"))),
                 }
             };
-            slots.push((source, dest, num("amount", -1.0, 1.0, 0.5)?, num("bipolar", 0.0, 1.0, 0.0)?, num("stereo", 0.0, 1.0, 0.0)?, num("power", -10.0, 10.0, 0.0)?));
+            slots.push((
+                source,
+                dest,
+                num("amount", -1.0, 1.0, 0.5)?,
+                num("bipolar", 0.0, 1.0, 0.0)?,
+                num("stereo", 0.0, 1.0, 0.0)?,
+                num("power", -10.0, 10.0, 0.0)?,
+            ));
         }
-        let mods = settings
-            .get_mut("modulations")
-            .and_then(Value::as_array_mut)
-            .ok_or("no modulations in the Vital state")?;
+        let mods = settings.get_mut("modulations").and_then(Value::as_array_mut).ok_or("no modulations in the Vital state")?;
         for (i, slot) in mods.iter_mut().enumerate() {
             *slot = match slots.get(i) {
                 Some((s, d, ..)) => json!({ "source": s, "destination": d }),

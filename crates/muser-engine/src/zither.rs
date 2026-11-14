@@ -5,7 +5,10 @@
 
 use core::f64::consts::{PI, TAU};
 
-use manguebyte::dsp::{Tuning, instruments::{BodyMode, StringParams}};
+use manguebyte::dsp::{
+    instruments::{BodyMode, StringParams},
+    Tuning,
+};
 use manguebyte::midi::MidiMessage;
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Processor, Synth, Voice};
 
@@ -126,8 +129,8 @@ pub(crate) static PIPA: Profile = Profile {
 /// 小而浅的琴箱放不出低弦的基音（低音区泛音比基音强得多），制音器少，其余弦跟着响。
 pub(crate) static YANGQIN: Profile = Profile {
     open_keys: &[
-        43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
-        78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93,
+        43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
+        81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93,
     ],
     pressed_shortens: false,
     contact: 0.0,
@@ -235,19 +238,24 @@ impl Default for ZitherParams {
         pluck.string.tone = 7_000.0;
         // 参考录音中低弦的中段分音常比基音强，不能以低频弦位移作为最终声压。
         // 这是对录音频谱的近似着色，不是已测得的某张琴的传递函数。
-        pluck.string.body = [
-            BodyMode::new(260.0, 1.4, 0.6),
-            BodyMode::new(540.0, 2.4, 5.5),
-            BodyMode::new(1_100.0, 2.0, 1.4),
-            BodyMode::new(1_850.0, 1.5, 0.5),
-        ];
+        pluck.string.body =
+            [BodyMode::new(260.0, 1.4, 0.6), BodyMode::new(540.0, 2.4, 5.5), BodyMode::new(1_100.0, 2.0, 1.4), BodyMode::new(1_850.0, 1.5, 0.5)];
         // 弦的声音（各分音多响、响多久、拨弦那一下的噪声）取自录音量出来的表（[`crate::modal::builtin_guqin`]），琴体的颜色已经在里面：
         // 不再另加辐射高通与共鸣峰（`body_mix` 默认 0，仍可以调）。
         pluck.string.body_mix = 0.0;
         pluck.string.tone = 20_000.0;
         Self {
-            pluck, technique: 0.0, harmonic: 4.0, pressure: 0.65, slide_time: 0.008, slide_noise: 0.35, sympathetic: 0.18, profile: &GUQIN, damp: false,
-            table: Some(crate::modal::builtin_guqin()), articulation: 0,
+            pluck,
+            technique: 0.0,
+            harmonic: 4.0,
+            pressure: 0.65,
+            slide_time: 0.008,
+            slide_noise: 0.35,
+            sympathetic: 0.18,
+            profile: &GUQIN,
+            damp: false,
+            table: Some(crate::modal::builtin_guqin()),
+            articulation: 0,
         }
     }
 }
@@ -267,12 +275,7 @@ impl ZitherParams {
         s.strike = 0.6;
         s.body_mix = 0.6;
         s.tone = 12_000.0;
-        s.body = [
-            BodyMode::new(75.0, 4.0, 1.6),
-            BodyMode::new(150.0, 5.0, 1.6),
-            BodyMode::new(260.0, 5.0, 1.0),
-            BodyMode::new(430.0, 5.0, 0.8),
-        ];
+        s.body = [BodyMode::new(75.0, 4.0, 1.6), BodyMode::new(150.0, 5.0, 1.6), BodyMode::new(260.0, 5.0, 1.0), BodyMode::new(430.0, 5.0, 0.8)];
         // 弦的声音取自录音量出来的表（[`crate::modal::builtin_guzheng`]），面板的颜色、别的弦跟着响的那一层已经在里面：
         // 不再另加辐射高通与共鸣峰（`body_mix` 默认 0，仍可以调），其余弦的共鸣减半。
         s.body_mix = 0.0;
@@ -298,12 +301,7 @@ impl ZitherParams {
         s.tone = 10_000.0;
         // 琴箱的低频共鸣（约 140 Hz 宽、280 Hz）加上其余弦一起响，琴身放得出 80 Hz 以上：用户在几版里选的"琴箱加弦共鸣"，原来的单薄。
         s.body_mix = 0.85;
-        s.body = [
-            BodyMode::new(140.0, 2.5, 2.0),
-            BodyMode::new(280.0, 3.0, 1.8),
-            BodyMode::new(560.0, 4.0, 2.1),
-            BodyMode::new(2_800.0, 2.0, 3.0),
-        ];
+        s.body = [BodyMode::new(140.0, 2.5, 2.0), BodyMode::new(280.0, 3.0, 1.8), BodyMode::new(560.0, 4.0, 2.1), BodyMode::new(2_800.0, 2.0, 3.0)];
         Self { pluck, sympathetic: 0.6, profile: &PIPA, table: None, ..Default::default() }
     }
 
@@ -326,12 +324,7 @@ impl ZitherParams {
         s.pluck_noise = 0.013;
         s.tone = 14_900.0;
         s.body_mix = 0.58;
-        s.body = [
-            BodyMode::new(600.0, 2.0, 1.8),
-            BodyMode::new(1_000.0, 2.5, 1.5),
-            BodyMode::new(1_500.0, 2.5, 0.8),
-            BodyMode::new(2_400.0, 2.0, 0.4),
-        ];
+        s.body = [BodyMode::new(600.0, 2.0, 1.8), BodyMode::new(1_000.0, 2.5, 1.5), BodyMode::new(1_500.0, 2.5, 0.8), BodyMode::new(2_400.0, 2.0, 0.4)];
         Self { pluck, sympathetic: 0.12, profile: &YANGQIN, table: None, ..Default::default() }
     }
 
@@ -621,10 +614,8 @@ impl Tone {
         let f0 = 440.0 * ((pitch - 69.0) / 12.0).exp2();
         let anchor = if technique == Technique::Harmonic { p.harmonic.round().clamp(2.0, 8.0) as usize } else { 1 };
         let velocity = f64::from(velocity).clamp(0.0, 1.0);
-        let strength = 10f64.powf(-s.velocity_range_db * (1.0 - velocity) / 20.0)
-            * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 };
-        let brightness = s.pluck_brightness * (-s.velocity_darkening * (1.0 - velocity)).exp2()
-            * if accent { s.accent_brightness.exp2() } else { 1.0 };
+        let strength = 10f64.powf(-s.velocity_range_db * (1.0 - velocity) / 20.0) * if accent { 10f64.powf(s.accent_db / 20.0) } else { 1.0 };
+        let brightness = s.pluck_brightness * (-s.velocity_darkening * (1.0 - velocity)).exp2() * if accent { s.accent_brightness.exp2() } else { 1.0 };
         // 按音中发声弦段变短：同一处右手触弦，相对于该段的位置会向中间移动。
         let keys = p.profile.open_keys;
         let open = keys.iter().rev().find(|&&k| f64::from(k) <= key_pitch - 2.0).copied().unwrap_or(keys[0]);
@@ -637,16 +628,22 @@ impl Tone {
         let slope = (1.0 / high_decay - 1.0) / ((3_000.0 / f0).max(2.0).powf(1.5) - 1.0);
         let stiffness = s.stiffness * if technique == Technique::Pressed { p.profile.pressed_stiffness } else { 0.0006 };
         let mut tone = Self {
-            params: p, technique, key_pitch, pitch, last_pitch: pitch,
-            held: true, active: true, rng: 0x9E37_79B9_7F4A_7C15 ^ (u64::from(key) << 32), strength, ..Default::default()
+            params: p,
+            technique,
+            key_pitch,
+            pitch,
+            last_pitch: pitch,
+            held: true,
+            active: true,
+            rng: 0x9E37_79B9_7F4A_7C15 ^ (u64::from(key) << 32),
+            strength,
+            ..Default::default()
         };
         let mut norm = 0.0;
         for (i, mode) in tone.modes.iter_mut().take(GENERIC_MODES).enumerate() {
             let n = i + 1;
-            let ratio = n as f64 / anchor as f64
-                * ((1.0 + stiffness * (n * n) as f64) / (1.0 + stiffness * (anchor * anchor) as f64)).sqrt();
-            let shape = (PI * n as f64 * position).sin()
-                * ((1.0 - s.strike) / (n * n) as f64 + s.strike / n as f64);
+            let ratio = n as f64 / anchor as f64 * ((1.0 + stiffness * (n * n) as f64) / (1.0 + stiffness * (anchor * anchor) as f64)).sqrt();
+            let shape = (PI * n as f64 * position).sin() * ((1.0 - s.strike) / (n * n) as f64 + s.strike / n as f64);
             let bright = 1.0 / (1.0 + (f0 * ratio / brightness.max(100.0)).powi(2));
             let allowed = technique != Technique::Harmonic || n % anchor == 0;
             let amplitude = shape * bright * if allowed { 1.0 } else { 0.025 };
@@ -664,8 +661,7 @@ impl Tone {
         }
         // 若右手也拨在触弦节点，保留模式几乎没有能量，不能用它们反向放大其余瞬态。
         let total_energy = tone.modes.iter().map(Mode::energy).sum::<f64>();
-        let gain = 0.22 * s.level * strength / norm.max(0.5 * total_energy).max(1e-12).sqrt()
-            * if technique == Technique::Harmonic { 0.65 } else { 1.0 };
+        let gain = 0.22 * s.level * strength / norm.max(0.5 * total_energy).max(1e-12).sqrt() * if technique == Technique::Harmonic { 0.65 } else { 1.0 };
         for mode in &mut tone.modes {
             mode.re *= gain;
         }
@@ -681,8 +677,13 @@ impl Tone {
                 // 表里没有量过泛音（古筝）：按触弦的道理从低的那根弦推出来——在 1/node 处轻触，只有 node 的整数倍次分音留下。
                 let node = p.harmonic.round().clamp(2.0, 8.0);
                 let mut low = table.voice(pitch - 12.0 * node.log2(), loudness, "");
-                let kept: Vec<crate::modal::Partial> =
-                    low.partials.iter().enumerate().filter(|(i, _)| (i + 1) % node as usize == 0).map(|(_, q)| crate::modal::Partial { ratio: q.ratio / node, ..*q }).collect();
+                let kept: Vec<crate::modal::Partial> = low
+                    .partials
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| (i + 1) % node as usize == 0)
+                    .map(|(_, q)| crate::modal::Partial { ratio: q.ratio / node, ..*q })
+                    .collect();
                 // 低弦的那几个分音本来不强：整体补到和这个音高的普通音差不多响，略轻。
                 let level = |list: &[crate::modal::Partial]| list.iter().map(|q| (q.amp + q.fast_amp).powi(2)).sum::<f64>().sqrt();
                 let gain = 0.7 * level(&table.voice(pitch, loudness, "").partials) / level(&kept).max(1e-9);
@@ -825,7 +826,9 @@ impl Tone {
             let f0 = 440.0 * ((self.pitch - 69.0) / 12.0).exp2();
             let sliding = if self.technique == Technique::Pressed { (self.pitch - self.last_pitch).abs() } else { 0.0 };
             let friction_loss = (-0.09 * live.pressure * sliding * self.params.profile.friction).exp();
-            let release = (!self.held).then_some(if self.params.damp { self.params.profile.damp_s } else {
+            let release = (!self.held).then_some(if self.params.damp {
+                self.params.profile.damp_s
+            } else {
                 self.params.pluck.string.release * if self.technique == Technique::Pressed { self.params.profile.pressed_release } else { 1.0 }
             });
             self.energy = 0.0;
@@ -1070,8 +1073,16 @@ impl Zither {
         synth.set_pitch_bend_range(BEND_RANGE);
         let sympathetic = vec![Resonance::default(); params.profile.open_keys.len() * 3];
         Self {
-            synth, params, sr: 48_000.0, tuning: Tuning::default(), body: [[Resonance::default(); 4]; 2], radiation: [Resonance::default(); 2],
-            sympathetic: [sympathetic.clone(), sympathetic], tilt: [0.0; 2], dc: [0.0; 2], pending: Vec::with_capacity(16),
+            synth,
+            params,
+            sr: 48_000.0,
+            tuning: Tuning::default(),
+            body: [[Resonance::default(); 4]; 2],
+            radiation: [Resonance::default(); 2],
+            sympathetic: [sympathetic.clone(), sympathetic],
+            tilt: [0.0; 2],
+            dc: [0.0; 2],
+            pending: Vec::with_capacity(16),
         }
     }
     fn configure(&mut self) {
@@ -1102,8 +1113,7 @@ impl Zither {
         self.configure();
     }
     pub(crate) fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
-        let p = self.pending.iter().position(|(n, _)| *n == note)
-            .map_or(self.params, |i| self.params.with_tag(self.pending.swap_remove(i).1));
+        let p = self.pending.iter().position(|(n, _)| *n == note).map_or(self.params, |i| self.params.with_tag(self.pending.swap_remove(i).1));
         self.synth.voices_mut().for_each(|v| v.params = p);
         self.synth.note_on_accented(note, velocity, accent);
         self.synth.voices_mut().for_each(|v| v.params = self.params);
@@ -1276,9 +1286,13 @@ mod tests {
         let tail = |damp: bool| {
             let p = ZitherParams { damp, ..ZitherParams::guzheng() };
             let mut tone = Tone::start(p, &Tuning::default(), 62, 0.0, 0.8, false, 48_000.0);
-            (0..9_600).for_each(|_| { tone.sample(48_000.0, 0.0, p); });
+            (0..9_600).for_each(|_| {
+                tone.sample(48_000.0, 0.0, p);
+            });
             tone.held = false;
-            (0..4_800).for_each(|_| { tone.sample(48_000.0, 0.0, p); });
+            (0..4_800).for_each(|_| {
+                tone.sample(48_000.0, 0.0, p);
+            });
             (0..480).map(|_| tone.sample(48_000.0, 0.0, p).abs()).fold(0.0, f64::max)
         };
         assert!(tail(true) < tail(false) * 0.01, "{} vs {}", tail(true), tail(false));
@@ -1315,7 +1329,10 @@ mod tests {
         let open = NoteRef::new(0, 48);
         let harmonic = NoteRef::new(0, 62);
         q.playing(open, NoteTag { technique: Some((muser_core::Technique::Open, None)), damp: false, flutter: false, slide: false, articulation: 0 });
-        q.playing(harmonic, NoteTag { technique: Some((muser_core::Technique::Harmonic, Some(2))), damp: false, flutter: false, slide: false, articulation: 0 });
+        q.playing(
+            harmonic,
+            NoteTag { technique: Some((muser_core::Technique::Harmonic, Some(2))), damp: false, flutter: false, slide: false, articulation: 0 },
+        );
         q.note_on(open, 0.8, false);
         q.note_on(harmonic, 0.8, false);
         let tones: Vec<_> = q.synth.voices_mut().filter(|v| v.now.active).map(|v| (v.now.key_pitch, v.now.technique)).collect();

@@ -9,14 +9,14 @@
 //! 每一块输入对着的工程位置 = 这一块输出的工程位置 − 往返延迟（驱动报告的输入 + 输出延迟，再加用户的微调）。
 //! 录完换回只输出的流，麦克风随之释放。[`Player::measure_latency`] 放咔嗒声、听回来，量出驱动没报告的那部分延迟。
 
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
-use manguebyte::spsc;
 use manguebyte::devices::{CallbackInfo, DuplexSettings, DuplexStream, InputDevice, OutputDevice, OutputStream, StreamSettings};
 use manguebyte::prelude::AudioBuffer;
+use manguebyte::spsc;
 use muser_core::Project;
 
 use crate::{RenderCache, RenderSettings, Renderer};
@@ -252,7 +252,6 @@ fn click_delay(input: &[f32], clicks: &[usize], window: usize) -> Option<f64> {
     Some(delays[delays.len() / 2])
 }
 
-
 /// 播放状态快照。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PlayerStatus {
@@ -344,7 +343,11 @@ impl Player {
     {
         let rate = StreamSettings::default().with_sample_rate(self.sample_rate);
         let input = InputDevice::open_default().map_err(|e| format!("failed to open the microphone: {e}"))?;
-        let input = if input.sample_rate().round() as u32 == self.sample_rate { input } else { input.with_settings(rate).map_err(|e| format!("the microphone does not support {} Hz: {e}", self.sample_rate))? };
+        let input = if input.sample_rate().round() as u32 == self.sample_rate {
+            input
+        } else {
+            input.with_settings(rate).map_err(|e| format!("the microphone does not support {} Hz: {e}", self.sample_rate))?
+        };
         let output = OutputDevice::open_default().map_err(|e| format!("failed to open the audio device: {e}"))?;
         let output = if output.sample_rate().round() as u32 == self.sample_rate { output } else { output.with_settings(rate).map_err(|e| format!("{e}"))? };
         let mut slot = self.stream.lock().unwrap();
@@ -482,7 +485,11 @@ impl Player {
                     let i = n + j;
                     *o = marks.iter().find(|&&c| i >= c && i < c + gap).map_or(0.0, |&c| {
                         let w = (i - c) as f32;
-                        if w < 0.02 * srf { 0.9 * (-w / (0.004 * srf)).exp() * (std::f32::consts::TAU * 2000.0 * w / srf).sin() } else { 0.0 }
+                        if w < 0.02 * srf {
+                            0.9 * (-w / (0.004 * srf)).exp() * (std::f32::consts::TAU * 2000.0 * w / srf).sin()
+                        } else {
+                            0.0
+                        }
                     });
                 }
             }
@@ -493,7 +500,8 @@ impl Player {
         self.restore_output();
         stop.store(true, Ordering::Release);
         let input = collector.join().map_err(|_| "recording thread error".to_string())?;
-        let delay = click_delay(&input, &clicks, gap * 8 / 10).ok_or("could not hear the clicks: take off the headphones, turn the volume up, move closer to the microphone and measure again")?;
+        let delay = click_delay(&input, &clicks, gap * 8 / 10)
+            .ok_or("could not hear the clicks: take off the headphones, turn the volume up, move closer to the microphone and measure again")?;
         let rt = self.shared.round_trip.load(Ordering::Acquire).max(0) as f64;
         Ok(((delay - rt) / sr as f64 * 1000.0).round())
     }

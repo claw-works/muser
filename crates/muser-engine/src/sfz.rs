@@ -150,11 +150,8 @@ fn normalize(text: &str) -> String {
         }
         // 注释（`//` 之后）里的不动；位置来自 match_indices，都在字符边界上。
         let code = line.split("//").next().unwrap_or("").len();
-        let mut cuts: Vec<usize> = ["#include", "#define"]
-            .iter()
-            .flat_map(|d| line.match_indices(d).map(|(i, _)| i))
-            .filter(|&i| i < code && !line[..i].trim().is_empty())
-            .collect();
+        let mut cuts: Vec<usize> =
+            ["#include", "#define"].iter().flat_map(|d| line.match_indices(d).map(|(i, _)| i)).filter(|&i| i < code && !line[..i].trim().is_empty()).collect();
         cuts.sort_unstable();
         let mut last = 0;
         for i in cuts {
@@ -226,7 +223,16 @@ pub fn note_number(v: &str) -> Option<u8> {
         return u8::try_from(n).ok().filter(|n| *n < 128);
     }
     let mut c = v.chars();
-    let base = match c.next()? { 'c' => 0, 'd' => 2, 'e' => 4, 'f' => 5, 'g' => 7, 'a' => 9, 'b' => 11, _ => return None };
+    let base = match c.next()? {
+        'c' => 0,
+        'd' => 2,
+        'e' => 4,
+        'f' => 5,
+        'g' => 7,
+        'a' => 9,
+        'b' => 11,
+        _ => return None,
+    };
     let rest: String = c.collect();
     let (acc, oct) = match rest.chars().next() {
         Some('#') => (1, &rest[1..]),
@@ -403,8 +409,20 @@ fn split_by_velocity(regions: &mut Vec<manguebyte::sampler::Region>, handled: &m
         let gain_curve = r.unknown.iter().any(|o| &*o.name == "xf_velcurve" && o.value.trim() == "gain");
         let ramp = |v: f64, (a, b): (Option<f64>, Option<f64>), fade_in: bool| -> f64 {
             let (a, b) = if fade_in { (a.unwrap_or(0.0), b.unwrap_or(0.0)) } else { (a.unwrap_or(127.0), b.unwrap_or(127.0)) };
-            let t = if b <= a { if v >= b { 1.0 } else { 0.0 } } else { ((v - a) / (b - a)).clamp(0.0, 1.0) };
-            if fade_in { t } else { 1.0 - t }
+            let t = if b <= a {
+                if v >= b {
+                    1.0
+                } else {
+                    0.0
+                }
+            } else {
+                ((v - a) / (b - a)).clamp(0.0, 1.0)
+            };
+            if fade_in {
+                t
+            } else {
+                1.0 - t
+            }
         };
         if !curve.is_empty() {
             // 没写的两端：0 级为 0、127 级为 1。
@@ -420,7 +438,11 @@ fn split_by_velocity(regions: &mut Vec<manguebyte::sampler::Region>, handled: &m
         let along = |v: f64| -> f64 {
             let i = curve.partition_point(|p| p.0 <= v).clamp(1, curve.len() - 1);
             let (a, b) = (curve[i - 1], curve[i]);
-            if b.0 <= a.0 { b.1 } else { a.1 + (b.1 - a.1) * (v - a.0) / (b.0 - a.0) }
+            if b.0 <= a.0 {
+                b.1
+            } else {
+                a.1 + (b.1 - a.1) * (v - a.0) / (b.0 - a.0)
+            }
         };
         let gain = |v: f64| -> f64 {
             let mut g = 1.0;
@@ -574,7 +596,12 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
         // 折成"调制深度 × 系数 + 固定偏移"：深度 D 的 1 号曲线 = 深度 2D、基准 −D。Ixox Flute 用它做微调
         // （`set_hdcc81=0.5` + `tune_oncc81=100` + 1 号曲线 = 0 音分），不折的话整体偏高 50 音分。
         let curve = |m: &manguebyte::sampler::Modulation| curve_key(m.target).and_then(|t| curves.get(&(t.to_string(), m.controller)).copied()).unwrap_or(0);
-        let shape = |c: u8, v: f64| match c { 1 => 2.0 * v - 1.0, 2 => 1.0 - v, 3 => 1.0 - 2.0 * v, _ => v };
+        let shape = |c: u8, v: f64| match c {
+            1 => 2.0 * v - 1.0,
+            2 => 1.0 - v,
+            3 => 1.0 - 2.0 * v,
+            _ => v,
+        };
         let (mut tune, mut volume, mut pan) = (0.0, 0.0, 0.0);
         r.modulations.retain_mut(|m| {
             use manguebyte::sampler::ModulationTarget as T;
@@ -586,7 +613,11 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
             }
             if c != 0 {
                 // 深度 × v 变成 深度 × shape(v) = 深度 × (k·v + b)：调制深度乘 k，基准加 深度 × b。
-                let (k, b) = match c { 1 => (2.0, -1.0), 2 => (-1.0, 1.0), _ => (-2.0, 1.0) };
+                let (k, b) = match c {
+                    1 => (2.0, -1.0),
+                    2 => (-1.0, 1.0),
+                    _ => (-2.0, 1.0),
+                };
                 let offset = m.depth * b;
                 match m.target {
                     T::Pitch => tune += offset,
@@ -603,7 +634,17 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
         r.pan += pan;
 
         // 交叉淡化折算成音量（gain 曲线线性，power 曲线取平方根，保持功率）。
-        let ramp = |v: f64, (a, b): (f64, f64)| if b <= a { if v >= b { 1.0 } else { 0.0 } } else { ((v - a) / (b - a)).clamp(0.0, 1.0) };
+        let ramp = |v: f64, (a, b): (f64, f64)| {
+            if b <= a {
+                if v >= b {
+                    1.0
+                } else {
+                    0.0
+                }
+            } else {
+                ((v - a) / (b - a)).clamp(0.0, 1.0)
+            }
+        };
         let mut w = 1.0;
         for (c, range) in &xin {
             w *= ramp(cc(*c), *range);
@@ -656,12 +697,8 @@ fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrume
     let root = path.parent().unwrap_or(Path::new(""));
     let bytes = sample_bytes(&sfz, root);
     let stream = !sfz.regions.iter().any(|r| &*r.sample == NOISE_FILE) && bytes > stream_above;
-    let inst = if stream {
-        Instrument::load_streaming(&sfz, root, &manguebyte::sampler::StreamOptions::new())
-    } else {
-        Instrument::load(&sfz, &mut source)
-    }
-    .map_err(|e| format!("failed to load SFZ '{}': {e}", path.display()))?;
+    let inst = if stream { Instrument::load_streaming(&sfz, root, &manguebyte::sampler::StreamOptions::new()) } else { Instrument::load(&sfz, &mut source) }
+        .map_err(|e| format!("failed to load SFZ '{}': {e}", path.display()))?;
     Ok((inst, dropped, warnings, if stream { 0 } else { bytes }))
 }
 
@@ -821,7 +858,8 @@ mod tests {
         std::fs::write(&path, "<region> sample=*sine lokey=0 hikey=127").unwrap();
         let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 120, "tracks": [
             { "name": "a", "instrument": format!("sfz:{}", path.display()), "clips": [] },
-            { "name": "b", "instrument": "synth.poly", "clips": [] }] })).unwrap();
+            { "name": "b", "instrument": "synth.poly", "clips": [] }] }))
+        .unwrap();
         let held = std::thread::spawn(move || crate::instrument::preload_sfz(&p).unwrap()).join().unwrap();
         assert_eq!(held.len(), 1);
         assert!(std::sync::Arc::ptr_eq(&held[0], &load_shared(&path, &Options::default()).unwrap()));
