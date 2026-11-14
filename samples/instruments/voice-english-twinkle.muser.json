@@ -1,0 +1,774 @@
+{
+ "name": "instruments/voice-english-twinkle",
+ "tempo": 100,
+ "description": "yinse.voice.child sings Twinkle, Twinkle, Little Star (traditional, public domain) in English: \"language\": \"english\", one syllable per note, + carries a word's next syllable onto the next note. Words are read by spelling rules, no dictionary.",
+ "tracks": [
+  {
+   "name": "voice",
+   "instrument": "yinse.voice.child",
+   "instrument_params": {
+    "language": "english",
+    "vibrato_depth": 12
+   },
+   "gain_db": 0,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.2
+    }
+   ],
+   "clips": [
+    {
+     "start": 0,
+     "length": 50,
+     "notes": [
+      {
+       "pitch": 60,
+       "start": 0,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "twinkle"
+      },
+      {
+       "pitch": 60,
+       "start": 1,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 67,
+       "start": 2,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "twinkle"
+      },
+      {
+       "pitch": 67,
+       "start": 3,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 69,
+       "start": 4,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "little"
+      },
+      {
+       "pitch": 69,
+       "start": 5,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 67,
+       "start": 6,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "star"
+      },
+      {
+       "pitch": 65,
+       "start": 8,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "how",
+       "breath": true
+      },
+      {
+       "pitch": 65,
+       "start": 9,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "I"
+      },
+      {
+       "pitch": 64,
+       "start": 10,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "wonder"
+      },
+      {
+       "pitch": 64,
+       "start": 11,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 62,
+       "start": 12,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "what"
+      },
+      {
+       "pitch": 62,
+       "start": 13,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "you"
+      },
+      {
+       "pitch": 60,
+       "start": 14,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "are"
+      },
+      {
+       "pitch": 67,
+       "start": 16,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "up",
+       "breath": true
+      },
+      {
+       "pitch": 67,
+       "start": 17,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "above"
+      },
+      {
+       "pitch": 65,
+       "start": 18,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 65,
+       "start": 19,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "the"
+      },
+      {
+       "pitch": 64,
+       "start": 20,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "world"
+      },
+      {
+       "pitch": 64,
+       "start": 21,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "so"
+      },
+      {
+       "pitch": 62,
+       "start": 22,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "high"
+      },
+      {
+       "pitch": 67,
+       "start": 24,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "like",
+       "breath": true
+      },
+      {
+       "pitch": 67,
+       "start": 25,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "a"
+      },
+      {
+       "pitch": 65,
+       "start": 26,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "diamond"
+      },
+      {
+       "pitch": 65,
+       "start": 27,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 64,
+       "start": 28,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "in"
+      },
+      {
+       "pitch": 64,
+       "start": 29,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "the"
+      },
+      {
+       "pitch": 62,
+       "start": 30,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "sky"
+      },
+      {
+       "pitch": 60,
+       "start": 32,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "twinkle",
+       "breath": true
+      },
+      {
+       "pitch": 60,
+       "start": 33,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 67,
+       "start": 34,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "twinkle"
+      },
+      {
+       "pitch": 67,
+       "start": 35,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 69,
+       "start": 36,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "little"
+      },
+      {
+       "pitch": 69,
+       "start": 37,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 67,
+       "start": 38,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "star"
+      },
+      {
+       "pitch": 65,
+       "start": 40,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "how",
+       "breath": true
+      },
+      {
+       "pitch": 65,
+       "start": 41,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "I"
+      },
+      {
+       "pitch": 64,
+       "start": 42,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "wonder"
+      },
+      {
+       "pitch": 64,
+       "start": 43,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 62,
+       "start": 44,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "what"
+      },
+      {
+       "pitch": 62,
+       "start": 45,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "you"
+      },
+      {
+       "pitch": 60,
+       "start": 46,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "are"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "pad",
+   "instrument": "poly.warm_analog_pad",
+   "gain_db": -14,
+   "clips": [
+    {
+     "start": 0,
+     "length": 50,
+     "notes": [
+      {
+       "pitch": 48,
+       "start": 0,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 0,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 0,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 2,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 2,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 2,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 4,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 4,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 4,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 6,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 6,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 6,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 8,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 8,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 8,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 10,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 10,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 10,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 12,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 59,
+       "start": 12,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 62,
+       "start": 12,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 14,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 14,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 14,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 16,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 16,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 16,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 18,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 18,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 18,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 20,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 20,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 20,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 22,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 59,
+       "start": 22,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 62,
+       "start": 22,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 24,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 24,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 24,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 26,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 26,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 26,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 28,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 28,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 28,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 30,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 59,
+       "start": 30,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 62,
+       "start": 30,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 32,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 32,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 32,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 34,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 34,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 34,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 36,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 36,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 36,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 38,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 38,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 38,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 40,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 40,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 40,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 42,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 42,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 42,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 44,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 59,
+       "start": 44,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 62,
+       "start": 44,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 48,
+       "start": 46,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 52,
+       "start": 46,
+       "length": 2,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 46,
+       "length": 2,
+       "velocity": 0.45
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

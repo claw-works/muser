@@ -1,0 +1,327 @@
+{
+ "name": "instruments/voice-english-mixed",
+ "tempo": 88,
+ "description": "yinse.voice.alto sings a line in pinyin, a line in English, a line with phonemes written out (S-T-R-IY-T, L-AY-T-S, Y-UW) and a mixed line. With the default \"language\": \"pinyin\", words that are not pinyin are read as English; \"you\" is also pinyin, so it is written Y-UW. Original melody.",
+ "tracks": [
+  {
+   "name": "voice",
+   "instrument": "yinse.voice.alto",
+   "instrument_params": {},
+   "gain_db": 0,
+   "effects": [
+    {
+     "type": "reverb",
+     "mix": 0.2
+    }
+   ],
+   "clips": [
+    {
+     "start": 0,
+     "length": 34,
+     "notes": [
+      {
+       "pitch": 57,
+       "start": 0,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "wo"
+      },
+      {
+       "pitch": 60,
+       "start": 1,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "zai"
+      },
+      {
+       "pitch": 62,
+       "start": 2,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "zhe"
+      },
+      {
+       "pitch": 64,
+       "start": 3,
+       "length": 3,
+       "velocity": 0.8,
+       "lyric": "li"
+      },
+      {
+       "pitch": 64,
+       "start": 8,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "singing",
+       "breath": true
+      },
+      {
+       "pitch": 62,
+       "start": 9,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 60,
+       "start": 10,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "for"
+      },
+      {
+       "pitch": 57,
+       "start": 11,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "Y-UW"
+      },
+      {
+       "pitch": 60,
+       "start": 12,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "now"
+      },
+      {
+       "pitch": 64,
+       "start": 16,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "S-T-R-IY-T",
+       "breath": true
+      },
+      {
+       "pitch": 67,
+       "start": 17,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "L-AY-T-S"
+      },
+      {
+       "pitch": 69,
+       "start": 18,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "are"
+      },
+      {
+       "pitch": 67,
+       "start": 19,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "shining"
+      },
+      {
+       "pitch": 64,
+       "start": 20,
+       "length": 2,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 62,
+       "start": 24,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "ming",
+       "breath": true
+      },
+      {
+       "pitch": 64,
+       "start": 25,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "tian"
+      },
+      {
+       "pitch": 62,
+       "start": 26,
+       "length": 0.5,
+       "velocity": 0.8,
+       "lyric": "tomorrow"
+      },
+      {
+       "pitch": 60,
+       "start": 26.5,
+       "length": 0.5,
+       "velocity": 0.8,
+       "lyric": "+"
+      },
+      {
+       "pitch": 57,
+       "start": 27.0,
+       "length": 1,
+       "velocity": 0.8,
+       "lyric": "will"
+      },
+      {
+       "pitch": 57,
+       "start": 28.0,
+       "length": 3,
+       "velocity": 0.8,
+       "lyric": "come"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "pad",
+   "instrument": "poly.warm_analog_pad",
+   "gain_db": -14,
+   "clips": [
+    {
+     "start": 0,
+     "length": 34,
+     "notes": [
+      {
+       "pitch": 57,
+       "start": 0,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 0,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 64,
+       "start": 0,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 4,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 4,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 64,
+       "start": 4,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 8,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 8,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 8,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 12,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 64,
+       "start": 12,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 67,
+       "start": 12,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 16,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 64,
+       "start": 16,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 67,
+       "start": 16,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 55,
+       "start": 20,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 59,
+       "start": 20,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 62,
+       "start": 20,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 53,
+       "start": 24,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 24,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 24,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 57,
+       "start": 28,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 60,
+       "start": 28,
+       "length": 4,
+       "velocity": 0.45
+      },
+      {
+       "pitch": 64,
+       "start": 28,
+       "length": 4,
+       "velocity": 0.45
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

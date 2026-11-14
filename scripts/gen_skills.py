@@ -429,8 +429,11 @@ FAMILY_PAGES = {
     ]),
     "voice": ("Singing voices (yinse)", "voice.md", [
         "muser's own formant singing voice: `yinse.voice.soprano` / `alto` / `tenor` / `bass` / `child`. Each note sings its `lyric` (pinyin: `\"ming\"`, `\"yue\"`, `\"guang\"`); notes without a lyric sing \"a\".",
-        "Each syllable is sung whole: the initial consonant (b p m f d t n l g k h j q x zh ch sh r z c s) starts a little before the note so the vowel lands on the beat, the final glides through its vowels (ai, iao, uai …) and closes on -n / -ng at the end of the note.",
-        "**Work in progress**: words are getting clearer but not yet natural; English spellings are approximate.",
+        "Each syllable is sung whole: the initial consonant (b p m f d t n l g k h j q x zh ch sh r z c s) starts a little before the note so the vowel lands on the beat, the final glides through its vowels (ai, iao, uai …) and closes on -n / -ng at the end of the note. On long notes the main vowel is what is held: the medial (the i in liang) passes in about a quarter of a second and the ending (the i of lai, -n, -ng) comes in the last fifth of a second, however long the note.",
+        "**English**: set `\"language\": \"english\"` in `instrument_params` and write English words as lyrics. They are read by spelling rules and a list of a few hundred irregular words (no dictionary), so unusual words can come out wrong: write those as phonemes, in capitals joined by dashes: `\"S-T-R-IY-T\"` (ARPAbet: vowels AA AE AH AO AW AX AY EH ER EY IH IY OW OY UH UW, consonants B CH D DH F G HH JH K L M N NG P R S SH T TH V W Y Z ZH; in an ABC `w:` line join them with dots, `S.T.R.IY.T`, because `-` splits syllables there).",
+        "One note sings one syllable. For a word of several syllables put the word on its first note and `+` on the following notes: `twinkle + little + star`. A word with more syllables than notes sings the rest inside its last note. A `+` after the word's last syllable holds the vowel over more notes and puts the closing consonants on the last one (`sing + +` is si-i-ing).",
+        "With the default `\"language\": \"pinyin\"`, a word that is not a pinyin syllable is read as English, so Chinese and English can share a track; words that are both (`you`, `she`, `me`, `long`, `can`) are sung as pinyin there: write them as phonemes (`Y-UW`) or use `\"english\"`.",
+        "**Work in progress**: words are getting clearer but not yet natural. In tests a speech recognizer got about 68% of sung Chinese syllables and 85% of English words.",
         "One note at a time: a note that overlaps the next is sung legato and glides (`glide`); a gap starts a fresh note. Vibrato comes in after `vibrato_delay`.",
         "**Slides (滑音)**: `\"slide\": true` on a note (ABC: `!slide!` before it) starts the word at the previous note's pitch and slides into its own over the word's start (up to 0.4 s, at most half the note): `c6 !slide!e2` with `w: zhao liang` sings 'liang' sliding up from 'zhao'. "
         "`\"slide_out\": true` (ABC `!slideout!`) is the other way: the word holds its pitch and its last part (up to 0.35 s, at most 40%) slides to the next note's pitch, where the next word starts: `!slideout!A4 E4` with `w: lai le` sings 'lai' and falls into 'le'.",
@@ -679,7 +682,8 @@ PARAM_EXAMPLES = {
                ("Electric: a warm neck-pickup humbucker lead with a slow strum", "yinse.pluck.electric_guitar", {"pickup": "neck", "strum": 15}),
                ("Electric: glassy, twangy single coil on the bridge, lighter palm mutes", "yinse.pluck.electric_guitar_clean", {"pickup": "bridge", "mute": 0.4})],
     "voice": [("A breathy, soft alto with little vibrato", "yinse.voice.alto", {"breath": 3, "brightness": 0.35, "vibrato_depth": 10}),
-              ("An operatic soprano", "yinse.voice.soprano", {"vibrato_depth": 70, "brightness": 0.8})],
+              ("An operatic soprano", "yinse.voice.soprano", {"vibrato_depth": 70, "brightness": 0.8, "ring": 0.6}),
+              ("A classical tenor with a ringing tone", "yinse.voice.tenor", {"ring": 0.7, "vibrato_depth": 50})],
     "chinese": [("Guzheng without vibrato, softer picks", "yinse.pluck.guzheng", {"vibrato": 0, "pluck_brightness": 4000}),
                 ("Guzheng with a deep, slow vibrato on held notes", "yinse.pluck.guzheng", {"vibrato": 45, "vibrato_rate": 4}),
                 ("A plainer, softer erhu", "yinse.bow.erhu", {"vibrato_depth": 15, "pressure": 0.4}),

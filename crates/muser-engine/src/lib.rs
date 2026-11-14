@@ -18,6 +18,7 @@ pub mod distortion;
 pub mod instrument;
 pub mod levels;
 pub mod loop_library;
+pub mod english;
 pub mod lyric;
 pub mod midi;
 pub mod migrate;

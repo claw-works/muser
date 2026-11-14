@@ -1135,7 +1135,7 @@ static BUILTINS: &[Builtin] = &[
     b!("bass.acid_squelch", [], "bass", false, (24, 60), 1, "acid bass with higher resonance and envelope, a stronger squelch", || Patch::Acid(AcidParams::squelch())),
     b!("bass.acid_square", [], "bass", false, (24, 60), 1, "acid bass, square-wave version, more hollow", || Patch::Acid(AcidParams::square())),
     // —— 歌声（muser 自己的，yinse）——
-    b!("yinse.voice.soprano", [], "voice", false, (60, 84), 1, "Singing voice, soprano: sings each note's lyric (pinyin) with a formant voice; legato glides, vibrato. Vowels for now, consonants next", || Patch::Singer(crate::singer::SingerParams::preset(0))),
+    b!("yinse.voice.soprano", [], "voice", false, (60, 84), 1, "Singing voice, soprano: sings each note's lyric (pinyin or English) with a formant voice; legato glides, vibrato, slides and breaths", || Patch::Singer(crate::singer::SingerParams::preset(0))),
     b!("yinse.voice.alto", [], "voice", false, (55, 79), 1, "Singing voice, alto: warmer and lower than the soprano", || Patch::Singer(crate::singer::SingerParams::preset(1))),
     b!("yinse.voice.tenor", [], "voice", false, (48, 72), 1, "Singing voice, tenor", || Patch::Singer(crate::singer::SingerParams::preset(2))),
     b!("yinse.voice.bass", [], "voice", false, (40, 64), 1, "Singing voice, bass: deep and dark", || Patch::Singer(crate::singer::SingerParams::preset(3))),

@@ -343,6 +343,18 @@ pub(crate) static SINGER: &[ParamDef<crate::singer::SingerParams>] = &[
             Ok(())
         }),
     },
+    ParamDef {
+        spec: InstParamSpec {
+            name: "language",
+            kind: ParamKind::Number { min: 0.0, max: 1.0, unit: "", integer: true, names: crate::singer::LANGUAGE_NAMES },
+            description: "How lyrics are read: \"pinyin\" (words that are not pinyin are read as English) or \"english\" (every word as English, for words that are also pinyin: she, me, long)",
+        },
+        get: |p| json!(p.language),
+        set: Setter::Num(|p, v| {
+            p.language = v;
+            Ok(())
+        }),
+    },
     num!("formant_shift", 0.7, 1.4, "", "Vocal tract size: 1 natural; 0.9 a bigger, darker voice; 1.1 smaller and brighter (gender and age)", |p| p.formant_shift),
     num!("breath", 0.0, 6.0, "", "Breathiness (times the part's own): 0 pure; 1 natural; 3+ an airy, whispery voice", |p| p.breath),
     num!("brightness", 0.0, 1.0, "", "Vocal brightness (glottal spectrum): 0.3 soft and round; 0.55 natural; 0.9 bright, pressed, belting", |p| p.brightness),
@@ -350,7 +362,8 @@ pub(crate) static SINGER: &[ParamDef<crate::singer::SingerParams>] = &[
     num!("vibrato_rate", 0.5, 9.0, "Hz", "Vibrato rate (5-6)", |p| p.vibrato_rate),
     num!("vibrato_delay", 0.0, 3.0, "s", "How long a held note stays straight before the vibrato comes in", |p| p.vibrato_delay),
     num!("glide", 0.005, 0.5, "s", "Legato glide: how fast the voice slides to the next (overlapping) note", |p| p.glide),
-    num!("jitter", 0.0, 1.0, "", "Cycle-to-cycle unsteadiness of pitch and level: 0 machine-perfect; 0.4 natural; 1 rough", |p| p.jitter),
+    num!("jitter", 0.0, 1.0, "", "Unsteadiness: cycle-to-cycle pitch and level, a slow pitch drift of a few cents, and vibrato that wavers in rate and depth: 0 machine-perfect; 0.4 natural; 1 rough", |p| p.jitter),
+    num!("ring", 0.0, 1.0, "", "Singer's formant: F3-F5 drawn together near 3 kHz for a ringing, carrying tone: 0 none (pop, folk); 0.5-0.8 classical", |p| p.ring),
     num!("attack", 0.005, 1.0, "s", "How fast a note starts after a break", |p| p.attack),
     num!("release", 0.01, 2.0, "s", "How fast a note ends", |p| p.release),
 ];

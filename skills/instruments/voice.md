@@ -6,7 +6,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. Latest list: `muser in
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.voice.soprano` | 60–84 | 1 | Singing voice, soprano: sings each note's lyric (pinyin) with a formant voice; legato glides, vibrato. Vowels for now, consonants next |
+| `yinse.voice.soprano` | 60–84 | 1 | Singing voice, soprano: sings each note's lyric (pinyin or English) with a formant voice; legato glides, vibrato, slides and breaths |
 | `yinse.voice.alto` | 55–79 | 1 | Singing voice, alto: warmer and lower than the soprano |
 | `yinse.voice.tenor` | 48–72 | 1 | Singing voice, tenor |
 | `yinse.voice.bass` | 40–64 | 1 | Singing voice, bass: deep and dark |
@@ -19,6 +19,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | Parameter | Range | Automation | Description |
 |---|---|---|---|
 | `part` | 0 – 4 (integer), or `"soprano"` / `"alto"` / `"tenor"` / `"bass"` / `"child"` | — | Voice part (vocal tract size and colour): "soprano", "alto", "tenor", "bass", "child" |
+| `language` | 0 – 1 (integer), or `"pinyin"` / `"english"` | — | How lyrics are read: "pinyin" (words that are not pinyin are read as English) or "english" (every word as English, for words that are also pinyin: she, me, long) |
 | `formant_shift` | 0.7 – 1.4 | ✓ | Vocal tract size: 1 natural; 0.9 a bigger, darker voice; 1.1 smaller and brighter (gender and age) |
 | `breath` | 0 – 6 | ✓ | Breathiness (times the part's own): 0 pure; 1 natural; 3+ an airy, whispery voice |
 | `brightness` | 0 – 1 | ✓ | Vocal brightness (glottal spectrum): 0.3 soft and round; 0.55 natural; 0.9 bright, pressed, belting |
@@ -26,7 +27,8 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | `vibrato_rate` | 0.5 – 9 Hz | ✓ | Vibrato rate (5-6) |
 | `vibrato_delay` | 0 – 3 s | next note | How long a held note stays straight before the vibrato comes in |
 | `glide` | 0.005 – 0.5 s | ✓ | Legato glide: how fast the voice slides to the next (overlapping) note |
-| `jitter` | 0 – 1 | ✓ | Cycle-to-cycle unsteadiness of pitch and level: 0 machine-perfect; 0.4 natural; 1 rough |
+| `jitter` | 0 – 1 | ✓ | Unsteadiness: cycle-to-cycle pitch and level, a slow pitch drift of a few cents, and vibrato that wavers in rate and depth: 0 machine-perfect; 0.4 natural; 1 rough |
+| `ring` | 0 – 1 | ✓ | Singer's formant: F3-F5 drawn together near 3 kHz for a ringing, carrying tone: 0 none (pop, folk); 0.5-0.8 classical |
 | `attack` | 0.005 – 1 s | next note | How fast a note starts after a break |
 | `release` | 0.01 – 2 s | ✓ | How fast a note ends |
 
@@ -34,13 +36,13 @@ Automation column: ✓ = notes already sounding follow immediately; next note = 
 
 Preset values of each instrument:
 
-| instrument | `part` | `formant_shift` | `breath` | `brightness` | `vibrato_depth` | `vibrato_rate` | `vibrato_delay` | `glide` | `jitter` | `attack` | `release` |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.voice.soprano` | 0 | 1 | 1 | 0.62 | 42 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
-| `yinse.voice.alto` | 1 | 1 | 1 | 0.45 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
-| `yinse.voice.tenor` | 2 | 1 | 1 | 0.55 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
-| `yinse.voice.bass` | 3 | 1 | 1 | 0.45 | 30 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
-| `yinse.voice.child` | 4 | 1 | 1 | 0.6 | 25 | 5.5 | 0.35 | 0.09 | 0.4 | 0.06 | 0.12 |
+| instrument | `part` | `language` | `formant_shift` | `breath` | `brightness` | `vibrato_depth` | `vibrato_rate` | `vibrato_delay` | `glide` | `jitter` | `ring` | `attack` | `release` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `yinse.voice.soprano` | 0 | 0 | 1 | 1 | 0.62 | 42 | 5.5 | 0.35 | 0.09 | 0.4 | 0 | 0.06 | 0.12 |
+| `yinse.voice.alto` | 1 | 0 | 1 | 1 | 0.45 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0 | 0.06 | 0.12 |
+| `yinse.voice.tenor` | 2 | 0 | 1 | 1 | 0.55 | 35 | 5.5 | 0.35 | 0.09 | 0.4 | 0 | 0.06 | 0.12 |
+| `yinse.voice.bass` | 3 | 0 | 1 | 1 | 0.45 | 30 | 5.5 | 0.35 | 0.09 | 0.4 | 0 | 0.06 | 0.12 |
+| `yinse.voice.child` | 4 | 0 | 1 | 1 | 0.6 | 25 | 5.5 | 0.35 | 0.09 | 0.4 | 0 | 0.06 | 0.12 |
 
 ### Tuning examples
 
@@ -53,15 +55,24 @@ Preset values of each instrument:
 - An operatic soprano
 
   ```json
-  { "instrument": "yinse.voice.soprano", "instrument_params": {"vibrato_depth": 70, "brightness": 0.8} }
+  { "instrument": "yinse.voice.soprano", "instrument_params": {"vibrato_depth": 70, "brightness": 0.8, "ring": 0.6} }
+  ```
+
+- A classical tenor with a ringing tone
+
+  ```json
+  { "instrument": "yinse.voice.tenor", "instrument_params": {"ring": 0.7, "vibrato_depth": 50} }
   ```
 
 
 ## Tips and common mistakes
 
 - muser's own formant singing voice: `yinse.voice.soprano` / `alto` / `tenor` / `bass` / `child`. Each note sings its `lyric` (pinyin: `"ming"`, `"yue"`, `"guang"`); notes without a lyric sing "a".
-- Each syllable is sung whole: the initial consonant (b p m f d t n l g k h j q x zh ch sh r z c s) starts a little before the note so the vowel lands on the beat, the final glides through its vowels (ai, iao, uai …) and closes on -n / -ng at the end of the note.
-- **Work in progress**: words are getting clearer but not yet natural; English spellings are approximate.
+- Each syllable is sung whole: the initial consonant (b p m f d t n l g k h j q x zh ch sh r z c s) starts a little before the note so the vowel lands on the beat, the final glides through its vowels (ai, iao, uai …) and closes on -n / -ng at the end of the note. On long notes the main vowel is what is held: the medial (the i in liang) passes in about a quarter of a second and the ending (the i of lai, -n, -ng) comes in the last fifth of a second, however long the note.
+- **English**: set `"language": "english"` in `instrument_params` and write English words as lyrics. They are read by spelling rules and a list of a few hundred irregular words (no dictionary), so unusual words can come out wrong: write those as phonemes, in capitals joined by dashes: `"S-T-R-IY-T"` (ARPAbet: vowels AA AE AH AO AW AX AY EH ER EY IH IY OW OY UH UW, consonants B CH D DH F G HH JH K L M N NG P R S SH T TH V W Y Z ZH; in an ABC `w:` line join them with dots, `S.T.R.IY.T`, because `-` splits syllables there).
+- One note sings one syllable. For a word of several syllables put the word on its first note and `+` on the following notes: `twinkle + little + star`. A word with more syllables than notes sings the rest inside its last note. A `+` after the word's last syllable holds the vowel over more notes and puts the closing consonants on the last one (`sing + +` is si-i-ing).
+- With the default `"language": "pinyin"`, a word that is not a pinyin syllable is read as English, so Chinese and English can share a track; words that are both (`you`, `she`, `me`, `long`, `can`) are sung as pinyin there: write them as phonemes (`Y-UW`) or use `"english"`.
+- **Work in progress**: words are getting clearer but not yet natural. In tests a speech recognizer got about 68% of sung Chinese syllables and 85% of English words.
 - One note at a time: a note that overlaps the next is sung legato and glides (`glide`); a gap starts a fresh note. Vibrato comes in after `vibrato_delay`.
 - **Slides (滑音)**: `"slide": true` on a note (ABC: `!slide!` before it) starts the word at the previous note's pitch and slides into its own over the word's start (up to 0.4 s, at most half the note): `c6 !slide!e2` with `w: zhao liang` sings 'liang' sliding up from 'zhao'. `"slide_out": true` (ABC `!slideout!`) is the other way: the word holds its pitch and its last part (up to 0.35 s, at most 40%) slides to the next note's pitch, where the next word starts: `!slideout!A4 E4` with `w: lai le` sings 'lai' and falls into 'le'.
 - **Breaths (气口)**: `"breath": true` on a note (ABC: `!breath!`) takes a breath before it: the previous note stops about 0.22 s early and a soft inhale fills the gap, and legato does not join across it. Mark the start of each phrase (every one or two bars); a voice that never breathes sounds like a machine.

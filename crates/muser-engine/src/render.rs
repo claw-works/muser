@@ -181,6 +181,15 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 all = crate::chinese::expand_tremolo(&all, rate, tm.bpm_at(clip.start.0) / 60.0, shape);
             }
         }
+        // 歌声：每个词的音节分到音符上（英文词读成音素、分音节；`+` 接着唱下一个音节；拼音不动）。
+        if singer && all.iter().any(|n| n.lyric.is_some()) {
+            let english = match track.instrument_params.get("language") {
+                Some(serde_json::Value::String(s)) => s.eq_ignore_ascii_case("english") || s.eq_ignore_ascii_case("en"),
+                Some(v) => v.as_f64() == Some(1.0),
+                None => false,
+            };
+            all = crate::english::spread(&all, english);
+        }
         // 换气（`yinse.voice.*` 的 `breath`）：前一个音提早收住，空出一口气的时间（约 0.22 秒，在这个字的辅音之前）。
         let mut inhales: Vec<(f64, f64)> = Vec::new();
         if singer && all.iter().any(|n| n.breath) {
@@ -324,7 +333,14 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                     // 开头来不及提前时，辅音照样唱完（元音晚一点）。
                     let lead = (crate::singer::lead_seconds(text) * sr) as usize;
                     on_at = on_at.saturating_sub(lead);
-                    acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: (off - on) as u32, lead: lead as u32 }));
+                    // 这个字到下一个字的辅音开始为止（下一个字的辅音提前，会占掉这个音的末尾）：韵尾要在那之前收完。
+                    let next = notes
+                        .iter()
+                        .filter(|m| m.start.0 > note.start.0 + 1e-9)
+                        .map(|m| ((clip_start + rel(m.start.0) * sr) as usize).saturating_sub((m.lyric.as_deref().map_or(0.0, crate::singer::lead_seconds) * sr) as usize))
+                        .min();
+                    let len = next.map_or(off - on, |n| off.min(n).saturating_sub(on).max((0.05 * sr) as usize));
+                    acts.push((on_at, Act::Lyric { text: crate::lyric::Text::new(text), len: len as u32, lead: lead as u32 }));
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
