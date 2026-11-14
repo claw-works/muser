@@ -291,6 +291,10 @@ pub struct DiziParams {
     /// 高音更尖更毛：从 `high_from`（MIDI）起，每高一个八度，沙哑与笛膜（毛刺）各乘上 1 + `high`。0 不变。
     pub high: f64,
     pub high_from: f64,
+    /// 管子放得出来的最高频率跟着音高走（唢呐）：`cutoff` 倍基频以上每个倍频程掉 24 dB，但不低于 `cutoff_min` Hz。
+    /// 0 不滤。低音只有前几次谐波、圆而不毛，高音才亮。
+    pub cutoff: f64,
+    pub cutoff_min: f64,
     /// 宽度（0 … 1）：几个很近、左右不同的反射，让声音有左右的宽度（不是混响）。
     pub width: f64,
     /// 气息强弱（乘在吹气的力度上，0.3 … 1.5）：1 照常，小了虚、暗、气多，大了实、亮。可写自动化。
@@ -318,7 +322,7 @@ impl DiziParams {
         w.accent_push = 1.0;
         // 连奏（音重叠）时手指一换音就到，不滑；滑音只在音符写了 `slide` 时（见 [`Dizi::note_on`]）。
         w.portamento = false;
-        Self { wind: w, membrane: 0.45, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
+        Self { wind: w, membrane: 0.45, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0, cutoff: 0.0, cutoff_min: 1_500.0 }
     }
 
     /// 曲笛（南派）：管更粗更长、音低（D 调曲笛筒音 A4），声音圆润、气声多，笛膜贴得松。
@@ -363,7 +367,7 @@ pub fn xiao() -> DiziParams {
     w.tone = 7_000.0;
     w.portamento = false;
     // 没有笛膜：和笛子共用同一套处理（花舌、剁音、滑音、气息），膜为 0 时声音就是吹管本身。
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0, cutoff: 0.0, cutoff_min: 1_500.0 }
 }
 
 /// 葫芦丝：自由簧（铜簧片）装在葫芦做的气室里，下面一根主管、两边附管。和单簧管一样以奇次谐波为主，
@@ -385,7 +389,7 @@ pub fn hulusi() -> DiziParams {
     w.attack = 0.03;
     w.portamento = false;
     w.legato_time = 0.08;
-    DiziParams { wind: w, membrane: 0.0, breath: 1.0, flutter_depth: 0.44, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0 }
+    DiziParams { wind: w, membrane: 0.0, breath: 1.0, flutter_depth: 0.44, even: 0.4, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: 0.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.0, high: 0.0, high_from: 127.0, cutoff: 0.0, cutoff_min: 1_500.0 }
 }
 
 /// 唢呐：双簧片、锥形木管、铜碗（喇叭口）——响、亮、带沙。对着七段独奏录音（百鸟朝凤、正月十五闹花灯、小放牛、喜事儿等）：
@@ -397,7 +401,7 @@ pub fn suona() -> DiziParams {
     w.opening = 0.6;
     w.reed_frequency = 6_000.0;
     w.reed_damping = 1.6;
-    w.bell = 2_500.0;
+    w.bell = 6_000.0;
     w.brassiness = 0.3;
     w.tone = 14_000.0;
     // 簧片不那么稳：气声多一倍，气息和音高晃得多（用户在几版里选的"更粗更不稳"）。
@@ -412,10 +416,14 @@ pub fn suona() -> DiziParams {
     w.tremolo = 0.3;
     w.portamento = false;
     w.legato_time = 0.06;
-    // 录音的长时频谱：最响的是 1.3 … 3 kHz 一带（鼻音、"亮"），900 Hz 以下比我们的管子弱得多。
+    // 录音的长时频谱：900 Hz 以下比我们的管子弱得多（低搁架 -8 dB）。
     // 谐波之间的毛（噪声）录音里约 -49 dB（相对最强的谐波），管子本身只有约 -59：加沙哑补上。
     // 高音越吹越尖、越毛（管子本身越往上越干净）：D6 往上每个八度，沙哑与毛刺多 80%。
-    DiziParams { wind: w, membrane: 1.0, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 6.0, presence_hz: 2_200.0, rasp: 0.35, high: 0.8, high_from: 86.0 }
+    // 又对着一套单音采样（D4 … D6，每小三度一个）逐个音比了谐波：采样里低音只有前四五次谐波（往上一下子掉 20 dB），
+    // 越高的音越亮；没有 2.2 kHz 那个固定的鼻音峰，3 … 6 kHz 的毛刺也比原来的少得多。于是：管子的截止频率跟着音高走
+    // （基频的 10 倍，不低于 1.5 kHz）、喇叭口放得更开（6 kHz）、毛刺（笛膜）减到三成、去掉鼻音峰；
+    // A5 往上每个八度沙哑与毛刺多一倍半。G#4 … D6 七个音的谐波、频段平均差从 5.5 dB 到 4.6 dB。
+    DiziParams { wind: w, membrane: 0.3, breath: 1.0, flutter_depth: 0.44, even: 0.0, drone: 0.0, drone_note: 72.0, width: 0.0, low_shelf: -8.0, presence: 0.0, presence_hz: 2_200.0, rasp: 0.35, high: 1.5, high_from: 77.0, cutoff: 10.0, cutoff_min: 1_500.0 }
 }
 
 /// 大唢呐（大杆）：管长、喇叭口大，低四五度；浑厚、粗、低中频多，喇叭口放得出更多低频，揉得更宽。
@@ -432,7 +440,10 @@ pub fn suona_big() -> DiziParams {
     d.presence_hz = 1_600.0;
     d.membrane = 0.8;
     d.rasp = 0.45;
+    d.high = 0.8;
     d.high_from = 79.0;
+    // 采样（中音唢呐）管不到它的音色：截止不跟音高走，和原来一样。
+    d.cutoff = 0.0;
     d
 }
 
@@ -449,7 +460,10 @@ pub fn haidi() -> DiziParams {
     d.presence_hz = 4_000.0;
     d.wind.tone = 18_000.0;
     d.rasp = 0.3;
+    d.membrane = 1.0;
+    d.high = 0.8;
     d.high_from = 93.0;
+    d.cutoff = 0.0;
     d
 }
 
@@ -480,6 +494,11 @@ pub(crate) struct Dizi {
     breath_gain: f32,
     /// [`DiziParams::low_shelf`]、[`DiziParams::presence`] 的滤波。
     color: Vec<Filter<f32>>,
+    /// [`DiziParams::cutoff`] 的两级低通，现在的截止频率和这个音要去的。
+    bore: Vec<Filter<f32>>,
+    bore_hz: f64,
+    bore_to: f64,
+    dry: [Vec<f32>; 2],
     rasp_lp: [f32; 2],
     /// 这个音的 [`DiziParams::high`] 系数。
     high_gain: f64,
@@ -492,6 +511,9 @@ pub(crate) struct Dizi {
     rng: u32,
 }
 
+/// [`DiziParams::cutoff`] 的低通旁边漏过去多少原来的声音。
+const BORE_BLEED: f32 = 0.05;
+
 /// 花舌的气声有多少（相对这一刻的音量）。
 const FLUTTER_HISS: f32 = 0.06;
 
@@ -503,7 +525,7 @@ impl Dizi {
         let drone = Synth::with_voices(1, move || WindVoice::new(w));
         let peak = || [Filter::new(FilterShape::Bandpass, 3_200.0, 2.0), Filter::new(FilterShape::Bandpass, 6_000.0, 2.5)];
         Self { synth, drone, held: 0, drone_key: None, drone_buf: AudioBuffer::new(1, 0), params, membrane: [peak(), peak()], wet: AudioBuffer::new(1, 0), wet2: AudioBuffer::new(1, 0), env: [0.0; 2],
-            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], room_buf: [Vec::new(), Vec::new()], room_lp: [0.0; 2], room_at: 0, color: Vec::new(), rasp_lp: [0.0; 2], high_gain: 1.0, sr: 48_000.0, rng: 0x1234_5678 }
+            flutter_next: false, flutter: false, flutter_phase: 0.0, flutter_lp: 0.0, slide_next: false, slide: false, accent: false, breath_gain: params.breath.clamp(0.3, 1.5).powf(1.2) as f32, even_env: [0.0; 2], even_dc: [0.0; 2], room_buf: [Vec::new(), Vec::new()], room_lp: [0.0; 2], room_at: 0, color: Vec::new(), bore: Vec::new(), bore_hz: 16_000.0, bore_to: 16_000.0, dry: [Vec::new(), Vec::new()], rasp_lp: [0.0; 2], high_gain: 1.0, sr: 48_000.0, rng: 0x1234_5678 }
     }
 
     pub(crate) fn flutter_next(&mut self, on: bool) {
@@ -539,6 +561,11 @@ impl Dizi {
             self.color.push(Filter::new(FilterShape::Peak { gain_db: self.params.presence }, self.params.presence_hz, 0.8));
         }
         self.color.iter_mut().for_each(|f| f.prepare(spec));
+        self.bore.clear();
+        if self.params.cutoff > 0.0 {
+            self.bore = vec![Filter::new(FilterShape::Lowpass, self.bore_hz, 0.71), Filter::new(FilterShape::Lowpass, self.bore_hz, 0.71)];
+            self.bore.iter_mut().for_each(|f| f.prepare(spec));
+        }
         let room = (0.04 * spec.sample_rate) as usize;
         self.room_buf = [vec![0.0; room], vec![0.0; room]];
         self.room_at = 0;
@@ -555,6 +582,11 @@ impl Dizi {
         self.flutter = std::mem::take(&mut self.flutter_next);
         self.accent = accent;
         self.high_gain = 1.0 + self.params.high * ((f64::from(note.key) - self.params.high_from) / 12.0).max(0.0);
+        let f0 = 440.0 * ((f64::from(note.key) - 69.0) / 12.0).exp2();
+        self.bore_to = (self.params.cutoff * f0).clamp(self.params.cutoff_min, 16_000.0);
+        if self.held == 0 {
+            self.bore_hz = self.bore_to;
+        }
         self.slide = std::mem::take(&mut self.slide_next);
         let w = self.voice_params(accent, self.slide);
         self.synth.voices_mut().for_each(|v| v.set_params(w));
@@ -642,6 +674,29 @@ impl Dizi {
         }
         if !self.color.is_empty() {
             self.color.iter_mut().for_each(|f| f.process(buffer));
+        }
+        if !self.bore.is_empty() {
+            // 连着吹换音时截止频率滑过去（几十毫秒），不跳。
+            self.bore_hz += (self.bore_to - self.bore_hz) * (1.0 - (-(buffer.num_frames() as f64) / (0.03 * self.sr)).exp());
+            let hz = self.bore_hz.min(0.45 * self.sr);
+            // 截止以上不是什么都没有：留一点原来的声音（约 -26 dB），高处才有那层薄薄的"亮"。
+            let n = buffer.num_frames();
+            if self.wet.num_frames() < n {
+                self.wet = AudioBuffer::new(1, n);
+            }
+            for c in 0..buffer.num_channels().min(2) {
+                self.dry[c].clear();
+                self.dry[c].extend_from_slice(&buffer.channel(c)[..n]);
+            }
+            for f in &mut self.bore {
+                f.set_frequency(hz);
+                f.process(buffer);
+            }
+            for c in 0..buffer.num_channels().min(2) {
+                for (y, d) in buffer.channel_mut(c).iter_mut().zip(&self.dry[c]) {
+                    *y += BORE_BLEED * *d;
+                }
+            }
         }
         if self.params.width > 0.0 {
             self.room(buffer);

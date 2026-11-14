@@ -81,7 +81,7 @@ pub static MEASURED: &[(&str, f32)] = &[
     ("yinse.blow.bangdi", -25.6),
     ("yinse.blow.qudi", -26.9),
     ("yinse.blow.hulusi", -24.3),
-    ("yinse.blow.suona", -14.6),
+    ("yinse.blow.suona", -21.1),
     ("yinse.blow.suona_big", -19.8),
     ("yinse.blow.haidi", -11.4),
     ("yinse.blow.xiao", -34.5),

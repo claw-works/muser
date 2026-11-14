@@ -6,7 +6,7 @@ A note's `pitch` uses the **MIDI pitch (60 = middle C)**. The other Chinese inst
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.blow.suona` | 67–95 | 1 | Suona (唢呐): the loud double-reed horn with a brass bell, bright, nasal and raspy, a wide vibrato; weddings, festivals, 百鸟朝凤; one note at a time, overlapping notes slur, `scoop` / `fall` slide in from below and drop off the end |
+| `yinse.blow.suona` | 67–95 | 1 | Suona (唢呐): the loud double-reed horn with a brass bell, bright and raspy (rounder low, sharper high), a wide vibrato; weddings, festivals, 百鸟朝凤; one note at a time, overlapping notes slur, `scoop` / `fall` slide in from below and drop off the end |
 | `yinse.blow.suona_big` | 55–84 | 1 | Big suona (大唢呐): longer, with a big bell, a fourth or fifth below the suona; thick, rough and full, more low-mids; northern folk bands, weddings and funerals, opera accompaniment |
 | `yinse.blow.haidi` | 79–103 | 1 | Haidi (海笛, the small suona): short, with a tiny reed, a fourth to an octave above the suona; shrill, thin and the brightest, for bird calls and ornate high lines |
 
@@ -40,13 +40,13 @@ Preset values of each instrument:
 
 | instrument | `membrane` | `attack` | `release` | `vibrato_rate` | `vibrato_depth` | `vibrato_delay` | `breath_noise` | `breath` | `embouchure` | `articulation` | `flutter_depth` | `rasp` | `width` | `drone` | `drone_note` | `breath_vibrato` | `tone` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `yinse.blow.suona` | 1 | 0.03 | 0.06 | 5.5 | 30 | 0.25 | 0.6 | 1 | 0.6 | 0.5 | 0.44 | 0.35 | 0 | 0 | 72 | 0.3 | 14000 |
+| `yinse.blow.suona` | 0.3 | 0.03 | 0.06 | 5.5 | 30 | 0.25 | 0.6 | 1 | 0.6 | 0.5 | 0.44 | 0.35 | 0 | 0 | 72 | 0.3 | 14000 |
 | `yinse.blow.suona_big` | 0.8 | 0.03 | 0.06 | 5 | 35 | 0.25 | 0.6 | 1 | 0.6 | 0.5 | 0.44 | 0.45 | 0 | 0 | 72 | 0.3 | 14000 |
 | `yinse.blow.haidi` | 1 | 0.03 | 0.06 | 6.2 | 22 | 0.25 | 0.6 | 1 | 0.6 | 0.5 | 0.44 | 0.3 | 0 | 0 | 72 | 0.3 | 18000 |
 
 ## Tips and common mistakes
 
-- The loud double-reed horn with a brass bell: bright, nasal and raspy (its energy sits at 1.6-4 kHz), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. Three sizes: `yinse.blow.suona` (the middle one, G4-B6, melodies mostly A4-D6), `yinse.blow.suona_big` (大唢呐, a fourth or fifth lower, G3-C6: thick, rough, more low-mids, for northern folk bands, weddings, funerals and opera accompaniment) and `yinse.blow.haidi` (海笛, the small suona, G5-G7: shrill, thin and the brightest, for bird calls and ornate high lines). All three get sharper and rougher as they climb, as real ones do.
+- The loud double-reed horn with a brass bell: bright and raspy (rounder in its low notes, sharper as it climbs), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. Three sizes: `yinse.blow.suona` (the middle one, G4-B6, melodies mostly A4-D6), `yinse.blow.suona_big` (大唢呐, a fourth or fifth lower, G3-C6: thick, rough, more low-mids, for northern folk bands, weddings, funerals and opera accompaniment) and `yinse.blow.haidi` (海笛, the small suona, G5-G7: shrill, thin and the brightest, for bird calls and ornate high lines). All three get sharper and rougher as they climb, as real ones do.
 - **Slides are its speech**: most held notes scoop up into their pitch or fall off the end. `"scoop": 1` (0-2 semitones) starts the note below and slides up in about 0.12 s; `"fall": 1.5` drops the last 0.15 s; for wider swoops write a `bend`. `"slide": true` on an overlapping note glides from the previous one.
 - **Wide vibrato**: about ±30-40 cents at 5-6 Hz on long notes, by itself (`vibrato_depth`); 50+ for the singing, crying style of 豫剧 and northern pieces.
 - **Ornaments, very many**: in solo recordings half the notes are shorter than 70 ms. 叠音 (an upper flick just before a note), 打音 (a lower flick inside a held note), 历音 (a quick run up into a note), 颤音 `"trill": true`, written as on the dizi (see [dizi.md](dizi.md) for timings).

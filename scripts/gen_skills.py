@@ -589,7 +589,7 @@ CHINESE_PAGES = [
         "`vibrato_depth` 35 is the default wide vibrato; 15 for a plainer line.",
     ]),
     ("suona", "Suona (唢呐): middle, big and small", ["yinse.blow.suona", "yinse.blow.suona_big", "yinse.blow.haidi"], [
-        "The loud double-reed horn with a brass bell: bright, nasal and raspy (its energy sits at 1.6-4 kHz), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. "
+        "The loud double-reed horn with a brass bell: bright and raspy (rounder in its low notes, sharper as it climbs), made for weddings, festivals and processions; it carries over a whole band, so give it the melody and keep the rest lighter. "
         "Three sizes: `yinse.blow.suona` (the middle one, G4-B6, melodies mostly A4-D6), `yinse.blow.suona_big` (大唢呐, a fourth or fifth lower, G3-C6: thick, rough, more low-mids, for northern folk bands, weddings, funerals and opera accompaniment) "
         "and `yinse.blow.haidi` (海笛, the small suona, G5-G7: shrill, thin and the brightest, for bird calls and ornate high lines). All three get sharper and rougher as they climb, as real ones do.",
         "**Slides are its speech**: most held notes scoop up into their pitch or fall off the end. `\"scoop\": 1` (0-2 semitones) starts the note below and slides up in about 0.12 s; `\"fall\": 1.5` drops the last 0.15 s; for wider swoops write a `bend`. "
