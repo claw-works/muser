@@ -17,7 +17,7 @@ Override the sound of the chosen instrument/preset; write only the items you wan
 | Parameter | Range | Automation | Description |
 |---|---|---|---|
 | `register` | 0 – 7 (integer), or `"master"` / `"musette"` / `"violin"` / `"clarinet"` / `"bassoon"` / `"oboe"` / `"bandoneon"` / `"organ"` | — | Register (which reeds sound): "master" all of them, the fullest; "musette" three middle reeds, the shimmering French sound; "violin" two, a light shimmer; "clarinet" one, plain; "bassoon" the low reed alone; "oboe" middle + high, bright; "bandoneon" low + middle, the tango sound; "organ" low + high, hollow. From the next note |
-| `musette` | 0 – 60 cents | next note | How far the middle reeds are tuned apart: 0 dry; 10-15 a light tremolo; 25-35 the wet French musette (beats about 6 times a second at A4) |
+| `musette` | 0 – 60 cents | next note | How far the middle reeds are tuned apart: 0 dry; 10-15 a light tremolo; 25-35 the wet French musette (beats about 7 times a second at A4). The cents are those at A4: lower notes are tuned wider and higher notes closer, as tuners do, so the beating speeds up only gently up the keyboard |
 | `bellows` | 0 – 1 | ✓ | Bellows pressure: more is louder and brighter. Automate it for the push and pull of a phrase (swells, accents) |
 | `shake` | 0 – 1 | ✓ | Bellows shake: a tremolo of the volume, as players shake the bellows in tango and folk music. 0 off; 0.5 clear |
 | `shake_rate` | 0.5 – 12 Hz | ✓ | How fast the bellows shake (about 4-7) |

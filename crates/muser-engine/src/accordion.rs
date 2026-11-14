@@ -13,8 +13,8 @@
 use manguebyte::dsp::{Partial, PartialAir, PartialAttack, PartialBank, Tuning, WindJitter};
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Voice};
 
-/// 一片簧最多几个泛音。
-const PARTIALS: usize = 24;
+/// 一片簧最多几个泛音。簧片的泛音很多、很密：低音的簧要七八十个才够得着 4 … 5 kHz（少了低音区就闷，像滤过的风琴）。
+const PARTIALS: usize = 80;
 /// 最多几片簧（16 尺 + 三片 8 尺 + 4 尺）。
 const REEDS: usize = 5;
 /// 控制块（帧）：风压、抖动、包络每块更新一次，增益在块里直线过渡。
@@ -150,7 +150,21 @@ impl AccordionVoice {
         // 簧片的"咬"在 3 kHz 上下；簧片室有一个共鸣（约 1.2 kHz），关得越深越明显。
         let bite = 1.0 + 0.5 * (-((f / 3_000.0).ln()).powi(2) * 3.0).exp();
         let body = 1.0 + 0.6 * c * (-((f / 1_200.0).ln()).powi(2) * 4.0).exp();
-        (k as f64).powf(-tilt) * comb * lp * bite * body
+        // 簧片越大（音越低）高处越少：大簧片摆得慢，放出来的风脉冲没有那么尖。中央 C 的簧从 5 kHz 起慢慢收，低两个八度从 2.5 kHz 起。
+        let reed = f / k as f64;
+        let size = 1.0 / (1.0 + (f / (5_000.0 * (reed / 261.6).sqrt().clamp(0.35, 2.0))).powi(2)).sqrt();
+        (k as f64).powf(-tilt) * comb * lp * bite * body * size
+    }
+
+    /// 这个音高上 8 尺簧之间实际走音多少（`musette` 是 A4 上的音分）：调音师让拍的快慢从低到高只慢慢加快，
+    /// 音分数就得越高越小（都按同一个音分数，高一个八度拍就快一倍，高音区成了抖）。
+    fn spread(cents: f64, f0: f64) -> f64 {
+        cents * (440.0 / f0).sqrt().clamp(0.5, 1.8)
+    }
+
+    /// 簧片越大起振、停下越慢：相对 A4 的倍数。
+    fn slowness(f: f64) -> f64 {
+        (440.0 / f).powf(0.35).clamp(0.6, 2.5)
     }
 
     /// 重新排泛音的频率（音高、弯音、调律变了时）。
@@ -203,7 +217,7 @@ impl Voice<f32> for AccordionVoice {
         self.velocity = f64::from(velocity);
         let p = self.params;
         let set = REGISTERS[(p.register.round().max(0.0) as usize).min(REGISTERS.len() - 1)];
-        let cents = p.musette.clamp(0.0, 60.0);
+        let cents = Self::spread(p.musette.clamp(0.0, 60.0), 440.0 * ((self.tuning.key_pitch(note.key) - 69.0) / 12.0).exp2());
         self.reeds.clear();
         for (j, &(ratio, wet)) in set.iter().enumerate() {
             let pan = match set.len() {
@@ -212,15 +226,18 @@ impl Voice<f32> for AccordionVoice {
             };
             // 每片簧再有一点自己的走音（±1.5 音分，按音高固定）。
             let own = (unit(u64::from(note.key), j as u64 + 11) - 0.5) * 3.0;
+            // 三片簧的 musette：低的那片走得比高的那片少一点（两个拍不一样快，颤得活）。
+            let wet = if wet < 0.0 { 0.8 * wet } else { wet };
             self.reeds.push((ratio * ((wet * cents + own) / 1200.0).exp2(), pan));
         }
         self.bank.set_len(0);
         self.tune();
         self.bank.set_voicing_seed(u64::from(note.key) * 1_000_003 + self.notes);
         self.bank.set_wind_jitter(WindJitter { cents: 1.2, db: 0.25, rate_hz: 3.0 });
-        let rise = (p.attack.clamp(0.002, 0.5) * self.sr) as u32;
+        let f0 = self.f0();
         let mut i = 0;
         for r in 0..self.reeds.len() {
+            let rise = (p.attack.clamp(0.002, 0.5) * Self::slowness(f0 * self.reeds[r].0) * self.sr) as u32;
             for k in 1..=self.counts[r] {
                 let late = 1.0 + 0.8 * (k as f64 / PARTIALS as f64);
                 self.bank.set_air(i, PartialAir { depth: 0.02, bandwidth_hz: 60.0 });
@@ -274,7 +291,7 @@ impl Voice<f32> for AccordionVoice {
         while at < n {
             if self.left == 0 {
                 if !self.held {
-                    let step = BLOCK as f64 / (self.params.release.clamp(0.005, 5.0) * self.sr);
+                    let step = BLOCK as f64 / (self.params.release.clamp(0.005, 5.0) * Self::slowness(self.f0()).sqrt() * self.sr);
                     self.env = (self.env - step).max(0.0);
                 }
                 self.shake_phase = (self.shake_phase + self.params.shake_rate.clamp(0.5, 12.0) * BLOCK as f64 / self.sr).fract();

@@ -384,7 +384,7 @@ pub(crate) static ACCORDION: &[ParamDef<crate::accordion::AccordionParams>] = &[
             Ok(())
         }),
     },
-    num!("musette", 0.0, 60.0, "cents", "How far the middle reeds are tuned apart: 0 dry; 10-15 a light tremolo; 25-35 the wet French musette (beats about 6 times a second at A4)", |p| p.musette),
+    num!("musette", 0.0, 60.0, "cents", "How far the middle reeds are tuned apart: 0 dry; 10-15 a light tremolo; 25-35 the wet French musette (beats about 7 times a second at A4). The cents are those at A4: lower notes are tuned wider and higher notes closer, as tuners do, so the beating speeds up only gently up the keyboard", |p| p.musette),
     num!("bellows", 0.0, 1.0, "", "Bellows pressure: more is louder and brighter. Automate it for the push and pull of a phrase (swells, accents)", |p| p.bellows),
     num!("shake", 0.0, 1.0, "", "Bellows shake: a tremolo of the volume, as players shake the bellows in tango and folk music. 0 off; 0.5 clear", |p| p.shake),
     num!("shake_rate", 0.5, 12.0, "Hz", "How fast the bellows shake (about 4-7)", |p| p.shake_rate),
