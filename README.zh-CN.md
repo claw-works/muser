@@ -17,7 +17,7 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 设计信条：**引擎负责确定性的"音频真相"，AI 负责"意图翻译"，接口层是两者的契约。**
 
 底层音频由 [manguebyte](https://github.com/alessonqueirozdev-hub/manguebyte)（一个 Rust 音频框架）
-提供，以 git submodule 的形式 vendored 引入。
+提供，作为普通的 crates.io 依赖引入。
 
 ---
 
@@ -183,20 +183,14 @@ irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 
 
 ### 从源码构建（开发者）
 
-#### 1. 克隆（含 submodule）
-
-muser 依赖 vendored 的 manguebyte 子模块，务必递归克隆：
+#### 1. 克隆
 
 ```bash
-git clone --recurse-submodules https://github.com/claw-works/muser.git
+git clone https://github.com/claw-works/muser.git
 cd muser
 ```
 
-若已普通克隆，补拉子模块：
-
-```bash
-git submodule update --init --recursive
-```
+manguebyte 来自 crates.io，第一次构建时 Cargo 会自动下载。
 
 #### 2. 构建
 
@@ -414,7 +408,7 @@ muser/
 
 ## 深入阅读
 
-- [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md) — 三层架构、数据流、工程文件格式、vendored 策略、路线图
+- [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md) — 三层架构、数据流、工程文件格式、manguebyte 依赖、路线图
 - [SKILLS.md](SKILLS.md) — AI 如何表达音乐意图（总入口：工作流、速查、乐器与效果器索引）
 - [skills/](skills/) — 每个乐器类别、每个效果器的参数、场景预设与常见错误；自动化、路由、延音踏板
 - [TOOLS.md](TOOLS.md) — CLI 命令与 MCP tools 清单
@@ -422,4 +416,4 @@ muser/
 
 ## 许可
 
-本仓库自身代码遵循 MIT / Apache-2.0 双许可。vendored 的 manguebyte 同为 MIT / Apache-2.0。
+本仓库自身代码遵循 MIT / Apache-2.0 双许可。manguebyte 同为 MIT / Apache-2.0。

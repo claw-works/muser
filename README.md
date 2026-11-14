@@ -18,7 +18,7 @@ and the engine turns it into audio.
 Design principle: **the engine owns the deterministic "audio truth", the AI owns "intent translation", and the interface layer is the contract between them.**
 
 Audio is powered by [manguebyte](https://github.com/alessonqueirozdev-hub/manguebyte) (a Rust audio framework),
-vendored as a git submodule.
+a regular dependency from crates.io.
 
 ---
 
@@ -181,20 +181,14 @@ To run `muser` from any folder, add the unpacked folder to your `PATH`.
 
 ### Build from source (for developers)
 
-#### 1. Clone (with submodules)
-
-muser depends on the vendored manguebyte submodule, so clone recursively:
+#### 1. Clone
 
 ```bash
-git clone --recurse-submodules https://github.com/claw-works/muser.git
+git clone https://github.com/claw-works/muser.git
 cd muser
 ```
 
-If you already cloned without it, fetch the submodule:
-
-```bash
-git submodule update --init --recursive
-```
+manguebyte comes from crates.io, so Cargo fetches it on the first build.
 
 #### 2. Build
 
@@ -415,7 +409,7 @@ muser/
 
 The documents below are written in Chinese, except the plugin skills under `skills/plugins/`.
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — layered architecture, data flow, project file format, vendoring strategy, roadmap
+- [ARCHITECTURE.md](ARCHITECTURE.md) — layered architecture, data flow, project file format, the manguebyte dependency, roadmap
 - [SKILLS.md](SKILLS.md) — how the AI expresses musical intent (entry point: workflow, cheat sheet, instrument and effect index)
 - [skills/](skills/) — parameters, scene presets and common mistakes for each instrument family and effect; automation, routing, sustain pedal
 - [TOOLS.md](TOOLS.md) — CLI commands and MCP tools
@@ -423,4 +417,4 @@ The documents below are written in Chinese, except the plugin skills under `skil
 
 ## License
 
-The code in this repository is dual-licensed under MIT / Apache-2.0. The vendored manguebyte is also MIT / Apache-2.0.
+The code in this repository is dual-licensed under MIT / Apache-2.0. manguebyte is also MIT / Apache-2.0.
