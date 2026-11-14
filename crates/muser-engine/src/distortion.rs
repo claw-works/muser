@@ -40,11 +40,13 @@ fn stages(m: Mode) -> ([ShaperCurve; 2], [f64; 2], f32) {
 fn cabinet(name: &str) -> Vec<Filter<f32>> {
     match name.trim().to_ascii_lowercase().as_str() {
         "guitar" => vec![
+            // 削波之前低频切掉了（不然糊），削完以后靠箱头的音色旋钮和箱体把"厚"补回来：350 Hz 以下整体抬起来、
+            // 110 Hz 箱体的鼓包（闷音的"咚"）、500 Hz 上下挖一点（不然是鼻音、电话声），3 kHz 的"亮"不用那么多。
             Filter::new(FilterShape::Highpass, 75.0, 0.7),
-            Filter::new(FilterShape::LowShelf { gain_db: 6.0 }, 200.0, 0.7),
+            Filter::new(FilterShape::LowShelf { gain_db: 11.0 }, 320.0, 0.7),
             Filter::new(FilterShape::Peak { gain_db: 3.0 }, 110.0, 1.0),
-            Filter::new(FilterShape::Peak { gain_db: -3.0 }, 400.0, 0.8),
-            Filter::new(FilterShape::Peak { gain_db: 6.0 }, 3000.0, 0.9),
+            Filter::new(FilterShape::Peak { gain_db: -4.0 }, 550.0, 0.7),
+            Filter::new(FilterShape::Peak { gain_db: 4.0 }, 3000.0, 0.9),
             Filter::new(FilterShape::Lowpass, 6500.0, 0.7),
             Filter::new(FilterShape::Lowpass, 6500.0, 0.7),
         ],

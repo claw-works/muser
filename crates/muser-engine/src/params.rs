@@ -240,6 +240,7 @@ pub(crate) static ELECTRIC: &[ParamDef<crate::electric::ElectricParams>] = &[
             Ok(())
         }),
     },
+    num!("amp", 0.0, 1.0, "", "Built-in clean amp and speaker: 1 the clean-amp sound (lows trimmed, a presence peak near 3 kHz, nothing above the speaker's 5 kHz, peaks gently rounded); 0 the bare pickup signal, for a `distortion` effect or an amp plugin after it", |p| p.amp),
     num!("mute", 0.0, 1.0, "", "Palm mute depth for notes marked `\"mute\": true`: 0.3 a little damped; 0.85 (default) the tight chug of rock / metal riffs; 1 a dead thud", |p| p.mute),
     ParamDef {
         spec: InstParamSpec {

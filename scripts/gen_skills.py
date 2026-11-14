@@ -424,6 +424,8 @@ FAMILY_PAGES = {
         "`yinse.pluck.electric_guitar*` strum by themselves: write the chord's notes at the same start and set `strum` (ms between strings); downstrokes fall on the beat and the eighths, upstrokes on the off-beats.",
         "**Electric guitar into an amp**: `yinse.pluck.electric_guitar` (humbucker, bridge) is made for distortion: put `{ \"type\": \"distortion\", \"mode\": \"distortion\", \"drive_db\": 24-30, \"cabinet\": \"guitar\" }` after it (or a guitar amp plugin). "
         "Play power chords (root + fifth + octave); thirds turn muddy under heavy drive. Its long sustain is what makes held notes and leads sing.",
+        "`yinse.pluck.electric_guitar_clean` has a clean amp and speaker built in (`amp`, 1 by default): use it as it is, with chorus / delay / reverb after it. Set `\"amp\": 0` for the bare pickup signal when a `distortion` effect or an amp plugin follows; set `\"amp\": 1` on `yinse.pluck.electric_guitar` for a clean humbucker.",
+        "Every note is placed on a string and fret (the lowest fret that reaches it), so the same pickup hears each note a little differently, the wound strings (E A D) are darker than the plain ones and fretted notes ring a little shorter: lines sound less like one sample moved up and down.",
         "**Palm mute per note**: `\"mute\": true` on a note gives the tight, dark chug of rock and metal riffs; mix muted single notes and open power chords. The track's `mute` sets how tight.",
         "Two rhythm tracks of the same riff panned left and right (one with `\"pickup\": \"middle\"` or a little `humanize`) is the standard wide rock rhythm sound. For a lead, `\"pickup\": \"neck\"` is rounder; bends use the note's `bend`.",
     ]),
