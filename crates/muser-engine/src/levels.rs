@@ -51,7 +51,7 @@ pub fn trim_db(name: &str) -> f64 {
 
 /// 未校准时参考乐句的响度（LUFS，乐器名 → 响度）。生成的，见模块说明。
 pub static MEASURED: &[(&str, f32)] = &[
-    ("yinse.strike.luogu", -23.7),
+    ("yinse.strike.luogu", -17.3),
     ("yinse.strike.drums", -36.4),
     ("drums.808", -30.8),
     ("drums.909", -30.3),

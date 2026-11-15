@@ -1119,7 +1119,7 @@ macro_rules! b {
 static BUILTINS: &[Builtin] = &[
     // —— 鼓组 ——
     // —— muser 自己的打击乐（yinse）——
-    b!("yinse.strike.luogu", ["luogu"], "drums", true, (36, 81), 48, "Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), small gong 小锣 (rises), cymbals 大钹 (and muted) and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃", || Patch::Kit(crate::percussion::KitParams::luogu())),
+    b!("yinse.strike.luogu", ["luogu"], "drums", true, (36, 81), 48, "Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), big flat gong 大抄锣 (no slide, a long bloom of brass), small gong 小锣 (rises), cymbals 大钹 (and muted), 中钹 and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃", || Patch::Kit(crate::percussion::KitParams::luogu())),
     b!("yinse.strike.drums", [], "drums", true, DRUM_RANGE, 24, "Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys; Chinese cymbal (52) and percussion above 59 are the plain acoustic model); pop / funk / rock / jazz", || Patch::YinseDrums(yinse_drums())),
     b!("drums.808", ["808"], "drums", true, DRUM_RANGE, 24, "TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic", || Patch::Drums(DrumKit::style_808())),
     b!("drums.909", ["909"], "drums", true, DRUM_RANGE, 24, "TR-909 style: punchy kick and cymbals; house / techno", || Patch::Drums(DrumKit::style_909())),

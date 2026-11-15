@@ -6,7 +6,7 @@ A note's `pitch` uses the **GM drum key**. Latest list: `muser instruments --fam
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.strike.luogu` | 36–81 | 48 | Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), small gong 小锣 (rises), cymbals 大钹 (and muted) and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃 |
+| `yinse.strike.luogu` | 36–81 | 48 | Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), big flat gong 大抄锣 (no slide, a long bloom of brass), small gong 小锣 (rises), cymbals 大钹 (and muted), 中钹 and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃 |
 | `yinse.strike.drums` | 35–81 | 24 | Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys; Chinese cymbal (52) and percussion above 59 are the plain acoustic model); pop / funk / rock / jazz |
 | `drums.808` | 35–81 | 24 | TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic |
 | `drums.909` | 35–81 | 24 | TR-909 style: punchy kick and cymbals; house / techno |
@@ -23,7 +23,7 @@ A note's `pitch` uses the **GM drum key**. Latest list: `muser instruments --fam
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
-Set per piece, by name or key: { "daluo": { "tune": -2, "decay": 1.5 }, "52": { "level": 0.8 } }; automate as `piece.param` (e.g. "daluo.tune"). Pieces: 36 dagu (大鼓), 37 gubian (鼓边), 38 tanggu (堂鼓), 39 ban (拍板), 40 bangu (板鼓), 49 daluo (大锣), 52 xiaoluo (小锣), 55 xiaobo (小钹), 57 naobo (大钹), 58 naobo_mute (大钹闷击), 75 bangzi (梆子), 76 muyu (木鱼（高）), 77 muyu_low (木鱼（低）), 81 pengling (碰铃)
+Set per piece, by name or key: { "daluo": { "tune": -2, "decay": 1.5 }, "52": { "level": 0.8 } }; automate as `piece.param` (e.g. "daluo.tune"). Pieces: 36 dagu (大鼓), 37 gubian (鼓边), 38 tanggu (堂鼓), 39 ban (拍板), 40 bangu (板鼓), 49 daluo (大锣), 51 chaoluo (大抄锣), 52 xiaoluo (小锣), 56 zhongbo (中钹), 55 xiaobo (小钹), 57 naobo (大钹), 58 naobo_mute (大钹闷击), 75 bangzi (梆子), 76 muyu (木鱼（高）), 77 muyu_low (木鱼（低）), 81 pengling (碰铃)
 
 Each drum piece is adjustable (when automating, write `piece.parameter`, such as `kick.tune`; it takes effect from the next hit):
 
@@ -117,7 +117,7 @@ Keys not in the list make no sound.
 | `drums.house` | 35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,56,57,59,62,63,64,69,70 |
 | `drums.dnb` | 35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,55,57,59 |
 | `drums.lofi` | 35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,57,59,69,70 |
-| `yinse.strike.luogu` | 36,37,38,39,40,49,52,55,57,58,75,76,77,81 (its own pieces, see below) |
+| `yinse.strike.luogu` | 36,37,38,39,40,49,51,52,55,57,58,75,76,77,81 (its own pieces, see below) |
 
 Note: `drums.606` and `drums.cr78` have no hand clap (39).
 
@@ -129,15 +129,17 @@ the small gong rises ("taing"). Write the pieces by name in a `grid` or by key i
 
 | pitch | name | piece | sound |
 |---|---|---|---|
-| 36 | `dagu` | 大鼓 big drum | deep boom, rings about a second |
+| 36 | `dagu` | 大鼓 big drum | thick, punchy "dong" (84 Hz with a sub under it and the stick's slap on top), rings over a second |
 | 37 | `gubian` | 鼓边 rim of the tanggu | dry click |
-| 38 | `tanggu` | 堂鼓 tanggu | mid drum |
+| 38 | `tanggu` | 堂鼓 tanggu (the opera's big drum) | a 174 Hz boom with a longer 226 Hz ring, measured from a solo passage |
 | 39 | `ban` | 拍板 clapper | hard wooden slap that keeps the beat (板) |
-| 40 | `bangu` | 板鼓 bangu | high, hard and short: the conductor of the band |
-| 49 | `daluo` | 大锣 big gong | long, falls in pitch |
-| 52 | `xiaoluo` | 小锣 small gong | bright, rises in pitch |
-| 55 | `xiaobo` | 小钹 small cymbals | thin and bright |
-| 57 | `naobo` | 大钹 cymbals (nao/bo) | open crash; a later 58 chokes it |
+| 40 | `bangu` | 板鼓 bangu | a very high, dry crack around 1.7-1.9 kHz, gone in tens of milliseconds: the conductor of the band |
+| 49 | `daluo` | 大锣 big gong | "kuang": a hard stroke starts near 270 Hz and keeps sinking for most of a second (to about 215 Hz, as measured in an opera recording), hardly fading meanwhile, with a strong partial three times higher and a wash of brass above; a soft stroke barely slides |
+| 51 | `chaoluo` | 大抄锣 big flat gong (tam-tam kind) | no pitch slide: a low hum around 209 Hz, and a sheet of brass that blooms over the first half second and takes four or five seconds to fade; openings, folk luogu, lion dance |
+| 52 | `xiaoluo` | 小锣 small gong | "tai": bright and clear, slides up to 684 Hz (from about 560 Hz when hit hard, less when soft), ringing three seconds |
+| 55 | `xiaobo` | 小钹 small cymbals | thin and bright: a bell cluster near 800 Hz under a flat sheet from 2.5 kHz up, a second long |
+| 56 | `zhongbo` | 中钹 medium cymbals | between the two: a sheet from 1.3 kHz up, rings three seconds |
+| 57 | `naobo` | 大钹 cymbals (nao/bo) | open clash, a dense unpitched sheet of brass strongest at 1-5 kHz, the low part ringing longest; a later 58 chokes it |
 | 58 | `naobo_mute` | 大钹闷击 cymbals pressed together | short muted "qi" |
 | 75 | `bangzi` | 梆子 bangzi | very high wood, the beat of 梆子腔 operas |
 | 76 / 77 | `muyu` / `muyu_low` | 木鱼 wood blocks | high / low |
