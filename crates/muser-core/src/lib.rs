@@ -630,10 +630,10 @@ pub enum Technique {
 }
 
 /// 鼓组乐器（音符的 `pitch` 是鼓件的键，不是音高：不移调、不参与调性分析、导出 MIDI 用鼓通道）：
-/// manguebyte 的 `drums.*` 与 yinse 的打击乐。
+/// manguebyte 的 `drums.*` 与 yinse 音色库里的套件（`yinse:kit/<作者>/<名>`，或路径里有 `kit` 这一级目录的文件）。
 pub fn is_drum_kit(instrument: &str) -> bool {
     let i = instrument.trim().to_ascii_lowercase();
-    i.starts_with("drums.") || ["yinse.strike.luogu", "luogu", "yinse.strike.drums"].contains(&i.as_str())
+    i.starts_with("drums.") || i.strip_prefix("yinse:").is_some_and(|p| p.replace('\\', "/").split('/').any(|part| part == "kit"))
 }
 
 /// 接受逐音奏法（`technique` / `harmonic`）、可弯 ±24 半音的乐器（模态弦模型）。

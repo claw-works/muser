@@ -18,7 +18,7 @@ use manguebyte::dsp::instruments::{
     OrganParams, OrganVoice, PluckedString, PolySynthParams, PolySynthVoice, StringParams, WindParams, WindVoice,
 };
 use manguebyte::midi::MidiMessage;
-use manguebyte::prelude::{decibels, AudioBuffer, Filter, FilterShape, NoteRef, ProcessSpec, Processor, Synth, Voice};
+use manguebyte::prelude::{decibels, AudioBuffer, NoteRef, ProcessSpec, Processor, Synth, Voice};
 use serde::Serialize;
 
 use crate::params::{self, ParamInfo};
@@ -29,7 +29,7 @@ use muser_core::InstrumentParams;
 // ---------------------------------------------------------------------------
 
 /// 任何能接收音符并输出音频的东西。
-trait Playable {
+pub(crate) trait Playable {
     fn prepare(&mut self, spec: &ProcessSpec);
     fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool);
     /// 带掌闷标记的起音（音符的 `"mute"`）。默认忽略标记（只有电吉他用）。
@@ -450,9 +450,10 @@ pub struct InstrumentInfo {
 #[derive(Clone)]
 enum Patch {
     Drums(DrumKit),
-    /// `yinse.strike.drums`：同 `Drums`，底鼓另走一路 EQ（[`YinseDrums`]）。
-    YinseDrums(DrumKit),
-    Kit(crate::percussion::KitParams),
+    /// 音色库里的一套打击乐（`yinse:kit/<名>`，见 [`crate::kit`]）；这一套没有的键交给后面那套内置鼓组。
+    Kit(crate::kit::KitPatch, Option<DrumKit>),
+    /// 音色库里拖长音的乐器（`yinse:blow/…`，见 [`crate::held`]）。
+    Held(&'static crate::held::HeldTable, crate::held::HeldParams),
     Poly(PolySynthParams),
     Fm(FmParams),
     String(StringParams, usize),
@@ -501,15 +502,21 @@ impl Patch {
             Patch::Bowed(p, _) => params::apply(params::BOWED, p, params),
             Patch::Wind(p, _) => params::apply(params::WIND, p, params),
             Patch::Choir(p, _) => params::apply(params::CHOIR, p, params),
-            Patch::Kit(kit) => {
+            Patch::Kit(kit, fallback) => {
                 for (piece, value) in params {
-                    let i = kit.index(piece).ok_or_else(|| format!("unknown piece '{piece}': this kit has {}", kit.keys()))?;
-                    let obj = value.as_object().ok_or_else(|| format!("{piece}: expected an object, e.g. {{ \"tune\": -2 }}"))?;
-                    params::apply(params::KIT_PIECE, &mut kit.set[i], obj).map_err(|e| format!("{piece}.{e}"))?;
+                    match (kit.kit.index(piece), fallback.as_mut()) {
+                        (Some(i), _) => {
+                            let obj = value.as_object().ok_or_else(|| format!("{piece}: expected an object, e.g. {{ \"tune\": -2 }}"))?;
+                            params::apply(params::KIT_PIECE, &mut kit.set[i], obj).map_err(|e| format!("{piece}.{e}"))?;
+                        }
+                        (None, Some(rest)) => apply_drum_params(rest, &[(piece.clone(), value.clone())].into_iter().collect())?,
+                        (None, None) => return Err(format!("unknown piece '{piece}': this kit has {}", kit.kit.pieces_text())),
+                    }
                 }
                 Ok(())
             }
-            Patch::Drums(kit) | Patch::YinseDrums(kit) => apply_drum_params(kit, params),
+            Patch::Drums(kit) => apply_drum_params(kit, params),
+            Patch::Held(_, p) => params::apply(params::HELD, p, params),
             Patch::Sfz(_, cc) => {
                 *cc = crate::sfz::parse_params(params)?;
                 Ok(())
@@ -576,11 +583,27 @@ impl Patch {
             Patch::Bowed(p, _) => (params::describe(params::BOWED, p, params::NEXT_BOWED), String::new()),
             Patch::Wind(p, _) => (params::describe(params::WIND, p, &[]), String::new()),
             Patch::Choir(p, _) => (params::describe(params::CHOIR, p, &[]), String::new()),
-            Patch::Kit(kit) => (
-                params::specs(params::KIT_PIECE, params::NEXT_KIT_PIECE),
-                format!("Set per piece, by name or key: {{ \"daluo\": {{ \"tune\": -2, \"decay\": 1.5 }}, \"52\": {{ \"level\": 0.8 }} }}; automate as `piece.param` (e.g. \"daluo.tune\"). Pieces: {}", kit.keys()),
+            Patch::Kit(kit, fallback) => {
+                let first = &kit.kit.file.pieces[0].name;
+                (
+                    params::specs(params::KIT_PIECE, params::NEXT_KIT_PIECE),
+                    format!(
+                        "Set per piece, by name or key: {{ \"{first}\": {{ \"tune\": -2, \"decay\": 1.5 }}, \"{}\": {{ \"level\": 0.8 }} }}; automate as `piece.param` (e.g. \"{first}.tune\"). Pieces: {}{}",
+                        kit.kit.file.pieces.last().map_or(0, |p| p.keys[0]),
+                        kit.kit.pieces_text(),
+                        fallback.as_ref().map_or_else(String::new, |rest| format!(
+                            ". Other keys are played by the built-in kit {} (set like any drums.* kit; keys {})",
+                            kit.kit.file.fallback.as_ref().map_or("", |f| f.instrument.as_str()),
+                            kit_keys(rest)
+                        ))
+                    ),
+                )
+            }
+            Patch::Held(table, p) => (
+                params::describe(params::HELD, p, params::NEXT_HELD),
+                if table.mono { "Solo instrument, one note at a time: a note that starts before the last one ends is slurred (no new attack, the pitch glides over).".into() } else { String::new() },
             ),
-            Patch::Drums(kit) | Patch::YinseDrums(kit) => (
+            Patch::Drums(kit) => (
                 params::specs(params::PIECE, params::NEXT_PIECE),
                 format!(
                     "Set per drum piece: {{ \"kick\": {{ \"tune\": -2, \"decay\": 1.5 }}, \"38\": {{ \"snap\": 0.8 }} }}. \
@@ -596,9 +619,12 @@ impl Patch {
     /// 生成可演奏的乐器。
     fn instantiate(self) -> Result<TrackInstrument, String> {
         Ok(match self {
-            Patch::Kit(kit) => TrackInstrument::new(crate::percussion::Kit::new(kit), 9),
+            Patch::Kit(kit, fallback) => {
+                let rest = fallback.map(|k| Box::new(DrumsTunable { synth: Synth::new(DrumKitVoice::voices(24, k)), kit: k }) as Box<dyn Playable>);
+                TrackInstrument::new(crate::kit::KitInstrument::new(&kit, rest), 9)
+            }
             Patch::Drums(kit) => TrackInstrument::new(DrumsTunable { synth: Synth::new(DrumKitVoice::voices(24, kit)), kit }, 9),
-            Patch::YinseDrums(kit) => TrackInstrument::new(YinseDrums::new(kit), 9),
+            Patch::Held(table, p) => TrackInstrument::new(crate::held::Held::new(table, p), 0),
             Patch::Poly(p) => tunable(Synth::with_voices(16, move || PolySynthVoice::new(p)), p, params::POLY, |v, p| v.set_params(p)),
             Patch::Fm(p) => tunable(Synth::with_voices(16, move || FmVoice::new(p)), p, params::FM, |v, p| v.set_params(p)),
             Patch::String(p, n) => tunable(Synth::with_voices(n, move || PluckedString::new(p)), p, params::STRING, |v, p| v.set_params(p)),
@@ -635,11 +661,25 @@ impl Patch {
     }
 }
 
+/// 搬到 muser-yinse 音色库里去的内置乐器：旧名字 → 现在的写法。
+pub fn moved_to_library(name: &str) -> Option<&'static str> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "yinse.strike.luogu" | "luogu" => Some("yinse:kit/cloudbeer/jingju-luogu"),
+        "yinse.strike.drums" => Some("yinse:kit/cloudbeer/acoustic-drums"),
+        _ => None,
+    }
+}
+
 /// 鼓组乐器（`drums.*`）有哪些鼓键；不是鼓组时为 `None`。
 pub fn drum_kit_keys(name: &str) -> Option<Vec<u8>> {
     match lookup(name)?.1 {
-        Patch::Drums(kit) | Patch::YinseDrums(kit) => Some(kit.keys().collect()),
-        Patch::Kit(kit) => Some(kit.defs.iter().map(|d| d.key).collect()),
+        Patch::Drums(kit) => Some(kit.keys().collect()),
+        Patch::Kit(kit, fallback) => {
+            let mut keys = kit.kit.keys();
+            keys.extend(fallback.iter().flat_map(DrumKit::keys).filter(|k| !kit.kit.keys().contains(k)));
+            keys.sort_unstable();
+            Some(keys)
+        }
         _ => None,
     }
 }
@@ -658,347 +698,6 @@ fn apply_drum_params(kit: &mut DrumKit, params: &InstrumentParams) -> Result<(),
         kit.set(key, Some(p));
     }
     Ok(())
-}
-
-/// yinse 的原声套鼓：manguebyte 的原声鼓组，每件按一套放克鼓的采样调过（音高、衰减、亮度、起音、质感、音量，
-/// 自动拟合对数梅尔谱）。
-fn yinse_drums() -> DrumKit {
-    let mut kit = DrumKit::acoustic();
-    let tuned: InstrumentParams = serde_json::from_str(YINSE_DRUMS).expect("valid built-in drum settings");
-    apply_drum_params(&mut kit, &tuned).expect("built-in drum settings fit the acoustic kit");
-    kit
-}
-
-const YINSE_DRUMS: &str = r#"{"36":{"tune":4.0,"decay":0.852,"tone":0.0,"snap":1.0,"texture":0.93,"level":1.05},"37":{"tune":-8.723,"decay":0.3633,"tone":0.0073,"snap":0.9952,"texture":0.382,"level":0.6308},"38":{"tune":3.3,"decay":0.6,"tone":0.3,"snap":0.55,"texture":0.3276,"level":1.1},"39":{"tune":-11.799,"decay":2.5995,"tone":0.0078,"snap":0.9599,"texture":0.9957,"level":1.9046},"40":{"tune":3.3,"decay":0.5,"tone":0.55,"snap":0.8,"texture":0.15,"level":1.9},"41":{"tune":-6.083,"decay":3.4674,"tone":0.1653,"snap":1.0,"texture":0.3728,"level":0.3429},"42":{"tune":-10.65,"decay":2.6952,"tone":0.3175,"snap":0.6453,"texture":0.9952,"level":0.1534},"43":{"tune":-6.119,"decay":3.2556,"tone":0.2629,"snap":0.9974,"texture":0.3484,"level":0.3113},"44":{"tune":-6.334,"decay":3.1418,"tone":0.8249,"snap":0.0632,"texture":0.9952,"level":0.6628},"45":{"tune":-0.895,"decay":2.8685,"tone":0.5505,"snap":0.9973,"texture":0.4516,"level":0.318},"46":{"tune":-7.638,"decay":0.2162,"tone":0.9832,"snap":0.1947,"texture":0.4913,"level":0.7299},"47":{"tune":-5.193,"decay":3.1269,"tone":1.0,"snap":0.9957,"texture":0.3856,"level":0.4311},"48":{"tune":1.481,"decay":1.8786,"tone":0.2739,"snap":0.9951,"texture":0.7409,"level":0.362},"49":{"tune":-6.299,"decay":0.9317,"tone":0.9939,"snap":0.9952,"texture":0.1799,"level":0.4995},"50":{"tune":-0.636,"decay":2.3253,"tone":0.5702,"snap":1.0,"texture":0.3861,"level":0.3744}}"#;
-
-/// 力度的指数（1 不变，越小轻敲越响）：对着采样套鼓 0.35 / 0.95 两个力度的音量差量的。
-fn velocity_curve(key: u8) -> f32 {
-    match key {
-        39 => 0.65,
-        42 => 1.1,
-        44 => 0.55,
-        46 => 0.73,
-        55 => 0.15,
-        51 => 0.9,
-        54 => 0.35,
-        56 => 1.6,
-        59 => 0.7,
-        _ => 0.8,
-    }
-}
-
-/// 军鼓随力度差多少（dB，相对力度 1.0）：采样军鼓八个力度量出来的，中间连直线、两头顺着延出去；
-/// 换成 [`crate::percussion::Kit`] 的力度（它的音量是力度的 1.4 次方）。鼓皮（320 Hz 以下）轻敲时掉得比响弦快。
-const SNARE_BODY_DB: &[(f64, f64)] =
-    &[(0.126, -31.9), (0.252, -26.0), (0.378, -20.7), (0.5039, -17.1), (0.6299, -10.4), (0.7559, -5.4), (0.8819, -1.5), (1.0, 0.0)];
-/// 鼓腔的余音（600 Hz … 2 kHz 的那一圈"嗡"）：轻敲时掉得最少。
-const SNARE_RING_DB: &[(f64, f64)] =
-    &[(0.126, -41.9), (0.252, -31.4), (0.378, -21.7), (0.5039, -16.1), (0.6299, -12.4), (0.7559, -7.4), (0.8819, -1.6), (1.0, 0.0)];
-/// 响弦头二十毫秒的"唰"，2.8 kHz 以下与以上：轻敲时中频掉得多，高频掉得少。
-const SNARE_TOP_LOW_DB: &[(f64, f64)] =
-    &[(0.126, -29.1), (0.252, -23.7), (0.378, -19.9), (0.5039, -14.1), (0.6299, -10.8), (0.7559, -6.9), (0.8819, -2.0), (1.0, 0.0)];
-const SNARE_TOP_HIGH_DB: &[(f64, f64)] =
-    &[(0.126, -14.1), (0.252, -11.3), (0.378, -7.8), (0.5039, -7.8), (0.6299, -7.8), (0.7559, -7.8), (0.8819, 0.0), (1.0, 0.0)];
-/// 响弦的尾巴（50 ms 以后），同样分两段：轻敲时掉得更多。
-const SNARE_TAIL_LOW_DB: &[(f64, f64)] =
-    &[(0.126, -50.0), (0.252, -43.2), (0.378, -38.2), (0.5039, -38.2), (0.6299, -26.0), (0.7559, -26.0), (0.8819, -26.0), (1.0, 0.0)];
-const SNARE_TAIL_HIGH_DB: &[(f64, f64)] =
-    &[(0.126, -49.2), (0.252, -34.3), (0.378, -16.8), (0.5039, -12.6), (0.6299, -4.4), (0.7559, -2.0), (0.8819, -0.9), (1.0, 0.0)];
-/// 鼓槌那一下"啪"（头 2 ms）：重击才有，力度 0.75 以下几乎没有（鬼音是软的）。
-const SNARE_CLICK_DB: &[(f64, f64)] =
-    &[(0.126, -50.0), (0.252, -50.0), (0.378, -50.0), (0.5039, -50.0), (0.6299, -50.0), (0.7559, -45.0), (0.8819, 0.0), (1.0, 0.0)];
-
-/// 军鼓的七套与各自的力度表。
-const SNARE_PARTS: [(&[crate::percussion::PieceDef], &[(f64, f64)]); 7] = [
-    (crate::percussion::SNARE_BODY, SNARE_BODY_DB),
-    (crate::percussion::SNARE_RING, SNARE_RING_DB),
-    (crate::percussion::SNARE_TOP_LOW, SNARE_TOP_LOW_DB),
-    (crate::percussion::SNARE_TOP_HIGH, SNARE_TOP_HIGH_DB),
-    (crate::percussion::SNARE_TAIL_LOW, SNARE_TAIL_LOW_DB),
-    (crate::percussion::SNARE_TAIL_HIGH, SNARE_TAIL_HIGH_DB),
-    (crate::percussion::SNARE_CLICK, SNARE_CLICK_DB),
-];
-
-/// rimshot（40）的七套与各自的力度表（采样里三个力度：0.35、0.6、0.95）。
-const RIM_BODY_DB: &[(f64, f64)] = &[(0.35, -23.3), (0.6, -11.8), (0.95, 0.0)];
-const RIM_RING_DB: &[(f64, f64)] = &[(0.35, -34.2), (0.6, -19.3), (0.95, 0.0)];
-const RIM_TOP_LOW_DB: &[(f64, f64)] = &[(0.35, -22.5), (0.6, -13.7), (0.95, 0.0)];
-const RIM_TOP_HIGH_DB: &[(f64, f64)] = &[(0.35, 0.0), (0.6, 0.0), (0.95, 0.0)];
-const RIM_TAIL_LOW_DB: &[(f64, f64)] = &[(0.35, -25.6), (0.6, -12.4), (0.95, 0.0)];
-const RIM_TAIL_HIGH_DB: &[(f64, f64)] = &[(0.35, -26.7), (0.6, -6.8), (0.95, 0.0)];
-const RIM_CLICK_DB: &[(f64, f64)] = &[(0.35, -50.0), (0.6, -47.0), (0.95, 0.0)];
-const RIM_PARTS: [(&[crate::percussion::PieceDef], &[(f64, f64)]); 7] = [
-    (crate::percussion::RIM_BODY, RIM_BODY_DB),
-    (crate::percussion::RIM_RING, RIM_RING_DB),
-    (crate::percussion::RIM_TOP_LOW, RIM_TOP_LOW_DB),
-    (crate::percussion::RIM_TOP_HIGH, RIM_TOP_HIGH_DB),
-    (crate::percussion::RIM_TAIL_LOW, RIM_TAIL_LOW_DB),
-    (crate::percussion::RIM_TAIL_HIGH, RIM_TAIL_HIGH_DB),
-    (crate::percussion::RIM_CLICK, RIM_CLICK_DB),
-];
-
-/// 边击（37）随力度差多少（dB）：采样的三个力度量出来的。
-const SIDE_STICK_DB: [(f64, f64); 3] = [(0.35, -12.8), (0.6, -5.7), (0.95, 0.0)];
-
-/// 吊镲（49）随力度差多少（dB）：采样的三个力度量出来的（先把采样里叠在这个键上的那个有音高的声音去掉）。
-const CRASH_DB: [(f64, f64); 3] = [(0.35, -12.7), (0.6, -8.8), (0.95, 0.0)];
-
-/// 吊镲二（57，sizzle）随力度差多少（dB）：采样的三个力度层量出来的，中等力度比重击轻 12 dB。
-const CRASH2_DB: [(f64, f64); 3] = [(0.197, -16.4), (0.504, -12.1), (0.9055, 0.0)];
-
-fn measured_velocity(points: &[(f64, f64)], raw: f32) -> f32 {
-    let raw = f64::from(raw);
-    let i = points.windows(2).position(|w| raw < w[1].0).unwrap_or(points.len() - 2);
-    let ((x0, y0), (x1, y1)) = (points[i], points[i + 1]);
-    let db = y0 + (raw - x0) * (y1 - y0) / (x1 - x0);
-    // 比表里最轻的还轻：至少跟着力度一起小下去（表的头一段有的很平，照直线延出去的话再轻也不变小）。
-    let db = if raw < points[0].0 { db.min(points[0].1 + 20.0 * (raw.max(1e-3) / points[0].0).log10()) } else { db };
-    // 表外顺着延出去，但不超过 +3 dB（鼓槌那一层在 0.7 … 0.95 之间升得很陡）。
-    10f64.powf(db.clamp(-50.0, 3.0) / 20.0 / 1.4) as f32
-}
-
-/// 边击、拍手、踩镲、吊镲与 ride（51，钟面 53）另走一路的键（各一套模态 + 噪声，各自的 EQ）。
-const HAT_KEYS: [u8; 14] = [37, 39, 42, 44, 46, 49, 51, 53, 54, 55, 56, 57, 58, 59];
-
-/// 镲那一路每件的 EQ：(2.2 kHz 压多少, 9 kHz 以上提多少, 300 Hz 提多少) dB。
-fn hat_eq(key: u8) -> (f64, f64, f64) {
-    match key {
-        39 => (0.00, -6.00, 0.00),
-        // 铃鼓：铃片的声音几乎都在 3 kHz 以上，高处那几层噪声的下沿漏下来的压掉。
-        54 => (-15.00, 0.00, -20.00),
-        55 | 57 => (0.00, 1.00, 4.72),
-        _ => (0.0, 0.0, 0.0),
-    }
-}
-
-/// 通鼓的键（落地通鼓到高音通鼓）。
-const TOM_KEYS: [u8; 6] = [41, 43, 45, 47, 48, 50];
-
-/// 底鼓另走一路的键（35、36）。
-const KICK_KEYS: [u8; 2] = [35, 36];
-
-/// 底鼓的鼓腔（160 Hz 以下）随力度差多少：采样底鼓轻、中、重三下量出来的（力度 0.4 比 0.95 轻 7.9 dB，0.7 只轻 1.1 dB），
-/// 中间按 dB 连直线、两头顺着延出去；换成 [`crate::percussion::Kit`] 的力度（它的音量是力度的 1.4 次方）。
-fn kick_body_velocity(raw: f32) -> f32 {
-    let raw = f64::from(raw);
-    let db = if raw < 0.7 { -1.1 + (raw - 0.7) * (6.8 / 0.3) } else { -1.1 + (raw - 0.7) * (1.1 / 0.25) };
-    10f64.powf(db.max(-40.0) / 20.0 / 1.4) as f32
-}
-
-/// 底鼓的鼓槌声与带起来的响弦（160 Hz 以上）随力度的 2.4 次方：轻踩几乎只剩鼓腔的"咚"。
-fn kick_top_velocity(raw: f32) -> f32 {
-    (f64::from(raw) / 0.95).powf(2.4 / 1.4) as f32
-}
-
-/// `yinse.strike.drums`：底鼓、军鼓、通鼓、镲各走各的一路，其余的鼓件用 manguebyte 的原声鼓组。
-struct YinseDrums {
-    drums: DrumsTunable,
-    /// 底鼓（35、36）：鼓腔一套、鼓槌与响弦一套（[`crate::percussion::KICK_BODY`]、[`crate::percussion::KICK_TOP`]），
-    /// 一起敲，随力度各变各的。
-    kick: [crate::percussion::Kit; 2],
-    /// 军鼓（38）：鼓皮、鼓腔的余音、响弦（"唰"与尾巴、中频与高频共四套）、鼓槌的"啪"各一套（[`SNARE_PARTS`]），同上。
-    snare38: [crate::percussion::Kit; 7],
-    /// 踩镲（42 44 46）另走一路 EQ：这个物理模型的踩镲 2 kHz 一带太多、9 kHz 以上太少。
-    /// 每件踩镲各一套（各自的 EQ）；闭镲、踩镲掐断开镲。
-    hats: Vec<(u8, crate::percussion::Kit, Vec<Filter<f32>>)>,
-    /// rimshot（40）：同一只军鼓重一些的打法，也是七套（[`RIM_PARTS`]）。
-    rim40: [crate::percussion::Kit; 7],
-    scratch: AudioBuffer<f32>,
-    /// 整套鼓的压缩（采样套鼓是压过的：峰值只比均方根高十几 dB，听着有气势）：包络。
-    comp_env: f64,
-    sr: f64,
-    /// 通鼓（[`TOM_KEYS`]）：鼓腔一套、鼓槌与鼓皮的"沙"一套，各六件（[`crate::percussion::TOM_BODY`]、[`crate::percussion::TOM_TOP`]），同底鼓。
-    toms: [crate::percussion::Kit; 2],
-}
-
-/// 整套鼓的压缩：门限 dB、比例、起、落（秒）。
-const KIT_COMP: (f64, f64, f64, f64) = (-18.0, 6.0, 0.00002, 0.08);
-
-impl YinseDrums {
-    fn new(kit: DrumKit) -> Self {
-        // 底鼓、军鼓不用 manguebyte 的模型了：`instrument_params` 里给它们写的 level / tune / decay / tone / pan
-        // （相对内置的那套）折算到各自的两套上。
-        let built_in = yinse_drums();
-        fn kits<const N: usize>(kit: &DrumKit, built_in: &DrumKit, defs: [&'static [crate::percussion::PieceDef]; N]) -> [crate::percussion::Kit; N] {
-            let mut params = defs.map(crate::percussion::KitParams::of);
-            for k in &mut params {
-                for (def, set) in k.defs.iter().zip(&mut k.set) {
-                    let (Some(now), Some(base)) = (kit.piece(def.key), built_in.piece(def.key)) else { continue };
-                    set.level = now.level / base.level.max(1e-6);
-                    set.tune = now.tune - base.tune;
-                    set.decay = now.decay / base.decay.max(1e-6);
-                    set.tone = (0.5 + now.tone - base.tone).clamp(0.0, 1.0);
-                    // 没改声像的用量出来的（军鼓略偏一点，通鼓从中间排到右边）。
-                    if (now.pan - base.pan).abs() > 1e-9 {
-                        set.pan = now.pan;
-                    }
-                }
-            }
-            params.map(crate::percussion::Kit::new)
-        }
-        let kick = kits(&kit, &built_in, [crate::percussion::KICK_BODY, crate::percussion::KICK_TOP]);
-        let toms = kits(&kit, &built_in, [crate::percussion::TOM_BODY, crate::percussion::TOM_TOP]);
-        let snare38 = kits(&kit, &built_in, SNARE_PARTS.map(|(defs, _)| defs));
-        let rim40 = kits(&kit, &built_in, RIM_PARTS.map(|(defs, _)| defs));
-        Self {
-            drums: DrumsTunable { synth: Synth::new(DrumKitVoice::voices(24, kit)), kit },
-            kick,
-            snare38,
-            rim40,
-            hats: HAT_KEYS.iter().map(|&k| (k, crate::percussion::Kit::new(crate::percussion::KitParams::hats()), Vec::new())).collect(),
-            scratch: AudioBuffer::new(2, 0),
-            comp_env: 0.0,
-            sr: 48_000.0,
-            toms,
-        }
-    }
-    fn part(&mut self, key: u8) -> &mut dyn Playable {
-        if let Some(i) = self.hats.iter().position(|h| h.0 == key) {
-            &mut self.hats[i].1
-        } else {
-            // 未调教（原始音色）：52、60 … 81 还是 manguebyte 原声鼓组的声音，没有对着采样量过。
-            &mut self.drums
-        }
-    }
-}
-
-impl Playable for YinseDrums {
-    fn prepare(&mut self, spec: &ProcessSpec) {
-        self.drums.prepare(spec);
-        self.kick.iter_mut().chain(&mut self.snare38).chain(&mut self.rim40).for_each(|k| Playable::prepare(k, spec));
-        for (key, kit, eq) in &mut self.hats {
-            Playable::prepare(kit, spec);
-            let (mid, high, low) = hat_eq(*key);
-            *eq = vec![
-                Filter::new(FilterShape::Peak { gain_db: mid }, 2_200.0, 0.8),
-                Filter::new(FilterShape::HighShelf { gain_db: high }, 9_000.0, 0.7),
-                Filter::new(FilterShape::Peak { gain_db: low }, 300.0, 0.8),
-            ];
-            eq.iter_mut().for_each(|f| f.prepare(spec));
-        }
-        self.scratch = AudioBuffer::new(spec.num_channels.max(1), spec.max_block_size);
-        self.sr = spec.sample_rate;
-        self.toms.iter_mut().for_each(|k| Playable::prepare(k, spec));
-    }
-    fn note_on(&mut self, note: NoteRef, velocity: f32, accent: bool) {
-        // 采样套鼓的力度反应比这个物理模型平得多（底鼓、通鼓轻敲也有劲）：每件按量到的比例压平。
-        let raw = velocity.clamp(0.0, 1.0);
-        if KICK_KEYS.contains(&note.key) {
-            let key = NoteRef::new(note.channel, 36);
-            Playable::note_on(&mut self.kick[0], key, kick_body_velocity(raw), accent);
-            Playable::note_on(&mut self.kick[1], key, kick_top_velocity(raw), accent);
-            return;
-        }
-        if note.key == 38 {
-            for (kit, (_, table)) in self.snare38.iter_mut().zip(SNARE_PARTS) {
-                Playable::note_on(kit, note, measured_velocity(table, raw), accent);
-            }
-            return;
-        }
-        if note.key == 40 {
-            for (kit, (_, table)) in self.rim40.iter_mut().zip(RIM_PARTS) {
-                Playable::note_on(kit, note, measured_velocity(table, raw), accent);
-            }
-            return;
-        }
-        let velocity = match note.key {
-            37 => measured_velocity(&SIDE_STICK_DB, raw),
-            49 => measured_velocity(&CRASH_DB, raw),
-            57 => measured_velocity(&CRASH2_DB, raw),
-            _ => raw.powf(velocity_curve(note.key)),
-        };
-        if TOM_KEYS.contains(&note.key) {
-            // 采样通鼓的力度反应很平：鼓腔按力度的 0.55 次方，鼓槌与"沙"按 0.8 次方（力度 0.6 比 0.95 各轻 2、3 dB）。
-            let part = |power: f64| (f64::from(raw) / 0.95).powf(power / 1.4) as f32;
-            Playable::note_on(&mut self.toms[0], note, part(0.55), accent);
-            Playable::note_on(&mut self.toms[1], note, part(0.8), accent);
-            return;
-        }
-        if note.key == 42 || note.key == 44 {
-            // 踩下去：开着的镲被夹住。
-            if let Some(open) = self.hats.iter_mut().find(|h| h.0 == 46) {
-                open.1.choke();
-            }
-        }
-        self.part(note.key).note_on(note, velocity, accent);
-    }
-    fn note_off(&mut self, note: NoteRef, velocity: f32) {
-        if !KICK_KEYS.contains(&note.key) && note.key != 38 && note.key != 40 && !TOM_KEYS.contains(&note.key) {
-            self.part(note.key).note_off(note, velocity);
-        }
-    }
-    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        self.drums.process(buffer);
-        let n = buffer.num_frames();
-        if self.scratch.num_frames() < n || self.scratch.num_channels() < buffer.num_channels() {
-            self.scratch = AudioBuffer::new(buffer.num_channels(), n);
-        }
-        self.scratch.set_num_frames(n);
-        for (_, kit, eq) in &mut self.hats {
-            self.scratch.clear();
-            Playable::process(kit, &mut self.scratch);
-            eq.iter_mut().for_each(|f| f.process(&mut self.scratch));
-            for c in 0..buffer.num_channels() {
-                for (y, x) in buffer.channel_mut(c).iter_mut().zip(self.scratch.channel(c)) {
-                    *y += *x;
-                }
-            }
-        }
-        for kit in self.kick.iter_mut().chain(&mut self.snare38).chain(&mut self.rim40).chain(&mut self.toms) {
-            self.scratch.set_num_frames(n);
-            self.scratch.clear();
-            Playable::process(kit, &mut self.scratch);
-            for c in 0..buffer.num_channels() {
-                for (y, x) in buffer.channel_mut(c).iter_mut().zip(self.scratch.channel(c)) {
-                    *y += *x;
-                }
-            }
-        }
-        // 压缩：峰值包络（快起慢落），超过门限的按比例压下去。
-        let (thr_db, ratio, attack, release) = KIT_COMP;
-        if ratio > 1.0 {
-            let thr = 10f64.powf(thr_db / 20.0);
-            let (ka, kr) = (1.0 - (-1.0 / (attack * self.sr)).exp(), 1.0 - (-1.0 / (release * self.sr)).exp());
-            for i in 0..n {
-                let peak = (0..buffer.num_channels()).map(|c| f64::from(buffer.channel(c)[i].abs())).fold(0.0, f64::max);
-                let k = if peak > self.comp_env { ka } else { kr };
-                self.comp_env += (peak - self.comp_env) * k;
-                let g = if self.comp_env > thr { (thr / self.comp_env).powf(1.0 - 1.0 / ratio) } else { 1.0 } as f32;
-                for c in 0..buffer.num_channels() {
-                    buffer.channel_mut(c)[i] *= g;
-                }
-            }
-        }
-    }
-    fn set_param(&mut self, name: &str, value: f64) {
-        let key = name.split_once('.').and_then(|(piece, _)| params::piece_key(piece));
-        match key {
-            Some(k) if KICK_KEYS.contains(&k) => {
-                // 两套里那一件都叫 kick（键 36）。
-                let name = name.split_once('.').map_or_else(|| name.to_string(), |(_, param)| format!("kick.{param}"));
-                self.kick.iter_mut().for_each(|kit| Playable::set_param(kit, &name, value));
-            }
-            Some(38) => {
-                let name = name.split_once('.').map_or_else(|| name.to_string(), |(_, param)| format!("snare.{param}"));
-                self.snare38.iter_mut().for_each(|kit| Playable::set_param(kit, &name, value));
-            }
-            Some(k) if TOM_KEYS.contains(&k) => {
-                // 两套里每件按键号找。
-                let name = name.split_once('.').map_or_else(|| name.to_string(), |(_, param)| format!("{k}.{param}"));
-                self.toms.iter_mut().for_each(|kit| Playable::set_param(kit, &name, value));
-            }
-            Some(40) => {
-                let name = name.split_once('.').map_or_else(|| name.to_string(), |(_, param)| format!("40.{param}"));
-                self.rim40.iter_mut().for_each(|kit| Playable::set_param(kit, &name, value));
-            }
-            Some(k) if HAT_KEYS.contains(&k) => {
-                for (_, kit, _) in &mut self.hats {
-                    Playable::set_param(kit, name, value);
-                }
-            }
-            _ => self.drums.set_param(name, value),
-        }
-    }
 }
 
 fn kit_keys(kit: &DrumKit) -> String {
@@ -1118,9 +817,6 @@ macro_rules! b {
 
 static BUILTINS: &[Builtin] = &[
     // —— 鼓组 ——
-    // —— muser 自己的打击乐（yinse）——
-    b!("yinse.strike.luogu", ["luogu"], "drums", true, (36, 81), 48, "Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), big flat gong 大抄锣 (no slide, a long bloom of brass), small gong 小锣 (rises), cymbals 大钹 (and muted), 中钹 and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃", || Patch::Kit(crate::percussion::KitParams::luogu())),
-    b!("yinse.strike.drums", [], "drums", true, DRUM_RANGE, 24, "Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys; Chinese cymbal (52) and percussion above 59 are the plain acoustic model); pop / funk / rock / jazz", || Patch::YinseDrums(yinse_drums())),
     b!("drums.808", ["808"], "drums", true, DRUM_RANGE, 24, "TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic", || Patch::Drums(DrumKit::style_808())),
     b!("drums.909", ["909"], "drums", true, DRUM_RANGE, 24, "TR-909 style: punchy kick and cymbals; house / techno", || Patch::Drums(DrumKit::style_909())),
     b!("drums.606", ["606"], "drums", true, DRUM_RANGE, 24, "TR-606 style: light and crisp; acid / electro", || Patch::Drums(DrumKit::style_606())),
@@ -1249,6 +945,57 @@ fn lookup(name: &str) -> Option<(InstrumentInfo, Patch)> {
             Patch::Sfz(path, Default::default()),
         ));
     }
+    if let Some(path) = trimmed.strip_prefix("yinse:").filter(|p| crate::kit::is_kit(p)) {
+        let kit = crate::kit::load(path).ok()?;
+        let fallback = match &kit.file.fallback {
+            Some(f) => match lookup(&f.instrument)? {
+                (_, Patch::Drums(mut rest)) => {
+                    apply_drum_params(&mut rest, &f.params).ok()?;
+                    Some(rest)
+                }
+                _ => return None,
+            },
+            None => None,
+        };
+        let mut keys = kit.keys();
+        keys.extend(fallback.iter().flat_map(DrumKit::keys));
+        return Some((
+            InstrumentInfo {
+                name: trimmed.to_string(),
+                family: "drums".into(),
+                notes: NoteConvention::GmDrums,
+                range: (keys.iter().copied().min().unwrap_or(35), keys.iter().copied().max().unwrap_or(81)),
+                polyphony: 48,
+                description: format!("{} (yinse kit, {} pieces: {})", kit.file.name, kit.file.pieces.len(), kit.path.display()),
+                params: Vec::new(),
+                params_note: String::new(),
+            },
+            Patch::Kit(crate::kit::KitPatch::new(kit), fallback),
+        ));
+    }
+    if let Some(path) = trimmed.strip_prefix("yinse:").filter(|p| crate::held::is_held(p)) {
+        let table = crate::held::load(path).ok()?;
+        let (lo, hi) = table.range();
+        return Some((
+            InstrumentInfo {
+                name: trimmed.to_string(),
+                family: "yinse".into(),
+                notes: NoteConvention::Pitched,
+                range: ((lo - 3.0).max(0.0).round() as u8, (hi + 5.0).min(127.0).round() as u8),
+                polyphony: crate::held::Held::voices(table),
+                description: format!(
+                    "{} (yinse held instrument: {} pitches, {} dynamic layers: {})",
+                    table.name,
+                    table.notes.len(),
+                    table.notes[0].layers.len(),
+                    crate::modal::resolve(path).display()
+                ),
+                params: Vec::new(),
+                params_note: String::new(),
+            },
+            Patch::Held(table, crate::held::HeldParams::of(table)),
+        ));
+    }
     if let Some(path) = trimmed.strip_prefix("yinse:") {
         let (table, profile) = crate::modal::load(path).ok()?;
         let (lo, hi) = table.range();
@@ -1363,7 +1110,24 @@ pub fn check(name: &str, params: &InstrumentParams) -> Result<(), InstrumentErro
         return crate::plugin::check_params(path, id, params).map_err(|detail| InstrumentError::Param { detail });
     }
     if let Some(path) = trimmed.strip_prefix("yinse:") {
-        crate::modal::load(path).map_err(|detail| InstrumentError::Load { detail })?;
+        if crate::kit::is_kit(path) {
+            let kit = crate::kit::load(path).map_err(|detail| InstrumentError::Load { detail })?;
+            if let Some(f) = kit.file.fallback.as_ref().filter(|f| !matches!(lookup(&f.instrument), Some((_, Patch::Drums(_))))) {
+                return Err(InstrumentError::Load {
+                    detail: format!("'{}': fallback '{}' is not a built-in drum kit (drums.*)", kit.path.display(), f.instrument),
+                });
+            }
+        } else if crate::held::is_held(path) {
+            crate::held::load(path).map_err(|detail| InstrumentError::Load { detail })?;
+        } else {
+            crate::modal::load(path).map_err(|detail| InstrumentError::Load { detail })?;
+        }
+    }
+    if let Some(new) = moved_to_library(trimmed) {
+        let short = new.trim_start_matches("yinse:");
+        return Err(InstrumentError::Load {
+            detail: format!("'{trimmed}' moved to the muser-yinse library: write \"{new}\" and install it with `muser yinse install {short}` (`muser migrate --from 0.6.0` renames it in a project)"),
+        });
     }
     let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     if let Patch::Sfz(path, _) = &patch {
@@ -1425,13 +1189,21 @@ pub(crate) fn automation_param(
         Patch::Bowed(p, _) => find(params::BOWED, p, param, params::NEXT_BOWED),
         Patch::Wind(p, _) => find(params::WIND, p, param, &[]),
         Patch::Choir(p, _) => find(params::CHOIR, p, param, &[]),
-        Patch::Kit(kit) => {
+        Patch::Kit(kit, fallback) => {
             let (piece, field) =
-                param.split_once('.').ok_or_else(|| format!("percussion parameters are written as `piece.param`, e.g. \"daluo.tune\", got '{param}'"))?;
-            let i = kit.index(piece).ok_or_else(|| format!("unknown piece '{piece}'"))?;
-            find(params::KIT_PIECE, &kit.set[i], field, params::NEXT_KIT_PIECE)
+                param.split_once('.').ok_or_else(|| format!("percussion parameters are written as `piece.param`, e.g. \"kick.tune\", got '{param}'"))?;
+            match (kit.kit.index(piece), fallback) {
+                (Some(i), _) => find(params::KIT_PIECE, &kit.set[i], field, params::NEXT_KIT_PIECE),
+                (None, Some(rest)) => {
+                    let key = params::piece_key(piece).ok_or_else(|| format!("unknown piece '{piece}'"))?;
+                    let p = rest.piece(key).ok_or_else(|| format!("this kit has no drum key {key} ({piece})"))?;
+                    find(params::PIECE, p, field, params::NEXT_PIECE)
+                }
+                (None, None) => Err(format!("unknown piece '{piece}'")),
+            }
         }
-        Patch::Drums(kit) | Patch::YinseDrums(kit) => {
+        Patch::Held(_, p) => find(params::HELD, p, param, params::NEXT_HELD),
+        Patch::Drums(kit) => {
             let (piece, field) =
                 param.split_once('.').ok_or_else(|| format!("drum kit parameters are written as `piece.param`, e.g. \"kick.tune\", got '{param}'"))?;
             let key = params::piece_key(piece).ok_or_else(|| format!("unknown drum piece '{piece}'"))?;
@@ -1523,6 +1295,9 @@ fn trim_of(info: &InstrumentInfo, patch: &Patch, params: &InstrumentParams) -> f
         Patch::Poly(p) if info.name == "synth.poly" && params.contains_key("patch") => {
             poly::PRESETS.iter().find(|x| x.params == *p).map(|x| format!("poly.{}", slug(x.name)))
         }
+        // 音色库里的一套鼓：校准写在文件里。
+        Patch::Kit(kit, _) => return kit.kit.file.level_db.clamp(-30.0, 30.0),
+        Patch::Held(table, _) => return table.level_db.clamp(-30.0, 30.0),
         _ => Some(info.name.clone()),
     };
     level_name.map_or(0.0, |n| crate::levels::trim_db(&n))

@@ -18,6 +18,10 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
     since: "0.3.1",
     what: "built-in instrument level calibration (gain_db 0 = about -20 LUFS): the gain_db and gain_db automation of built-in instrument tracks have the instrument's calibration gain subtracted",
     apply: calibrate,
+}, Migration {
+    since: "0.6.1",
+    what: "the Chinese percussion and the acoustic drum kit moved to the muser-yinse library: yinse.strike.luogu -> yinse:kit/cloudbeer/jingju-luogu, yinse.strike.drums -> yinse:kit/cloudbeer/acoustic-drums (install them with `muser yinse install kit/<owner>/<name>`)",
+    apply: moved_kits,
 }];
 
 /// 一处改动（给人看的一行）。
@@ -82,6 +86,18 @@ fn calibrate(project: &mut Value, changes: &mut Vec<Change>) {
     }
 }
 
+/// 0.6.1：锣鼓和原声套鼓搬到了 muser-yinse 音色库。
+fn moved_kits(project: &mut Value, changes: &mut Vec<Change>) {
+    let Some(tracks) = project.get_mut("tracks").and_then(Value::as_array_mut) else { return };
+    for (i, t) in tracks.iter_mut().enumerate() {
+        let name = t.get("instrument").and_then(Value::as_str).unwrap_or_default().trim().to_ascii_lowercase();
+        let Some(new) = crate::instrument::moved_to_library(&name) else { continue };
+        let label = t.get("name").and_then(Value::as_str).map_or_else(|| format!("tracks[{i}]"), str::to_string);
+        t["instrument"] = Value::from(new);
+        changes.push(Change { track: label, detail: format!("{name} -> {new}") });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,6 +126,18 @@ mod tests {
         assert_eq!(t["automation"][2]["points"][0][1], json!(0.5), "别的自动化不动");
         assert_eq!(p["tracks"][1]["gain_db"], json!(-2.0));
         assert_eq!(p["tracks"][2]["gain_db"], json!(1.0));
+    }
+
+    #[test]
+    fn kits_that_moved_to_the_library_are_renamed() {
+        let mut p =
+            json!({"tracks": [{"name": "锣鼓", "instrument": "yinse.strike.luogu"}, {"instrument": "yinse.strike.drums"}, {"instrument": "drums.808"}]});
+        let changes = migrate(&mut p, "0.6.0").unwrap();
+        assert_eq!(changes.len(), 2);
+        assert_eq!(p["tracks"][0]["instrument"], "yinse:kit/cloudbeer/jingju-luogu");
+        assert_eq!(p["tracks"][1]["instrument"], "yinse:kit/cloudbeer/acoustic-drums");
+        assert_eq!(p["tracks"][2]["instrument"], "drums.808");
+        assert!(migrate(&mut p, "0.6.1").unwrap().is_empty());
     }
 
     #[test]

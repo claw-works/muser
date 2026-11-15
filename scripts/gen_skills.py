@@ -371,11 +371,28 @@ KIT_KEYS = {
     "drums.house": "35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,56,57,59,62,63,64,69,70",
     "drums.dnb": "35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,55,57,59",
     "drums.lofi": "35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,57,59,69,70",
-    "yinse.strike.luogu": "36,37,38,39,40,49,51,52,55,57,58,75,76,77,81 (its own pieces, see below)",
 }
 
 LUOGU = """
-## Chinese percussion: `yinse.strike.luogu` (锣鼓)
+## Kits from the yinse library (`yinse:kit/<owner>/<name>`)
+
+Kits measured from recordings live in the [muser-yinse](https://github.com/claw-works/muser-yinse) library, not in muser itself:
+install one with `muser yinse install kit/<owner>/<name>` (or put a clone of the library on `MUSER_YINSE_PATH`), then write
+`"instrument": "yinse:kit/<owner>/<name>"`. `muser yinse search kit` lists them; `muser instruments yinse:kit/<owner>/<name>` prints the pieces and keys.
+
+| instrument | what |
+|---|---|
+| `yinse:kit/cloudbeer/acoustic-drums` | Acoustic drum kit fitted by hand to sampled kits: punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys). It was the built-in `yinse.strike.drums` up to 0.6.0 |
+| `yinse:kit/virtuosity/drums` | Contemporary jazz kit (Virtuosity Drums, CC0), extracted automatically: kick, several snare strokes, two toms, hi-hats, crash, ride, flat ride, GM percussion |
+| `yinse:kit/cloudbeer/jingju-luogu` | Peking-opera percussion 京剧锣鼓 (below). It was the built-in `yinse.strike.luogu` up to 0.6.0 |
+
+- Every piece takes `tune`, `decay`, `level`, `tone`, `pan`, by name or key: `{ "kick": { "tune": -2 }, "49": { "decay": 0.6 } }`;
+  automate as `piece.param`. A kit can hand the keys it does not have to a built-in kit (`muser instruments` says which).
+- These kits are level-calibrated like built-in instruments (the calibration is in the kit file).
+- A project written for 0.6.0 with `yinse.strike.luogu` / `yinse.strike.drums`: `muser migrate --from 0.6.0 --write` renames them.
+- Make a kit from your own single hits or an SFZ drum library: `muser yinse extract --kit` (see [yinse-extract.md](yinse-extract.md)).
+
+### Peking-opera percussion: `yinse:kit/cloudbeer/jingju-luogu` (京剧锣鼓)
 
 muser's own kit for Beijing opera, folk wind-and-percussion bands (吹打) and festivals. Every piece is modeled from its vibration modes:
 drum heads, gong plates, cymbals and wood each have their own overtone ratios; the big gong falls in pitch after the strike (the "kuang～"),
@@ -1507,7 +1524,7 @@ left/right level and phase), its attack noise in ten octave bands (how loud, how
 the other strings ring along. Partials need not be harmonics: the modes of a bell, a bar or a drum that are not whole
 multiples of the pitch are measured too. The result is a JSON of numbers (about 200 KB for 40 notes), not audio. It suits
 sounds that are struck or plucked and ring away by themselves: yangqin, guzheng, piano, harp, bells, mallets, drums.
-Not blown or bowed sounds that are held.
+Blown or bowed sounds that are held are extracted another way: see "Held instruments" below.
 
 ```bash
 muser yinse extract ~/samples/yangqin/ -o yangqin.yinse.json --name "my yangqin"
@@ -1540,7 +1557,7 @@ an extracted instrument is `yinse:strike/grand-piano` (a colon and a path). Use 
 | Pitches | Any, and the techniques bend and slide it far (guqin 按音 / 泛音 / 走手音, ±24 semitone bends) | Any (blended between recorded pitches); bends work, but the timbre does not follow a press or slide |
 | Playing techniques | The built-in ones (`technique`, `tremolo`, `trill`, `flutter` …) | Only what was recorded and tagged (`articulation`), plus `tremolo` |
 | Tuning the sound | Many `instrument_params` | Few: the sound is the recording's (`release`, `tremolo_rate`) |
-| Held sounds (flute, erhu, voice) | Yes | Not yet: struck and plucked only |
+| Held sounds (flute, erhu, voice) | Yes, with their techniques (flutter, slides, bow changes) | The sustained tone of winds, reeds, organs and strings (`--held`): dynamics, slurs and vibrato, no other techniques; not voice |
 | Where | Always there | A file, or a library on `MUSER_YINSE_PATH` (`muser sounds list --kind yinse`) |
 
 When a library has the instrument, prefer it for exposed solo parts that should sound like a real recording; prefer the
@@ -1655,6 +1672,80 @@ A4_v80.wav  A4_v80_mute.wav  D5_tremolo.wav  A4_vibrato.wav  E4_damp.wav
   If that is much worse than the first number, record more pitches.
 - Tables are version 2 (harmonic numbers, start phases, noise bands). Version 1 files still play; a muser older than the
   file's version asks to be updated.
+
+## Held instruments (`--held`): blown and bowed
+
+A sax, flute, xiao, organ or bowed string does not ring away: it sounds as long as it is blown or bowed, so what is
+measured is different. From long notes (one per file, 2 s or more of steady tone without vibrato, every 2-3 semitones,
+two or three dynamics each, named `A2_p.wav` `A2_f.wav` `C4_v100.wav`):
+
+```bash
+muser yinse extract --held ~/samples/my-sax/ -o my-sax.yinse.json --name "My sax"
+muser yinse compare my-sax.yinse.json ~/samples/my-sax/
+muser yinse install my-sax.yinse.json --as blow/my-sax        # -> "instrument": "yinse:blow/my-sax"
+```
+
+- Per pitch and dynamic: the fundamental, every harmonic's level and its phase against the fundamental (the shape of the
+  waveform: the same spectrum with other phases sounds more electronic), the noise between the harmonics in ten bands
+  (breath, bow hair), and how much the level and pitch of a held note wander. From the start and end of the recordings:
+  how fast a note speaks, how much louder its first moment is, how fast it stops.
+- From an SFZ library, a plugin or a built-in instrument: `--from "sfz:…" --pitches 37-68 --velocities 0.3,0.9 --hold 3`.
+  When the library's dynamics are a controller, not velocity, name the layers:
+  `--layers '[{"at": 0.24, "params": {"cc": {"1": 30}}}, {"at": 1.0, "params": {"cc": {"1": 127}}}]'`.
+- `--poly`: the instrument plays chords (organ, ensemble). The default is a solo instrument: a note that starts before
+  the last one ends is slurred (no new attack). `--glide 0.05`: how fast a slur reaches the next pitch (a wind changes
+  fingering at once, the default 0.005; a string player's finger slides).
+
+Playing it (`instrument_params`, all automatable): `dynamics` 0-1 moves the timbre between the measured layers (soft is
+darker, loud brighter) and can swell within a note; without it each note's velocity does. `vibrato_depth` (cents),
+`vibrato_rate`, `vibrato_delay`; `attack` / `release` (multiples of the measured ones); `glide`; `breath` (the noise);
+`wobble` (the unsteadiness of a held note, 0 dead straight). The held tone comes out within 1-2 dB of the recordings.
+Not there yet: note transitions are a rule, not measured; vibrato does not change the timbre; only the sustained tone
+(no staccato, flutter or harmonics); outside the recorded range the nearest note is stretched.
+
+## Percussion kits (`--kit`)
+
+A drum kit is extracted from single hits: every piece struck alone, one hit per file, at a few velocities (three to five;
+the same microphones and gain for all of them, dry, each hit left to ring out).
+
+```bash
+muser yinse extract --kit ~/samples/my-kit/ -o my-kit.yinse.json --name "My kit"
+muser yinse compare my-kit.yinse.json ~/samples/my-kit/       # hit by hit
+muser yinse install my-kit.yinse.json                         # -> "instrument": "yinse:kit/my-kit"
+```
+
+- File names: `<piece>_v<velocity>.wav`: `kick_v100.wav`, `snare_v60.wav`, `open_hat_mf.wav`. The piece is a GM name
+  (kick, snare, side_stick, clap, closed_hat, pedal_hat, open_hat, tom_low … crash, ride, ride_bell, tambourine, cowbell …,
+  the names in drums.md) or starts with its key: `49_big_gong_ff.wav`. Velocity is `v80` / `vel100` (0-127), `v0.7` or
+  `pp` … `ff`; without it the hits of a piece are ordered by loudness. `rr2` (round robin) is ignored: several hits at
+  one velocity are averaged in the velocity table.
+- A `kit.json` in the folder can name things: `{ "name": "My kit", "pieces": { "big_gong": { "key": 49, "keys": [49, 50],
+  "zh": "大锣", "chokes": [49] } } }`. Without it the closed (42) and pedal (44) hi-hats choke the open one (46).
+- From an SFZ drum library, a plugin or a built-in kit instead of files: `--from "sfz:/path/kit.sfz" --keys 35-59
+  --velocities 0.2,0.4,0.6,0.8,0.95` plays every key at every velocity (silent keys are skipped); `--params` passes
+  `instrument_params` (an SFZ's `{"cc": {"4": 127}}` to close its hi-hat), `--notes-dir` keeps the hits for `compare`.
+- `--fallback drums.acoustic`: keys the kit does not have are played by that built-in kit.
+
+What is measured, from the loudest hit of each piece: the resonances as damped sinusoids (frequency, level, decay, start
+phase, left and right; found one by one, each subtracted before the next is looked for, so a drum's thump is rebuilt
+from a dozen or two of them and the waveform matches, not only the spectrum), a pitch glide of the lowest resonance (kick, toms, gongs), the
+noise that is left in ten bands (a fast and a slow decay each: cymbals, snare wires, the stick), pan and stereo width.
+
+Velocity layers: a piece recorded at several velocities gets up to three layers (the softest, the loudest and the one in the
+middle), each measured as above: a soft stroke is its own sound (a slacker head, another pitch and waveform, hardly any
+stick), not the loud one turned down. A velocity between two layers plays both, cross-faded, at the level the recordings
+have at that velocity (the levels of all the recorded velocities are kept, also of those that did not become a layer). So
+record at least three velocities per piece; five place the levels in between better. A piece with one velocity has one
+timbre whose level follows velocity. The kit's level is calibrated on a kick / snare / closed-hat pattern.
+
+What to expect: drums and short percussion come out close (1-3 dB spectral difference, and the first 150 ms of a loud
+kick, tom or conga correlate 0.9 and more with the recording); cymbals are a sheet of band noise around a few dozen
+resonances (5-7 dB on this measure, which cannot go much lower for noise-like sounds). With velocity layers a soft kick or
+tom matches its recording's waveform as well as a loud one. It does not
+suit rattles and sustained sounds (vibraslap, guiro, whistles, cuica, rolls): leave those to the fallback kit. Hits picked
+out of an ensemble recording, or a kit that needs a body and a stick layer tuned separately, are still fitted by hand and
+saved in the same format (`muser-yinse-kit`: pieces, each with parts of modes and noise layers and their velocity curves,
+or with velocity layers; chokes, EQ, a kit compressor).
 """
 
 

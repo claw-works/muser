@@ -414,6 +414,21 @@ pub(crate) static ACCORDION: &[ParamDef<crate::accordion::AccordionParams>] = &[
     num!("release", 0.005, 5.0, "s", "How fast a note stops after the key is released", |p| p.release),
 ];
 
+/// 音色库里拖长音的乐器（[`crate::held`]）。
+pub(crate) static HELD: &[ParamDef<crate::held::HeldParams>] = &[
+    num!("dynamics", -1.0, 1.0, "", "How hard it is blown or bowed, 0-1: soft is darker, loud is brighter (the timbre moves between the measured layers). -1 follows each note's velocity. Automate it for swells within a note", |p| p.dynamics),
+    num!("vibrato_depth", 0.0, 100.0, "cent", "Vibrato depth (cents up and down). 0 none; 10-20 normal; 40+ wide", |p| p.vibrato_depth),
+    num!("vibrato_rate", 0.0, 12.0, "Hz", "Vibrato rate. 4.5-6 normal", |p| p.vibrato_rate),
+    num!("vibrato_delay", 0.0, 4.0, "s", "Delay after a note starts before the vibrato comes in", |p| p.vibrato_delay),
+    num!("attack", 0.1, 10.0, "x", "How long a note takes to speak, as a multiple of the instrument's own: 0.5 harder, 3 a soft swell", |p| p.attack),
+    num!("release", 0.1, 20.0, "x", "How long a note takes to stop, as a multiple of the instrument's own", |p| p.release),
+    num!("glide", 0.0, 1.0, "s", "Slurred notes (the next starts before the last ends, on solo instruments): the time constant of the pitch getting there. A wind instrument changes fingering almost at once (0.005); 0.03-0.1 is an audible slide", |p| p.glide),
+    num!("breath", 0.0, 8.0, "x", "Breath / bow noise, as a multiple of the measured amount", |p| p.breath),
+    num!("wobble", 0.0, 5.0, "x", "The slow unsteadiness of a held note (level and pitch), as a multiple of the measured amount: 0 dead straight", |p| p.wobble),
+];
+
+pub(crate) const NEXT_HELD: &[&str] = &[];
+
 pub(crate) static ACID: &[ParamDef<AcidParams>] = &[
     num!("cutoff", 30.0, 8000.0, "Hz", "Filter cutoff (with the envelope off). 200-400 dull; 800+ bright. Ideal for automated sweeps", |p| p.cutoff),
     num!("resonance", 0.0, 1.0, "", "Resonance. 0.5 normal; 0.8+ the classic 303 squelch", |p| p.resonance),

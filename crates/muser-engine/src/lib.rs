@@ -176,6 +176,10 @@ pub mod presets;
 pub mod sfz;
 mod zither;
 #[rustfmt::skip]
+pub mod held;
+pub mod held_extract;
+pub mod kit;
+pub mod kit_extract;
 pub mod percussion;
 pub(crate) mod singer;
 pub mod sounds;

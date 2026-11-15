@@ -6,8 +6,6 @@ A note's `pitch` uses the **GM drum key**. Latest list: `muser instruments --fam
 
 | instrument | Recommended range | Polyphony | Description |
 |---|---|---|---|
-| `yinse.strike.luogu` | 36–81 | 48 | Chinese percussion (锣鼓) for opera, folk bands and festivals: big drum 大鼓, tanggu 堂鼓 and its rim, bangu 板鼓, clapper 拍板, big gong 大锣 (falls in pitch), big flat gong 大抄锣 (no slide, a long bloom of brass), small gong 小锣 (rises), cymbals 大钹 (and muted), 中钹 and 小钹, wood blocks 木鱼, bangzi 梆子, bells 碰铃 |
-| `yinse.strike.drums` | 35–81 | 24 | Acoustic drum kit resynthesized from sampled kits (each piece's measured resonances and noise): punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys; Chinese cymbal (52) and percussion above 59 are the plain acoustic model); pop / funk / rock / jazz |
 | `drums.808` | 35–81 | 24 | TR-808 style: long-tail low kick, crisp clap; hip-hop / trap / electronic |
 | `drums.909` | 35–81 | 24 | TR-909 style: punchy kick and cymbals; house / techno |
 | `drums.606` | 35–81 | 24 | TR-606 style: light and crisp; acid / electro |
@@ -19,23 +17,7 @@ A note's `pitch` uses the **GM drum key**. Latest list: `muser instruments --fam
 | `drums.dnb` | 35–81 | 24 | drum & bass kit: tight snare and deep kick |
 | `drums.lofi` | 35–81 | 24 | lo-fi kit: soft, dark, with a 12-bit sampled texture |
 
-## Adjustable parameters of `yinse.strike.luogu`
-
-Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
-
-Set per piece, by name or key: { "daluo": { "tune": -2, "decay": 1.5 }, "52": { "level": 0.8 } }; automate as `piece.param` (e.g. "daluo.tune"). Pieces: 36 dagu (大鼓), 37 gubian (鼓边), 38 tanggu (堂鼓), 39 ban (拍板), 40 bangu (板鼓), 49 daluo (大锣), 51 chaoluo (大抄锣), 52 xiaoluo (小锣), 56 zhongbo (中钹), 55 xiaobo (小钹), 57 naobo (大钹), 58 naobo_mute (大钹闷击), 75 bangzi (梆子), 76 muyu (木鱼（高）), 77 muyu_low (木鱼（低）), 81 pengling (碰铃)
-
-Each drum piece is adjustable (when automating, write `piece.parameter`, such as `kick.tune`; it takes effect from the next hit):
-
-| Parameter | Range | Automation | Description |
-|---|---|---|---|
-| `tune` | -24 – 24 st | next note | Tuning in semitones: a gong tuned down is bigger and darker |
-| `decay` | 0.1 – 10 x | next note | How long it rings, as a multiple of its own decay: 0.5 shorter, 2 longer |
-| `level` | 0 – 4 x | next note | Volume (multiplier), 1 = unchanged |
-| `tone` | 0 – 1 | next note | Brightness of the strike: 0 soft and dark, 0.5 as designed, 1 bright and hard |
-| `pan` | -1 – 1 | next note | Pan: -1 left to 1 right |
-
-## Adjustable parameters of `yinse.strike.drums`, `drums.808`, `drums.909`, `drums.606`, `drums.cr78`, `drums.acoustic`, `drums.trap`, `drums.techno`, `drums.house`, `drums.dnb`, `drums.lofi`
+## Adjustable parameters (instrument_params)
 
 Override the sound of the chosen instrument/preset; write only the items you want to change, the rest stay as they are. `muser instruments <name>` shows the preset's current values.
 
@@ -117,11 +99,28 @@ Keys not in the list make no sound.
 | `drums.house` | 35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,56,57,59,62,63,64,69,70 |
 | `drums.dnb` | 35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,55,57,59 |
 | `drums.lofi` | 35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,53,54,57,59,69,70 |
-| `yinse.strike.luogu` | 36,37,38,39,40,49,51,52,55,57,58,75,76,77,81 (its own pieces, see below) |
 
 Note: `drums.606` and `drums.cr78` have no hand clap (39).
 
-## Chinese percussion: `yinse.strike.luogu` (锣鼓)
+## Kits from the yinse library (`yinse:kit/<owner>/<name>`)
+
+Kits measured from recordings live in the [muser-yinse](https://github.com/claw-works/muser-yinse) library, not in muser itself:
+install one with `muser yinse install kit/<owner>/<name>` (or put a clone of the library on `MUSER_YINSE_PATH`), then write
+`"instrument": "yinse:kit/<owner>/<name>"`. `muser yinse search kit` lists them; `muser instruments yinse:kit/<owner>/<name>` prints the pieces and keys.
+
+| instrument | what |
+|---|---|
+| `yinse:kit/cloudbeer/acoustic-drums` | Acoustic drum kit fitted by hand to sampled kits: punchy kick, snare with wires, rimshot, side stick, clap, six toms, hi-hats, crash, splash, sizzle crash, ride and bell, flat ride, tambourine, cowbell, vibraslap (GM keys). It was the built-in `yinse.strike.drums` up to 0.6.0 |
+| `yinse:kit/virtuosity/drums` | Contemporary jazz kit (Virtuosity Drums, CC0), extracted automatically: kick, several snare strokes, two toms, hi-hats, crash, ride, flat ride, GM percussion |
+| `yinse:kit/cloudbeer/jingju-luogu` | Peking-opera percussion 京剧锣鼓 (below). It was the built-in `yinse.strike.luogu` up to 0.6.0 |
+
+- Every piece takes `tune`, `decay`, `level`, `tone`, `pan`, by name or key: `{ "kick": { "tune": -2 }, "49": { "decay": 0.6 } }`;
+  automate as `piece.param`. A kit can hand the keys it does not have to a built-in kit (`muser instruments` says which).
+- These kits are level-calibrated like built-in instruments (the calibration is in the kit file).
+- A project written for 0.6.0 with `yinse.strike.luogu` / `yinse.strike.drums`: `muser migrate --from 0.6.0 --write` renames them.
+- Make a kit from your own single hits or an SFZ drum library: `muser yinse extract --kit` (see [yinse-extract.md](yinse-extract.md)).
+
+### Peking-opera percussion: `yinse:kit/cloudbeer/jingju-luogu` (京剧锣鼓)
 
 muser's own kit for Beijing opera, folk wind-and-percussion bands (吹打) and festivals. Every piece is modeled from its vibration modes:
 drum heads, gong plates, cymbals and wood each have their own overtone ratios; the big gong falls in pitch after the strike (the "kuang～"),

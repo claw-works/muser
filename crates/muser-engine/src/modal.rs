@@ -294,7 +294,7 @@ pub fn parse_name(stem: &str) -> NameInfo {
 // 分析
 // ---------------------------------------------------------------------------
 
-fn hann(n: usize) -> Vec<f64> {
+pub(crate) fn hann(n: usize) -> Vec<f64> {
     (0..n).map(|i| 0.5 - 0.5 * (TAU * i as f64 / n as f64).cos()).collect()
 }
 
@@ -324,7 +324,7 @@ fn peak_near(mag: &[f64], bin_hz: f64, hz: f64, width: f64) -> (f64, f64) {
     (((k as f64) + d.clamp(-0.5, 0.5)) * bin_hz, mag[k])
 }
 
-fn next_pow2(n: usize) -> usize {
+pub(crate) fn next_pow2(n: usize) -> usize {
     n.max(2).next_power_of_two()
 }
 
@@ -396,7 +396,7 @@ fn frame_starts(len: usize, window: usize, sr: f64) -> Vec<usize> {
     out
 }
 
-fn median(mut v: Vec<f64>) -> f64 {
+pub(crate) fn median(mut v: Vec<f64>) -> f64 {
     if v.is_empty() {
         return 0.0;
     }
@@ -405,7 +405,7 @@ fn median(mut v: Vec<f64>) -> f64 {
 }
 
 /// 最小二乘直线 y = a + b·x。
-fn line(points: &[(f64, f64)]) -> Option<(f64, f64)> {
+pub(crate) fn line(points: &[(f64, f64)]) -> Option<(f64, f64)> {
     let n = points.len() as f64;
     if points.len() < 3 {
         return None;
@@ -418,21 +418,21 @@ fn line(points: &[(f64, f64)]) -> Option<(f64, f64)> {
 
 /// 一条包络拟合成的两段衰减：慢的一段在峰值处的振幅和斜率（dB/秒）、起音多出来的快的一段；
 /// 用的是第 `kp` 帧（峰值）到第 `end` 帧之前，一共 `span` 秒。
-struct Decay {
-    amp: f64,
-    slope: f64,
-    fast_amp: f64,
-    fast_t60: f64,
-    kp: usize,
-    end: usize,
-    span: f64,
+pub(crate) struct Decay {
+    pub amp: f64,
+    pub slope: f64,
+    pub fast_amp: f64,
+    pub fast_t60: f64,
+    pub kp: usize,
+    pub end: usize,
+    pub span: f64,
 }
 
 /// 包络 `amp[k]`（时刻 `t[k]`）→ 先快后慢两段。峰值在前 `early` 秒里找；只用峰值之后还在底噪 `floor` 以上
 ///（并且没掉过 60 dB）的那一段：掉进底噪的部分是平的，拟合进去余音就长得离谱。
 /// 两段的分界在哪里因乐器而异：`splits` 里的几个都试（不早于峰值后 `lead` 秒），取整条包络（dB）拟合得最好的；
 /// 分界之后至少要剩 `min_after` 秒。
-fn fit_decay(t: &[f64], amp: &[f64], floor: f64, early: f64, lead: f64, splits: &[f64], min_after: f64) -> Option<Decay> {
+pub(crate) fn fit_decay(t: &[f64], amp: &[f64], floor: f64, early: f64, lead: f64, splits: &[f64], min_after: f64) -> Option<Decay> {
     let db: Vec<f64> = amp.iter().map(|a| 20.0 * a.max(1e-12).log10()).collect();
     let first = t.iter().take_while(|&&x| x < early).count().clamp(1, t.len());
     let kp = (0..first).max_by(|&a, &b| db[a].total_cmp(&db[b])).unwrap_or(0);
@@ -1709,12 +1709,25 @@ pub fn library() -> Vec<LibraryEntry> {
     };
     for root in roots.iter().filter(|r| !r.as_os_str().is_empty()) {
         for family in dirs(&root.join("instruments")) {
+            let base = |p: &Path| p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let f = base(&family);
+            // `<类>/<名>/<名>.yinse.json`，或者中间多一级作者：`<类>/<作者>/<名>/<名>.yinse.json`。
+            let mut found: Vec<(String, PathBuf)> = Vec::new();
             for dir in dirs(&family) {
-                let (f, n) =
-                    (family.file_name().unwrap_or_default().to_string_lossy().into_owned(), dir.file_name().unwrap_or_default().to_string_lossy().into_owned());
+                let n = base(&dir);
+                if dir.join(format!("{n}.yinse.json")).is_file() {
+                    found.push((format!("{f}/{n}"), dir));
+                } else {
+                    found.extend(
+                        dirs(&dir).into_iter().filter(|d| d.join(format!("{}.yinse.json", base(d))).is_file()).map(|d| (format!("{f}/{n}/{}", base(&d)), d)),
+                    );
+                }
+            }
+            for (rel, dir) in found {
+                let n = base(&dir);
                 let path = dir.join(format!("{n}.yinse.json"));
-                let spec = format!("yinse:{f}/{n}");
-                if !path.is_file() || out.iter().any(|e| e.spec == spec) {
+                let spec = format!("yinse:{rel}");
+                if out.iter().any(|e| e.spec == spec) {
                     continue;
                 }
                 let meta: serde_json::Value =
@@ -1724,7 +1737,7 @@ pub fn library() -> Vec<LibraryEntry> {
                 out.push(LibraryEntry {
                     spec,
                     name: if zh.is_empty() { n.clone() } else { format!("{n} ({zh})") },
-                    family: f,
+                    family: f.clone(),
                     description: text(&meta["description"]),
                     license: text(&meta["source"]["license"]),
                     source: [text(&meta["source"]["title"]), text(&meta["source"]["author"])]
@@ -1830,20 +1843,20 @@ pub struct Comparison {
     pub stereo_ours: f64,
 }
 
-fn read_stereo(path: &Path, sr: u32) -> Result<[Vec<f64>; 2], String> {
+pub(crate) fn read_stereo(path: &Path, sr: u32) -> Result<[Vec<f64>; 2], String> {
     let f = manguebyte::formats::read_file(path).map_err(|e| format!("cannot read '{}': {e}", path.display()))?;
     let buf = if f.sample_rate == sr { f.buffer } else { manguebyte::dsp::resample(&f.buffer, f64::from(f.sample_rate), f64::from(sr)) };
     let last = buf.num_channels().clamp(1, 2) - 1;
     Ok([buf.channel(0).iter().map(|&v| f64::from(v)).collect(), buf.channel(last).iter().map(|&v| f64::from(v)).collect()])
 }
 
-fn onset_of(x: &[f64]) -> usize {
+pub(crate) fn onset_of(x: &[f64]) -> usize {
     let peak = x.iter().fold(0.0f64, |m, v| m.max(v.abs()));
     x.iter().position(|v| v.abs() > 0.05 * peak).unwrap_or(0)
 }
 
 /// 起音起 2 秒：各帧各频段的电平（dB，先按均方根拉平）、衰减、左右相关度、均方根。
-fn features(lr: &[Vec<f64>; 2], sr: f64) -> (Vec<Vec<f64>>, [f64; 4], f64, f64) {
+pub(crate) fn features(lr: &[Vec<f64>; 2], sr: f64) -> (Vec<Vec<f64>>, [f64; 4], f64, f64) {
     let mid: Vec<f64> = lr[0].iter().zip(&lr[1]).map(|(a, b)| 0.5 * (a + b)).collect();
     let on = onset_of(&mid).saturating_sub((0.002 * sr) as usize);
     let n = ((2.1 * sr) as usize).min(mid.len().saturating_sub(on));

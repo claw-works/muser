@@ -410,6 +410,37 @@ enum YinseCommand {
         /// With --from or --split: keep the single notes in this folder (to `compare` against later); otherwise they are deleted.
         #[arg(long)]
         notes_dir: Option<std::path::PathBuf>,
+        /// Extract a percussion kit instead of a pitched instrument: the inputs are single hits, one per file, named
+        /// <piece>_v<velocity>.wav (kick_v100.wav, snare_v60.wav, 49_gong_ff.wav: a leading number is the key, otherwise the piece name
+        /// must be a GM one such as kick / snare / closed_hat / crash, or be listed in a kit.json in the folder); several velocities
+        /// per piece. With --from, every key of --keys is played at every velocity. Play the result as "yinse:kit/<name>" after
+        /// `muser yinse install <file>`.
+        #[arg(long, conflicts_with = "split")]
+        kit: bool,
+        /// With --kit --from: the keys to play: "35-59" or "36,38,42,46,49" (keys that make no sound are skipped).
+        #[arg(long, default_value = "35-59")]
+        keys: String,
+        /// With --kit: a built-in drum kit (drums.acoustic ...) that plays the keys this kit does not have.
+        #[arg(long)]
+        fallback: Option<String>,
+        /// Extract a held instrument (sax, flute, xiao, organ, strings: sounds that are blown or bowed, not struck): the inputs
+        /// are long notes, one per file, 2 s or more each, named with pitch and dynamic (A2_p.wav, A2_f.wav, C4_v100.wav); several
+        /// dynamics per pitch become layers the instrument moves between. With --from, every pitch of --pitches is played at
+        /// every velocity of --velocities, or at every layer of --layers. Install the result as blow/<name> or bow/<name>.
+        #[arg(long, conflicts_with_all = ["split", "kit"])]
+        held: bool,
+        /// With --held --from, for libraries whose dynamics are a controller, not velocity: the layers as JSON,
+        /// each with the dynamic it stands for and the instrument_params that select it:
+        /// '[{"at": 0.25, "params": {"cc": {"1": 30}}}, {"at": 1.0, "params": {"cc": {"1": 127}}}]'.
+        #[arg(long)]
+        layers: Option<String>,
+        /// With --held: the instrument plays several notes at once (organ, ensemble); by default it is a solo instrument
+        /// and overlapping notes are slurred.
+        #[arg(long)]
+        poly: bool,
+        /// With --held: how fast slurred notes reach the next pitch (time constant in seconds; 0.005 for winds, 0.03-0.08 for strings).
+        #[arg(long)]
+        glide: Option<f64>,
         /// Output file (suggested extension .yinse.json).
         #[arg(short, long)]
         output: std::path::PathBuf,
@@ -1274,6 +1305,212 @@ fn audio_files(inputs: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
     files
 }
 
+/// 长音的录音 → 音高和力度（从文件名：`A2_p`、`C4_v100`、`57_mf`）。一个音高只有一个录音又没写力度的算 0.8。
+fn held_inputs(files: &[std::path::PathBuf]) -> Result<Vec<muser_engine::held_extract::HeldInput>> {
+    let mut out = Vec::new();
+    for file in files {
+        let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let info = muser_engine::modal::parse_name(&stem);
+        let pitch = info.pitch.ok_or_else(|| anyhow::anyhow!("'{}': no pitch in the file name (A2, Eb3, C#5 or a MIDI number)", file.display()))?;
+        out.push((pitch, info.velocity, file.clone()));
+    }
+    out.iter()
+        .map(|(pitch, velocity, file)| {
+            let same = out.iter().filter(|o| (o.0 - pitch).abs() < 0.01).count();
+            let at = match velocity {
+                Some(v) => *v,
+                None if same == 1 => 0.8,
+                None => anyhow::bail!("'{}': several recordings of pitch {pitch}: write the dynamic in each name (pp ... ff, or v40 / v100)", file.display()),
+            };
+            Ok(muser_engine::held_extract::HeldInput { pitch: *pitch, at, file: file.clone() })
+        })
+        .collect()
+}
+
+/// `muser yinse extract --held`：从长音的录音（或让 muser 演奏一个音色库）量出一件拖长音的乐器。
+#[allow(clippy::too_many_arguments)]
+fn extract_held(
+    inputs: &[std::path::PathBuf],
+    output: &std::path::Path,
+    name: &str,
+    from: Option<&str>,
+    params: Option<&str>,
+    pitches: &str,
+    velocities: &str,
+    layers: Option<&str>,
+    hold: f64,
+    notes_dir: Option<std::path::PathBuf>,
+    poly: bool,
+    glide: Option<f64>,
+) -> Result<()> {
+    use muser_engine::held_extract;
+    let mut temp = None;
+    let list = match from {
+        Some(spec) => {
+            let pitches = parse_pitches(pitches)?;
+            let params: muser_core::InstrumentParams = match params {
+                Some(p) => serde_json::from_str(p).map_err(|e| anyhow::anyhow!("--params: {e}"))?,
+                None => Default::default(),
+            };
+            let layers: Vec<(f64, muser_core::InstrumentParams)> = match layers {
+                Some(text) => {
+                    let v: Vec<serde_json::Value> = serde_json::from_str(text).map_err(|e| anyhow::anyhow!("--layers: {e}"))?;
+                    v.iter()
+                        .map(|l| {
+                            let at = l["at"]
+                                .as_f64()
+                                .filter(|a| *a > 0.0 && *a <= 1.0)
+                                .ok_or_else(|| anyhow::anyhow!("--layers: every layer needs \"at\" in 0-1"))?;
+                            Ok((at, l["params"].as_object().cloned().unwrap_or_default()))
+                        })
+                        .collect::<Result<_>>()?
+                }
+                None => velocities
+                    .split(',')
+                    .map(|v| v.trim().parse::<f64>().map(|v| (v.clamp(0.01, 1.0), Default::default())))
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| anyhow::anyhow!("--velocities: {e}"))?,
+            };
+            let dir = notes_dir.clone().unwrap_or_else(|| std::env::temp_dir().join(format!("muser-yinse-{}", std::process::id())));
+            if notes_dir.is_none() {
+                temp = Some(dir.clone());
+            }
+            eprintln!("playing {} pitches x {} dynamics on {spec} ...", pitches.len(), layers.len());
+            held_extract::render_notes(spec, &params, &pitches, &layers, hold.max(2.0), &dir).map_err(|e| anyhow::anyhow!(e))?
+        }
+        None => held_inputs(&audio_files(inputs))?,
+    };
+    eprintln!("{:<26} {:>5} {:>7} {:>9} {:>8} {:>8} {:>6} {:>7}", "recording", "pitch", "dynamic", "Hz", "partials", "noise", "cents", "seconds");
+    let result = held_extract::extract(name, &list, held_extract::Options { poly, glide_s: glide }, |r| {
+        eprintln!("{:<26} {:>5.0} {:>7.2} {:>9.2} {:>8} {:>6.1}dB {:>6.1} {:>7.2}", r.source, r.pitch, r.at, r.hz, r.partials, r.noise_db, r.cents, r.seconds);
+    });
+    if let Some(dir) = &temp {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    let mut table = result.map_err(|e| anyhow::anyhow!(e))?;
+    std::fs::write(output, serde_json::to_string(&table)?)?;
+    // 音量校准：参考乐句补到 -20 LUFS。
+    if let Some(lufs) = held_extract::reference_lufs(&std::fs::canonicalize(output)?) {
+        table.level_db = (((muser_engine::levels::TARGET_LUFS - lufs) * 10.0).round() / 10.0).clamp(-30.0, 30.0);
+        std::fs::write(output, serde_json::to_string(&table)?)?;
+    }
+    let (lo, hi) = table.range();
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    println!(
+        "extracted '{}': {} pitches ({lo:.0}-{hi:.0}), {} dynamic layers, attack {:.0} ms ({:+.1} dB), release {:.0} ms, level {:+.1} dB -> {} ({} KB)\nPlay it with \"instrument\": \"yinse:{}\"; check it with `muser yinse compare {} <recordings>`.",
+        table.name,
+        table.notes.len(),
+        table.notes.iter().map(|n| n.layers.len()).max().unwrap_or(0),
+        table.attack_s * 1000.0,
+        table.attack_db,
+        table.release_s * 1000.0,
+        table.level_db,
+        output.display(),
+        size.div_ceil(1024),
+        output.display(),
+        output.display()
+    );
+    Ok(())
+}
+
+/// 录音的文件夹里的 `kit.json`（每件占哪个键、中文名、掐断谁）；没有就是空的。
+fn kit_meta(inputs: &[std::path::PathBuf]) -> serde_json::Value {
+    inputs
+        .iter()
+        .filter(|p| p.is_dir())
+        .find_map(|d| std::fs::read_to_string(d.join("kit.json")).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// `muser yinse extract --kit`：从单击的录音（或让 muser 演奏一个鼓组）量出一套打击乐。
+#[allow(clippy::too_many_arguments)]
+fn extract_kit(
+    inputs: &[std::path::PathBuf],
+    output: &std::path::Path,
+    name: &str,
+    from: Option<&str>,
+    params: Option<&str>,
+    keys: &str,
+    velocities: &str,
+    hold: f64,
+    notes_dir: Option<std::path::PathBuf>,
+    fallback: Option<&str>,
+) -> Result<()> {
+    use muser_engine::kit_extract;
+    let mut temp = None;
+    let meta = kit_meta(inputs);
+    let pieces = match from {
+        Some(spec) => {
+            let keys = parse_pitches(keys)?;
+            let velocities: Vec<f64> = velocities
+                .split(',')
+                .map(|v| v.trim().parse::<f64>().map(|v| v.clamp(0.01, 1.0)))
+                .collect::<Result<_, _>>()
+                .map_err(|e| anyhow::anyhow!("--velocities: {e}"))?;
+            let params: muser_core::InstrumentParams = match params {
+                Some(p) => serde_json::from_str(p).map_err(|e| anyhow::anyhow!("--params: {e}"))?,
+                None => Default::default(),
+            };
+            let dir = notes_dir.clone().unwrap_or_else(|| std::env::temp_dir().join(format!("muser-yinse-{}", std::process::id())));
+            if notes_dir.is_none() {
+                temp = Some(dir.clone());
+            }
+            eprintln!("playing {} keys x {} velocities on {spec} ...", keys.len(), velocities.len());
+            let hits = kit_extract::render_hits(spec, &params, &keys, &velocities, hold, &dir).map_err(|e| anyhow::anyhow!(e))?;
+            kit_extract::group(&hits.into_iter().map(|h| h.2).collect::<Vec<_>>(), &meta)
+        }
+        None => kit_extract::group(&audio_files(inputs), &meta),
+    }
+    .map_err(|e| anyhow::anyhow!(e))?;
+    if let Some(f) = fallback.filter(|f| !f.starts_with("drums.") || muser_engine::instrument::describe(f).is_none()) {
+        anyhow::bail!("--fallback {f}: not a built-in drum kit (drums.acoustic, drums.808 ...)");
+    }
+    eprintln!("{:<18} {:>3} {:>4} {:>10} {:>5} {:>6} {:>5} {:>7}  glide", "piece", "key", "hits", "velocities", "modes", "layers", "parts", "seconds");
+    let result = kit_extract::extract(name, &pieces, fallback, |r| {
+        eprintln!(
+            "{:<18} {:>3} {:>4} {:>10} {:>5} {:>6} {:>5} {:>7.2}  {}",
+            r.name,
+            r.key,
+            r.hits,
+            r.velocities,
+            r.modes,
+            r.layers,
+            r.parts,
+            r.seconds,
+            r.glide.map_or("-".to_string(), |g| format!("{g:+.1} st"))
+        );
+    });
+    if let Some(dir) = &temp {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    let mut file = result.map_err(|e| anyhow::anyhow!(e))?;
+    file.name = meta["name"].as_str().map_or_else(|| name.to_string(), str::to_string);
+    std::fs::write(output, serde_json::to_string(&file)?)?;
+    // 音量校准：参考乐句（底鼓 / 军鼓 / 闭镲）补到 -20 LUFS。
+    let path = std::fs::canonicalize(output)?;
+    match kit_extract::reference_lufs(&path) {
+        Some(lufs) => {
+            file.level_db = (((muser_engine::levels::TARGET_LUFS - lufs) * 10.0).round() / 10.0).clamp(-30.0, 30.0);
+            std::fs::write(output, serde_json::to_string(&file)?)?;
+        }
+        None => eprintln!("note: no kick (36) / snare (38) / closed hat (42) in this kit, its level is not calibrated (level_db 0)"),
+    }
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    println!(
+        "extracted kit '{}': {} pieces, level {:+.1} dB -> {} ({} KB)\nInstall it with `muser yinse install {}` and play it as \"instrument\": \"yinse:kit/{}\"; check it with `muser yinse compare {} <recordings>`.",
+        file.name,
+        file.pieces.len(),
+        file.level_db,
+        output.display(),
+        size.div_ceil(1024),
+        output.display(),
+        output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default(),
+        output.display()
+    );
+    Ok(())
+}
+
 const DEFAULT_YINSE_REPO: &str = "claw-works/muser-yinse";
 
 /// 音色库里的一个文件：本机文件夹直接读；网址或 GitHub 仓库（owner/name[@分支]）用系统自带的 curl 下载。
@@ -1305,13 +1542,18 @@ fn library_index(repo: &str) -> Result<Vec<serde_json::Value>> {
     Ok(v["instruments"].as_array().cloned().unwrap_or_default())
 }
 
-/// `<类>/<名>`：只能是字母、数字、`-`、`_`（装进本机音色库的目录名）。
+/// `<类>/<名>` 或 `<类>/<作者>/<名>`：每一段只能是字母、数字、`-`、`_`（装进本机音色库的目录名）。
+/// 返回 (名字前面的那一截：`strike`、`kit/virtuosity`, 名字)。
 fn library_name(name: &str) -> Result<(String, String)> {
     let name = name.trim().trim_start_matches("yinse:");
     let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    match name.split_once('/') {
-        Some((f, n)) if ok(f) && ok(n) => Ok((f.to_string(), n.to_string())),
-        _ => anyhow::bail!("write the instrument as <family>/<name>, e.g. strike/grand-piano (letters, digits, - and _)"),
+    let parts: Vec<&str> = name.split('/').collect();
+    match parts.as_slice() {
+        [f, n] if ok(f) && ok(n) => Ok(((*f).to_string(), (*n).to_string())),
+        [f, owner, n] if ok(f) && ok(owner) && ok(n) => Ok((format!("{f}/{owner}"), (*n).to_string())),
+        _ => anyhow::bail!(
+            "write the instrument as <family>/<name> or <family>/<owner>/<name>, e.g. strike/grand-piano, kit/virtuosity/drums (letters, digits, - and _)"
+        ),
     }
 }
 
@@ -1330,10 +1572,47 @@ fn parse_pitches(text: &str) -> Result<Vec<u8>> {
 fn cmd_yinse(command: YinseCommand) -> Result<()> {
     use muser_engine::modal;
     match command {
-        YinseCommand::Extract { inputs, output, name, from, params, pitches, velocities, hold, split, notes_dir } => {
+        YinseCommand::Extract {
+            inputs,
+            output,
+            name,
+            from,
+            params,
+            pitches,
+            velocities,
+            hold,
+            split,
+            notes_dir,
+            kit,
+            keys,
+            fallback,
+            held,
+            layers,
+            poly,
+            glide,
+        } => {
             let name = name.unwrap_or_else(|| {
                 output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default()
             });
+            if held {
+                return extract_held(
+                    &inputs,
+                    &output,
+                    &name,
+                    from.as_deref(),
+                    params.as_deref(),
+                    &pitches,
+                    &velocities,
+                    layers.as_deref(),
+                    hold,
+                    notes_dir,
+                    poly,
+                    glide,
+                );
+            }
+            if kit {
+                return extract_kit(&inputs, &output, &name, from.as_deref(), params.as_deref(), &keys, &velocities, hold, notes_dir, fallback.as_deref());
+            }
             let (mut files, mut release, mut temp) = (audio_files(&inputs), None, None);
             if let Some(spec) = &from {
                 let pitches = parse_pitches(&pitches)?;
@@ -1447,13 +1726,19 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
         }
         YinseCommand::Install { what, repo, as_name, force } => {
             let is_file = what.ends_with(".json") || what.starts_with("http://") || what.starts_with("https://");
-            let (family, name) = match (&as_name, is_file) {
+            // 文件、网址先读进来：一套鼓（kit）默认装成 kit/<名>（写成 yinse:kit/… muser 才把它当鼓组）。
+            let local = match is_file {
+                true => Some(if what.starts_with("http") { fetch_url(&what)? } else { std::fs::read(&what).with_context(|| format!("cannot read {what}"))? }),
+                false => None,
+            };
+            let is_kit = |data: &[u8]| serde_json::from_slice::<serde_json::Value>(data).is_ok_and(|v| v["format"] == muser_engine::kit::FORMAT);
+            let (family, name) = match (&as_name, &local) {
                 (Some(a), _) => library_name(a)?,
-                (None, true) => {
+                (None, Some(data)) => {
                     let stem = what.rsplit('/').next().unwrap_or(&what).trim_end_matches(".json").trim_end_matches(".yinse").to_string();
-                    library_name(&format!("local/{stem}"))?
+                    library_name(&format!("{}/{stem}", if is_kit(data) { "kit" } else { "local" }))?
                 }
-                (None, false) => library_name(&what)?,
+                (None, None) => library_name(&what)?,
             };
             let dir = modal::user_library().join("instruments").join(&family).join(&name);
             if dir.join(format!("{name}.yinse.json")).is_file() && !force {
@@ -1461,8 +1746,7 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
             }
             // 先全下载、检查，再写进去：下载到一半失败不会留下坏的乐器。
             let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-            if is_file {
-                let data = if what.starts_with("http") { fetch_url(&what)? } else { std::fs::read(&what).with_context(|| format!("cannot read {what}"))? };
+            if let Some(data) = local {
                 files.push((format!("{name}.yinse.json"), data));
             } else {
                 let (f, n) = library_name(&what)?;
@@ -1478,16 +1762,31 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                     files.push(("README.md".into(), readme));
                 }
             }
-            let table: modal::ModalTable = serde_json::from_slice(&files[0].1).context("the downloaded file is not a yinse instrument")?;
-            if table.format != modal::FORMAT || table.notes.is_empty() {
-                anyhow::bail!("the downloaded file is not a yinse instrument (format {})", modal::FORMAT);
-            }
+            let summary = if is_kit(&files[0].1) {
+                if family.split('/').next() != Some("kit") {
+                    anyhow::bail!("this is a percussion kit: install it as kit/<name> or kit/<owner>/<name> (--as kit/{name}), so that \"yinse:kit/{name}\" is played as a drum kit");
+                }
+                let file: muser_engine::kit::KitFile = serde_json::from_slice(&files[0].1).context("the downloaded file is not a yinse kit")?;
+                let kit = muser_engine::kit::build(file, dir.join(format!("{name}.yinse.json"))).map_err(|e| anyhow::anyhow!(e))?;
+                format!("{}, {} pieces: {}", kit.file.name, kit.file.pieces.len(), kit.pieces_text())
+            } else if serde_json::from_slice::<serde_json::Value>(&files[0].1).is_ok_and(|v| v["format"] == muser_engine::held::FORMAT) {
+                let table: muser_engine::held::HeldTable = serde_json::from_slice(&files[0].1).context("the downloaded file is not a yinse held instrument")?;
+                muser_engine::held::check(&table, &name).map_err(|e| anyhow::anyhow!(e))?;
+                let (lo, hi) = table.range();
+                format!("{}, held, pitch {lo:.0}-{hi:.0}", table.name)
+            } else {
+                let table: modal::ModalTable = serde_json::from_slice(&files[0].1).context("the downloaded file is not a yinse instrument")?;
+                if table.format != modal::FORMAT || table.notes.is_empty() {
+                    anyhow::bail!("the downloaded file is not a yinse instrument (format {})", modal::FORMAT);
+                }
+                let (lo, hi) = table.range();
+                format!("{}, pitch {lo:.0}-{hi:.0}", table.name)
+            };
             std::fs::create_dir_all(&dir)?;
             for (file, data) in &files {
                 std::fs::write(dir.join(file), data)?;
             }
-            let (lo, hi) = table.range();
-            println!("installed yinse:{family}/{name} ({}, pitch {lo:.0}-{hi:.0}) -> {}", table.name, dir.display());
+            println!("installed yinse:{family}/{name} ({summary}) -> {}", dir.display());
             if let Some(meta) = files.iter().find(|f| f.0 == "meta.json").and_then(|f| serde_json::from_slice::<serde_json::Value>(&f.1).ok()) {
                 let src = &meta["source"];
                 println!(
@@ -1526,6 +1825,70 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
             // 这一类空了就把类的目录也去掉（不是空的就删不掉，正好）。
             let _ = std::fs::remove_dir(dir.parent().unwrap_or(&dir));
             println!("removed yinse:{family}/{n} ({})", dir.display());
+        }
+        YinseCommand::Compare { instrument, inputs, json, .. } if muser_engine::kit::is_kit(&instrument) => {
+            let meta = kit_meta(&inputs);
+            let hits: Vec<(u8, f64, std::path::PathBuf)> = muser_engine::kit_extract::group(&audio_files(&inputs), &meta)
+                .map_err(|e| anyhow::anyhow!(e))?
+                .into_iter()
+                .flat_map(|p| p.hits.into_iter().map(move |(file, v)| (p.keys[0], v, file)))
+                .collect();
+            let list = muser_engine::kit_extract::compare(&instrument, &hits).map_err(|e| anyhow::anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            println!(
+                "{:<26} {:<16} {:>3} {:>4} {:>9} {:>8}  {:<26} {:<26} {:>11}",
+                "recording", "piece", "key", "vel", "spectral", "level", "decay @0.1/0.5/1/2 s (rec)", "(extracted)", "stereo r/e"
+            );
+            let f = |d: [f64; 4]| d.iter().map(|v| if v.is_nan() { "  -".into() } else { format!("{v:>4.0}") }).collect::<Vec<_>>().join(" ");
+            for c in &list {
+                println!(
+                    "{:<26} {:<16} {:>3} {:>4.2} {:>7.1}dB {:>+6.1}dB  {:<26} {:<26} {:>5.2}/{:<5.2}",
+                    c.source,
+                    c.piece,
+                    c.key,
+                    c.velocity,
+                    c.spectral_db,
+                    c.level_db,
+                    f(c.decay_ref),
+                    f(c.decay_ours),
+                    c.stereo_ref,
+                    c.stereo_ours
+                );
+            }
+            let n = list.len().max(1) as f64;
+            println!(
+                "mean level difference {:.2} dB, largest {:+.1} dB (extracted minus recording, first 2 s, not matched)",
+                list.iter().map(|c| c.level_db.abs()).sum::<f64>() / n,
+                list.iter().map(|c| c.level_db).fold(0.0, |m: f64, v| if v.abs() > m.abs() { v } else { m })
+            );
+            println!(
+                "mean spectral difference {:.2} dB (third-octave bands, 20 ms frames, first 2 s, loudness matched; lower is closer)",
+                list.iter().map(|c| c.spectral_db).sum::<f64>() / n
+            );
+        }
+        YinseCommand::Compare { instrument, inputs, json, .. } if muser_engine::held::is_held(&instrument) => {
+            let list = muser_engine::held_extract::compare(&instrument, &held_inputs(&audio_files(&inputs))?).map_err(|e| anyhow::anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+                return Ok(());
+            }
+            println!("{:<26} {:>5} {:>7} {:>9} {:>8}", "recording", "pitch", "dynamic", "spectral", "level");
+            for c in &list {
+                println!("{:<26} {:>5.0} {:>7.2} {:>7.1}dB {:>+6.1}dB", c.source, c.pitch, c.at, c.spectral_db, c.level_db);
+            }
+            let n = list.len().max(1) as f64;
+            println!(
+                "mean level difference {:.2} dB, largest {:+.1} dB (extracted minus recording, not matched)",
+                list.iter().map(|c| c.level_db.abs()).sum::<f64>() / n,
+                list.iter().map(|c| c.level_db).fold(0.0, |m: f64, v| if v.abs() > m.abs() { v } else { m })
+            );
+            println!(
+                "mean spectral difference {:.2} dB (third-octave bands, 20 ms frames, 2 s of the held part, loudness matched; lower is closer)",
+                list.iter().map(|c| c.spectral_db).sum::<f64>() / n
+            );
         }
         YinseCommand::Compare { instrument, inputs, between, json } => {
             let list = modal::compare(&instrument, &audio_files(&inputs), between).map_err(|e| anyhow::anyhow!(e))?;

@@ -56,7 +56,7 @@ pub const DRUM_PIECES: &[(&str, u8)] = &[
     ("guiro_short", 73),
     ("guiro_long", 74),
     ("claves", 75),
-    // yinse.strike.luogu（锣鼓）的件名。
+    // 京剧锣鼓（音色库里的 `yinse:kit/cloudbeer/jingju-luogu`）的件名。
     ("dagu", 36),
     ("gubian", 37),
     ("tanggu", 38),
