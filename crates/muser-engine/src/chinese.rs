@@ -227,7 +227,8 @@ pub(crate) fn expand_tremolo(notes: &[muser_core::Note], rate: f64, bps: f64, sh
 const TRILL_RATE: f64 = 8.0;
 
 /// 颤音（`trill`）拆成主音与上方音的交替，虚颤音（`half_trill`）写成小幅快速的弯音。`bps`：每秒几拍。
-pub(crate) fn expand_trills(notes: &[muser_core::Note], bps: f64) -> Vec<muser_core::Note> {
+/// `one_bow`：拖长音的乐器（拉弦、管乐的采样乐器）——颤音是一个音里手指一起一落，不是一串重新起的音：写成这一个音上的弯音。
+pub(crate) fn expand_trills(notes: &[muser_core::Note], bps: f64, one_bow: bool) -> Vec<muser_core::Note> {
     let mut out = Vec::with_capacity(notes.len());
     for n in notes {
         let mut n = n.clone();
@@ -260,6 +261,19 @@ pub(crate) fn expand_trills(notes: &[muser_core::Note], bps: f64) -> Vec<muser_c
         let step = bps / (2.0 * TRILL_RATE);
         let count = ((n.length.0 / step).round() as usize).max(2);
         let step = n.length.0 / count as f64;
+        if one_bow && n.trill <= 2 && n.bend.is_empty() {
+            // 主音、上方音交替，手指落下、抬起各用十几毫秒；最后停在主音上。
+            let edge = (0.012 * bps).min(step * 0.3);
+            let mut m = n.clone();
+            m.trill = 0;
+            for i in 0..count {
+                let up = if i % 2 == 1 && i + 1 < count { f64::from(n.trill) } else { 0.0 };
+                m.bend.push((i as f64 * step + if i == 0 { 0.0 } else { edge }, up));
+                m.bend.push(((i + 1) as f64 * step, up));
+            }
+            out.push(m);
+            continue;
+        }
         for i in 0..count {
             let mut m = n.clone();
             m.trill = 0;
@@ -1083,7 +1097,7 @@ mod tests {
             }
         }
         let n: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 0, "length": 2, "scoop": 1.5, "fall": 2})).unwrap();
-        let bend = &expand_trills(&[n], 2.0)[0].bend;
+        let bend = &expand_trills(&[n], 2.0, false)[0].bend;
         assert_eq!((bend[0], bend[1].1), ((0.0, -1.5), 0.0));
         assert_eq!(*bend.last().unwrap(), (2.0, -2.0));
     }
@@ -1192,12 +1206,12 @@ mod tests {
         let n: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 1, "length": 1, "trill": true})).unwrap();
         assert_eq!(n.trill, 2);
         // ♩=120：每拍 0.5 秒，8 个来回 / 秒 → 8 个音。
-        let out = expand_trills(&[n], 2.0);
+        let out = expand_trills(&[n], 2.0, false);
         assert_eq!(out.len(), 8);
         assert_eq!(out.iter().map(|m| m.pitch).collect::<Vec<_>>(), [74, 76, 74, 76, 74, 76, 74, 76]);
         assert!((out[7].start.0 + out[7].length.0 - 2.0).abs() < 0.01 && out.iter().all(|m| m.trill == 0));
         let h: muser_core::Note = serde_json::from_value(serde_json::json!({"pitch": 74, "start": 0, "length": 1, "half_trill": true})).unwrap();
-        let shaken = &expand_trills(&[h], 2.0)[0];
+        let shaken = &expand_trills(&[h], 2.0, false)[0];
         let (lo, hi) = shaken.bend.iter().fold((0.0f64, 0.0f64), |(a, b), p| (a.min(p.1), b.max(p.1)));
         assert!((lo + 0.25).abs() < 0.02 && hi <= 1e-9 && shaken.bend.len() > 20, "only down to -25 cents: {lo} {hi}");
     }

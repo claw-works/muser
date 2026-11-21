@@ -601,7 +601,11 @@ impl Patch {
             }
             Patch::Held(table, p) => (
                 params::describe(params::HELD, p, params::NEXT_HELD),
-                if table.mono { "Solo instrument, one note at a time: a note that starts before the last one ends is slurred (no new attack, the pitch glides over).".into() } else { String::new() },
+                if table.mono {
+                    "Solo instrument, one note at a time: a note that starts before the last one ends is slurred (no new attack, the fingers change the note); a slurred note with `\"slide\": true` glides from the previous one (滑音, time: `slide`). Per note: `flutter` (花舌, flutter tongue), `trill` / `half_trill` (颤音), `scoop` / `fall`, `bend` (up to 2 semitones), `accent`.".into()
+                } else {
+                    "Per note: `flutter` (flutter tongue / tremolo of the tone), `trill` / `half_trill`, `scoop` / `fall`, `accent`.".into()
+                },
             ),
             Patch::Drums(kit) => (
                 params::specs(params::PIECE, params::NEXT_PIECE),

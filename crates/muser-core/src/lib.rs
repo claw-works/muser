@@ -320,7 +320,10 @@ impl Project {
                     if !(0.0..=1.0).contains(&note.velocity) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].velocity = {} is out of range [0, 1]", note.velocity)));
                     }
-                    if (note.technique.is_some() || note.harmonic.is_some()) && !takes_technique(&track.instrument) {
+                    // 泛音（只写 `harmonic`）：古琴这几件之外，录音提取的乐器（拉弦）也有。
+                    let extracted = track.instrument.trim().starts_with("yinse:");
+                    let harmonic = matches!(note.technique, None | Some(Technique::Harmonic)) && extracted;
+                    if (note.technique.is_some() || note.harmonic.is_some()) && !harmonic && !takes_technique(&track.instrument) {
                         return Err(CoreError::Invalid(format!("track[{ti}].clip[{ci}].note[{ni}].technique: only yinse.pluck.guqin, yinse.pluck.guzheng and yinse.pluck.pipa accept per-note string techniques")));
                     }
                     if note.articulation.is_some() && !track.instrument.trim().starts_with("yinse:") {

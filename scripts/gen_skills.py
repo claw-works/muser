@@ -1609,7 +1609,8 @@ same sound turned down and up). Advice: a pitch every 3 semitones at 2-3 velocit
 instruments like the piano; every string or bar on instruments with few (guzheng, guqin, yangqin, marimba); always the
 lowest and highest note. Then `muser yinse compare --between`: if its "between" number is much worse than the spectral
 difference, record more pitches next to the worst ones. The full guide is in the muser-yinse repository
-([docs/sampling.md](https://github.com/claw-works/muser-yinse/blob/main/docs/sampling.md)).
+([docs/extracting.md](https://github.com/claw-works/muser-yinse/blob/main/docs/extracting.md); making a whole set from a sample
+library and fixing an extraction that sounds wrong: [docs/refining.md](https://github.com/claw-works/muser-yinse/blob/main/docs/refining.md)).
 
 ## From one take (`--split`)
 
@@ -1661,7 +1662,10 @@ A4_v80.wav  A4_v80_mute.wav  D5_tremolo.wav  A4_vibrato.wav  E4_damp.wav
 
 ## Playing it
 
-- Notes ring on after they end (no dampers); set `"release": 0.3` in `instrument_params` to damp them.
+- Notes ring on after they end (no dampers); set `"release": 0.3` in `instrument_params` to damp them. For an instrument
+  whose notes are always stopped when they end (bass guitar), extract with `--release 0.2`: that becomes its default.
+- After extracting, every recording is played on the result and compared: a note that came out too loud or soft is
+  corrected, and one that rings much longer than its recording (very short sounds: dead notes, staccato) is shortened.
 - `"tremolo": true` on a note plays it as a tremolo (`tremolo_rate` strokes a second); `bend` works on every note.
 - It is not level-calibrated: it plays as loud as the recordings would on an audio track. Check with `muser mix-report`.
 - `compare` plays every recording's pitch, velocity and articulation on the extracted instrument and prints the spectral
@@ -1694,12 +1698,26 @@ muser yinse install my-sax.yinse.json --as blow/my-sax        # -> "instrument":
   `--layers '[{"at": 0.24, "params": {"cc": {"1": 30}}}, {"at": 1.0, "params": {"cc": {"1": 127}}}]'`.
 - `--poly`: the instrument plays chords (organ, ensemble). The default is a solo instrument: a note that starts before
   the last one ends is slurred (no new attack). `--glide 0.05`: how fast a slur reaches the next pitch (a wind changes
-  fingering at once, the default 0.005; a string player's finger slides).
+  fingering at once, the default 0.005; a string player's finger slides). `--vibrato 12,5.5,0.2`: the instrument's usual
+  vibrato (cents, Hz, seconds of delay) as the default of its `vibrato_*` parameters; without it the vibrato measured in the
+  recordings is used (notes with vibrato are straightened before they are measured), or none if they are straight.
+  `--ensemble 4`: the recordings are a section in unison: every note is played by four voices slightly apart in pitch.
+  `--strokes <folder>`: short strokes of the same instrument (spiccato, staccato): the timbre still comes from the long
+  notes, the attack, decay and length of a stroke from these, and every note of the instrument is one such stroke.
+  A solo instrument plays chords with `"solo": 0` in `instrument_params` (a section of horns).
 
 Playing it (`instrument_params`, all automatable): `dynamics` 0-1 moves the timbre between the measured layers (soft is
 darker, loud brighter) and can swell within a note; without it each note's velocity does. `vibrato_depth` (cents),
 `vibrato_rate`, `vibrato_delay`; `attack` / `release` (multiples of the measured ones); `glide`; `breath` (the noise);
 `wobble` (the unsteadiness of a held note, 0 dead straight). The held tone comes out within 1-2 dB of the recordings.
+Library instruments made this way: `yinse:blow/karoryfer/bear-sax` (baritone saxophone), `yinse:blow/cloudbeer/bangdi`,
+`qudi` and `xiao` (the sustained tone of muser's built-in flutes as tables).
+Every held instrument plays the per-note techniques: `flutter` or `tremolo` (flutter tongue on winds, a bowed tremolo on
+strings), `slide` (a slurred note glides in), `trill` / `half_trill`, `scoop` / `fall`, `bend`, `accent`, and harmonics
+(`"technique": "harmonic"`, optionally `"harmonic": 2-8` for the node: the note sounds at its written pitch). Bowed
+instruments take a new bow stroke per note; put slurred notes on a track with `"solo": 1`. `--tremolo` extracts an
+instrument from recordings of bowed tremolo (every note is played that way); `--poly` makes every note a new attack (organ,
+solo strings). Stereo recordings give a stereo instrument.
 Not there yet: note transitions are a rule, not measured; vibrato does not change the timbre; only the sustained tone
 (no staccato, flutter or harmonics); outside the recorded range the nearest note is stretched.
 

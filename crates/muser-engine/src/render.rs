@@ -196,15 +196,17 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
     let singer = track.instrument.trim().to_lowercase().starts_with("yinse.voice.");
     // 0.4 只唱元音（哼唱）：辅音的模拟听起来像另一个声音，默认关；`"@consonants"` 给正数时打开（实验）。
     let consonants = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(0.0) > 0.0;
+    let held = track.instrument.strip_prefix("yinse:").is_some_and(crate::held::is_held);
     for (ci, clip) in track.clips.iter().enumerate() {
         // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
         let mut all = crate::clip_notes(project, ti, ci).unwrap_or_default();
         // 颤音、虚颤音（笛子的指颤、半孔颤；其它乐器一样）：拆成交替的音 / 写成弯音（按 clip 开头的速度）。
         if all.iter().any(|n| n.trill > 0 || n.half_trill || n.scoop > 0.0 || n.fall > 0.0) {
-            all = crate::chinese::expand_trills(&all, tm.bpm_at(clip.start.0) / 60.0);
+            all = crate::chinese::expand_trills(&all, tm.bpm_at(clip.start.0) / 60.0, held);
         }
         // 轮音（琵琶的轮指、扬琴的轮音、古筝的摇指）：拆成一串重复的音（按 clip 开头的速度）。
-        if let Some(rate) = crate::chinese::tremolo_rate(&track.instrument, &track.instrument_params) {
+        // 拖长音的乐器不拆：它的震音是一个音里弓来回拉（见下面的 `shake`），拆开就成了一下一下重新起的音，像拨弦。
+        if let Some(rate) = crate::chinese::tremolo_rate(&track.instrument, &track.instrument_params).filter(|_| !held) {
             if all.iter().any(|n| n.tremolo || n.articulation.as_deref() == Some("tremolo")) {
                 let shape = crate::modal::table_of(&track.instrument).and_then(|t| t.gestures.tremolo);
                 all = crate::chinese::expand_tremolo(&all, rate, tm.bpm_at(clip.start.0) / 60.0, shape);
@@ -374,12 +376,14 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 }
             }
             acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, mute: note.mute, ch }));
-            if note.damp || note.flutter || note.slide || note.string_technique().is_some() || note.articulation.is_some() {
+            // 拖长音的乐器上写的 `tremolo`（震音）和 `flutter` 是一回事：拉弦是弓来回快拉，管乐是花舌。
+            let shake = note.flutter || (note.tremolo && held);
+            if note.damp || shake || note.slide || note.string_technique().is_some() || note.articulation.is_some() {
                 let art = note.articulation.as_deref();
                 let technique = crate::zither::NoteTag {
                     technique: note.string_technique(),
                     damp: note.damp || art == Some("damp"),
-                    flutter: note.flutter,
+                    flutter: shake,
                     slide: note.slide,
                     articulation: match (art, table) {
                         (Some(a), Some(t)) => crate::modal::articulation_index(t, a),

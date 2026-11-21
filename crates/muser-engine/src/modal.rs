@@ -477,7 +477,8 @@ pub(crate) fn fit_decay(t: &[f64], amp: &[f64], floor: f64, early: f64, lead: f6
         .filter_map(fit)
         .min_by(|a, b| a.0.total_cmp(&b.0));
     let (_, b, m, fast_amp, fast_t60) = best.or_else(|| fit(t[kp] + 0.2 * lead))?;
-    Some(Decay { amp: 10f64.powf(b / 20.0), slope: m, fast_amp, fast_t60, kp, end, span: t_end - t[kp] })
+    // 慢的一段往回推到峰值那一刻不能比峰值本身还响多少：弹了就按住的音（断奏）后半截掉得陡，照着它往回推会推出几百倍来。
+    Some(Decay { amp: 10f64.powf(b / 20.0).min(1.5 * amp[kp]), slope: m, fast_amp, fast_t60, kp, end, span: t_end - t[kp] })
 }
 
 /// 一个分音的包络 → 慢衰减（振幅、t60）、起音多出的快衰减、拍。第二个返回值：衰减量得可靠吗

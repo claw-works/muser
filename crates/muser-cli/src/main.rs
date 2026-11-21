@@ -441,6 +441,28 @@ enum YinseCommand {
         /// With --held: how fast slurred notes reach the next pitch (time constant in seconds; 0.005 for winds, 0.03-0.08 for strings).
         #[arg(long)]
         glide: Option<f64>,
+        /// With --held: the instrument's usual vibrato, "depth,rate,delay" (cents, Hz, seconds), e.g. "12,5.5,0.2": the default
+        /// of its vibrato_* parameters. The long notes are recorded without vibrato; without this the instrument plays straight.
+        #[arg(long)]
+        vibrato: Option<String>,
+        /// For plucked or struck instruments whose notes are stopped when they end (bass guitar, a damped string): how long a
+        /// released note takes to die (seconds, e.g. 0.2). Without it notes ring on (harp, bells); with --from it is measured
+        #[arg(long)]
+        release: Option<f64>,
+        /// With --held: the recordings are a section (several players in unison): every note is played by this many voices,
+        /// slightly apart in pitch (as far apart as measured) and not vibrating together. Implies --poly
+        #[arg(long)]
+        ensemble: Option<usize>,
+        /// With --held: a folder of short strokes of the same instrument (spiccato, staccato). The timbre still comes from the
+        /// long notes; the attack, the decay and how long each stroke sounds come from these, and every note of the
+        /// instrument is one such stroke whatever its written length
+        #[arg(long)]
+        strokes: Option<std::path::PathBuf>,
+        /// With --held: the recordings are tremolo (the bow going back and forth as fast as it can): how many strokes a second,
+        /// how far the level drops between them and how uneven they are is measured, and every note of the instrument is
+        /// played that way
+        #[arg(long)]
+        tremolo: bool,
         /// Output file (suggested extension .yinse.json).
         #[arg(short, long)]
         output: std::path::PathBuf,
@@ -1327,6 +1349,62 @@ fn held_inputs(files: &[std::path::PathBuf]) -> Result<Vec<muser_engine::held_ex
         .collect()
 }
 
+/// 提取完再对着录音核一遍：把每个录音在提取出的乐器上弹一下，响度差得多的把这个音的振幅调过去，
+/// 余音比录音长得多的（很短的声音——闷音、断奏——只有几帧，衰减量不准）把它的衰减缩短。两轮。
+fn trim_to_recordings(table: &mut muser_engine::modal::ModalTable, files: &[std::path::PathBuf], output: &std::path::Path) -> Result<()> {
+    use muser_engine::modal;
+    let mut fixed = std::collections::BTreeSet::new();
+    for round in 0..3 {
+        // 每轮写到另一个文件名上（读进来的音色表是按路径记住的）。
+        let temp = output.with_file_name(format!(".trim{round}-{}", output.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+        std::fs::write(&temp, serde_json::to_string(&table)?)?;
+        let list = modal::compare(&temp.to_string_lossy(), files, false);
+        let _ = std::fs::remove_file(&temp);
+        let Ok(list) = list else { break };
+        let mut changed = false;
+        for c in &list {
+            let Some(note) = table.notes.iter_mut().find(|n| n.source == c.source) else { continue };
+            // 录音掉了 10 dB 以上的头一个时刻上，提取的还高出 8 dB 以上：衰减按两边的 dB 数之比缩短。
+            if let Some(k) = (0..4).find(|&k| c.decay_ref[k] < -10.0 && c.decay_ref[k].is_finite()) {
+                if c.decay_ours[k] - c.decay_ref[k] > 8.0 {
+                    let f = (c.decay_ours[k].min(-1.0) / c.decay_ref[k]).clamp(0.05, 1.0);
+                    note.partials.iter_mut().for_each(|p| {
+                        p.t60 *= f;
+                        p.fast_t60 *= f;
+                    });
+                    note.bands.iter_mut().for_each(|b| {
+                        b.t60 *= f;
+                        b.tail_t60 *= f;
+                    });
+                    changed = true;
+                    fixed.insert(c.source.clone());
+                }
+            }
+            if c.level_db.abs() > 1.5 && c.level_db.is_finite() {
+                let g = 10f64.powf(-c.level_db.clamp(-24.0, 24.0) / 20.0);
+                note.partials.iter_mut().for_each(|p| {
+                    p.amp *= g;
+                    p.fast_amp *= g;
+                });
+                note.bands.iter_mut().for_each(|b| {
+                    b.amp *= g;
+                    b.tail *= g;
+                });
+                note.noise.amp *= g;
+                changed = true;
+                fixed.insert(c.source.clone());
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    if !fixed.is_empty() {
+        eprintln!("  checked against the recordings: adjusted the level or decay of {} notes", fixed.len());
+    }
+    Ok(())
+}
+
 /// `muser yinse extract --held`：从长音的录音（或让 muser 演奏一个音色库）量出一件拖长音的乐器。
 #[allow(clippy::too_many_arguments)]
 fn extract_held(
@@ -1342,8 +1420,23 @@ fn extract_held(
     notes_dir: Option<std::path::PathBuf>,
     poly: bool,
     glide: Option<f64>,
+    vibrato: Option<&str>,
+    ensemble: Option<usize>,
+    strokes: Option<std::path::PathBuf>,
+    tremolo: bool,
 ) -> Result<()> {
     use muser_engine::held_extract;
+    let vibrato = match vibrato {
+        Some(text) => {
+            let v: Vec<f64> = text.split(',').map(|x| x.trim().parse::<f64>()).collect::<Result<_, _>>().map_err(|e| anyhow::anyhow!("--vibrato: {e}"))?;
+            anyhow::ensure!(
+                v.len() == 3 && v[0] >= 0.0 && v[1] > 0.0 && v[2] >= 0.0,
+                "--vibrato: write depth,rate,delay (cents, Hz, seconds), e.g. 12,5.5,0.2"
+            );
+            Some((v[0], v[1], v[2]))
+        }
+        None => None,
+    };
     let mut temp = None;
     let list = match from {
         Some(spec) => {
@@ -1381,9 +1474,17 @@ fn extract_held(
         None => held_inputs(&audio_files(inputs))?,
     };
     eprintln!("{:<26} {:>5} {:>7} {:>9} {:>8} {:>8} {:>6} {:>7}", "recording", "pitch", "dynamic", "Hz", "partials", "noise", "cents", "seconds");
-    let result = held_extract::extract(name, &list, held_extract::Options { poly, glide_s: glide }, |r| {
-        eprintln!("{:<26} {:>5.0} {:>7.2} {:>9.2} {:>8} {:>6.1}dB {:>6.1} {:>7.2}", r.source, r.pitch, r.at, r.hz, r.partials, r.noise_db, r.cents, r.seconds);
-    });
+    let result = held_extract::extract(
+        name,
+        &list,
+        held_extract::Options { poly, glide_s: glide, vibrato, ensemble, strokes: strokes.map(|dir| audio_files(&[dir])).unwrap_or_default(), tremolo },
+        |r| {
+            eprintln!(
+                "{:<26} {:>5.0} {:>7.2} {:>9.2} {:>8} {:>6.1}dB {:>6.1} {:>7.2}",
+                r.source, r.pitch, r.at, r.hz, r.partials, r.noise_db, r.cents, r.seconds
+            );
+        },
+    );
     if let Some(dir) = &temp {
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1590,6 +1691,11 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
             layers,
             poly,
             glide,
+            vibrato,
+            release: stop,
+            ensemble,
+            strokes,
+            tremolo,
         } => {
             let name = name.unwrap_or_else(|| {
                 output.file_name().map(|n| n.to_string_lossy().trim_end_matches(".json").trim_end_matches(".yinse").to_string()).unwrap_or_default()
@@ -1608,12 +1714,16 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                     notes_dir,
                     poly,
                     glide,
+                    vibrato.as_deref(),
+                    ensemble,
+                    strokes,
+                    tremolo,
                 );
             }
             if kit {
                 return extract_kit(&inputs, &output, &name, from.as_deref(), params.as_deref(), &keys, &velocities, hold, notes_dir, fallback.as_deref());
             }
-            let (mut files, mut release, mut temp) = (audio_files(&inputs), None, None);
+            let (mut files, mut release, mut temp) = (audio_files(&inputs), stop, None);
             if let Some(spec) = &from {
                 let pitches = parse_pitches(&pitches)?;
                 let velocities: Vec<f64> = velocities
@@ -1632,7 +1742,7 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                 eprintln!("playing {} pitches x {} velocities on {spec} ...", pitches.len(), velocities.len());
                 let (rendered, damper) = modal::render_notes(spec, &params, &pitches, &velocities, hold, &dir).map_err(|e| anyhow::anyhow!(e))?;
                 files = rendered;
-                release = damper;
+                release = stop.or(damper);
             }
             if split {
                 let dir = notes_dir.clone().unwrap_or_else(|| std::env::temp_dir().join(format!("muser-yinse-{}", std::process::id())));
@@ -1678,6 +1788,7 @@ fn cmd_yinse(command: YinseCommand) -> Result<()> {
                 eprintln!("  dampers: released notes die in {r:.2} s");
                 table.release = Some((r * 1000.0).round() / 1000.0);
             }
+            trim_to_recordings(&mut table, &files, &output)?;
             std::fs::write(&output, serde_json::to_string(&table)?)?;
             let (lo, hi) = table.range();
             let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);

@@ -425,6 +425,11 @@ pub(crate) static HELD: &[ParamDef<crate::held::HeldParams>] = &[
     num!("glide", 0.0, 1.0, "s", "Slurred notes (the next starts before the last ends, on solo instruments): the time constant of the pitch getting there. A wind instrument changes fingering almost at once (0.005); 0.03-0.1 is an audible slide", |p| p.glide),
     num!("breath", 0.0, 8.0, "x", "Breath / bow noise, as a multiple of the measured amount", |p| p.breath),
     num!("wobble", 0.0, 5.0, "x", "The slow unsteadiness of a held note (level and pitch), as a multiple of the measured amount: 0 dead straight", |p| p.wobble),
+    num!("slide", 0.005, 0.5, "s", "Notes marked `\"slide\": true` (and slurred from the previous note) glide into their pitch: the time constant. 0.02 a quick finger slide; 0.1 a slow one", |p| p.slide),
+    num!("flutter", 0.0, 1.0, "", "Flutter tongue (notes marked `\"flutter\": true`): how deep the tongue cuts the tone, about 40 times a second. 0.44 as measured on a dizi; 0.8 rough", |p| p.flutter),
+    num!("flutter_rate", 4.0, 60.0, "Hz", "How fast notes marked `flutter` (or `tremolo`) shake: about 40 for a wind player's flutter tongue; on a bowed instrument it is a tremolo, about 13 bow strokes a second, uneven in length and weight as a player's are", |p| p.flutter_rate),
+    num!("air", 0.0, 5.0, "x", "The air in the tube: the noise that hugs each harmonic (the unsteady air stream shaking it), as a multiple of the measured amount. It has the note's pitch, unlike `breath` (the flat hiss between the harmonics)", |p| p.air),
+    num!("solo", 0.0, 1.0, "", "1: a solo instrument, one note at a time, a note that starts before the last one ends is slurred. 0: plays chords (several players, or a keyboard); every note is attacked anew. The default is the instrument's own", |p| p.solo),
 ];
 
 pub(crate) const NEXT_HELD: &[&str] = &[];
